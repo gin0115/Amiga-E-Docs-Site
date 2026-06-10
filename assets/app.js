@@ -6,6 +6,6 @@ document.getElementById('themetoggle')?.addEventListener('click',()=>{
   localStorage.setItem('e-theme',light?'light':'dark');});
 window.addEventListener('DOMContentLoaded',()=>{
   if(window.PagefindUI){new PagefindUI({element:'#search',showSubResults:true,
-    showImages:false,bundlePath:window.__ROOT__+'pagefind/',
+    showImages:false,bundlePath:(window.__ROOT__||'./')+'pagefind/',
     translations:{placeholder:'Search symbols, functions, docs…'}});}
 });
