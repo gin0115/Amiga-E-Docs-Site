@@ -1,0 +1,363 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>cardres — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li class="active"><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../modules/index.html">Modules</a> &rsaquo; cardres</div><h1>Module: <code>cardres</code></h1><p class="meta">base <code>cardresource</code> · 17 functions · 0 consts · 0 objects</p><p class="dl">From package <a href="https://aminet.net/package/dev/e/evo" rel="noopener" target="_blank">evo</a> (view on Aminet&nbsp;↗)</p><h2>Functions</h2><section class="fn" id="fn-owncard"><h3>OwnCard(<span class="args">A1</span>) <span class="lvo">LVO -30 (1E)</span></h3><pre class="syn">return = OwnCard( handle )
+d0              a1
+
+struct CardHandle *OwnCard( struct CardHandle * );</pre><div class="docbody"><p class="ptext">This <a href="../modules/function.html">function</a> is used to obtain immediate, or deferred ownership of a credit-<a href="../modules/card.html">card</a> in the credit-<a href="../modules/card.html">card</a> slot.</p><p class="ptext">Typically an EXEC STYLE DEVICE will be written to <a href="../modules/interface.html">interface</a> between an application, and a credit <a href="../modules/card.html">card</a> in the slot. While applications, and <a href="../modules/libraries.html">libraries</a> can attempt to own a credit-<a href="../modules/card.html">card</a> in the <a href="../modules/card.html">card</a> slot, the rest of this documentation assumes a <a href="../modules/device.html">device</a> <a href="../modules/interface.html">interface</a> will be used.</p><p class="ptext">Because credit-cards can be inserted, or removed by the user at any time (otherwise known as HOT-INSERTION, and HOT-REMOVAL), the <a href="../modules/card.html">card</a>.<a href="../modules/resource.html">resource</a> provides <a href="../modules/devices.html">devices</a> with a protocol which lets many <a href="../modules/devices.html">devices</a> bid for ownership of a newly inserted <a href="../modules/card.html">card</a>.</p><p class="ptext">In general, <a href="../modules/devices.html">devices</a> should support HOT-REMOVAL, however there are legitimate cases where HOT-REMOVAL is not practical. For these cases this <a href="../modules/function.html">function</a> allows you to own the <a href="../modules/resource.html">resource</a> using the <a href="../modules/card.html#const-cardb-resetremove">CARDB_RESETREMOVE</a> flag. If the <a href="../modules/card.html">card</a> is removed before your <a href="../modules/device.html">device</a> calls <a href="../modules/cardres.html#fn-releasecard">ReleaseCard</a>(), the machine will RESET.</p></div><h4 class="docsec">Inputs</h4><div class="prose">handle - pointer to a CardHandle structure.
+
+        struct CardHandle {
+        struct Node              cah_CardNode;
+        struct Interrupt        *cah_CardRemoved;
+        struct Interrupt        *cah_CardInserted;
+        struct Interrupt        *cah_CardStatus;
+        UBYTE                    cah_CardFlags;
+        };
+
+The following fields in the structure must be filled
+in by the application before calling OwnCard() -
+
+cah_CardNode.ln_Pri -
+
+        See table below.  The Node field is used by the resource to
+        add your handle to a sorted list of CardHandle structures. 
+        This list is used by the resource to notify devices when the
+        device owns the credit-card.
+
+        Your device will only be notified (at most) one time
+        per card insertion, and perhaps less often if some
+        higher priority device on the notification list retains
+        ownership of a card in the slot.
+
+Priority        Comments
+--------------------------------------------------
+        &gt;= 21   Reserved for future use
+
+        10-20   To be used by third party devices (e.g.,
+                I/O CARD manufacturers) which look for
+                specific card tuples to identify credit-cards.
+
+        01-19   Reserved for future use
+
+        00      To be used by general purpose devices which
+                have loose card specification requirements.
+
+        &lt;= -1   Reserved for future use
+
+
+cah_CardNode.ln_Type -
+
+        Must be set to 0 for now.  This field may be used in the
+        future to identify an extended CardHandle structure.
+
+cah_CardNode.ln_Name -
+
+        Must be initialized to NULL, or name of device which owns
+        this structure.
+
+cah_CardRemoved -
+
+        Pointer to an initialized interrupt structure.  Only the
+        is_Data, and is_Code fields need to be initialized.  This
+        is the interrupt code which will be called when a credit-card
+        which your device owns is removed.  Once you receive this
+        interrupt, all credit-card interface control registers are
+        reset (e.g., programming voltage, access speed, etc.), and 
+        you should stop accessing the card as soon as possible.
+
+        Because your code is called on interrupt time, you
+        should do the least amount possible, and use little
+        stack space.
+
+        This pointer can be NULL if you have asked for reset
+        on card-removal, and you never turn reset off.
+
+cah_ CardInserted -
+
+        Pointer to an initialized interrupt structure.  Only the
+        is_Data, and is_Code fields need to be initialized.  This
+        is the code which will be called when your CardHandle owns
+        the credit-card in the slot.
+
+        Note that your code may be called on the context of
+        an interrupt, or a task in FORBID, therefore you should
+        do the least amount possible, and use little stack space.
+
+        Note that it is possible to receive a card removed
+        interrupt immediately before you receive this interrupt if
+        the card is removed while your CardInserted interrupt
+        is being called.
+
+        Your device owns the credit-card until the card is manually
+        removed by the user, or you release the card by calling
+        ReleaseCard().
+
+        Your device should examine the card in the slot (e.g., look
+        for specific tuples), and decide if the card is of a type your
+        device understands.
+
+        If not, release ownership of the card by calling
+        ReleaseCard() so that other devices will be given a chance to
+        examine the current card in the credit-card slot.
+
+cah_CardStatus -
+
+        Pointer to an initialized interrupt structure.  Only the
+        is_Data, and is_Code fields need to be initialized.
+
+        Note that your code will be called on the context of
+        an interrupt, therefore you should do the least
+        amount possible, and use little stack space.
+
+        Note that it is possible to receive a card removed
+        interrupt immediately before you receive this interrupt
+        if the card is removed during this interrupt.
+
+        If this pointer is NULL, you will not receive card status
+        change interrupts.
+
+        Your interrupt code will be called with a mask value in
+        register D0, and a pointer to your data in A1.
+
+        The mask value in D0 can be interpreted using the same bit
+        definitions returned by ReadCardStatus().  Note that more
+        than one bit may be set, and the mask only tells you what has
+        changed, not the current state.
+
+        Use ReadCardStatus() if you need to determine the current
+        state of the status bits.
+
+        Not all status change interrupts will necessarily be
+        enabled on all systems.  For example, on some systems
+        BVD2/DA status change interrupts will not be enabled so
+        that digital audio can occur without generating many
+        interrupts.  Status change interrupts are typically meant
+        to be used for monitoring BSY/IRQ, WR, and BVD1/SC.  Battery
+        voltage low detection would best be done by a separate
+        utility which periodically polls BVD1 &amp; BVD2 by using the
+        ReadCardStatus() function.
+
+        Typically the mask value in D0 MUST be returned unchanged
+        on exit from your code.  The return value in D0 is then used
+        to clear the source(s) of the interrupt.
+
+        In the rare case that you need to keep a status change
+        interrupt active, clear the appropriate bit(s) in D0 before
+        returning via RTS.  Clear no bits other than those defined
+        as valid bits for ReadCardStatus()!
+
+        !!!NEW FOR V39!!!
+
+        See definition of CARDB_POSTSTATUS below.
+
+cah_CardFlags -
+
+        Optional flags (all other bits must be 0).
+
+        - CARDB_RESETREMOVE means you want the machine to
+          reset if the credit-card in the slot is removed
+          while you own the credit-card.
+
+        - CARDB_IFAVAILABLE means you only want ownership of
+          the credit-card in the slot if it is immediately
+          available.
+
+        If it is available, your CardHandle structure will be added
+        to a list so that you can be notified via an interrupt when
+        the credit-card is removed by the user.
+
+        If the credit-card is not immediately available (either
+        because there is no credit-card in the slot, or because some
+        other device owns the credit-card), your CardHandle structure
+        will NOT be added to the notification list.
+
+        - CARDB_DELAYOWNERSHIP means you never want a successful
+          return from OwnCard() even if the credit-card is
+          available.  Rather you will be notified of ownership
+          via your cah_CardInserted interrupt.  If you use this flag,
+          OwnCard() will always return -1.  This flag cannot be used
+          with the CARDB_IFAVAILABLE flag.
+
+        - CARDB_POSTSTATUS is new for V39 card.resource (check
+          resource base VERSION before using).  It is meant to be
+          used by drivers which want to service the card hardware
+          AFTER the status change interrupt has been cleared on the
+          gate array.  Previously a PORTS interrupt server had 
+          to be added to do this; this is somewhat more efficient, and
+          easier to use.  Your status change interrupt is first called
+          with status change bits in register D0.  You would examine
+          these bits, and set a flag(s) for the POST callback.  When
+          you return from the status change interrupt, the interrupt
+          on the gate array is cleared (based on what you return in
+          register D0), and your status change interrupt is immediately 
+          called again, but this time with 0 in D0.  The value you
+          return in D0 for the POST callback case is ignored.
+
+
+ALL other fields are used by the resource, and no fields in the
+structure may be modified while the structure is in use by the
+resource.  If you need to make changes, you must remove your
+CardHandle (see ReleaseCard()), make the changes, and then call
+OwnCard() again.</div><h4 class="docsec">See also</h4><p class="ptext"><a href="../modules/cardres.html#fn-releasecard">ReleaseCard</a>(), <a href="../modules/cardres.html#fn-readcardstatus">ReadCardStatus</a>(), resources/<a href="../modules/card.html">card</a>.i, resources/<a href="../modules/card.html">card</a>.h</p></section><section class="fn" id="fn-releasecard"><h3>ReleaseCard(<span class="args">A1,D0</span>) <span class="lvo">LVO -36 (24)</span></h3><pre class="syn">ReleaseCard( handle, flags )
+             a1      d0
+
+void ReleaseCard( struct CardHandle *, ULONG );</pre><div class="docbody"><p class="ptext">This <a href="../modules/function.html">function</a> releases ownership of the credit <a href="../modules/card.html">card</a> in the slot.</p><p class="ptext">The access light (if any) is automatically turned off (if it was turned on) when you release ownership of a <a href="../modules/card.html">card</a> you owned, and all credit-<a href="../modules/card.html">card</a> control registers are reset to their default state.</p><p class="ptext">You must call this <a href="../modules/function.html">function</a> if -</p><p class="ptext">You own the credit-<a href="../modules/card.html">card</a>, and want to release it so that other <a href="../modules/devices.html">devices</a> on the notification list will have a chance to examine the credit-<a href="../modules/card.html">card</a> in the <a href="../modules/card.html">card</a> slot.</p><p class="ptext">You took a Card Removed interrupt while you owned the credit-<a href="../modules/card.html">card</a>. If so, you MUST call this <a href="../modules/function.html">function</a>, else no other task will be notified of newly inserted cards. On some machines the credit-<a href="../modules/card.html">card</a> <a href="../modules/interface.html">interface</a> hardware may also be left disabled until you respond to the <a href="../modules/card.html">card</a> removed interrupt by calling this <a href="../modules/function.html">function</a>.</p><p class="ptext">You want to remove yourself from the notification list (see optional flags below).</p></div><h4 class="docsec">Inputs</h4><div class="prose">handle - Same handle as that used when OwnCard() was called.
+
+flags - Optional flags.
+
+        - CARDB_REMOVEHANDLE means you want remove your
+        CardHandle structure from the notification list
+        whether or not you currently own the credit-card
+        in the card slot.  The node structure in your
+        CardHandle will be removed from the notification
+        list, and ownership will be released if you were
+        the owner of the card.</div><h4 class="docsec">See also</h4><p class="ptext"><a href="../modules/cardres.html#fn-owncard">OwnCard</a>(), resources/<a href="../modules/card.html">card</a>.i, resources/<a href="../modules/card.html">card</a>.h</p></section><section class="fn" id="fn-getcardmap"><h3>GetCardMap(<span class="args"></span>) <span class="lvo">LVO -42 (2A)</span></h3><pre class="syn">pointer=GetCardMap()
+d0
+
+struct CardMemoryMap *GetCardMap( void );</pre><div class="docbody"><p class="ptext">Obtain <a href="../modules/pointer.html">pointer</a> to a CardMemoryMap structure. The structure is READ only.</p><p class="ptext">Devices should never assume credit-<a href="../modules/card.html">card</a> <a href="../modules/memory.html">memory</a> appears at any particular place in <a href="../modules/memory.html">memory</a>. By using this <a href="../modules/function.html">function</a> to obtain pointers to the base <a href="../modules/memory.html">memory</a> locations of the various credit-<a href="../modules/card.html">card</a> <a href="../modules/memory.html">memory</a> <a href="../modules/types.html">types</a>, your <a href="../modules/device.html">device</a> will continue to work properly should credit cards appear in different <a href="../modules/memory.html">memory</a> locations in future hardware.</p></div><h4 class="docsec">See also</h4><p class="ptext">resources/<a href="../modules/card.html">card</a>.h, resources/<a href="../modules/card.html">card</a>.i</p></section><section class="fn" id="fn-begincardaccess"><h3>BeginCardAccess(<span class="args">A1</span>) <span class="lvo">LVO -48 (30)</span></h3><pre class="syn">result=BeginCardAccess( handle )
+d0                      a1
+
+BOOL BeginCardAccess( struct CardHandle * );</pre><div class="docbody"><p class="ptext">This <a href="../modules/function.html">function</a> should be called before you begin access to credit-<a href="../modules/card.html">card</a> <a href="../modules/memory.html">memory</a>.</p><p class="ptext">Its effect will depend on the type of Amiga machine your code happens to be running on. On some machines it will cause an access light to be turned ON.</p></div><h4 class="docsec">Inputs</h4><div class="prose">handle - Same handle as that used when OwnCard() was called.</div><h4 class="docsec">See also</h4><p class="ptext"><a href="../modules/cardres.html#fn-owncard">OwnCard</a>(), <a href="../modules/cardres.html#fn-endcardaccess">EndCardAccess</a>()</p></section><section class="fn" id="fn-endcardaccess"><h3>EndCardAccess(<span class="args">A1</span>) <span class="lvo">LVO -54 (36)</span></h3><pre class="syn">result=EndCardAccess( handle )
+d0                      a1
+
+ULONG EndCardAccess( struct CardHandle * );</pre><div class="docbody"><p class="ptext">This <a href="../modules/function.html">function</a> should be called when you are done accessing credit-<a href="../modules/card.html">card</a> <a href="../modules/memory.html">memory</a>.</p><p class="ptext">Its effect will depend on the type of Amiga machine your code happens to be running on. On some machines it will cause an access light to be turned OFF in approximately 1/2 second.</p><p class="ptext">On machines which support an access light, the light will automatically be turned off when you call <a href="../modules/cardres.html#fn-releasecard">ReleaseCard</a>().</p></div><h4 class="docsec">Inputs</h4><div class="prose">handle - Same handle as that used when OwnCard() was called.</div><h4 class="docsec">See also</h4><p class="ptext"><a href="../modules/cardres.html#fn-owncard">OwnCard</a>(), <a href="../modules/cardres.html#fn-releasecard">ReleaseCard</a>(), <a href="../modules/cardres.html#fn-begincardaccess">BeginCardAccess</a>()</p></section><section class="fn" id="fn-readcardstatus"><h3>ReadCardStatus(<span class="args"></span>) <span class="lvo">LVO -60 (3C)</span></h3><pre class="syn">status=ReadCardStatus()
+d0
+
+UBYTE ReadCardStatus( void );</pre><div class="docbody"><p class="ptext">Returns <a href="../modules/current.html">current</a> state of the credit <a href="../modules/card.html">card</a> status register.</p><p class="ptext">See <a href="../modules/card.html">card</a>.h/i for bit definitions.</p><p class="ptext">Note that the meaning of the returned status <a href="../modules/bits.html">bits</a> may vary depending on the type of <a href="../modules/card.html">card</a> inserted in the slot, and mode of operation. Interpretation of the <a href="../modules/bits.html">bits</a> is left up to the application.</p></div><h4 class="docsec">See also</h4><p class="ptext">resources/<a href="../modules/card.html">card</a>.h, resources/<a href="../modules/card.html">card</a>.i</p></section><section class="fn" id="fn-cardresetremove"><h3>CardResetRemove(<span class="args">A1,D0</span>) <span class="lvo">LVO -66 (42)</span></h3><pre class="syn">success=CardResetRemove( handle, flag );
+                         a1      d0
+
+BOOL CardResetRemove( struct CardHandle *, ULONG );</pre><div class="docbody"><p class="ptext">Used to set/clear HARDWARE RESET on <a href="../modules/card.html">card</a> change detect.</p><p class="ptext">This <a href="../modules/function.html">function</a> should generally not be used by <a href="../modules/devices.html">devices</a> which support HOT-REMOVAL. HARDWARE RESET on removal is generally intended for execute-in-place software, or ram cards whose <a href="../modules/memory.html">memory</a> has been added as system ram.</p></div><h4 class="docsec">Inputs</h4><div class="prose">handle - Same handle as that used when OwnCard() was called.
+
+flag - TRUE if you want to SET HARDWARE RESET on credit
+       card removal.  FALSE if you want to CLEAR HARDWARE
+       RESET.</div><h4 class="docsec">See also</h4><p class="ptext"><a href="../modules/cardres.html#fn-owncard">OwnCard</a>()</p></section><section class="fn" id="fn-cardmisccontrol"><h3>CardMiscControl(<span class="args">A1,D1</span>) <span class="lvo">LVO -72 (48)</span></h3><pre class="syn">control_bits=CardMiscControl( handle, control_bits );
+d0                              a1              d1
+
+UBYTE CardMiscControl( struct CardHandle *, UBYTE );</pre><div class="docbody"><p class="ptext">Used to set/clear miscellaneous control <a href="../modules/bits.html">bits</a> (generally for use with I/O cards).</p></div><h4 class="docsec">Inputs</h4><div class="prose">handle - Same handle as that used when OwnCard() was called.
+
+control_bits - A mask value of control bits to be turned on/off.
+
+The bit values which might be usable are defined in card.h/i.
+
+For example, to enable digital audio, and disable hardware
+write-protect (if supported), you would call this function with these
+values --
+
+CARDF_DISABLE_WP|CARDF_ENABLE_DIGAUDIO
+
+Then to turn off digital audio, but leave write-protect
+disable, you would use a value of --
+
+CARDF_DISABLE_WP
+
+Finally too reenable write protect, call this function with
+a mask value of 0.</div><h4 class="docsec">See also</h4><p class="ptext"><a href="../modules/cardres.html#fn-cardinterface">CardInterface</a>(), resources/<a href="../modules/card.html">card</a>.h, resources/<a href="../modules/card.html">card</a>.i</p></section><section class="fn" id="fn-cardaccessspeed"><h3>CardAccessSpeed(<span class="args">A1,D0</span>) <span class="lvo">LVO -78 (4E)</span></h3><pre class="syn">result=CardAccessSpeed( handle, nanoseconds );
+d0                       a1      d0
+
+ULONG CardAccessSpeed( struct CardHandle *, ULONG );</pre><div class="docbody"><p class="ptext">This <a href="../modules/function.html">function</a> is used to set <a href="../modules/memory.html">memory</a> access speed for all CPU accesses to <a href="../modules/card.html">card</a> <a href="../modules/memory.html">memory</a>.</p><p class="ptext">Typically this information would be determined by first examining the Card Information Structure.</p><p class="ptext">Then you would use this <a href="../modules/function.html">function</a> to let the <a href="../modules/card.html">card</a>.<a href="../modules/resource.html">resource</a> <a href="../modules/select.html">select</a> the best possible access speed for you, however note that the range of possible access speeds may vary on some machines (depending on the type of credit-<a href="../modules/card.html">card</a> <a href="../modules/interface.html">interface</a> hardware being provided).</p></div><h4 class="docsec">Inputs</h4><div class="prose">handle - Same handle as that used when OwnCard() was called.
+
+nanoseconds - Preferred access speed in nanoseconds.</div><h4 class="docsec">See also</h4><p class="ptext"><a href="../modules/cardres.html#fn-owncard">OwnCard</a>()</p></section><section class="fn" id="fn-cardprogramvoltage"><h3>CardProgramVoltage(<span class="args">A1,D0</span>) <span class="lvo">LVO -84 (54)</span></h3><pre class="syn">success=CardProgramVoltage( handle, voltage );
+                                a1      d0
+
+LONG CardProgramVoltage( struct CardHandle *, ULONG );</pre><div class="docbody"><p class="ptext">Used to set programming voltages (e.g., for FLASH-ROM/EPROM cards).</p></div><h4 class="docsec">Inputs</h4><div class="prose">handle - Same handle as that used when OwnCard() was called.
+
+voltage - See card.i/h for valid values.</div><h4 class="docsec">See also</h4><p class="ptext"><a href="../modules/cardres.html#fn-owncard">OwnCard</a>(), resources/<a href="../modules/card.html">card</a>.h, resources/<a href="../modules/card.html">card</a>.i</p></section><section class="fn" id="fn-cardresetcard"><h3>CardResetCard(<span class="args">A1</span>) <span class="lvo">LVO -90 (5A)</span></h3><pre class="syn">success=CardResetCard( handle );
+                        a1
+
+BOOL CardResetCard( struct CardHandle * );</pre><div class="docbody"><p class="ptext">Used to reset a credit-<a href="../modules/card.html">card</a>. Some cards, such as some configurable cards can be reset.</p><p class="ptext">Asserts credit-<a href="../modules/card.html">card</a> reset for at least 10us.</p></div><h4 class="docsec">Inputs</h4><div class="prose">handle - Same handle as that used when OwnCard() was called.</div><h4 class="docsec">See also</h4><p class="ptext"><a href="../modules/cardres.html#fn-owncard">OwnCard</a>(), <a href="../modules/cardres.html#fn-releasecard">ReleaseCard</a>()</p></section><section class="fn" id="fn-copytuple"><h3>CopyTuple(<span class="args">A1,A0,D1,D0</span>) <span class="lvo">LVO -96 (60)</span></h3><pre class="syn">success = CopyTuple( CardHandle, buffer, tuplecode, size );
+d0                      a1       a0      d1         d0
+
+BOOL CopyTuple( struct CardHandle *, UBYTE *, ULONG, ULONG );</pre><div class="docbody"><p class="ptext">This <a href="../modules/function.html">function</a> scans credit-<a href="../modules/card.html">card</a> <a href="../modules/memory.html">memory</a> for a tuple, and if found, copies it into a supplied buffer. The entire tuple (including the tuple code, and <a href="../modules/link.html">link</a>) are copied to the supplied buffer. The <a href="../modules/number.html">number</a> of bytes copied to the buffer will be 2 bytes, plus the <a href="../modules/argument.html">argument</a> &quot;size&quot;, or the value in the tuple LINK field (whichever is SMALLER).</p><p class="ptext">The software calling this <a href="../modules/function.html">function</a> is responsible for examining the copy of the tuple (e.g., recognition of fields, recognition of stop bytes, etc. within the tuple).</p><p class="ptext">This <a href="../modules/function.html">function</a> does the best job it can to find a tuple in <a href="../modules/attribute.html">attribute</a>, or <a href="../modules/common.html">common</a> <a href="../modules/memory.html">memory</a>. It follows tuple chains, and skips odd bytes in <a href="../modules/attribute.html">attribute</a> <a href="../modules/memory.html">memory</a>.</p><p class="ptext">This <a href="../modules/function.html">function</a> monitors for credit-<a href="../modules/card.html">card</a> removal while reading data. If the credit-<a href="../modules/card.html">card</a> is removed while a byte is being read, it will stop searching, and return FALSE.</p><p class="ptext">This <a href="../modules/function.html">function</a> does not protect against another task writing to credit-<a href="../modules/card.html">card</a> <a href="../modules/memory.html">memory</a> while data is being read. The <a href="../modules/device.html">device</a> is responsible for single-threading reads/writes to the credit <a href="../modules/card.html">card</a> as needed.</p><p class="ptext">This <a href="../modules/function.html">function</a> can be used to find multiple tuple codes; this is a very rare case, so the mechanism provided for doing so is unusual. See INPUTS below for more information.</p><p class="ptext">This <a href="../modules/function.html">function</a> does not read bytes within the body of any tuples except for the tuple you want copied, and the basic compatibility tuples this <a href="../modules/function.html">function</a> understands (see list below).</p><p class="ptext">On some machines this <a href="../modules/function.html">function</a> may slow down <a href="../modules/memory.html">memory</a> access speed while reading the tuple chain. This is done to prevent potential problems on slow cards. By examining the CISTPL_DEVICE, and CISTPL_DEVICE_A tuples, you can determine the best possible <a href="../modules/memory.html">memory</a> access speed for the type of <a href="../modules/card.html">card</a> inserted. Because <a href="../modules/memory.html">memory</a> access speed may be slowed down, calls to this <a href="../modules/function.html">function</a> should be single-threaded.</p><p class="ptext">The Card Information Structure must start with a CISTPL_DEVICE tuple stored as the first tuple in <a href="../modules/attribute.html">attribute</a> <a href="../modules/memory.html">memory</a>. If not, this <a href="../modules/function.html">function</a> will search for a CISTPL_LINKTARGET tuple stored at byte 0 of <a href="../modules/common.html">common</a> <a href="../modules/memory.html">memory</a>. Therefore it is possible to store a CIS on cards which do not have any writeable <a href="../modules/attribute.html">attribute</a> <a href="../modules/memory.html">memory</a>, though this may cause problems for other software implemented on other machines. For example, some SRAM cards do not come with writeable <a href="../modules/attribute.html">attribute</a> <a href="../modules/memory.html">memory</a>, and/or some may have OPTIONAL EEPROM <a href="../modules/memory.html">memory</a> which may not have been initialized by the <a href="../modules/card.html">card</a> manufacturer. While it could be argued that such cards do not conform to the PCMCIA PC Card Standard, such cards are cheaper, and therefore likely to be used.</p></div><h4 class="docsec">Inputs</h4><div class="prose">CardHandle - Same handle as that used when OwnCard() was
+called.
+
+buffer - Pointer to a buffer where the tuple will be copied.
+
+The buffer should be at least as large as &quot;size&quot; + 8 (see
+use of &quot;size&quot; argument below).  Therefore the minimum buffer
+size is 8 bytes.  See NOTES below.
+
+tuplecode - The tuple code you want to search for.  This is
+a ULONG value.  The upper 16 bits should be 0, or a number between
+1-32K where a value of 0 means you want to find the first tuple
+match, a value of 1 the second, etc.  For example -
+
+0x41 means find the FIRST tuple equal to $41.
+
+((1&lt;&lt;16)|(0x41)) means find the SECOND tuple equal to $41.
+
+((2&lt;&lt;16)|(0x41)) means find the THIRD tuple equal to $41.
+
+size - The maximum number of bytes you want copied (not
+       including the tuple code, and link).  The actual number
+       of bytes copied may be less than &quot;size&quot; if the tuple
+       link field is less than &quot;size&quot;.
+
+       A size of 0 will result in only the tuple code, and
+       link being copied to your buffer if the tuple is found.
+
+       If you do not care how many bytes are copied, any unsigned
+       value of 255 or greater will do.  In this case a maximum
+       of 257 bytes might be copied to your buffer (if the
+       tuple link field is the maximum of 255).
+
+       Other sizes are useful if you know the size of the tuple
+       you want copied, or you know there are active registers
+       stored within the tuple, and only want to copy a portion
+       of a tuple.</div><h4 class="docsec">See also</h4><p class="ptext"><a href="../modules/cardres.html#fn-owncard">OwnCard</a>()</p></section><section class="fn" id="fn-devicetuple"><h3>DeviceTuple(<span class="args">A0,A1</span>) <span class="lvo">LVO -102 (66)</span></h3><pre class="syn">return=DeviceTuple( tuple_data, storage)
+                    a0          a1
+
+ULONG DeviceTuple( UBYTE *, struct DeviceTData *);</pre><div class="docbody"><p class="ptext">Extracts SIZE, TYPE, and SPEED from a <a href="../modules/device.html">device</a> tuple (generally obtained with <a href="../modules/cardres.html#fn-copytuple">CopyTuple</a>()).</p></div><h4 class="docsec">Inputs</h4><div class="prose">tuple_data - Pointer to a CISTPL_DEVICE tuple (generally obtained
+with CopyTuple()).
+
+storage - Pointer to a DeviceTData structure in which results
+are to be stored.
+
+struct  DeviceTData {
+        ULONG   dtd_DTsize;             /* Size of card (bytes) */
+        ULONG   dtd_DTspeed;            /* Speed in nanoseconds */
+        UBYTE   dtd_DTtype;             /* Type of card         */
+        UBYTE   dtd_DTflags;            /* Other flags          */
+};</div><h4 class="docsec">See also</h4><p class="ptext"><a href="../modules/cardres.html#fn-copytuple">CopyTuple</a>(), resources/<a href="../modules/card.html">card</a>.h, resources/<a href="../modules/card.html">card</a>.i</p></section><section class="fn" id="fn-ifamigaxip"><h3>IfAmigaXIP(<span class="args">A2</span>) <span class="lvo">LVO -108 (6C)</span></h3><pre class="syn">result=IfAmigaXIP( handle )
+d0                     a2
+
+struct Resident *IfAmigaXIP( struct CardHandle * );</pre><div class="docbody"><p class="ptext">Check to see if a <a href="../modules/card.html">card</a> in the slot is an Amiga execute-in-place <a href="../modules/card.html">card</a>. The Card Information Structure must have a valid <a href="../modules/card.html#const-cistpl-amigaxip">CISTPL_AMIGAXIP</a> tuple.</p><p class="ptext">Tuples can be treated like structures. The format of a <a href="../modules/card.html#const-cistpl-amigaxip">CISTPL_AMIGAXIP</a> tuple is -</p><pre class="code">struct TP_AmigaXIP {
+UBYTE TPL_CODE;
+UBYTE TPL_LINK;
+UBYTE TP_XIPLOC[4];
+UBYTE TP_XIPFLAGS;
+UBYTE TP_XIPRESRV;
+};</pre><p class="ptext">The TPL_CODE field must be equal to <a href="../modules/card.html#const-cistpl-amigaxip">CISTPL_AMIGAXIP</a> (0x91).</p><p class="ptext">The TPL_LINK field must be equal to the length of the body of a <a href="../modules/card.html#const-cistpl-amigaxip">CISTPL_AMIGAXIP</a> tuple (0x06).</p><p class="ptext">The TP_XIPLOC <a href="../modules/array.html">array</a> is the <a href="../modules/memory.html">memory</a> <a href="../modules/location.html">location</a> of your ROM-TAG stored in little-endian order. This value is stored as an &quot;offset&quot; into <a href="../modules/common.html">common</a> <a href="../modules/memory.html">memory</a> as is the <a href="../modules/standard.html">standard</a> for storing 32 bit bit pointers in tuples.</p><p class="ptext">For example, a <a href="../modules/pointer.html">pointer</a> to a ROM-TAG stored at an offset of 0x00000200 would be stored as four bytes like so:</p><p class="ptext">0x00, 0x02, 0x00, 0x00</p><p class="ptext">Currently credit-<a href="../modules/card.html">card</a> <a href="../modules/common.html">common</a> <a href="../modules/memory.html">memory</a> is mapped starting at <a href="../modules/memory.html">memory</a> <a href="../modules/location.html">location</a> 0x600000. Because a ROM-TAG is used, it is implied that execute-in-place code can be compiled/linked to use absolute references. It is believed that most developers will not want to have to write pc-relative code only.</p><p class="ptext">The TP_XIPFLAGS field is treated as a set of flag <a href="../modules/bits.html">bits</a>. See <a href="../modules/card.html">card</a>.i/h for defined <a href="../modules/bits.html">bits</a>. All undefined <a href="../modules/bits.html">bits</a> MUST be 0.</p><p class="ptext">The TP_XIPRESRV field must be 0 for now.</p><p class="ptext">The system polls for cards which have a <a href="../modules/card.html#const-cistpl-amigaxip">CISTPL_AMIGAXIP</a> tuple at the same time that it searches for <a href="../modules/devices.html">devices</a> to boot off. When a <a href="../modules/card.html">card</a> with a valid <a href="../modules/card.html#const-cistpl-amigaxip">CISTPL_AMIGAXIP</a> tuple is found, the system will call your ROM-TAG via Exec&#x27;s <a href="../modules/exec.html#fn-initresident">InitResident</a>() <a href="../modules/function.html">function</a>.</p><p class="ptext">The system examines the return code from <a href="../modules/exec.html#fn-initresident">InitResident</a>(). A NULL return in D0 means you are done with the <a href="../modules/card.html">card</a>, and it can be removed by the user. A successful return indicates you are still using the <a href="../modules/card.html">card</a>. Some programs (e.g., some games) may never return. The only requirement is that if you do return, you must leave the system in a &quot;good&quot; state (including returning most of, or all the <a href="../modules/memory.html">memory</a> you allocated). The <a href="../modules/standard.html">standard</a> convention for preserving registers apply.</p><p class="ptext">Note that your execute-in-place code will not be called a second time, unless you have returned a non-successful result. In this case your execute-in-place code MUST assume the user can remove, and insert your <a href="../modules/card.html">card</a> again. There are a variety of ways to check for re-insertion (e.g., search for a <a href="../modules/message.html">message</a> port, <a href="../modules/device.html">device</a>, <a href="../modules/library.html">library</a>, task, etc., that you created).</p><p class="ptext">Note that your execute-in-place code runs in an environment similar to boot block games; before DOS has been initialized!</p><p class="ptext">Your execute-in-place code should NOT try to initialize DOS because DOS requires a suitable <a href="../modules/disk.html">disk</a>-like <a href="../modules/device.html">device</a> be at the head of the <a href="../modules/expansion.html">expansion</a> base mountlist to boot off.</p><p class="ptext">If you need DOS, it is possible to boot off a credit-<a href="../modules/card.html">card</a> using carddisk.<a href="../modules/device.html">device</a>. Such cards will require a valid CISTPL_DEVICE tuple, and CISTPL_FORMAT tuple. A portion of the <a href="../modules/card.html">card</a> can be used for a minimal <a href="../modules/number.html">number</a> of data blocks like the method described above.</p><p class="ptext">However this method is not recommended, though it is anticipated that some developers will have thought of, and used this method anyway. If you must do this, at least use the CardHandle returned by <a href="../modules/cardres.html#fn-owncard">OwnCard</a>() to set hardware reset on removal else the machine will likely crash anyway if the <a href="../modules/card.html">card</a> is removed while your execute-in-place code is running.</p></div><h4 class="docsec">See also</h4><p class="ptext"><a href="../modules/cardres.html#fn-owncard">OwnCard</a>(), resources/<a href="../modules/card.html">card</a>.h, resources/<a href="../modules/card.html">card</a>.i</p></section><section class="fn" id="fn-cardforcechange"><h3>CardForceChange(<span class="args"></span>) <span class="lvo">LVO -114 (72)</span></h3><pre class="syn">success = CardForceChange( VOID )
+d0
+
+BOOL CardForceChange( VOID );</pre><div class="docbody"><p class="ptext">This <a href="../modules/function.html">function</a> is not intended for general use. Its purpose is to force a credit-<a href="../modules/card.html">card</a> change as if the user had removed, or inserted a <a href="../modules/card.html">card</a>.</p><p class="ptext">This <a href="../modules/function.html">function</a> is intended to be used by a <a href="../modules/utility.html">utility</a> program which needs to force the <a href="../modules/current.html">current</a> <a href="../modules/card.html">card</a> owner to release ownership of the <a href="../modules/card.html">card</a>, thereby allowing the <a href="../modules/utility.html">utility</a> an opportunity to own the credit-<a href="../modules/card.html">card</a>.</p></div><h4 class="docsec">Result</h4><div class="prose">TRUE if the function succeeded, FALSE if card change is
+not allowed.  This function will generally succeed, unless
+someone is using the card in reset remove mode at the time
+this function is called.</div></section><section class="fn" id="fn-cardchangecount"><h3>CardChangeCount(<span class="args"></span>) <span class="lvo">LVO -120 (78)</span></h3><pre class="syn">count = CardChangeCount( VOID )
+d0
+
+ULONG CardChangeChange( VOID );</pre><div class="docbody"><p class="ptext">This <a href="../modules/function.html">function</a> returns the <a href="../modules/card.html">card</a> change count. The counter is incremented by one for every removal, and for every successful insertion (a <a href="../modules/card.html">card</a> which is inserted long enough to be debounced before it is removed again).</p></div><h4 class="docsec">Result</h4><div class="prose">The change count number.</div></section><section class="fn" id="fn-cardinterface"><h3>CardInterface(<span class="args"></span>) <span class="lvo">LVO -126 (7E)</span></h3><pre class="syn">return = CardInterface()
+d0
+
+ULONG CardInterface( void );</pre><div class="docbody"><p class="ptext">This <a href="../modules/function.html">function</a> is used to determine the type of credit-<a href="../modules/card.html">card</a> (hardware) <a href="../modules/interface.html">interface</a> available. For the most part the <a href="../modules/card.html">card</a>.<a href="../modules/resource.html">resource</a> hides the hardware details from <a href="../modules/devices.html">devices</a> within its <a href="../modules/function.html">function</a> calls. However should we need to provide a work-around because of differences, or limitations imposed by future <a href="../modules/interface.html">interface</a> hardware, this <a href="../modules/function.html">function</a> must be used to identify which <a href="../modules/interface.html">interface</a> is available.</p></div><h4 class="docsec">See also</h4><p class="ptext"><a href="../modules/cardres.html#fn-cardmisccontrol">CardMiscControl</a>(), resources/<a href="../modules/card.html">card</a>.i, resources/<a href="../modules/card.html">card</a>.h</p></section><div class="xrefs"><div class="xref"><h3>Provided by packages</h3><ul><li><a href="../packages/index.html#evo">evo</a></li></ul></div></div></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

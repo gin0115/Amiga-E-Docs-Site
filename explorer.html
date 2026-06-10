@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Data Explorer — Amiga E</title>
+<link rel="stylesheet" href="assets/style.css">
+<link rel="stylesheet" href="pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="index.html">Home</a></li><li><a href="language/index.html">Language</a></li><li><a href="stdlib/index.html">Standard Library</a></li><li><a href="modules/index.html">Modules</a></li><li><a href="tooling/index.html">Tooling</a></li><li><a href="community/index.html">Community</a></li><li><a href="packages/index.html">Packages</a></li><li class="active"><a href="explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb">Data Explorer</div><h1>Data Explorer</h1>
+<p class="prose">Run SQL against the full knowledge base (<code>amiga-e.db</code>, 17 tables)
+— <b>entirely in your browser</b> via SQLite-WASM. Nothing is sent to a server. The
+database (~40&nbsp;MB) downloads once when you run the first query, then is cached.</p>
+<p class="meta">Tables: reference_entry · module · module_function · module_const ·
+module_object · symbol_usage · example · example_module · library_doc · ndk_autodoc ·
+package · maillist_message · document · translated_doc · tutorial_entry · translation.</p>
+<div class="expbtns"><button data-sql="SELECT name, n_functions, n_consts, n_objects FROM v_module ORDER BY n_functions DESC LIMIT 30">Most-documented modules (merged)</button><button data-sql="SELECT DISTINCT name, args, lvo FROM module_function WHERE module_name=&#x27;dos&#x27; ORDER BY lvo DESC">Functions in the dos module</button><button data-sql="SELECT DISTINCT module_name, name, args, lvo FROM module_function WHERE name LIKE &#x27;%Window%&#x27; LIMIT 50">Search a function by name</button><button data-sql="SELECT e.key FROM example e JOIN example_module a ON a.example_id=e.id JOIN example_module b ON b.example_id=e.id WHERE a.module LIKE &#x27;%intuition%&#x27; AND b.module LIKE &#x27;%reqtools%&#x27; LIMIT 50">Examples importing both intuition and reqtools</button><button data-sql="SELECT module, COUNT(*) n FROM example_module GROUP BY module ORDER BY n DESC LIMIT 30">Most-imported modules across all examples</button><button data-sql="SELECT DISTINCT name, value FROM module_const WHERE name LIKE &#x27;WFLG_%&#x27; LIMIT 60">Constants matching a flag prefix</button><button data-sql="SELECT ndk_library, COUNT(*) n FROM module_function WHERE ndk_prose IS NOT NULL GROUP BY ndk_library ORDER BY n DESC LIMIT 30">Functions with NDK prose (count by library)</button></div>
+<textarea id="sql">SELECT name, n_functions, n_consts, n_objects FROM v_module ORDER BY n_functions DESC LIMIT 30</textarea>
+<button id="run">Run ▶</button> <span id="status" class="meta"></span>
+<div id="exresult"></div>
+<script src="assets/sql-wasm.js"></script>
+<script>
+let db=null;
+const status=t=>document.getElementById('status').textContent=t;
+async function ensureDB(){
+  if(db) return db;
+  status('loading SQLite engine…');
+  const SQL=await initSqlJs({locateFile:f=>'assets/'+f});
+  status('downloading database (~40MB, cached after)…');
+  const buf=await fetch('data/amiga-e.db').then(r=>r.arrayBuffer());
+  db=new SQL.Database(new Uint8Array(buf));status('ready');return db;
+}
+async function run(sql){
+  try{const d=await ensureDB();status('running…');
+    const res=d.exec(sql);const el=document.getElementById('exresult');
+    if(!res.length){el.innerHTML='<p class=meta>No rows.</p>';status('0 rows');return;}
+    const c=res[0].columns,v=res[0].values;
+    el.innerHTML='<table><thead><tr>'+c.map(x=>'<th>'+x+'</th>').join('')+'</tr></thead><tbody>'+
+      v.map(r=>'<tr>'+r.map(x=>'<td>'+(x==null?'':String(x).replace(/[&<]/g,m=>m=='&'?'&amp;':'&lt;'))+'</td>').join('')+'</tr>').join('')+'</tbody></table>';
+    status(v.length+' rows');
+  }catch(e){status('error: '+e.message);}
+}
+document.querySelectorAll('.expbtns button').forEach(b=>b.onclick=()=>{
+  document.getElementById('sql').value=b.dataset.sql;run(b.dataset.sql);});
+document.getElementById('run').onclick=()=>run(document.getElementById('sql').value);
+</script></main>
+</div>
+<script src="pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="";</script>
+<script src="assets/app.js"></script>
+</body></html>

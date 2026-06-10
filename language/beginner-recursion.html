@@ -1,0 +1,271 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Recursion — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li class="active"><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../language/index.html">Language</a> &rsaquo; Recursion</div><h1>Recursion</h1><div class="docbody"><h4 class="docsec">Recursion</h4><p class="ptext">   A recursive <a href="../modules/function.html">function</a> is very much like a <a href="../modules/function.html">function</a> which uses a loop.
+Basically, a recursive <a href="../modules/function.html">function</a> calls itself (usually after some
+manipulation of data) rather than iterating a bit of code using a loop.
+There are also recursive <a href="../modules/types.html">types</a>, which are objects with elements which have
+the <a href="../modules/object.html">object</a> type (in E these would be pointers to objects).  We&#x27;ve already
+seen a recursive type: linked <a href="../modules/lists.html">lists</a>, where each element in the list
+contains a <a href="../modules/pointer.html">pointer</a> to the next element (see Linked Lists).</p><p class="ptext">   Recursive definitions are normally much more understandable than an
+equivalent iterative definition, and it&#x27;s usually easier to use recursive
+functions to manipulate this data from a recursive type.  However,
+recursion is by no means a simple topic.  Read on at your own peril!</p><ul class="doclist"><li>Factorial <a href="../modules/example.html">Example</a></li><li>Mutual Recursion</li><li>Binary Trees</li><li>Stack (and Crashing)</li><li>Stack and Exceptions</li></ul></div><h2>Factorial Example</h2><div class="docbody"><h4 class="docsec">Factorial Example</h4><p class="ptext">   The normal example for a recursive definition is the factorial
+<a href="../modules/function.html">function</a>, so let&#x27;s not be different.  In school mathematics the symbol !
+is used after a <a href="../modules/number.html">number</a> to denote the factorial of that <a href="../modules/number.html">number</a> (and only
+positive integers have factorials).  n! is n-factorial, which is defined
+as follows:</p><pre class="code">     n! = n * (n-1) * (n-2) * ... * 1     (for n &gt;= 1)</pre><p class="ptext">So, 4! is 4*3*2*1, which is 24.  And, 5! is 5*4*3*2*1, which is 120.</p><p class="ptext">   Here&#x27;s the iterative definition of a factorial <a href="../modules/function.html">function</a> (we&#x27;ll Raise an
+<a href="../modules/exception.html">exception</a> is the <a href="../modules/number.html">number</a> is not positive, but you can safely leave this
+check out if you are sure the <a href="../modules/function.html">function</a> will be called only with positive
+<a href="../modules/numbers.html">numbers</a>):</p><pre class="code">     PROC fact_iter(n)
+       DEF i, result=1
+       IF n&lt;=0 THEN Raise(&quot;FACT&quot;)
+       FOR i:=1 TO n
+         result:=result*i
+       ENDFOR
+     ENDPROC result</pre><p class="ptext">We&#x27;ve used a FOR loop to generate the <a href="../modules/numbers.html">numbers</a> one to n (the parameter to
+the fact_iter), and result holds the intermediate and final results.  The
+final result is returned, so check that fact_iter(4) returns 24 and
+fact_iter(5) returns 120 using a main <a href="../modules/procedure.html">procedure</a> something like this:</p><pre class="code">     PROC main()
+       WriteF(&#x27;4! is \d\n5! is\d\n&#x27;, fact_iter(4), fact_iter(5))
+     ENDPROC</pre><p class="ptext">   If you&#x27;re really observant you might have noticed that 5! is 5*4!, and,
+in general, n! is n*(n-1)!.  This is our first glimpse of a recursive
+definition--we can define the factorial <a href="../modules/function.html">function</a> in terms of itself.  The
+real definition of factorial is (the reason why this is the real
+definition is because the `...&#x27; in the previous definition is not
+sufficiently precise for a mathematical definition):</p><pre class="code">     1! = 1
+     n! = n * (n-1)!    (for n &gt; 1)</pre><p class="ptext">Notice that there are now two cases to consider.  The first case is called
+the base case and gives an easily calculated value (i.e., no recursion
+is used).  The second case is the recursive case and gives a definition
+in terms of a <a href="../modules/number.html">number</a> nearer the base case (i.e., (n-1) is nearer 1 than n,
+for n&gt;1).  The normal problem people get into when using recursion is they
+forget the base case.  Without the base case the definition is meaningless.
+Without a base case in a recursive program the machine is likely to crash!
+(See Stack (and Crashing).)</p><p class="ptext">   We can now define the recursive version of the fact_iter <a href="../modules/function.html">function</a>
+(again, we&#x27;ll use a Raise if the <a href="../modules/number.html">number</a> parameter is not positive):</p><pre class="code">     PROC fact_rec(n)
+       IF n=1
+         RETURN 1
+       ELSEIF n&gt;=2
+         RETURN n*fact_rec(n-1)
+       ELSE
+         Raise(&quot;FACT&quot;)
+       ENDIF
+     ENDPROC</pre><p class="ptext">Notice how this looks just like the mathematical definition, and is nice
+and compact.  We can even make a one-line <a href="../modules/function.html">function</a> definition (if we omit
+the check on the parameter being positive):</p><pre class="code">     PROC fact_rec2(n) RETURN IF n=1 THEN 1 ELSE n*fact_rec2(n-1)</pre><p class="ptext">You might be tempted to omit the base case and write something like this:</p><pre class="code">     /* Don&#x27;t do this! */
+     PROC fact_bad(n) RETURN n*fact_bad(n-1)</pre><p class="ptext">The problem is the recursion will never end.  The <a href="../modules/function.html">function</a> fact_bad will
+be called with every <a href="../modules/number.html">number</a> from n to zero and then all the negative
+integers.  A value will never be returned, and the machine will crash
+after a while.  The precise reason why it will crash is given later (see
+Stack (and Crashing)).</p></div><h2>Mutual Recursion</h2><div class="docbody"><h4 class="docsec">Mutual Recursion</h4><p class="ptext">   In the previous section we saw the <a href="../modules/function.html">function</a> fact_rec which called
+itself.  If you have two functions, fun1 and fun2, and fun1 calls fun2,
+and fun2 calls fun1, then this pair of functions are mutually recursive.
+This extends to any amount of functions linked in this way.</p><p class="ptext">   This is a rather contrived example of a pair of mutually recursive
+functions.</p><pre class="code">     PROC f(n)
+       IF n=1
+         RETURN 1
+       ELSEIF n&gt;=2
+         RETURN n*g(n-1)
+       ELSE
+         Raise(&quot;F&quot;)
+       ENDIF
+     ENDPROC
+     
+     PROC g(n)
+       IF n=1
+         RETURN 2*1
+       ELSEIF n&gt;=2
+         RETURN 2*n*f(n-1)
+       ELSE
+         Raise(&quot;G&quot;)
+       ENDIF
+     ENDPROC</pre><p class="ptext">Both functions are very similar to the fact_rec <a href="../modules/function.html">function</a>, but g returns
+double the normal values.  The overall effect is that every other value in
+long version of the multiplication is doubled.  So, f(n) computes
+n*(2*(n-1))*(n-2)*(2*(n-3))*...*2 which probably isn&#x27;t all that
+interesting.</p></div><h2>Binary Trees</h2><div class="docbody"><h4 class="docsec">Binary Trees</h4><p class="ptext">   This is an example of a recursive type and the effect it has on
+functions which manipulate this type of data.  A binary <a href="../modules/tree.html">tree</a> is like a
+linked list, but instead of each element containing only one <a href="../modules/link.html">link</a> to
+another element there are two links in each element of a binary <a href="../modules/tree.html">tree</a>
+(which point to smaller trees called branches).  The first <a href="../modules/link.html">link</a> points
+to the left branch and the second points to the right branch.  Each
+element of the <a href="../modules/tree.html">tree</a> is called a node and there are two kinds of special
+node: the start point, called the root of the <a href="../modules/tree.html">tree</a> (like the head of a
+list), and the <a href="../modules/nodes.html">nodes</a> which do not have left or right branches (i.e., NIL
+pointers for both links), called leaves.  Every node of the <a href="../modules/tree.html">tree</a>
+contains some kind of data (just as the linked <a href="../modules/lists.html">lists</a> contained an E-<a href="../modules/string.html">string</a>
+or E-list in each element).  The following diagram illustrates a small
+<a href="../modules/tree.html">tree</a>.</p><pre class="code">                 +------+
+                 | Root |
+                 +--*---+
+                   / \
+             Left /   \ Right
+                 /     \
+         +------*       *------+
+         | Node |       | Node |
+         +--*---+       +--*---+
+           /              / \
+     Left /         Left /   \ Right
+         /              /     \
+     +--*---+     +----*-+   +-*----+
+     | Leaf |     | Leaf |   | Leaf |
+     +------+     +------+   +------+</pre><p class="ptext">Notice that a node might have only one branch (it doesn&#x27;t have to have
+both the left and the right).  Also, the leaves on the example were all at
+the same level, but this doesn&#x27;t have to be the case.  Any of the leaves
+could easily have been a node which had a lot of <a href="../modules/nodes.html">nodes</a> branching off it.</p><p class="ptext">   So, how can a <a href="../modules/tree.html">tree</a> structure like this be written as an E <a href="../modules/object.html">object</a>?
+Well, the general outline is this:</p><pre class="code">     OBJECT tree
+       data
+       left:PTR TO tree, right:PTR TO tree
+     ENDOBJECT</pre><p class="ptext">The left and right elements are pointers to the left and right branches
+(which will be <a href="../modules/tree.html">tree</a> objects, too).  The data element is some data for each
+node.  This could equally well be a <a href="../modules/pointer.html">pointer</a>, an ARRAY or a <a href="../modules/number.html">number</a> of
+different data elements.</p><p class="ptext">   So, what use can be made of such a <a href="../modules/tree.html">tree</a>?  Well, a <a href="../modules/common.html">common</a> use is for
+holding a sorted collection of data that needs to be able to have elements
+added quickly.  As an example, the data at each node could be an <a href="../modules/integer.html">integer</a>,
+so a <a href="../modules/tree.html">tree</a> of this kind could hold a sorted set of integers.  To make the
+<a href="../modules/tree.html">tree</a> sorted, constraints must be placed on the left and right branches of
+a node.  The left branch should contain only <a href="../modules/nodes.html">nodes</a> with data that is less
+than the parent node&#x27;s data, and, similarly, the right branch should
+contain only <a href="../modules/nodes.html">nodes</a> with data that is greater.  Nodes with the same data
+could be included in one of the branches, but for our example we&#x27;ll
+disallow them.  We are now ready to write some functions to manipulate our
+<a href="../modules/tree.html">tree</a>.</p><p class="ptext">   The first <a href="../modules/function.html">function</a> is one which starts off a new set of integers (i.e.,
+begins a new <a href="../modules/tree.html">tree</a>).  This should take an <a href="../modules/integer.html">integer</a> as a parameter and return
+a <a href="../modules/pointer.html">pointer</a> to the root node of new <a href="../modules/tree.html">tree</a> (with the <a href="../modules/integer.html">integer</a> as that node&#x27;s
+data).</p><pre class="code">     PROC new_set(int)
+       DEF root:PTR TO tree
+       NEW root
+       root.data:=int
+     ENDPROC root</pre><p class="ptext">The <a href="../modules/memory.html">memory</a> for the new <a href="../modules/tree.html">tree</a> element must be allocated dynamically, so this
+is a good example of a use of NEW.  Since NEW clears the <a href="../modules/memory.html">memory</a> it
+allocates all elements of the new <a href="../modules/object.html">object</a> will be zero.  In particular, the
+left and right pointers will be NIL, so the root node will also be a leaf.
+If the NEW fails a &quot;MEM&quot; <a href="../modules/exception.html">exception</a> is raised; otherwise the data is set to
+the supplied value and a <a href="../modules/pointer.html">pointer</a> to the root node is returned.</p><p class="ptext">   To add a new <a href="../modules/integer.html">integer</a> to such a set we need to find the appropriate
+position to insert it and set the left and right branches correctly.  This
+is because if the <a href="../modules/integer.html">integer</a> is new to the set it will be added as a new
+leaf, and so one of the existing <a href="../modules/nodes.html">nodes</a> will change its left or right
+branch.</p><pre class="code">     PROC add(i, set:PTR TO tree)
+       IF set=NIL
+         RETURN new_set(i)
+       ELSE
+         IF i&lt;set.data
+           set.left:=add(i, set.left)
+         ELSEIF i&gt;set.data
+           set.right:=add(i, set.right)
+         ENDIF
+         RETURN set
+       ENDIF
+     ENDPROC</pre><p class="ptext">This <a href="../modules/function.html">function</a> returns a <a href="../modules/pointer.html">pointer</a> to the set to which it added the <a href="../modules/integer.html">integer</a>.
+If this set was initially empty a new set is created; otherwise the
+original <a href="../modules/pointer.html">pointer</a> is returned.  The appropriate branches are corrected as
+the search progresses.  Only the last assignment to the left or right
+branch is significant (all others do not change the value of the <a href="../modules/pointer.html">pointer</a>),
+since it is this assignment that adds the new leaf.  Here&#x27;s an iterative
+version of this <a href="../modules/function.html">function</a>:</p><pre class="code">     PROC add_iter(i, set:PTR TO tree)
+       DEF node:PTR TO tree
+       IF set=NIL
+         RETURN new_set(i)
+       ELSE
+         node:=set
+         LOOP
+           IF i&lt;node.data
+             IF node.left=NIL
+               node.left:=new_set(i)
+               RETURN set
+             ELSE
+               node:=node.left
+             ENDIF
+           ELSEIF i&gt;node.data
+             IF node.right=NIL
+               node.right:=new_set(i)
+               RETURN set
+             ELSE
+               node:=node.right
+             ENDIF
+           ELSE
+             RETURN set
+           ENDIF
+         ENDLOOP
+       ENDIF
+     ENDPROC</pre><p class="ptext">As you can see, it&#x27;s quite a bit messier.  Recursive functions work well
+with manipulation of recursive <a href="../modules/types.html">types</a>.</p><p class="ptext">   Another really neat example is printing the contents of the set.  It&#x27;s
+deceptively simple:</p><pre class="code">     PROC show(set:PTR TO tree)
+       IF set&lt;&gt;NIL
+         show(set.left)
+         WriteF(&#x27;\d &#x27;, set.data)
+         show(set.right)
+       ENDIF
+     ENDPROC</pre><p class="ptext">The integers in the <a href="../modules/nodes.html">nodes</a> will get printed in order (providing they were
+added using the add <a href="../modules/function.html">function</a>).  The left-hand <a href="../modules/nodes.html">nodes</a> contain the smallest
+elements so the data they contain is printed first, followed by the data
+at the <a href="../modules/current.html">current</a> node, and then that in the right-hand <a href="../modules/nodes.html">nodes</a>.  Try writing
+an iterative version of this <a href="../modules/function.html">function</a> if you fancy a really tough problem.</p><p class="ptext">   Putting everything together, here&#x27;s a main <a href="../modules/procedure.html">procedure</a> which can be used
+to test the above functions:</p><pre class="code">     PROC main() HANDLE
+       DEF s, i, j
+       Rnd(-999999)    /* Initialise seed */
+       s:=new_set(10)  /* Initialise set s to contain the number 10 */
+       WriteF(&#x27;Input:\n&#x27;)
+       FOR i:=1 TO 50  /* Generate 50 random numbers and add them to set s */
+         j:=Rnd(100)
+         add(j, s)
+         WriteF(&#x27;\d &#x27;,j)
+       ENDFOR
+       WriteF(&#x27;\nOutput:\n&#x27;)
+       show(s)         /* Show the contents of the (sorted) set s */
+       WriteF(&#x27;\n&#x27;)
+     EXCEPT
+       IF exception=&quot;NEW&quot; THEN WriteF(&#x27;Ran out of memory\n&#x27;)
+     ENDPROC</pre></div><h2>Stack (and Crashing)</h2><div class="docbody"><h4 class="docsec">Stack (and Crashing)</h4><p class="ptext">   When you call a <a href="../modules/procedure.html">procedure</a> you use up a bit of the program&#x27;s <a href="../modules/stack.html">stack</a>.
+The <a href="../modules/stack.html">stack</a> is used to keep track of procedures in a program which haven&#x27;t
+finished, and real problems can arise when the <a href="../modules/stack.html">stack</a> <a href="../modules/space.html">space</a> runs out.
+Normally, the amount of <a href="../modules/stack.html">stack</a> available to each program is sufficient,
+since the E compiler handles all the fiddly <a href="../modules/bits.html">bits</a> quite well.  However,
+programs which use a lot of recursion can quite easily run out of <a href="../modules/stack.html">stack</a>.</p><p class="ptext">   For example, the fact_rec(10) will need enough <a href="../modules/stack.html">stack</a> for ten calls of
+fact_rec, nine of which are recursively called.  This is because each call
+does not finish until the return value has been computed, so all recursive
+calls up to fact_rec(1) need to be kept on the <a href="../modules/stack.html">stack</a> until fact_rec(1)
+returns one.  Then each <a href="../modules/procedure.html">procedure</a> will be taken off the <a href="../modules/stack.html">stack</a> as they
+finish.  If you try to compute fact_rec(40000), not only will this take a
+long time, but it will probably run out of <a href="../modules/stack.html">stack</a> <a href="../modules/space.html">space</a>.  When it does run
+out of <a href="../modules/stack.html">stack</a>, the machine will probably crash or do other weird things.
+The iterative version, fact_iter does not have these problems, since it
+only takes one <a href="../modules/procedure.html">procedure</a> call to calculate a factorial using this <a href="../modules/function.html">function</a>.</p><p class="ptext">   If there is the possibility of running out of <a href="../modules/stack.html">stack</a> <a href="../modules/space.html">space</a> you can use
+the FreeStack (built-in) <a href="../modules/function.html">function</a> call (see System support functions).
+This returns the amount of free <a href="../modules/stack.html">stack</a> <a href="../modules/space.html">space</a>.  If it drops below about 1KB
+then you might like to stop the recursion or whatever else is using up the
+<a href="../modules/stack.html">stack</a>.  Also, you can specify amount of <a href="../modules/stack.html">stack</a> your program gets (and
+override what the compiler might decide is appropriate) using the OPT
+STACK option.  See the `Reference Manual&#x27; for more details on E&#x27;s
+<a href="../modules/stack.html">stack</a> organisation.</p></div><h2>Stack and Exceptions</h2><div class="docbody"><h4 class="docsec">Stack and Exceptions</h4><p class="ptext">   The concept `recent&#x27; used earlier is connected with the <a href="../modules/stack.html">stack</a> (see
+Raising an Exception).  A recent <a href="../modules/procedure.html">procedure</a> is one which is on the <a href="../modules/stack.html">stack</a>,
+the most recent being the <a href="../modules/current.html">current</a> <a href="../modules/procedure.html">procedure</a>.  So, when Raise is called it
+looks through the <a href="../modules/stack.html">stack</a> until it finds a <a href="../modules/procedure.html">procedure</a> with an <a href="../modules/exception.html">exception</a>
+handler.  That handler will then be used, and all procedures before the
+selected one on the <a href="../modules/stack.html">stack</a> are taken off the <a href="../modules/stack.html">stack</a>.</p><p class="ptext">   Therefore, a recursive <a href="../modules/function.html">function</a> with an <a href="../modules/exception.html">exception</a> handler can use Raise
+in the handler to call the handler in the previous (recursive) call of the
+<a href="../modules/function.html">function</a>.  So anything that has been recursively allocated can be
+`recursively&#x27; deallocated by <a href="../modules/exception.html">exception</a> handlers.  This is a very powerful
+and important <a href="../modules/feature.html">feature</a> of <a href="../modules/exception.html">exception</a> handlers.</p></div></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>
