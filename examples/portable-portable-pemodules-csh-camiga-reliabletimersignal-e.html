@@ -1,0 +1,450 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>cAmiga_ReliableTimerSignal.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-portable.html">PortablE</a> &rsaquo; cAmiga_ReliableTimerSignal.e</div><h1>File: <code>cAmiga_ReliableTimerSignal.e</code></h1><p class="meta">424 lines · project <a href="../examples/pkg-portable.html"><code>PortablE</code></a></p><p class="pathctx">PortablE/PortablE/PEmodules/CSH/cAmiga_ReliableTimerSignal.e</p><p class="prose">cAmiga_ReliableTimerSignal.e 18-09-2012 An OOP <a href="../modules/class.html">class</a> which provides a simple way to be informed of a precisely repeating <a href="../modules/timer.html">timer</a> event. Copyright (c) 2010,2011,2012 Christopher Steven Handley ( http://cshandley.co.uk/email ) All rights reserved. Redistribution and use in source and binary <a href="../modules/forms.html">forms</a>, with </p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/lists.html">amigalib/lists</a></li><li><a href="../modules/exec.html">exec</a></li></ul></div><h2>Source</h2><pre class="code">/* cAmiga_ReliableTimerSignal.e 18-09-2012
+	An OOP class which provides a simple way to be informed of a precisely repeating timer event.
+
+
+Copyright (c) 2010,2011,2012 Christopher Steven Handley ( http://cshandley.co.uk/email )
+All rights reserved.
+
+Redistribution and use in source and binary forms, with or without modification,
+are permitted provided that the following conditions are met:
+
+* The source code must not be modified after it has been translated or converted
+away from the PortablE programming language.  For clarification, the intention
+is that all development of the source code must be done using the PortablE
+programming language (as defined by Christopher Steven Handley).
+
+* Redistributions of source code must retain the above copyright notice, this
+list of conditions and the following disclaimer.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS &quot;AS IS&quot; AND
+ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+DISCLAIMED.  IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR
+TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
+THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+*/
+
+/*
+This was loosly based upon AmigaOS4-only C code published by kas1e@yandex.ru in the following Vague2 disk mag article:
+http://x25zine.org/aos41peg2/05-perfect_animation.txt
+
+This was AmigaOS4-only, due to calling conventions for the isr_cReliableTimerSignal() procedure (interrupt handler).
+Adaption for AmigaOS3 based upon code provided by Trev (www.spookysoftware.com) on UtilityBase.com.
+Adaption for MorphOS based upon code provided by Itix on UtilityBase.com.
+Adaption for AROS based upon code provided by Salass00 (a500.org) on UtilityBase.com.
+Adaption for AmigaE was only gotten working thanks to help from Damien Stewart &amp; Daniel Westerberg via the AmigaE mailing list.
+
+Subsequently improved using &quot;timersoftint.c&quot; from the RKM&#x27;s &amp; the AmigaOS(4) Wiki:
+http://wiki.amigaos.net/index.php/Exec_Interrupts#Software_Interrupts
+
+22-05-2012
+Fixed a missing WaitIO() bug, which was present in Kas1e&#x27;s article.  Also moved example usage into a separate _test module.
+
+18-09-2012
+Replaced WaitIO() with GetMsg(), and Cause() with SendIO(), as shown in the RKM &amp; AmigaOS(4) Wiki.
+
+(Possibly temporarily) Removed the init() &amp; event() methods, since the &quot;self&quot;
+object cannot legally be accessed from an interrupt on AmigaOS4.  This might be
+solved when multi-core support is added to OS4, otherwise need to have a
+high-priority &quot;watcher&quot; process that handles this.
+*/
+
+OPT NATIVE, POINTER, PREPROCESS
+MODULE &#x27;exec&#x27;, &#x27;timer&#x27;
+MODULE &#x27;amigalib/lists&#x27;
+
+PRIVATE
+
+#ifdef pe_TargetOS_MorphOS
+{
+	ULONG isr_cReliableTimerSignal(long context, long sysbase, void** is_Data /*APTR*/) ;
+	
+	static ULONG isr_proxy_cReliableTimerSignal(void) {
+		APTR is_Data = (APTR) REG_A1;
+		return isr_cReliableTimerSignal(0, 0, (void**) is_Data);
+	}
+	
+	//static struct EmulLibEntry gate_cReliableTimerSignal = { //}
+	const struct {
+		UWORD Trap;
+		UWORD pad;
+		APTR  Func;
+	} gate_cReliableTimerSignal = {
+		TRAP_LIB,	//0xFF00
+		0,
+		(APTR) &amp;isr_proxy_cReliableTimerSignal
+	};
+}
+NATIVE {isr_proxy_cReliableTimerSignal} PROC
+NATIVE {gate_cReliableTimerSignal} DEF
+#endif
+
+#ifdef pe_TargetOS_AROS
+{
+	ULONG isr_cReliableTimerSignal(long context, long sys  IF NIL=(code:=eCodeSoftInt({tsoftcode})) THEN Raise(ERR_ECODE)
+  softint.code:=code  -&gt; The software interrupt routine
+S_UFHA(APTR, code, A5),
+		AROS_UFHA(struct ExecBase*, sysbase, A6)
+	) {
+		AROS_USERFUNC_INIT
+		isr_cReliableTimerSignal(0, (long) sysbase, (void**) is_Data);
+		AROS_USERFUNC_EXIT
+	}
+}
+NATIVE {isr_proxy_cReliableTimerSignal} PROC
+#endif
+
+-&gt;this may require compiling with the -fomit-frame-pointer GCC parameter.
+#ifdef pe_TargetOS_AmigaOS3
+#ifdef pe_TargetLang_CPP
+{
+	ULONG isr_cReliableTimerSignal(long context, long sysbase, void** is_Data /*APTR*/) ;
+	
+	int __saveds __interrupt isr_proxy_cReliableTimerSignal(void) {
+		register void** is_Data __asm(&quot;a1&quot;);
+		isr_cReliableTimerSignal(0, 0, is_Data);
+		return 0;
+	}
+}
+NATIVE {isr_proxy_cReliableTimerSignal} DEF
+
+/* -&gt;an incomplete adaptation based on code provided by Itix.
+/*
+	isr_proxy_cReliableTimerSignal:
+	movem.l d0-d7/a0-a6, -(sp)
+	move.l (a1)+,a0
+	jsr (a0)
+	movem.l (sp)+,d0-d7/a0-a6
+	moveq #0,d0
+	rts
+*/
+{
+	static const UWORD isr_proxy_cReliableTimerSignal[] = { 0x48e7, 0xfffe, 0x2059, 0x4e90, 0x4cdf, 0x7fff, 0x7000, 0x4e75 };
+}
+NATIVE {isr_proxy_cReliableTimerSignal} DEF
+*/
+#endif
+#endif
+
+#ifdef pe_TargetOS_AmigaOS3
+#ifdef pe_TargetLanguage_AmigaE
+	{MODULE &#x27;other/ecode&#x27;}
+	
+	PROC isr_proxy_cReliableTimerSignal(data:ARRAY OF PTR /*APTR*/)
+		isr_cReliableTimerSignal(/*context*/ 0, /*sysbase*/ 0, data)
+	ENDPROC
+	
+/* -&gt;an alternative to the eCode module, provided by Damien Stewart
+	PROC isr_proxy_cReliableTimerSignal(data:ARRAY OF PTR /*APTR*/)
+		isr_cReliableTimerSignal(/*context*/ 0, /*sysbase*/ 0, data)
+	ENDPROC
+	
+PROC storeA4()
+	LEA     a4storage(PC),A0
+	MOVE.L  A4,(A0)
+	RETURN
+a4storage:
+	LONG  0
+	
+gate_cReliableTimerSignal:
+	MOVEM.L D2-D7/A2-A4/A6,-(A7)
+	
+	-&gt;LEA     a4storage(PC),A0
+	-&gt;MOVE.L  (A0),A4
+	MOVE.L  a4storage(PC),A4
+	
+	MOVE.L  A1,-(A7)
+	-&gt;LEA     isr_proxy_cReliableTimerSignal(PC),A0
+	-&gt;JSR     (A0)
+	BSR     isr_proxy_cReliableTimerSignal
+	ADDQ.W  #4,A7
+	MOVEM.L (A7)+,D2-D7/A2-A4/A6
+	RTS
+ENDPROC
+NATIVE {a4storage} DEF
+NATIVE {gate_cReliableTimerSignal} DEF
+*/
+#endif
+#endif
+
+PUBLIC
+
+CLASS cReliableTimerSignal PRIVATE
+	obj:PTR TO oReliableTimerSignal		-&gt;this is allocated using MEMF_PUBLIC, to ensure that it can be accessed by an interrupt (esp under AmigaOS4.1)
+ENDCLASS
+
+PRIVATE
+OBJECT oReliableTimerSignal PRIVATE
+	repeatPeriod
+	task   :PTR TO tc	-&gt;our task
+	signal :BYTE		-&gt;allocated signal for our task (not the interrupt!)
+	
+	softInt:PTR TO is	-&gt;allocated software interrupt
+	port   :PTR TO mp	-&gt;allocated port for timerequest
+	tr     :PTR TO timerequest	-&gt;allocated timerequest
+	shutdown:BOOL		-&gt;tell interrupt when to quit (and also that it has quit)
+	
+#ifdef pe_TargetOS_AmigaOS3
+#ifdef pe_TargetLang_CPP
+	container[2]:ARRAY OF PTR
+#endif
+#endif
+ENDOBJECT
+PUBLIC
+
+PROC new(periodInMicroSeconds=0) OF cReliableTimerSignal
+	DEF obj:PTR TO oReliableTimerSignal
+	
+	-&gt;use check
+	IF periodInMicroSeconds &lt; 0 THEN Throw(&quot;EMU&quot;, &#x27;cReliableTimerSignal.new(); periodInMicroSeconds&lt;=0&#x27;)
+	
+	-&gt;initialise object so end() does nothing
+	self.obj := AllocVec(SIZEOF oReliableTimerSignal, MEMF_PUBLIC OR MEMF_CLEAR)
+	IF self.obj = NIL THEN Throw(&quot;MEM&quot;, &#x27;cReliableTimerSignal.new(); failed to allocate memory for object&#x27;)
+	
+	obj := self.obj
+	obj.repeatPeriod := 0
+	obj.task    := NIL
+	obj.signal  := -1
+	obj.softInt := NIL
+	obj.port    := NIL
+	obj.tr      := NIL
+	obj.shutdown := TRUE
+	
+	-&gt;prepare to receive an event signal
+	obj.task := FindTask(NILA)
+	obj.signal := AllocSignal(-1)
+	IF obj.signal = -1 THEN Throw(&quot;RES&quot;, &#x27;cReliableTimerSignal.new(); failed to allocate signal&#x27;)
+	
+	-&gt;add our interrupt server to system server chain
+	-&gt;OS4: obj.softInt := AllocSysObject(ASOT_INTERRUPT, [ASOINTR_Code,CALLBACK isr_cReliableTimerSignal(), ASOINTR_Data,self, TAG_END]:tagitem)	-&gt;and no need to fill-in it&#x27;s members
+	obj.softInt := AllocVec(SIZEOF is, MEMF_PUBLIC OR MEMF_CLEAR)
+	IF obj.softInt = NIL THEN Throw(&quot;MEM&quot;, &#x27;cReliableTimerSignal.new(); failed to allocate memory for interrupt&#x27;)
+	obj.softInt.ln.pri  := 0
+	obj.softInt.ln.name := &#x27;EPReliableTimerSignal&#x27;
+	#ifdef pe_TargetOS_AmigaOS4
+		obj.softInt.ln.type := NT_EXTINTERRUPT
+		obj.softInt.code    := CALLBACK isr_cReliableTimerSignal()
+		obj.softInt.data    := obj
+	#endif
+	#ifdef pe_TargetOS_MorphOS
+		obj.softInt.ln.type := NT_INTERRUPT
+		obj.softInt.code    := NATIVE {(void*) &amp;gate_cReliableTimerSignal} ENDNATIVE !!PTR
+		obj.softInt.data    := obj
+	#endif
+	#ifdef pe_TargetOS_AROS
+		obj.softInt.ln.type := NT_INTERRUPT
+		obj.softInt.code    := NATIVE {(void*) &amp;isr_proxy_cReliableTimerSignal} ENDNATIVE !!PTR
+		obj.softInt.data    := obj
+	#endif
+	#ifdef pe_TargetOS_AmigaOS3
+	#ifdef pe_TargetLang_CPP
+		obj.softInt.ln.type := NT_INTERRUPT
+		obj.softInt.code    := NATIVE {(void*) &amp;isr_proxy_cReliableTimerSignal} ENDNATIVE !!PTR
+		obj.softInt.data    := obj.container
+		
+		obj.container[0] := CALLBACK isr_cReliableTimerSignal()
+		obj.container[1] := obj
+	#endif
+	#ifdef pe_TargetLanguage_AmigaE
+		obj.softInt.ln.type := NT_INTERRUPT
+		obj.softInt.code    := {eCodeSoftInt({isr_proxy_cReliableTimerSignal})} !!PTR ; IF obj.softInt.code = NIL THEN Throw(&quot;RES&quot;, &#x27;cReliableTimerSignal.new(); eCodeSoftInt() failed&#x27;)
+		obj.softInt.data    := obj
+		
+		/* -&gt;an alternative to the eCode module, provided by Damien Stewart
+		obj.softInt.ln.type := NT_INTERRUPT
+		obj.softInt.code    := {({gate_cReliableTimerSignal})} !!PTR
+		obj.softInt.data    := obj
+		storeA4()
+		*/
+	#endif
+	#endif
+	
+	-&gt;OS4: obj.port := AllocSysObject(ASOT_PORT, [ASOPORT_AllocSig,FALSE, ASOPORT_Action,PA_SOFTINT, ASOPORT_Target,obj.softInt, TAG_END]:tagitem)
+	obj.port := AllocMem(SIZEOF mp, MEMF_PUBLIC OR MEMF_CLEAR)
+	IF obj.port = NIL THEN Throw(&quot;MEM&quot;, &#x27;cReliableTimerSignal.new(); failed to allocate port&#x27;)
+	
+	obj.port.ln.type := NT_MSGPORT		-&gt;Set up the PA_SOFTINT message port
+	obj.port.flags   := PA_SOFTINT		-&gt;(no need to make this port public)
+	obj.port.sigtask := obj.softInt !!PTR		-&gt;pointer to interrupt structure
+	newList(obj.port.msglist)
+	
+	-&gt;create the timer
+	-&gt;OS4: obj.tr := AllocSysObject(ASOT_PORT, [ASOPORT_AllocSig,FALSE, ASOPORT_Action,PA_SOFTINT, ASOPORT_Target,obj.softInt, TAG_END]:tagitem)
+	obj.tr := CreateIORequest(obj.port, SIZEOF timerequest) !!VALUE!!PTR
+	IF obj.tr = NIL THEN Throw(&quot;MEM&quot;, &#x27;cReliableTimerSignal.new(); failed to allocate IO request&#x27;)
+	
+	IF OpenDevice(&#x27;timer.device&#x27;, UNIT_MICROHZ, obj.tr.io, 0) &lt;&gt; 0 THEN Throw(&quot;RES&quot;, &#x27;cReliableTimerSignal.new(); failed to open timer.device&#x27;)
+	
+	-&gt;optional user initialisation
+	/*
+	self.init()
+	*/
+	
+	-&gt;start the timer, if requested
+	IF periodInMicroSeconds &lt;&gt; 0 THEN self.start(periodInMicroSeconds)
+ENDPROC
+
+/*
+PROC init() OF cReliableTimerSignal IS EMPTY
+*/
+
+PROC end() OF cReliableTimerSignal
+	DEF obj:PTR TO oReliableTimerSignal
+	obj := self.obj
+	
+	IF obj = NIL THEN RETURN
+	
+	-&gt;stop the timer (before the TimeRequest message &amp; associated port are destroyed)
+	IF obj.repeatPeriod &lt;&gt; 0 THEN self.halt()
+	
+	IF obj.signal &lt;&gt; -1 THEN FreeSignal(obj.signal) ; obj.signal := -1
+	
+	IF obj.tr
+		CloseDevice(    obj.tr.io)
+		DeleteIORequest(obj.tr.io) ; obj.tr := NIL		-&gt;OS4: FreeSysObject(ASOT_IOREQUEST, obj.tr.tr)
+	ENDIF
+	IF obj.softInt THEN FreeVec(obj.softInt) ; obj.softInt := NIL		-&gt;OS4: FreeSysObject(ASOT_INTERRUPT, obj.softInt)
+	IF obj.port    THEN FreeMem(obj.port, SIZEOF mp) ; obj.port := NIL		-&gt;OS4: FreeSysObject(ASOT_PORT, obj.port)
+	
+	FreeVec(self.obj) ; self.obj := NIL ; obj := NIL
+FINALLY
+	SUPER self.end()
+ENDPROC
+
+PROC start(periodInMicroSeconds) OF cReliableTimerSignal
+	DEF obj:PTR TO oReliableTimerSignal
+	obj := self.obj
+	
+	-&gt;use check
+	IF periodInMicroSeconds &lt;= 0 THEN Throw(&quot;EMU&quot;, &#x27;cReliableTimerSignal.start(); periodInMicroSeconds&lt;=0&#x27;)
+	IF obj.repeatPeriod &lt;&gt; 0 THEN Throw(&quot;EMU&quot;, &#x27;cReliableTimerSignal.start(); the timer was already started&#x27;)
+	
+	-&gt;initialise object
+	obj.repeatPeriod := periodInMicroSeconds
+	
+	-&gt;initialise the timer
+	obj.tr.io.command := TR_ADDREQUEST						-&gt;Initial iorequest to start
+	obj.tr.time.secs  := 0
+	obj.tr.time.micro := obj.repeatPeriod !!LONG -&gt;MICRO_DELAY	-&gt;software interrupt
+	
+	-&gt;initiate first interrupt
+	obj.shutdown := FALSE
+	SendIO(obj.tr.io)		-&gt;was: Cause(obj.softInt) wirh obj.first := TRUE
+ENDPROC
+
+PROC halt() OF cReliableTimerSignal
+	DEF obj:PTR TO oReliableTimerSignal
+	obj := self.obj
+	
+	IF obj.repeatPeriod = 0 THEN Throw(&quot;EMU&quot;, &#x27;cReliableTimerSignal.halt(); the timer was not running&#x27;)
+	
+	IF obj.shutdown = FALSE
+		-&gt;(timer interrupt was started) so tell it to shutdown &amp; wait for it to do so
+		obj.shutdown := TRUE
+		AbortIO(obj.tr.io)
+		REPEAT
+			Wait(1 SHL obj.signal)
+		UNTIL obj.shutdown = FALSE
+	ENDIF
+	
+	-&gt;mark the timer as no-longer running
+	obj.repeatPeriod := 0
+ENDPROC
+
+PROC infoSignal() OF cReliableTimerSignal RETURNS signal IS 1 SHL self.obj.signal
+
+-&gt;PROC infoSignalNum() OF cReliableTimerSignal RETURNS signal IS self.obj.signal
+
+PROC infoRepeatPeriod() OF cReliableTimerSignal RETURNS microSeconds IS self.obj.repeatPeriod
+
+PROC infoIsRunning() OF cReliableTimerSignal RETURNS isRunning:BOOL IS self.obj.repeatPeriod &lt;&gt; 0
+
+/*
+-&gt;this method is called every timer event, so sub-classes can easily do things on an event
+-&gt;NOTE: This is called INSIDE an Interrupt Service Routine, and so has limitations upon what OS functions can be called, and also should finish in a short time.
+-&gt;NOTE: And on AmigaOS4 it must not access memory allocated using E functions, only memory allocated using AllocVec() that is MEMF_PUBLIC or locked MEMF_SHARED.
+PROC event() OF cReliableTimerSignal IS EMPTY
+*/
+
+PRIVATE
+-&gt;the soft Interrupt Service Routine
+PROC isr_cReliableTimerSignal(context/*:PTR TO exceptioncontext*/, sysbase/*:PTR TO execbase*/, is_Data:ARRAY OF PTR /*APTR*/) RETURNS ret:ULONG
+	DEF obj:PTR TO oReliableTimerSignal, tr:PTR TO timerequest
+	
+	#ifdef pe_TargetOS_AmigaOS3
+		#ifdef pe_TargetLang_CPP
+			obj := is_Data[1]
+		#endif
+		#ifdef pe_TargetLanguage_AmigaE
+			obj := is_Data !!ARRAY
+		#endif
+	#else
+		obj := is_Data !!ARRAY
+	#endif
+	
+	tr := GetMsg(obj.port) !!PTR	-&gt;remove timer message from our port
+	/* was:
+		IF CheckIO(obj.tr.io) THEN WaitIO(obj.tr.io)
+		tr := obj.tr
+	*/
+	
+	tr.io.command := TR_ADDREQUEST								-&gt;Initial iorequest to start
+	tr.time.secs  := 0
+	tr.time.micro := obj.repeatPeriod !!LONG	-&gt;MICRO_DELAY	-&gt;software interrupt
+	
+	
+	IF obj.shutdown = FALSE
+		-&gt;restart timer for next event
+		SendIO(tr.io)
+	ELSE
+		-&gt;notify task that we have not generated another timer event (so it is safe to deallocate resources &amp; quit)
+		obj.shutdown := FALSE
+	ENDIF
+	
+	-&gt;notify task of the timer event
+	/*
+	obj.self.event()
+	*/
+	Signal(obj.task, 1 SHL obj.signal)
+	
+	RETURN
+	-&gt;dummy
+	context := NIL ; sysbase := NIL
+FINALLY
+	-&gt;prevent trying to pass any exceptions out of the ISR
+	exception := 0
+	ret := 0
+ENDPROC
+PUBLIC
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

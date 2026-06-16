@@ -1,0 +1,250 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Text.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-fr-text.html">FR-Text</a> &rsaquo; Text.e</div><h1>File: <code>Text.e</code></h1><p class="meta">224 lines · project <a href="../examples/pkg-fr-text.html"><code>FR-Text</code></a></p><p class="pathctx">FR-Text/Text.e</p><p class="prose">$VER: Text 1.0 (23.9.97) © FAR <a href="../modules/dos.html#fn-format">Format</a> a text file (pure)  21/05/99 : I decide to spread it and distribute it free</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/dos.html">dos/dos</a></li></ul></div><h2>Source</h2><pre class="code">-&gt; $VER: Text 1.0 (23.9.97) © FAR
+-&gt; Format a text file (pure)
+-&gt;
+-&gt; 21/05/99 : I decide to spread it and distribute it free
+
+OPT OSVERSION=37
+
+MODULE &#x27;dos/dos&#x27;,&#x27;dos/dosasl&#x27;,&#x27;tools/ansi&#x27;,&#x27;tools/readline&#x27;,
+       &#x27;tools/readtoken&#x27;,&#x27;tools/insertinorder&#x27;
+
+CONST ER_FORMAT=1,MAX_NUM=$FFFFFFF,MAX_ARRAY=256
+ENUM ARG_FILE,ARG_COMMAND,ARG_LINEBEGIN,ARG_LINEEND,ARG_COLBEGIN,ARG_COLEND,
+     ARG_SEPARATORS,ARG_LINEPATTERN,ARG_NOANSI,ARG_NODUPLICATES,ARG_SORT,
+     ARG_REVERSE,ARG_NOCASE,ARG_NUMBERS,ARG_LEN
+
+RAISE &quot;dos&quot; IF ReadArgs()=NIL,
+      &quot;dos&quot; IF Open()=NIL,
+      &quot;dos&quot; IF Write()=-1,
+      &quot;dos&quot; IF Fputs()=-1,
+      &quot;dos&quot; IF FputC()=-1,
+      &quot;MEM&quot; IF FastNew()=NIL,
+      &quot;MEM&quot; IF String()=NIL,
+      &quot;^C&quot; IF CtrlC()=TRUE
+
+PROC main() HANDLE
+DEF rdargs=NIL,myargs:PTR TO LONG,fh=NIL,linecounter=1,linebegin,lineend,
+    separators,o,linepred,dupoff,array[MAX_ARRAY]:ARRAY OF LONG,i=0,t,
+    colbegin,colend,patternparsed
+  myargs:=List(ARG_LEN)
+  rdargs:=ReadArgs(&#x27;FILE/A,COMMAND/A,LB=LINEBEGIN/N,LE=LINEEND/N,CB=COLBEGIN/N,CE=COLEND/N,SEP=SEPARATORS,PAT=LINEPATTERN,NOANSI/S,NODUP=NODUPLICATES/S,SORT/S,REVERSE/S,NOCASE/S,NUMBERS/S&#x27;,myargs,NIL)
+  separators:=myargs[ARG_SEPARATORS]
+  IF myargs[ARG_LINEPATTERN]
+    patternparsed:=NewR(t:=2*StrLen(myargs[ARG_LINEPATTERN])+2)
+    ParsePatternNoCase(myargs[ARG_LINEPATTERN],patternparsed,t)
+  ENDIF
+  linebegin:=IF myargs[ARG_LINEBEGIN] THEN Long(myargs[ARG_LINEBEGIN]) ELSE 1
+  lineend:=IF myargs[ARG_LINEEND] THEN Long(myargs[ARG_LINEEND]) ELSE MAX_NUM
+  IF (linebegin&gt;lineend) OR (linebegin&lt;1) THEN Raise(ER_FORMAT)
+  colbegin:=IF myargs[ARG_COLBEGIN] THEN Long(myargs[ARG_COLBEGIN]) ELSE 1
+  IF colbegin&lt;1 THEN Raise(ER_FORMAT)
+  colend:=IF myargs[ARG_COLEND] THEN Long(myargs[ARG_COLEND]) ELSE MAX_NUM
+  IF colend&lt;colbegin THEN Raise(ER_FORMAT)
+  DEC colbegin
+  colend:=colend-colbegin
+  IF dupoff:=myargs[ARG_NODUPLICATES] THEN linepred:=&#x27;\n&#x27;
+  fh:=Open(myargs[ARG_FILE],OLDFILE)
+  IF myargs[ARG_SORT]
+    o:=readlinefrom(fh)
+    WHILE readline(o)
+      CtrlC()
+      IF (linecounter&gt;=linebegin) AND (linecounter++&lt;=lineend)
+        IF myargs[ARG_LINEPATTERN] THEN IF MatchPatternNoCase(patternparsed,^o)=FALSE THEN JUMP n
+        t:=duplicatestring(^o)
+        insertinorder(array,i++,t,{strncmp},[IF myargs[ARG_REVERSE] THEN 1 ELSE -1,myargs[ARG_NOCASE],colbegin,colend])
+        IF Mod(i,MAX_ARRAY)=0
+          t:=NewR((i+MAX_ARRAY)*4)
+          CopyMemQuick(array,t,i*4)
+          Dispose(array)
+          array:=t
+        ENDIF
+      ENDIF
+n:
+    ENDWHILE
+    linecounter:=linebegin
+    FOR t:=0 TO i-1
+      CtrlC()
+      IF dupoff THEN IF StrCmp(array[t],linepred,ALL) THEN JUMP m
+      IF myargs[ARG_NOANSI] THEN noansi(array[t])
+      text(array[t],myargs[ARG_COMMAND],separators,linecounter++,myargs[ARG_NUMBERS])
+m:
+      IF dupoff THEN linepred:=array[t]
+    ENDFOR
+  ELSE
+    o:=readlinefrom(fh)
+    WHILE readline(o)
+      CtrlC()
+      IF (linecounter&gt;=linebegin) AND (linecounter&lt;=lineend)
+        IF dupoff THEN IF StrCmp(^o,linepred,ALL) THEN JUMP l
+        IF myargs[ARG_LINEPATTERN] THEN IF MatchPatternNoCase(patternparsed,^o)=FALSE THEN JUMP l
+        IF myargs[ARG_NOANSI] THEN noansi(^o)
+        text(^o,myargs[ARG_COMMAND],separators,linecounter,myargs[ARG_NUMBERS])
+      ENDIF
+l:
+      IF dupoff
+        Dispose(linepred)
+        linepred:=duplicatestring(^o)
+      ENDIF
+      INC linecounter
+    ENDWHILE
+  ENDIF
+EXCEPT DO
+  IF fh THEN Close(fh)
+  IF rdargs THEN FreeArgs(rdargs)
+  SELECT exception
+    CASE &quot;MEM&quot;;PrintFault(ERROR_NO_FREE_STORE,&#x27;Text&#x27;);RETURN RETURN_FAIL
+    CASE &quot;dos&quot;;PrintFault(IoErr(),&#x27;Text&#x27;);RETURN RETURN_ERROR
+    CASE &quot;^C&quot;;PrintFault(ERROR_BREAK,&#x27;Text&#x27;);RETURN RETURN_OK
+    CASE ER_FORMAT;PrintFault(ERROR_BAD_TEMPLATE,&#x27;Text&#x27;);RETURN RETURN_ERROR
+  ENDSELECT
+ENDPROC
+
+PROC text(line,command,separators,number,numbersflag)
+DEF r,beg,end,t,u
+  IF numbersflag
+    t:=String(7)
+    StringF(t,&#x27;\r\d[6] &#x27;,number)
+    Fputs(Output(),t)
+    Dispose(t)
+  ENDIF
+  WHILE command[]&lt;&gt;0
+    IF command[]=&quot;%&quot;
+      INC command
+      IF command[]=&quot;%&quot;
+        FputC(Output(),command[])
+      ELSE
+        beg:=Val(command,{r})
+        IF r
+          command:=command+r
+          IF (command[]=&quot;c&quot;) OR (command[]=&quot;w&quot;)
+            end:=beg
+            r:=0
+          ELSE
+            INC command
+            end:=Val(command,{r})
+            IF r=0 THEN end:=MAX_NUM
+          ENDIF
+          IF (beg&gt;end) OR (beg&lt;1) THEN Raise(ER_FORMAT)
+          command:=command+r
+          IF command[]=&quot;c&quot;
+            char(line,beg,end)
+          ELSEIF command[]=&quot;w&quot;
+            t:=-1
+            IF command[1]=&quot;[&quot;
+              u:=Val(command+2,{r})
+              IF r
+                r:=command+2+r
+                IF r[]=&quot;]&quot;
+                  command:=r
+                  t:=u
+                ENDIF
+              ENDIF
+            ENDIF
+            word(line,beg,end,separators,t)
+          ELSE
+            Raise(ER_FORMAT)
+          ENDIF
+        ELSE
+          Raise(ER_FORMAT)
+        ENDIF
+      ENDIF
+    ELSE
+      FputC(Output(),command[])
+    ENDIF
+    INC command
+  ENDWHILE
+  FputC(Output(),&quot;\n&quot;)
+ENDPROC
+
+PROC char(line,begin,end)
+  begin:=line+begin-1
+  end:=line+end-1
+  WHILE begin[]
+    IF begin&gt;end THEN RETURN
+    FputC(Output(),begin[]++)
+  ENDWHILE
+ENDPROC
+
+PROC word(line,beg,end,separators,weight)
+DEF wordcounter=1,o,l,t,u
+  l:=duplicatestring(line)
+  o:=readtokenfrom(l,separators)
+  WHILE readtoken(o)
+    IF (wordcounter&gt;=beg) AND (wordcounter&lt;=end)
+      IF weight=-1
+        t:=^o
+      ELSE
+        StrCopy(u:=String(20),&#x27;%-&#x27;,ALL)
+        StrAdd(u,StringF(t:=String(10),&#x27;\d&#x27;,weight) BUT t,ALL)
+        StrAdd(u,&#x27;s&#x27;,ALL)
+        Dispose(t)
+        StringF(t:=String(weight),u,^o)
+        Dispose(u)
+      ENDIF
+      Fputs(Output(),t)
+      IF wordcounter&lt;end THEN FputC(Output(),&quot; &quot;)
+      IF weight&lt;&gt;-1 THEN Dispose(t)
+    ENDIF
+    INC wordcounter
+  ENDWHILE
+  endreadtoken(o)
+  Dispose(l)
+ENDPROC
+
+PROC strncmp(a,b,u:PTR TO LONG)
+DEF c,d,r,y,z
+-&gt; FastNew and FastDispose are used because of several allocations
+  IF u[1]
+    y:=StrLen(a)+1
+    c:=FastNew(y)
+    AstrCopy(c,a,ALL)
+    UpperStr(c)
+    z:=StrLen(b)+1
+    d:=FastNew(z)
+    AstrCopy(d,b,ALL)
+    UpperStr(d)
+  ELSE
+    c:=a
+    d:=b
+  ENDIF
+  r:=IF OstrCmp(c+u[2],d+u[2],u[3])=u[0] THEN TRUE ELSE FALSE
+  IF u[1]
+    FastDispose(c,y)
+    FastDispose(d,z)
+  ENDIF
+ENDPROC r
+
+PROC duplicatestring(str)
+DEF s
+  s:=String(StrLen(str))
+  StrCopy(s,str,ALL)
+ENDPROC s
+
+CHAR &#x27;$VER: Text 1.0 (23.9.97) © FAR - Registered\nFormat a text file&#x27;,0
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

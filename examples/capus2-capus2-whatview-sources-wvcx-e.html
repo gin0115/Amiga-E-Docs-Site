@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>WVCX.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-capus2.html">capus2</a> &rsaquo; WVCX.e</div><h1>File: <code>WVCX.e</code></h1><p class="meta">90 lines · project <a href="../examples/pkg-capus2.html"><code>capus2</code></a></p><p class="pathctx">capus2/capus2/WhatView/Sources/WVCX.e</p><p class="prose">******************** * Def Commodities ********************</p><h2>Source</h2><pre class="code">/*********************
+ * Def Commodities
+ *********************/
+CONST EVT_HOTKEY_WV=1
+CONST EVT_HOTKEY_PREFS=2
+DEF my_newbroker:PTR TO newbroker
+DEF broker_mp:PTR TO mp
+DEF broker,filter,sender,translate
+DEF cxsigflag
+DEF hotkey[80]:STRING
+DEF hotkeyprefs[80]:STRING
+DEF msg=NIL
+DEF cxpri=0
+/*&quot;cxFilter(d:LONG)&quot;*/
+PROC cxFilter(d:LONG) 
+    DEF r=NIL
+    r:=CreateCxObj(CX_FILTER,d,NIL)
+    RETURN r
+ENDPROC
+/**/
+/*&quot;cxSender(port:LONG,id:LONG)&quot;*/
+PROC cxSender(port:LONG,id:LONG) 
+    DEF r=NIL
+    r:=CreateCxObj(CX_SEND,port,id)
+    RETURN r
+ENDPROC
+/**/
+/*&quot;cxTranslate(ie:LONG)&quot;*/
+PROC cxTranslate(ie:LONG) 
+    DEF r=NIL
+    r:=CreateCxObj(CX_TRANSLATE,ie,NIL)
+    RETURN r
+ENDPROC
+/**/
+/*&quot;p_InitCx()&quot;*/
+PROC p_InitCx() HANDLE 
+    DEF errorcx=NIL
+    DEF txt[80]:STRING
+    StringF(txt,&#x27;MultiViewers (\s/\s)&#x27;,hotkey,hotkeyprefs)
+    /*=== Initialisation de la commodité ===*/
+    my_newbroker:=[NB_VERSION,0,
+                   &#x27;WhatView&#x27;,
+                   &#x27;WhatView v0.17 © 1994 NasGûl&#x27;,
+                   txt,
+                   NBU_UNIQUE,
+                   COF_SHOW_HIDE,
+                   0,0,NIL,0]:newbroker
+    IF (broker_mp:=CreateMsgPort())=NIL THEN Raise(ER_PORT)
+    my_newbroker.port:=broker_mp
+    cxsigflag:=Shl(1,broker_mp.sigbit)
+    my_newbroker.pri:=cxpri
+    IF (broker:=CxBroker(my_newbroker,NIL))=NIL THEN Raise(ER_CX)
+    /* HotKey WhatView */
+    filter:=cxFilter(hotkey)
+    IF (errorcx:=CxObjError(filter))&lt;&gt;0 THEN Raise(ER_CX)
+    AttachCxObj(broker,filter)
+    sender:=cxSender(broker_mp,EVT_HOTKEY_WV)
+    AttachCxObj(filter,sender)
+    translate:=cxTranslate(NIL)
+    AttachCxObj(filter,translate)
+    IF (errorcx:=CxObjError(filter))=0
+        ActivateCxObj(broker,1)
+    ELSE
+        Raise(ER_CX)
+    ENDIF
+    /* HotKeyPrefs */
+    filter:=cxFilter(hotkeyprefs)
+    IF (errorcx:=CxObjError(filter))&lt;&gt;0 THEN Raise(ER_CX)
+    AttachCxObj(broker,filter)
+    sender:=cxSender(broker_mp,EVT_HOTKEY_PREFS)
+    AttachCxObj(filter,sender)
+    translate:=cxTranslate(NIL)
+    AttachCxObj(filter,translate)
+    IF (errorcx:=CxObjError(filter))=0
+        ActivateCxObj(broker,1)
+    ELSE
+        Raise(ER_CX)
+    ENDIF
+    Raise(ER_NONE)
+EXCEPT
+    RETURN exception
+ENDPROC
+/**/
+/*&quot;p_RemCx()&quot;*/
+PROC p_RemCx() 
+    IF broker THEN DeleteCxObjAll(broker)
+    IF broker_mp THEN DeleteMsgPort(broker_mp)
+ENDPROC
+/**/
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

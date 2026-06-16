@@ -1,0 +1,127 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>EParser.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-aepd03.html">AEPD03</a> &rsaquo; EParser.e</div><h1>File: <code>EParser.e</code></h1><p class="meta">101 lines · project <a href="../examples/pkg-aepd03.html"><code>AEPD03</code></a></p><p class="pathctx">AEPD03/EPD03/Amiga_E-Programme/compiler/PModule/EParser.e</p><h2>Source</h2><pre class="code">
+PROC chk(symb, msg)
+     IF symb=sym THEN getSym() ELSE error(msg)
+ENDPROC
+
+PROC varDeclaration()
+/* VarDeclaration -&gt; VAR Identifier {&quot;,&quot; Identifier} . */
+
+  REPEAT
+    getSym()
+    IF sym&lt;&gt;CIDENT THEN error(&#x27;Bezeichner in erwartet!&#x27;)
+    codeDCL(identifier)
+    getSym()
+  UNTIL sym &lt;&gt;CCOMMA
+
+ENDPROC /* VarDeclaration */
+
+PROC factor()
+/* factor         -&gt; Identifier | Constant . */
+
+  SELECT sym
+
+  CASE CIDENT
+       codeMOVEvarD0 (identifier)
+       getSym()
+
+  CASE CCONST
+       codeMOVEconstD0(constant)
+       getSym()
+
+  DEFAULT
+       error(&#x27;Faktor erwartet&#x27;)
+  ENDSELECT
+ENDPROC /* factor */
+
+PROC expression()
+/* expression     -&gt; [ &quot;+&quot; | &quot;-&quot; ] factor { ( &quot;+&quot; | &quot;-&quot; ) factor } . */
+DEF neg = FALSE   /* muß D0 negiert werden? */
+
+  IF (sym = CPLUS) OR (sym = CMINUS)
+     IF sym = CMINUS THEN neg := TRUE ELSE neg := FALSE
+     getSym()
+  ENDIF
+  factor()
+  IF neg THEN codeNEGD0()
+  WHILE (sym = CPLUS) OR (sym = CMINUS)
+     IF sym = CMINUS THEN neg := TRUE ELSE neg := FALSE
+     getSym()
+     codeMOVED0D1()
+     factor()
+     IF neg THEN codeNEGD0()
+     codeADDD1D0()
+  ENDWHILE
+ENDPROC /* expression */
+
+PROC statement()
+/* statement      -&gt; Assignment | While | Print .            */
+/* Assignment     -&gt; Identifer &quot;=&quot; expression .              */
+/* While          -&gt; WHILE expression DO { statement } END . */
+/* Print          -&gt; PRINT expression                        */
+
+DEF varname[MAXIDLEN]:STRING             /* Ziel einer Zuweisung */
+DEF start,end                            /* Labels bei einer Schleife */
+
+  SELECT sym
+  CASE CIDENT
+       StrCopy(varname,identifier,ALL); getSym()  /* Zuweisung */
+       chk(CEQUAL,&#x27; &quot;=&quot; erwartet!&#x27;)
+       expression()
+       codeMOVED0var(varname)
+  CASE CWHILE
+       getSym()                                    /* Schleife */
+       start := codeGetLabel(); end := codeGetLabel()
+       codeLabel(start)
+       expression()
+       chk(CDO,&#x27;DO erwartet!&#x27;)
+       codeTSTD0(); codeBLE(end)
+       WHILE sym &lt;&gt; CEND DO statement()
+       chk(CEND,&#x27;END erwartet!&#x27;)
+       codeBRA(start); codeLabel(end);
+  CASE CPRINT
+       getSym(); expression(); codeprintD0()           /* Ausgabe */
+  DEFAULT
+       error(&#x27;statement erwartet!&#x27;)
+  ENDSELECT
+ENDPROC /* statement */
+
+PROC program()
+/* Program -&gt; PROGRAM [ VarDeclaration ] BEGIN { statement } END. */
+DEF start
+
+  getSym(); chk(CPROGRAM,&#x27;PROGRAM erwartet!&#x27;)
+  start := codeGetLabel(); codeBRA(start)
+  IF sym=CVAR THEN varDeclaration()
+  chk(CBEGIN,&#x27;BEGIN erwartet!&#x27;)
+  codeStartUp(start)
+  WHILE sym&lt;&gt;CEND DO statement()
+  codeCleanUp()
+  chk(CEND,&#x27;END erwartet!&#x27;)
+ENDPROC /* Program */
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

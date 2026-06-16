@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Math.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-aepd45.html">AEPD45</a> &rsaquo; Math.e</div><h1>File: <code>Math.e</code></h1><p class="meta">84 lines · project <a href="../examples/pkg-aepd45.html"><code>AEPD45</code></a></p><p class="pathctx">AEPD45/EPD45/Programme/DaKas/Module/Math.e</p><h2>Source</h2><pre class="code">OPT MODULE
+OPT EXPORT
+
+PROC mat_GGT(ggt_a,ggt_b)
+
+/* -- Achtung: Bei dieser Funktion spielt die Reihenfolge der Parameter -- *
+ * --          keine Rolle, da sie &quot;automatisch&quot; geordnet wird.         -- *
+ * --          Außerdem wird nicht getestet, ob einer der beiden        -- *
+ * --          Parameter gleich null ist. In diesem Fall gibt es keinen -- *
+ * --          `Größten Gemeinsamen Teiler&#x27;.                            -- */
+
+  MOVE.L           ggt_a,D1
+  MOVE.L           ggt_b,D0
+
+ggt_label:
+  DIVU                D0,D1  -&gt; Division durchführen.
+  SWAP                   D1  -&gt; Rest steht in den oberen 16 Bits, deshalb Worte vertauschen.
+  AND.L           #$FFFF,D1  -&gt; Das Ergebnis der Division steht in den oberen 16 Bits,
+                             -&gt; weshalb diese Bits gelöscht werden müssen (ausmaskieren).
+  TST.W                  D1  -&gt; Falls Rest = 0,
+  BEQ.S            ggt_ende  -&gt; dann steht Ergebnis in D0
+  EXG.L               D0,D1  -&gt; sonst Dividend := Divisor und Divisor := Rest
+  BRA.S           ggt_label  -&gt; nochmal starten
+
+ggt_ende:
+ENDPROC D0
+
+
+PROC mat_EMod(emo_a,emo_b)
+/* -- Achtung: Diese Funktion funktioniert wie sein E-Äquivalent,  -- *
+ * --          wobei meine Version sogar langsamer ist. Dafür kann -- *
+ * --          man aber einen Divisions-Operanden benutzen,dessen  -- *
+ * --          Größe nicht auf ein Wort begrenzt ist. Ferner setzt -- *
+ * --          sie voraus, daß für die Parameter folgenden         -- *
+ * --          Bedingung gilt:    emo_a &gt;= emo_b.                  -- */
+
+/* -- Die Funktion `mat_Mod()&#x27;  habe ich nicht kommentiert, da sie -- *
+ * -- genauso aufgebaut ist, wie `mat_EMod()&#x27; .                    -- *
+ * -- Der einzige Unterschied besteht in der Tatsache, daß         -- *
+ * -- unbenötigte Befehle herausgenommen wurden.                   -- */
+
+/* -- Arbeitsprinzip: Vom Dividenden (emo_a) wird der Divisor      -- *
+ * --                 (emo_b) solange subtrahiert, bis das         -- *
+ * --                 Ergebnis kleiner oder gleich null ist.       -- *
+ * --                 Ist das Ergebnis kleiner als null, wurde     -- *
+ * --                 Subtraktion zu oft durchgeführt. Die Anzahl  -- *
+ * --                 der Subtraktionen entspricht der Division.   -- */
+
+
+    MOVE.L         emo_a,D0  -&gt; D0 := Dividend
+    MOVEQ             #0,D1  -&gt; D1 := Zähler für die Division := 0
+
+emo_back:
+    ADDQ              #1,D1  -&gt; Zähler D1 um eins erhöhen.
+    SUB.L          emo_b,D0  -&gt; Dazugehörige Subtraktion durchführen.
+    BPL.S          emo_back  -&gt; Falls das Ergebnis größer als null ist,
+                             -&gt; dann nochmal in die Schleife.
+    BEQ.S          emo_ende  -&gt; Falls Ergebnis = 0, dann Ende
+    SUBQ.L            #1,D1  -&gt; sonst Zähler erniedrigen und Subtraktion
+    ADD.L          emo_b,D0  -&gt; rückgängig machen.
+
+emo_ende:
+    MOVE.L            D0,emo_a
+    MOVE.L            D1,emo_b
+
+ENDPROC emo_a,emo_b
+
+
+PROC mat_Mod(mod_a,mod_b)
+/* -- Achtung: Diese Funktion kann auch mit 32-Bit-Operanden rechnen, -- *
+ * --          wobei das Ergebnis der Division NICHT ermittelt wird.  -- */
+
+    MOVE.L         mod_a,D0
+
+mod_back:
+    SUB.L          mod_b,D0
+    BPL.S          mod_back
+    BEQ.S          mod_ende
+    ADD.L          mod_b,D0
+mod_ende:
+
+ENDPROC D0
+
+CHAR &#x27;$VER: Math.M (E-Modul) v1.0 © Copyrights by Daniel Kasmeroglu&#x27;</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

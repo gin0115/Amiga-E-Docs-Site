@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>cha_monitor.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-camde.html">camde</a> &rsaquo; cha_monitor.e</div><h1>File: <code>cha_monitor.e</code></h1><p class="meta">89 lines · project <a href="../examples/pkg-camde.html"><code>camde</code></a></p><p class="pathctx">camde/camde/examples/cha_monitor.e</p><p class="prose">usage: cha_monitor in.0 ctrl-c quits</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/dos.html">dos/dos</a></li></ul></div><h2>Source</h2><pre class="code">-&gt; usage: cha_monitor in.0
+-&gt; ctrl-c quits
+
+MODULE &#x27;dos/dos&#x27;, &#x27;camd&#x27;, &#x27;midi/camd&#x27;
+
+CONST SYSEXSIZE = 16384
+
+PROC main() HANDLE
+	DEF msg : midimsg, signals, midi = NIL, link = NIL
+	camdbase := OpenLibrary(&#x27;camd.library&#x27;, 37)
+	IF camdbase = NIL THEN Throw(&quot;CAMD&quot;, &quot;OPEN&quot;)
+	midi := CreateMidiA([
+	    MIDI_NAME,       &#x27;cha_monitor&#x27;,
+	    MIDI_RECVSIGNAL, SIGBREAKB_CTRL_F,
+	    MIDI_BUFFERSIZE, 256,
+	    MIDI_SYSEXSIZE,  SYSEXSIZE,
+	    NIL ])
+	IF midi = NIL THEN Throw(&quot;CAMD&quot;, &quot;MIDI&quot;)
+	link := AddMidiLinkA(midi, MLTYPE_RECEIVER, [
+	    MLINK_NAME,     &#x27;cha_monitor.in&#x27;,
+	    MLINK_LOCATION, arg,
+	    NIL ])
+	IF link = NIL THEN Throw(&quot;CAMD&quot;, &quot;LINK&quot;)
+	LOOP
+		signals := Wait(SIGBREAKF_CTRL_C OR SIGBREAKF_CTRL_F)
+		IF signals AND SIGBREAKF_CTRL_F
+			WHILE GetMidi(midi, msg)
+				printmessage(midi, msg)
+			ENDWHILE
+		ENDIF
+		IF signals AND SIGBREAKF_CTRL_C
+			Raise(&quot;^C&quot;)
+		ENDIF
+	ENDLOOP
+EXCEPT DO
+	IF midi
+		DeleteMidi(midi)
+		midi := NIL
+	ENDIF
+	IF camdbase
+		CloseLibrary(camdbase)
+		camdbase := NIL
+	ENDIF
+ENDPROC IF exception THEN 5 ELSE 0
+
+PROC printmessage(midi, msg : PTR TO midimsg)
+	DEF status, channel, len, length, sysexbuffer = NIL : PTR TO CHAR
+	channel := msg.status AND $0F
+	status  := msg.status AND $F0
+	IF status = $F0 THEN status := msg.status
+	SELECT status
+	CASE $80; WriteF(&#x27;\z\h[1] \z\h[1] \z\h[2] \z\h[2]\t note off\n&#x27;, status, channel, msg.data1, msg.data2)
+	CASE $90; WriteF(&#x27;\z\h[1] \z\h[1] \z\h[2] \z\h[2]\t note on\n&#x27;,  status, channel, msg.data1, msg.data2)
+	CASE $A0; WriteF(&#x27;\z\h[1] \z\h[1] \z\h[2] \z\h[2]\t aftertouch\n&#x27;, status, channel, msg.data1, msg.data2)
+	CASE $B0; WriteF(&#x27;\z\h[1] \z\h[1] \z\h[2] \z\h[2]\t control change\n&#x27;, status, channel, msg.data1, msg.data2)
+	CASE $C0; WriteF(&#x27;\z\h[1] \z\h[1] \z\h[2]   \t program change\n&#x27;, status, channel, msg.data1)
+	CASE $D0; WriteF(&#x27;\z\h[1] \z\h[1] \z\h[2]   \t channel pressure\n&#x27;, status, channel, msg.data1)
+	CASE $E0; WriteF(&#x27;\z\h[1] \z\h[1] \z\h[4] \t pitch bend\n&#x27;, status, channel, msg.data1 OR Shl(msg.data2,7))
+	CASE $F0
+		IF sysexbuffer := New(SYSEXSIZE)
+			length := 0
+			WHILE len := GetSysEx(midi, sysexbuffer, SYSEXSIZE)
+				length := length + len
+			ENDWHILE
+			WriteF(&#x27;\z\h[2] [\z\h[8]] \z\h[2] system exclusive\n&#x27;, status, length, $F7)
+			Dispose(sysexbuffer)
+			sysexbuffer := NIL
+		ELSE
+			WriteF(&#x27;\z\h[2] [........] \z\h[2] system exclusive, OUT OF MEMORY\n&#x27;, status, $F7)
+		ENDIF
+	CASE $F1; WriteF(&#x27;\z\h[2] \z\h[1] \z\h[1]   \t time code quarter frame\n&#x27;, status, Shr(msg.data1, 4), msg.data1 AND $0F)
+	CASE $F2; WriteF(&#x27;\z\h[2] \z\h[4]  \t song position pointer\n&#x27;, status, msg.data1 OR Shl(msg.data2,7))
+	CASE $F3; WriteF(&#x27;\z\h[2] \z\h[2]    \t song select\n&#x27;, status, msg.data1)
+	CASE $F4; WriteF(&#x27;\z\h[2]       \t &lt;&lt; undefined F4 &gt;&gt;\n&#x27;, status)
+	CASE $F5; WriteF(&#x27;\z\h[2]       \t &lt;&lt; undefined F5 &gt;&gt;\n&#x27;, status)
+	CASE $F6; WriteF(&#x27;\z\h[2]       \t tune request\n&#x27;, status)
+	CASE $F7; WriteF(&#x27;\z\h[2]       \t end of system exclusive\n&#x27;, status)
+	CASE $F8; WriteF(&#x27;\z\h[2]       \t timing clock\n&#x27;, status)
+	CASE $F9; WriteF(&#x27;\z\h[2]       \t &lt;&lt; undefined F9 &gt;&gt;\n&#x27;, status)
+	CASE $FA; WriteF(&#x27;\z\h[2]       \t start\n&#x27;, status)
+	CASE $FB; WriteF(&#x27;\z\h[2]       \t continue\n&#x27;, status)
+	CASE $FC; WriteF(&#x27;\z\h[2]       \t stop\n&#x27;, status)
+	CASE $FD; WriteF(&#x27;\z\h[2]       \t &lt;&lt; undefined FD &gt;&gt;\n&#x27;, status)
+	CASE $FE; WriteF(&#x27;\z\h[2]       \t active sensing\n&#x27;, status)
+	CASE $FF; WriteF(&#x27;\z\h[2]       \t system reset\n&#x27;, status)
+	DEFAULT;  WriteF(&#x27;\z\h[2] \z\h[2] \z\h[2] \t UNKNOWN\n&#x27;, msg.status, msg.data1, msg.data2)
+	ENDSELECT
+ENDPROC
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

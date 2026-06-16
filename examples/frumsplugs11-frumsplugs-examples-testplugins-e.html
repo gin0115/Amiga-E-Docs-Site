@@ -1,0 +1,246 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>TestPlugins.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-frumsplugs11.html">frumSPlugs11</a> &rsaquo; TestPlugins.e</div><h1>File: <code>TestPlugins.e</code></h1><p class="meta">220 lines · project <a href="../examples/pkg-frumsplugs11.html"><code>frumSPlugs11</code></a></p><p class="pathctx">frumSPlugs11/frumSPlugs/Examples/TestPlugins.e</p><p class="prose">** ((( frumSPlugs ))) ** ©1996 Stephen Sinclair ** ** This source may be copied or edited in any ** way you wish. ** ** This file is part of the frumSPlugs package, ** and may only be distributed with it.</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/intuition.html">intuition/intuition</a></li><li><a href="../modules/easygui.html">tools/easygui</a></li></ul></div><h2>Source</h2><pre class="code">/*
+**   ((( frumSPlugs )))
+** ©1996 Stephen Sinclair
+**
+** This source may be copied or edited in any
+** way you wish.
+**
+** This file is part of the frumSPlugs package,
+** and may only be distributed with it.
+*/
+
+/* Program to test all frumSPlugs plugins */
+-&gt; $VER: TestPlugins.e V1.1 Stephen Sinclair (96.07.18)
+
+OPT OSVERSION=37,LARGE
+MODULE &#x27;Tools/EasyGUI&#x27;,&#x27;Plugins/BackDrop&#x27;,&#x27;Plugins/BitMap&#x27;,&#x27;Plugins/Gauge&#x27;,
+       &#x27;Plugins/BusyBox&#x27;,&#x27;Plugins/Image&#x27;,&#x27;Plugins/ImageButton&#x27;,
+       &#x27;Plugins/TextPanel&#x27;,&#x27;Plugins/AslPopups&#x27;,&#x27;Plugins/ClrWhlGrdSld&#x27;
+MODULE &#x27;Intuition/Intuition&#x27;,&#x27;Graphics/Gfx&#x27;,&#x27;Intuition/Screens&#x27;
+
+DEF bdp:PTR TO backdropplugin,
+    bp:PTR TO bitmapplugin,
+    gp:PTR TO gaugeplugin,
+    bbp:PTR TO busyboxplugin,
+    ip:PTR TO imageplugin,
+    ibp:PTR TO imagebuttonplugin,
+    tpp:PTR TO textpanelplugin,
+    aslfile:PTR TO aslfileplugin,
+    aslfont:PTR TO aslfontplugin,
+    aslmode:PTR TO aslscrmdplugin,
+    cwgs:PTR TO cwgsplugin
+DEF bmp1:PTR TO bitmap,bmp2:PTR TO bitmap,scr:PTR TO screen,is8colour=TRUE
+DEF filename[100]:STRING,fontname[30]:STRING,modename[30]:STRING,
+    filegad,fontgad,modegad
+DEF gh:PTR TO guihandle
+
+PROC main() HANDLE
+/* Allocate bitmaps to use for backdrop, bitmap, image, and imagebutton */
+  IF (bmp1:=AllocBitMap(32,32,3,BMF_CLEAR,NIL))=NIL THEN Raise(&quot;MEM&quot;)
+  IF (bmp2:=AllocBitMap(25,28,1,0,NIL))=NIL THEN Raise(&quot;MEM&quot;)
+
+/* This is much better on a MagicWB screen, but if the user runs it on */
+/* a regular 4 colour screen, we may as well try our best to make it   */
+/* look good.                                                          */
+  scr:=LockPubScreen(NIL)
+  IF scr
+    IF scr.bitmap.depth&lt;=2 THEN is8colour:=FALSE
+  ENDIF
+  IF is8colour=FALSE
+    new_easygui(&#x27;Warning!&#x27;,
+      [ROWS,
+        [BAR],
+        [TEXT,&#x27;You really should run this&#x27;,NIL,FALSE,STRLEN],
+        [TEXT,&#x27;on an 8 colour screen with&#x27;,NIL,FALSE,STRLEN],
+        [TEXT,&#x27;the MagicWB colours.  It&#x27;,NIL,FALSE,STRLEN],
+        [TEXT,&#x27;looks a lot nicer that way.&#x27;,NIL,FALSE,STRLEN],
+        [BAR],
+        [BUTTON,0,&#x27;I&#x27;&#x27;ll remember that...&#x27;]
+      ],0,scr)
+/* For four colour screens, make the backdrop blue. */
+    CopyMem({backdrop},bmp1.planes[0],128)
+    CopyMem({backdrop},bmp1.planes[1],128)
+  ELSE
+/* For a MagicWB screen, make it light gray. */
+    CopyMem({backdrop},bmp1.planes[0],128)
+    CopyMem({backdrop},bmp1.planes[2],128)
+  ENDIF
+
+  CopyMem({alien},bmp2.planes[0],112)
+
+/* And now for the EasyGUI magic! */
+  new_easygui(&#x27;frumSPlugs&#x27;,
+    [ROWS,
+      [PLUGIN,0,NEW bdp.backdropplugin(bmp1,0,0,32,32)],
+      [TEXT,&#x27;BackDrop: (All over)&#x27;,NIL,FALSE,5],
+      [BEVEL,[COLS,
+        [ROWS,
+          [ROWS,
+            [TEXT,&#x27;TextPanel:&#x27;,NIL,FALSE,5],
+            [PLUGIN,0,NEW tpp.textpanelplugin([&#x27;\eacWelcome To \esbfrumSPlugs V1.1\esb!&#x27;,NIL,
+                                               &#x27;\eBAR&#x27;,NIL,
+                                               &#x27;\eacThis is one of the newest features,&#x27;,NIL,
+                                               &#x27;\eac\ep\c\essThe TextPanel!\esn&#x27;,[SHINEPEN],
+                                               &#x27;\eBAR&#x27;,NIL,
+                                               &#x27;\eacYou can now make panels of text with formatting!&#x27;,NIL,
+                                               &#x27;\eac\esbBold\esb \esuUnderlined\esu \esiItalics\esi \ese\ep\cEmbossed \ess\ep\cShadowed\esn&#x27;,[BACKGROUNDPEN,FILLPEN]],
+                                               NIL,TRUE,BEVELR,IF is8colour THEN 0 ELSE -1,5)]
+          ],
+          [BAR],
+          [COLS,
+            [ROWS,
+              [TEXT,&#x27;BitMap:&#x27;,NIL,FALSE,5],
+              [BEVELR,[PLUGIN,0,NEW bp.bitmapplugin(bmp2,0,0,25,28,$30)]]
+            ],
+            [BAR],
+            [ROWS,
+              [TEXT,&#x27;Gauge:&#x27;,NIL,FALSE,5],
+              [PLUGIN,0,NEW gp.gaugeplugin(100,0,RESIZEX,BEVELR,0,0,0,&#x27;\d%%&#x27;,TRUE)]
+            ]
+          ],
+          [BAR],
+          [COLS,
+            [ROWS,
+              [TEXT,&#x27;BusyBox:&#x27;,NIL,FALSE,5],
+              [PLUGIN,0,NEW bbp.busyboxplugin([1,2,3,4,5,6,7]:INT,BEVELR,RESIZEX)]
+            ],
+            [BAR],
+            [ROWS,
+              [TEXT,&#x27;Image:&#x27;,NIL,FALSE,5],
+              [BEVELR,[PLUGIN,0,NEW ip.imageplugin([0,0,25,28,1,bmp2.planes[0],1,6,NIL]:image)]]
+            ],
+            [BAR],
+            [ROWS,
+              [TEXT,&#x27;ImageButton:  (Click Me!)&#x27;,NIL,FALSE,5],
+              [PLUGIN,{dostuff},NEW ibp.imagebuttonplugin([0,0,25,28,1,bmp2.planes[0],1,0,NIL]:image,
+                                                          [0,0,25,28,1,bmp2.planes[0],1,2,NIL]:image)]
+            ]
+          ],
+          [BAR],
+          [ROWS,
+            [COLS,
+              filegad:=[STR,{dummy},&#x27;File:&#x27;,filename,100,5],
+              [PLUGIN,{fileproc},NEW aslfile.aslfileplugin(filename)]
+            ],
+            [COLS,
+              fontgad:=[STR,{dummy},&#x27;Font:&#x27;,fontname,50,5],
+              [PLUGIN,{fontproc},NEW aslfont.aslfontplugin(fontname)]
+            ],
+            [COLS,
+              modegad:=[TEXT,modename,&#x27;Display:&#x27;,TRUE,5],
+              [PLUGIN,{modeproc},NEW aslmode.aslscrmdplugin(modename)]
+            ]
+          ]
+        ],
+/* if we have OS 3.0 or more, we can have a colorwheel, else put a space */
+        IF KickVersion(39) THEN
+          [COLS,
+            [BAR],
+            [EQROWS,
+              [TEXT,&#x27;ColorWheel and&#x27;,NIL,FALSE,STRLEN],
+              [TEXT,&#x27;GradienSlider&#x27;,NIL,FALSE,STRLEN],
+              [PLUGIN,0,NEW cwgs.cwgsplugin(2,TRUE,NIL,10,10,256,0)]
+            ]
+          ]
+          ELSE
+          [SPACEV]
+
+      ]],
+      [BUTTON,0,&#x27;Okay&#x27;]
+    ])
+EXCEPT DO
+  cwgs.revert()
+/* ALWAYS END imagebuttons, busyboxes,, textpanels, asl popups, and colorwheels. */
+  END ibp,bbp,tpp,aslfile,aslfont,aslmode,cwgs
+  IF bmp1 THEN FreeBitMap(bmp1)
+  IF bmp2 THEN FreeBitMap(bmp2)
+  SELECT exception
+    CASE &quot;UTIL&quot;; WriteF(&#x27;Could not open utility.library.\n&#x27;)
+    CASE &quot;ASL&quot;;  WriteF(&#x27;Could not open asl.library.\n&#x27;)
+    CASE &quot;MEM&quot; ; WriteF(&#x27;Not enough mem.\n&#x27;)
+    CASE &quot;bigg&quot;; WriteF(&#x27;Screen not large enough. :(\n&#x27;)
+    DEFAULT; IF exception&gt;0 THEN WriteF(&#x27;Exception: \s\n&#x27;,[exception,0])
+  ENDSELECT
+ENDPROC
+
+CHAR &#x27;$VER: TestPlugins V1.0 Stephen Sinclair (95.07.18)&#x27;,0
+
+/* The bitplane data */
+backdrop:
+/* 32 x 32 x 1 */
+INT $0000,$0000,$7FFF,$FFFE,$4000,$0002,$4000,$0002,$4000,$0002,$4000,$0002,
+    $43FF,$FFC2,$4200,$0042,$4200,$0042,$427F,$FE42,$4240,$0242,$4240,$0242,
+    $4240,$0242,$4240,$0242,$4243,$FE42,$4242,$0042,$4242,$0042,$4242,$7FC2,
+    $4242,$4002,$4242,$4002,$4242,$4002,$4242,$4002,$4242,$7FFE,$4242,$0000,
+    $4242,$0000,$C243,$FFFF,$0240,$0000,$0240,$0000,$0240,$0000,$0240,$0000,
+    $FE7F,$FFFF,$0000,$0000,$0042
+
+alien:
+/* 25 x 28 x 1 */
+INT $0000,$0000,$007F,$0000,$03FF,$E000,$0FFF,$F800,$1FFF,$FC00,$1FFF,$FE00,
+    $3FFF,$FE00,$7FFF,$FF00,$7FFF,$FF00,$7FFF,$FF00,$47FF,$F100,$41FF,$C100,
+    $607F,$0300,$203E,$0200,$301C,$0600,$381C,$0E00,$1E08,$3C00,$1F88,$FC00,
+    $0FFF,$F800,$0FFF,$F800,$07FF,$F000,$03FF,$E000,$03FF,$E000,$01FF,$C000,
+    $00FF,$8000,$007F,$0000,$003E,$0000,$0000,$0000,$0600
+
+/* Procedure to demonstrate the gauge and the busybox at the same time */
+PROC dostuff(x)
+  DEF inc
+  IF gp.cv()&gt;50 THEN inc:=-1 ELSE inc:=1
+  bbp.on(TRUE)
+  FOR x:=1 TO 100
+    gp.addgauge(inc)
+    Delay(1)  -&gt; needs a delay - otherwise it&#x27;s too fast to see
+  ENDFOR
+  bbp.on(FALSE)
+ENDPROC
+
+/* Procedure for strings */
+PROC dummy(x,s) IS x,s
+
+/* Procedures for asl popups */
+PROC fileproc(x) IS setstr(gh,filegad,filename),x
+PROC fontproc(x) IS setstr(gh,fontgad,fontname),x
+PROC modeproc(x) IS settext(gh,modegad,modename),x
+
+/* new easygui that uses a global guihandle */
+PROC new_easygui(title,gui,info=0,screen=0,font=0,menu=0) HANDLE
+  DEF res=-1
+  gh:=guiinit(title,gui,info,screen,font,menu)
+  WHILE res&lt;0
+    Wait(gh.sig)
+    res:=guimessage(gh)
+  ENDWHILE
+EXCEPT DO
+  cleangui(gh)
+  ReThrow()
+ENDPROC
+
+/* That&#x27;s it!  It&#x27;s that simple to use frumSPlugs! */
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

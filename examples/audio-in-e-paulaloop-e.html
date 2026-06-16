@@ -1,0 +1,196 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>paulaloop.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-audio-in-e.html">audio_in_e</a> &rsaquo; paulaloop.e</div><h1>File: <code>paulaloop.e</code></h1><p class="meta">170 lines · project <a href="../examples/pkg-audio-in-e.html"><code>audio_in_e</code></a></p><p class="pathctx">audio_in_e/paulaloop.e</p><p class="prose">************************************************************************ * * * paulaloop.e V1.1 21.11.2020 by Rainer &quot;No.3&quot; Müller * * * * an example how to play a short waveform repeatedly and change the * * * * replay-rate and volume on the fly using the <a href="../modules/audio.html#const-adcmd-pervol">ADCMD_PERVOL</a> command * * * * compile: ec pa</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/io.html">amigalib/io</a></li></ul></div><h2>Source</h2><pre class="code">/*************************************************************************
+*                                                                        *
+*       paulaloop.e  V1.1  21.11.2020  by Rainer &quot;No.3&quot; Müller           *
+*                                                                        *
+*  an example how to play a short waveform repeatedly and change the     *
+*                                                                        *
+*  replay-rate and volume on the fly using the ADCMD_PERVOL command      *
+*                                                                        *
+*  compile: ec paulaloop                                                 *
+*                                                                        *
+*  use: paulaloop   and follow the instructions in the console window    *
+*                                                                        *
+*  new in:                                                               *
+*                                                                        *
+*    V1.0  24.02.2018  first version                                     *
+*                                                                        *
+*    V1.1  21.11.2020  some code revision i.e. WaitPort =&gt; WaitIO        *
+*                      The use of REALLY_PAL is only correct for OS3.0+  *
+*                                                                        *
+*************************************************************************/
+
+MODULE &#x27;amigalib/io&#x27;,
+        &#x27;devices/audio&#x27;,
+           &#x27;exec/io&#x27;,     &#x27;exec/memory&#x27;, &#x27;exec/nodes&#x27;, &#x27;exec/ports&#x27;,
+       &#x27;graphics/gfxbase&#x27;
+
+ENUM ER_NONE, ER_NOMEM, ER_NOPORT, ER_NOIOREQ, ER_NODEVICE, ER_KICK
+
+CONST NTSC_CLOCK=3579545,
+       PAL_CLOCK=3546895
+
+DEF clock
+
+
+PROC main() HANDLE
+DEF gfx:PTR TO gfxbase
+
+   gfx:=gfxbase
+
+   IF KickVersion(39)
+      IF gfx.displayflags AND REALLY_PAL  THEN clock:=PAL_CLOCK  ELSE clock:=NTSC_CLOCK
+   ELSE
+      IF gfx.displayflags AND PAL         THEN clock:=PAL_CLOCK  ELSE clock:=NTSC_CLOCK
+      IF KickVersion(37)=FALSE THEN Raise(ER_KICK)
+   ENDIF
+
+   play()
+
+EXCEPT DO
+   SELECT exception
+      CASE ER_KICK; WriteF(&#x27;Kickstart V37+ required\n&#x27;)
+      CASE ER_NONE; WriteF(&#x27;all OK\n&#x27;)
+   ENDSELECT
+ENDPROC
+
+
+PROC play() HANDLE
+DEF arequest1=NIL:PTR TO ioaudio
+DEF arequest2    :       ioaudio
+DEF reply1   =NIL:PTR TO mp
+DEF reply2   =NIL:PTR TO mp
+DEF chipbuf  =NIL:PTR TO CHAR, length=8
+DEF deviceerror=1
+DEF samplerate=2000
+DEF volume=64
+DEF button
+
+   IF (chipbuf:=AllocVec(length, MEMF_CHIP+MEMF_PUBLIC))=NIL THEN Raise(ER_NOMEM)
+   chipbuf[0]:=   0
+   chipbuf[1]:=  90
+   chipbuf[2]:= 127     -&gt; fill some CHIP memory
+   chipbuf[3]:=  90     -&gt; with some kind of a sine wave  :-D
+   chipbuf[4]:=   0
+   chipbuf[5]:=- 90
+   chipbuf[6]:=-128
+   chipbuf[7]:=- 90
+
+
+   IF (   reply1:=CreateMsgPort()                        )=NIL THEN Raise(ER_NOPORT)
+   IF (   reply2:=CreateMsgPort()                        )=NIL THEN Raise(ER_NOPORT)
+   IF (arequest1:=CreateIORequest(reply1, SIZEOF ioaudio))=NIL THEN Raise(ER_NOIOREQ)
+
+   arequest1.io.command  :=ADCMD_ALLOCATE
+   arequest1.io.flags    :=ADIOF_NOWAIT
+   arequest1.io.mn.ln.pri:=ADALLOC_MAXPREC
+   arequest1.allockey    :=0
+   arequest1.data        :=[1,2,4,8]:CHAR
+   arequest1.length      :=4
+   IF deviceerror:=OpenDevice(&#x27;audio.device&#x27;, 0, arequest1, 0) THEN Raise(ER_NODEVICE)
+
+   arequest1.io.command  :=CMD_WRITE
+   arequest1.io.flags    :=ADIOF_PERVOL
+   arequest1.data        :=chipbuf
+   arequest1.length      :=length
+   arequest1.period      :=clock / samplerate
+   arequest1.volume      :=volume
+   arequest1.cycles      :=800                  -&gt; play the buffer sent to paula 800 times (max 65535, 0 = for ever until stopped)
+   beginIO(arequest1)
+
+   Delay(50)                                    -&gt; wait 1 second
+
+   CopyMem(arequest1,arequest2, SIZEOF ioaudio) -&gt; make a copy of the audio request
+   arequest2.io.mn.replyport:=reply2            -&gt; assign a new message port to the copy !
+
+   arequest2.io.command:=ADCMD_PERVOL           -&gt; change period and volume
+   arequest2.io.flags  :=0                      -&gt; 0 = immediate change
+   arequest2.period    :=clock / 2000           -&gt; new period
+   arequest2.volume    :=32                     -&gt; new volume
+   beginIO(arequest2)                           -&gt; let&#x27;s go
+    WaitIO(arequest2)
+
+   Delay(50)
+
+   arequest2.io.command:=ADCMD_PERVOL           -&gt; let&#x27;s do a second change !  :-D
+   arequest2.io.flags  :=0
+   arequest2.period    :=clock / 1000
+   arequest2.volume    :=48
+   beginIO(arequest2)                           -&gt; let&#x27;s go
+    WaitIO(arequest2)
+
+    WaitIO(arequest1)                           -&gt; wait for the 800 cycles are over
+
+
+/** interactive part **/
+
+   WriteF(&#x27;\nnow it is your turn:\n\n&#x27;)
+   WriteF(&#x27;press left or right mousebutton to increase/decrease the playback rate\n&#x27;)
+   WriteF(&#x27;press both buttons to exit\n&#x27;)
+
+   arequest1.period:=clock / samplerate
+   arequest1.volume:=volume
+   arequest1.cycles:=0                          -&gt; play the buffer forever
+   beginIO(arequest1)
+
+   WHILE   (button:=Mouse())&lt;&gt;3
+      IF    button
+         IF button =1        THEN samplerate:=samplerate + 100   ELSE samplerate:=samplerate - 100
+         IF samplerate&gt;28000 THEN samplerate:=28000
+         IF samplerate&lt;  100 THEN samplerate:=  100
+
+         arequest2.io.command:=ADCMD_PERVOL
+         arequest2.io.flags  :=0
+         arequest2.period    :=clock / samplerate
+         beginIO(arequest2)
+          WaitIO(arequest2)
+      ENDIF
+
+      Delay(2)
+   ENDWHILE
+
+   AbortIO(arequest1)                           -&gt; abort playback
+    WaitIO(arequest1)
+
+EXCEPT DO
+   IF chipbuf       THEN FreeVec        (chipbuf)
+   IF deviceerror=0 THEN CloseDevice    (arequest1)
+   IF arequest1     THEN DeleteIORequest(arequest1)
+   IF reply2        THEN DeleteMsgPort  (reply2)
+   IF reply1        THEN DeleteMsgPort  (reply1)
+   SELECT exception
+      CASE ER_NOMEM;    WriteF(&#x27;no memory\n&#x27;)
+      CASE ER_NOPORT;   WriteF(&#x27;could not create port\n&#x27;)
+      CASE ER_NOIOREQ;  WriteF(&#x27;could not create iorequest\n&#x27;)
+      CASE ER_NODEVICE; WriteF(&#x27;could not open audio-device\n&#x27;)
+      CASE ER_NONE;     WriteF(&#x27;all OK\n&#x27;)
+   ENDSELECT
+ENDPROC
+
+
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

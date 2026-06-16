@@ -1,0 +1,385 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>animtools020.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-gels020.html">Gels020</a> &rsaquo; animtools020.e</div><h1>File: <code>animtools020.e</code></h1><p class="meta">359 lines · project <a href="../examples/pkg-gels020.html"><code>Gels020</code></a></p><p class="pathctx">Gels020/src/Rkrm/Graphics_Libraries/Sprites_Bobs/animtools020.e</p><p class="prose"><a href="../modules/animtools.html">animtools</a>.e  This file is a collection of tools which are used with the VSprite, Bob and Animation system software.  It is intended as a useful EXAMPLE, and while it shows what must be done, it is not the only way to do it.  If Not Enough Memory, or error return, each cleans up after itself before r</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/memory.html">exec/memory</a></li></ul></div><h2>Source</h2><pre class="code">-&gt; animtools.e
+-&gt;
+-&gt; This file is a collection of tools which are used with the VSprite, Bob and
+-&gt; Animation system software.  It is intended as a useful EXAMPLE, and while it
+-&gt; shows what must be done, it is not the only way to do it.  If Not Enough
+-&gt; Memory, or error return, each cleans up after itself before returning.
+-&gt; NOTE that these routines assume a very specific structure to the GEL lists.
+-&gt; Make sure that you use the correct pairs together
+-&gt; (i.e., makeOb()/freeOb())
+
+-&gt;&gt;&gt; Header (globals)
+OPT MODULE, PREPROCESS
+OPT EXPORT
+
+MODULE &#x27;exec/memory&#x27;,
+       &#x27;graphics/gels&#x27;,
+       &#x27;graphics/gels020&#x27;,
+       &#x27;graphics/gfx&#x27;,
+       &#x27;graphics/rastport&#x27;
+
+-&gt; &#x27;intuition/intuitionbase&#x27; does not define a library name.
+#define INTUITIONNAME &#x27;intuition.library&#x27;
+
+-&gt; These objects are used by the functions below to allow for an easier
+-&gt; interface to the animation system.
+-&gt;&gt;&gt;
+
+-&gt;&gt;&gt; OBJECT newVSprite
+-&gt; Object to hold information for a new VSprite.
+OBJECT newVSprite
+  image:PTR TO INT      -&gt; Image data for the VSprite
+  colorSet:PTR TO INT   -&gt; Colour array for the VSprite
+  wordWidth:INT         -&gt; Width in words
+  lineHeight:INT        -&gt; Height in lines
+  imageDepth:INT        -&gt; Depth of the image
+  x:INT                 -&gt; Initial x position
+  y:INT                 -&gt; Initial y position
+  flags:INT             -&gt; VSprite flags
+  hitMask:INT           -&gt; Hit mask
+  meMask:INT            -&gt; Me mask
+ENDOBJECT
+-&gt;&gt;&gt;
+
+-&gt;&gt;&gt; OBJECT newBob
+-&gt; Object to hold information for a new Bob.
+OBJECT newBob
+  image:PTR TO INT  -&gt; Image data FOR the Bob
+  wordWidth:INT     -&gt; Width in words
+  lineHeight:INT    -&gt; Height in lines
+  imageDepth:INT    -&gt; Depth of the image
+  planePick:INT     -&gt; Planes that get image data
+  planeOnOff:INT    -&gt; Unused planes to turn on
+  bFlags:INT        -&gt; Bob flags
+  dBuf:INT          -&gt; 1=double buf, 0=not
+  rasDepth:INT      -&gt; Depth of the raster
+  x:INT             -&gt; Initial x position
+  y:INT             -&gt; Initial y position
+  hitMask:INT       -&gt; Hit mask
+  meMask:INT        -&gt; Me mask
+ENDOBJECT
+-&gt;&gt;&gt;
+
+-&gt;&gt;&gt; OBJECT newAnimComp
+-&gt; Object to hold information for a new animation component.
+OBJECT newAnimComp
+  routine:LONG  -&gt; Routine called when Comp IS displayed
+  xt:INT        -&gt; Initial delta offset position
+  yt:INT
+  time:INT      -&gt; Initial timer value
+  cFlags:INT    -&gt; Flags for the Comp
+ENDOBJECT
+-&gt;&gt;&gt;
+
+-&gt;&gt;&gt; OBJECT newAnimSeq
+-&gt; Object to hold information for a new animation sequence.
+OBJECT newAnimSeq
+  headOb:PTR TO ao      -&gt; Common head of object
+  images:PTR TO INT     -&gt; Array of Comp image data
+  xt:PTR TO INT         -&gt; Arrays of initial offsets
+  yt:PTR TO INT
+  times:PTR TO INT      -&gt; Array of initial timer values
+  routines:PTR TO LONG  -&gt; Array of functions called when Comp is drawn
+  cFlags:INT            -&gt; Flags for the Comp
+  count:INT             -&gt; Number of Comps in sequence (= arrays size)
+  singleImage:INT       -&gt; One (or count) images
+ENDOBJECT
+-&gt;&gt;&gt;
+
+-&gt;&gt;&gt; PROC setupGelSys(rPort:PTR TO rastport, reserved) HANDLE
+-&gt; Setup the GELs system.  After this call is made you can use VSprites, Bobs,
+-&gt; AnimComps and AnimObs.  Note that this links the GelsInfo structure into the
+-&gt; RastPort, and calls InitGels().  It uses information in your rastport
+-&gt; object to establish boundary collision defaults at the outer edges of the
+-&gt; raster.  This routine sets up for everything - collision detection and all.
+-&gt; You must already have run LoadView before ReadyGelSys is called.
+PROC setupGelSys(rPort:PTR TO rastport, reserved) HANDLE
+  DEF gInfo=NIL:PTR TO gelsinfo, vsHead=NIL:PTR TO vs, vsTail=NIL:PTR TO vs
+  NEW gInfo, vsHead, vsTail
+  NEW gInfo.nextline[8], gInfo.lastcolor[8], gInfo.collhandler
+  gInfo.sprrsrvd:=reserved
+  -&gt; Set left- and top-most to 1 to better keep items inside the display
+  -&gt; boundaries.
+  gInfo.leftmost:=1; gInfo.topmost:=1
+  gInfo.rightmost:=(rPort.bitmap.bytesperrow*8)-1
+  gInfo.bottommost:=rPort.bitmap.rows-1
+  rPort.gelsinfo:=gInfo
+  InitGels(vsHead, vsTail, gInfo)
+EXCEPT
+  IF gInfo THEN END gInfo.nextline[8], gInfo.lastcolor[8], gInfo.collhandler
+  END gInfo, vsHead, vsTail
+  ReThrow()
+ENDPROC gInfo
+-&gt;&gt;&gt;
+
+-&gt;&gt;&gt; PROC cleanupGelSys(gInfo:PTR TO gelsinfo, rPort:PTR TO rastport)
+-&gt; Free all of the stuff allocated by setupGelSys().  Only call this routine if
+-&gt; setupGelSys() returned successfully.  The GelsInfo structure IS the one
+-&gt; returned by setupGelSys().  It also unlinks the GelsInfo from the RastPort.
+PROC cleanupGelSys(gInfo:PTR TO gelsinfo, rPort:PTR TO rastport)
+  rPort.gelsinfo:=NIL
+  END gInfo.nextline[8], gInfo.lastcolor[8], gInfo.collhandler,
+      gInfo.gelhead, gInfo.geltail
+  END gInfo
+ENDPROC
+-&gt;&gt;&gt;
+
+-&gt;&gt;&gt; PROC makeVSprite(nVSprite:PTR TO newVSprite) HANDLE
+-&gt; Create a VSprite from the information given in nVSprite.  Use freeVSprite()
+-&gt; to free this GEL.
+PROC makeVSprite(nVSprite:PTR TO newVSprite) HANDLE
+  DEF vsprite=NIL:PTR TO vs, line_size, plane_size
+  line_size:=SIZEOF INT * nVSprite.wordWidth
+  plane_size:=line_size * nVSprite.lineHeight
+  NEW vsprite
+  vsprite.borderline := NewM(line_size, MEMF_CHIP)
+  vsprite.collmask   := NewM(plane_size, MEMF_CHIP)
+  vsprite.y          := nVSprite.y
+  vsprite.x          := nVSprite.x
+  vsprite.vsflags    := nVSprite.flags
+  vsprite.width      := nVSprite.wordWidth
+  vsprite.depth      := nVSprite.imageDepth
+  vsprite.height     := nVSprite.lineHeight
+  vsprite.memask     := nVSprite.meMask
+  vsprite.hitmask    := nVSprite.hitMask
+  vsprite.imagedata  := nVSprite.image
+  vsprite.sprcolors  := nVSprite.colorSet
+  vsprite.planepick  := 0
+  vsprite.planeonoff := 0
+  InitMasks(vsprite)
+EXCEPT
+  IF vsprite
+    Dispose(vsprite.borderline)
+    Dispose(vsprite.collmask)
+  ENDIF
+  END vsprite
+  ReThrow()
+ENDPROC vsprite
+-&gt;&gt;&gt;
+
+-&gt;&gt;&gt; PROC makeBob(nBob:PTR TO newBob) HANDLE
+-&gt; Create a Bob from the information given in nBob.  Use freeBob() to free this
+-&gt; GEL.  A VSprite is created for this bob.  This routine properly allocates
+-&gt; all double buffered information if it is required.
+PROC makeBob(nBob:PTR TO newBob) HANDLE
+  DEF bob=NIL:PTR TO bob, vsprite=NIL:PTR TO vs, rassize
+  rassize:=SIZEOF INT * nBob.wordWidth * nBob.lineHeight * nBob.rasDepth
+  NEW bob
+  bob.savebuffer:=NewM(rassize, MEMF_CHIP)  
+  vsprite:=makeVSprite([nBob.image, NIL, nBob.wordWidth, nBob.lineHeight,
+                        nBob.imageDepth, nBob.x, nBob.y, nBob.bFlags,
+                        nBob.hitMask, nBob.meMask]:newVSprite)
+  vsprite.planepick:=nBob.planePick
+  vsprite.planeonoff:=nBob.planeOnOff
+  vsprite.vsbob:=bob
+  bob.bobvsprite:=vsprite
+  bob.imageshadow:=vsprite.collmask
+  bob.bobflags:=0
+  bob.before:=NIL
+  bob.after:=NIL
+  bob.bobcomp:=NIL
+
+  IF nBob.dBuf
+    NEW bob.dbuffer
+    bob.dbuffer.bufbuffer:=NewM(rassize, MEMF_CHIP)
+  ELSE
+    bob.dbuffer:=NIL
+  ENDIF
+EXCEPT
+  IF vsprite THEN freeVSprite(vsprite)
+  IF bob
+    IF bob.dbuffer THEN Dispose(bob.dbuffer.bufbuffer)
+    END bob.dbuffer
+    Dispose(bob.savebuffer)
+  ENDIF
+  END bob
+  ReThrow()
+ENDPROC bob
+-&gt;&gt;&gt;
+
+-&gt;&gt;&gt; PROC makeComp(nBob:PTR TO newBob, nAnimComp:PTR TO newAnimComp) HANDLE
+-&gt; Create a Animation Component from the information given in nAnimComp and
+-&gt; nBob.  Use freeComp() to free this GEL.  makeComp() calls makeBob(), and
+-&gt; links the Bob into an AnimComp.
+PROC makeComp(nBob:PTR TO newBob, nAnimComp:PTR TO newAnimComp) HANDLE
+  DEF compBob=NIL:PTR TO bob, aComp=NIL:PTR TO ac020
+  NEW aComp
+  compBob:=makeBob(nBob)
+  compBob.before:=NIL
+  compBob.after:=NIL
+  compBob.bobcomp:=aComp  -&gt; Link &#x27;em up
+  aComp.animbob      := compBob
+  aComp.timeset      := nAnimComp.time  -&gt; Number of ticks active
+  aComp.ytrans       := nAnimComp.yt    -&gt; Offset relative to HeadOb
+  aComp.xtrans       := nAnimComp.xt
+  aComp.animcroutine := nAnimComp.routine
+  aComp.compflags    := nAnimComp.cFlags
+  aComp.timer        := 0
+  aComp.prevseq      := NIL
+  aComp.nextseq      := NIL
+  aComp.prevcomp     := NIL
+  aComp.nextcomp     := NIL
+  aComp.headob       := NIL
+  aComp.pad          := 0 -&gt; pad is unused but must be 0
+EXCEPT
+  -&gt; E-Note: Don&#x27;t need to freeBob(compBob)...
+  END aComp
+  ReThrow()
+ENDPROC GET_AC(aComp)
+-&gt;&gt;&gt;
+
+-&gt;&gt;&gt; PROC makeSeq(nBob:PTR TO newBob, nAnimSeq:PTR TO newAnimSeq) HANDLE
+-&gt; Create an Animation Sequence from the information given in nAnimSeq and
+-&gt; nBob.  Use freeSeq() to free this GEL.  This routine creates a linked list
+-&gt; of animation components which make up the animation sequence.  It links them
+-&gt; all up, making a circular list of the prevseq and nextseq pointers.  That is
+-&gt; to say, the first component of the sequence&#x27;s prevseq points to the last
+-&gt; component; the last component of the sequence&#x27;s nextseq points back to the
+-&gt; first component.  If dbuf is on, the underlying Bobs will be set up for
+-&gt; double buffering.  If singleImage is non-zero, the &#x27;images&#x27; pointer is
+-&gt; assumed to point to an array of only one image, instead of an array of
+-&gt; &#x27;count&#x27; images, and all Bobs will use the same image.
+PROC makeSeq(nBob:PTR TO newBob, nAnimSeq:PTR TO newAnimSeq) HANDLE
+  DEF seq, firstCompInSeq=NIL:PTR TO ac, seqComp=NIL:PTR TO ac,
+      lastCompMade=NIL:PTR TO ac, image_size, nAnimComp:newAnimComp
+  -&gt; Get the initial image.  This is the only image that is used if
+  -&gt; nAnimSeq.singleImage is non-zero.
+  nBob.image:=nAnimSeq.images
+  image_size:=nBob.lineHeight * nBob.imageDepth * nBob.wordWidth
+
+  -&gt; For each comp in the sequence
+  FOR seq:=0 TO nAnimSeq.count-1
+    nAnimComp.xt      := nAnimSeq.xt[seq]
+    nAnimComp.yt      := nAnimSeq.yt[seq]
+    nAnimComp.time    := nAnimSeq.times[seq]
+    nAnimComp.routine := nAnimSeq.routines[seq]
+    nAnimComp.cFlags  := nAnimSeq.cFlags
+    seqComp:=makeComp(nBob, nAnimComp)
+    seqComp.headob:=nAnimSeq.headOb
+    -&gt; Make a note of where the first component is.
+    IF firstCompInSeq=NIL THEN firstCompInSeq:=seqComp
+    -&gt; Link the component into the list
+    IF lastCompMade&lt;&gt;NIL THEN lastCompMade.nextseq:=seqComp
+    seqComp.nextseq:=NIL
+    seqComp.prevseq:=lastCompMade
+    lastCompMade:=seqComp
+    -&gt; If nAnimSeq.singleImage is zero, the image array has nAnimSeq.count
+    -&gt; images.
+    IF nAnimSeq.singleImage=0
+      -&gt; E-Note: image_size is in INTs so multiply up first
+      nBob.image:=nBob.image+(image_size*SIZEOF INT)
+    ENDIF
+  ENDFOR
+  -&gt; On the last component in the sequence, set Next/Prev to make the linked
+  -&gt; list a loop of components.
+  lastCompMade.nextseq:=firstCompInSeq
+  firstCompInSeq.prevseq:=lastCompMade
+EXCEPT
+  IF firstCompInSeq THEN freeSeq(firstCompInSeq, nBob.rasDepth)
+  ReThrow()
+ENDPROC firstCompInSeq
+-&gt;&gt;&gt;
+
+-&gt;&gt;&gt; PROC freeVSprite(vsprite:PTR TO vs)
+-&gt; Free the data created by makeVSprite().  Assumes images deallocated
+-&gt; elsewhere.
+PROC freeVSprite(vsprite:PTR TO vs)
+  DEF line_size, plane_size
+  line_size:=SIZEOF INT * vsprite.width
+  plane_size:=line_size * vsprite.height
+  Dispose(vsprite.borderline)
+  Dispose(vsprite.collmask)
+  END vsprite
+ENDPROC
+-&gt;&gt;&gt;
+
+-&gt;&gt;&gt; PROC freeBob(bob:PTR TO bob, rasdepth)
+-&gt; Free the data created by makeBob().  It&#x27;s important that rasdepth match the
+-&gt; depth you passed to makeBob() when this GEL was made.  Assumes images
+-&gt; deallocated elsewhere.
+PROC freeBob(bob:PTR TO bob, rasdepth)
+  DEF rassize
+  rassize:=SIZEOF INT * bob.bobvsprite.width * bob.bobvsprite.height * rasdepth
+  IF bob.dbuffer THEN Dispose(bob.dbuffer.bufbuffer)
+  END bob.dbuffer
+  Dispose(bob.savebuffer)
+  freeVSprite(bob.bobvsprite)
+  END bob
+ENDPROC
+-&gt;&gt;&gt;
+
+-&gt;&gt;&gt; PROC freeComp(myComp:PTR TO ac, rasdepth)
+-&gt; Free the data created by makeComp().  It&#x27;s important that rasdepth match
+-&gt; the depth you passed to makeComp() when this GEL was made. Assumes images
+-&gt; deallocated elsewhere.
+PROC freeComp(myComp:PTR TO ac, rasdepth)
+  freeBob(myComp.animbob, rasdepth)
+  END myComp
+ENDPROC
+-&gt;&gt;&gt;
+
+-&gt;&gt;&gt; PROC freeSeq(headComp:PTR TO ac, rasdepth)
+-&gt; Free the data created by makeSeq().  Complementary to makeSeq(), this
+-&gt; routine goes through the nextseq pointers and frees the Comps.  This routine
+-&gt; only goes forward through the list, and so it must be passed the first
+-&gt; component in the sequence, or the sequence must be circular (which is
+-&gt; guaranteed if you use makeSeq()).  It&#x27;s important that rasdepth match the
+-&gt; depth you passed to makeSeq() when this GEL was made.   Assumes images
+-&gt; deallocated elsewhere!
+PROC freeSeq(headComp:PTR TO ac, rasdepth)
+  DEF curComp:PTR TO ac, nextComp
+  -&gt; Break the nextseq loop, so we get a NIL at the end of the list.
+  headComp.prevseq.nextseq:=NIL
+
+  curComp:=headComp  -&gt; Get the start of the list
+  WHILE curComp&lt;&gt;NIL
+    nextComp:=curComp.nextseq
+    freeComp(curComp, rasdepth)
+    curComp:=nextComp
+  ENDWHILE
+ENDPROC
+-&gt;&gt;&gt;
+
+-&gt;&gt;&gt; PROC freeOb(headOb:PTR TO ao, rasdepth)
+-&gt; Free an animation object (list of sequences).  freeOb() goes through the
+-&gt; nextcomp pointers, starting at the AnimOb&#x27;s headcomp, and frees every
+-&gt; sequence.  It only goes forward.  It then frees the Object itself.  Assumes
+-&gt; images deallocated elsewhere!
+PROC freeOb(headOb:PTR TO ao, rasdepth)
+  DEF curSeq:PTR TO ac, nextSeq
+  curSeq:=headOb.headcomp  -&gt; Get the start of the list
+  WHILE curSeq&lt;&gt;NIL
+    nextSeq:=curSeq.nextcomp
+    freeSeq(curSeq, rasdepth)
+    curSeq:=nextSeq
+  ENDWHILE
+  END headOb
+ENDPROC
+-&gt;&gt;&gt;
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

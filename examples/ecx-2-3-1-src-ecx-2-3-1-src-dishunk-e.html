@@ -1,0 +1,273 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>dishunk.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-ecx-2-3-1-src.html">ECX_2.3.1-src</a> &rsaquo; dishunk.e</div><h1>File: <code>dishunk.e</code></h1><p class="meta">247 lines · project <a href="../examples/pkg-ecx-2-3-1-src.html"><code>ECX_2.3.1-src</code></a></p><p class="pathctx">ECX_2.3.1-src/ecx-2.3.1-src/dishunk.e</p><p class="prose">DisHunk by Leif Salomonsson is Copyright (c) 2003-2007. Released under ECX TOOLS LICENSE, see ECXTOOLSLICENSE.TXT</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/doshunks.html">dos/doshunks</a></li></ul></div><h2>Source</h2><pre class="code">-&gt; DisHunk by Leif Salomonsson is Copyright (c) 2003-2007.
+-&gt; Released under ECX TOOLS LICENSE, see ECXTOOLSLICENSE.TXT
+
+OPT PREPROCESS
+
+MODULE &#x27;dos/doshunks&#x27;
+MODULE &#x27;*ppcdisasm&#x27;
+
+DEF fbuf, flen, disasm
+DEF hunksizes:PTR TO LONG
+
+-&gt; EC uses ASR for Shr()!
+PROC shr(x,v)
+#ifndef ECX_VERSION
+   MOVE.L x, D0
+   MOVE.L v, D1
+   LSR.L D1, D0
+ENDPROC D0
+#endif
+#ifdef ECX_VERSION
+ENDPROC x SHR v
+#endif
+
+PROC main() HANDLE
+   DEF fh=NIL, ptr:PTR TO LONG, str[24]:STRING, rdargs=NIL, args[2]:ARRAY OF LONG
+
+   /* read agrs */
+   rdargs := ReadArgs(&#x27;FILE/A,&#x27;+
+                      &#x27;DIS/S&#x27;,
+                      args, NIL)
+
+   IF rdargs = NIL THEN Raise(&quot;ARGS&quot;)
+   flen := FileLength(args[])
+   IF flen = 0 THEN Raise(&quot;FLEN&quot;)
+   fbuf := NewR(flen+4)
+   fh := Open(args[], OLDFILE)
+   IF fh = NIL THEN Raise(&quot;OPEN&quot;)
+   IF Read(fh, fbuf, flen) &lt;&gt; flen THEN Raise(&quot;READ&quot;)
+   Close(fh) ; fh := NIL
+   ptr := fbuf
+
+   disasm := args[1]
+
+
+
+   WHILE (ptr := dohunk(ptr))
+   ENDWHILE
+
+
+EXCEPT DO
+
+   IF rdargs THEN FreeArgs(rdargs)
+   IF fh THEN Close(fh)
+
+   SELECT exception
+   CASE &quot;ARGS&quot;  ; WriteF(&#x27;Error: wrong arguments!\n&#x27;)
+   CASE &quot;OPEN&quot;  ; WriteF(&#x27;Error: could not open file!\n&#x27;)
+   CASE &quot;FLEN&quot;  ; WriteF(&#x27;Error: file is empty!\n&#x27;)
+   CASE &quot;MEM&quot;   ; WriteF(&#x27;Error: out of memory!\n&#x27;)
+   CASE NIL
+   DEFAULT      ; WriteF(&#x27;Error: unknown!\n&#x27;)
+   ENDSELECT
+
+ENDPROC exception
+
+PROC c0(ptr)
+   DEF c
+   c := Char(ptr)
+   IF (c &gt; 31) AND (c &lt; 128) THEN RETURN c
+ENDPROC &quot;.&quot;
+
+PROC c1(ptr)
+   DEF c
+   c := Char(ptr+1)
+   IF (c &gt; 31) AND (c &lt; 128) THEN RETURN c
+ENDPROC &quot;.&quot;
+
+PROC c2(ptr)
+   DEF c
+   c := Char(ptr+2)
+   IF (c &gt; 31) AND (c &lt; 128) THEN RETURN c
+ENDPROC &quot;.&quot;
+
+PROC c3(ptr)
+   DEF c
+   c := Char(ptr+3)
+   IF (c &gt; 31) AND (c &lt; 128) THEN RETURN c
+ENDPROC &quot;.&quot;
+
+
+PROC dohunk(ptr:PTR TO LONG) HANDLE
+   DEF long, pc:PTR TO LONG, clen, str[100]:STRING, r=NIL, a, b, c=NIL, hunknum
+   long := ptr[]++
+   SELECT long
+   CASE HUNK_UNIT ; PrintF(&#x27;HUNK_UNIT \s\n&#x27;, ptr+4) ; r := ptr + 4 + Mul(ptr[],4)
+   CASE HUNK_NAME ; PrintF(&#x27;HUNK_NAME \s\n&#x27;, ptr+4) ; r := ptr + 4 + Mul(ptr[],4)
+   CASE HUNK_CODE ; PrintF(&#x27;HUNK_CODE\n   size: \d bytes\n&#x27;, Mul(4,ptr[]))
+      clen := ptr[]++
+      pc := ptr
+      r := ptr + Mul(4,clen)
+      IF disasm
+         WHILE clen
+            dodis(pc-ptr, pc[], str)
+           PrintF(&#x27;L\z\h[7]: \l\s[24] [\z\r\h[8]] \a\c\c\c\c\a (\d\n&#x27;,
+            pc-ptr, str, pc[], c0(pc), c1(pc), c2(pc), c3(pc), pc-ptr)
+            clen--
+            pc++
+            IF CtrlC() THEN Raise(0)
+         ENDWHILE
+      ENDIF
+   CASE $3F7 ; PrintF(&#x27;HUNK_PPC_CODE\n   size: \d bytes\n&#x27;, Mul(4,ptr[]))
+      clen := ptr[]++
+      pc := ptr
+      r := ptr + Mul(4,clen)
+      IF disasm
+         WHILE clen
+            dodis(pc-ptr, pc[], str)
+           PrintF(&#x27;L\z\h[7]: \l\s[24] [\z\r\h[8]] \a\c\c\c\c\a\n&#x27;,
+            pc-ptr, str, pc[], c0(pc), c1(pc), c2(pc), c3(pc))
+            clen--
+            pc++
+            IF CtrlC() THEN Raise(0)
+         ENDWHILE
+      ENDIF
+   CASE HUNK_DATA ; PrintF(&#x27;HUNK_DATA\n   size: \d bytes\n&#x27;, Mul(4,ptr[]))
+      clen := ptr[]++
+      pc := ptr
+      r := ptr + Mul(4,clen)
+      IF disasm
+         WHILE clen
+            PrintF(&#x27;L\z\h[7]: $\h[8] \a\c\c\c\c\a\n&#x27;,
+            pc-ptr, pc[], c0(pc), c1(pc), c2(pc), c3(pc))
+            clen--
+            pc++
+            IF CtrlC() THEN Raise(0)
+         ENDWHILE
+      ENDIF
+   CASE HUNK_BSS ; PrintF(&#x27;HUNK_BSS\n   size: \d bytes\n&#x27;, Mul(4,ptr[]++))
+      r := ptr
+   CASE HUNK_ABSRELOC32 ; PrintF(&#x27;HUNK_(ABS)RELOC32\n&#x27;)
+      WHILE (a := ptr[]++)
+         PrintF(&#x27;   \d entrys to hunk \d\n&#x27;, a, hunknum :=  ptr[]++)
+         -&gt;ptr := ptr + Mul(4,a)
+         FOR b := 0 TO a-1
+				IF ptr[] &lt; 0 
+					PrintF(&#x27;   broken offset $\h\n&#x27;,  ptr[])
+				ELSEIF ptr[] &gt; Mul(hunksizes[hunknum], 4)	
+					PrintF(&#x27;   broken offset $\h\n&#x27;,  ptr[])
+				ELSE	
+					IF disasm THEN PrintF(&#x27;      $\h\n&#x27;, ptr[])
+            ENDIF
+            ptr++
+         ENDFOR
+      ENDWHILE
+      r := ptr
+   CASE HUNK_RELOC16
+   CASE HUNK_RELRELOC16
+   CASE HUNK_RELOC8
+   CASE HUNK_RELRELOC8
+   CASE HUNK_EXT ; PrintF(&#x27;HUNK_EXT\n&#x27;)
+      WHILE ptr[]
+         a := Char(ptr)   -&gt; type
+         b := Char(ptr+3) -&gt; len of name in longs
+         ptr++
+         c := NIL
+         SELECT 256 OF a
+         CASE EXT_SYMB      ; PrintF(&#x27;   SYMB     &#x27;)
+         CASE EXT_DEF       ; PrintF(&#x27;   DEF      &#x27;) ; c++
+         CASE EXT_ABS       ; PrintF(&#x27;   ABS      &#x27;)
+         CASE EXT_REF32     ; PrintF(&#x27;   REF32    &#x27;)
+         CASE EXT_REF16     ; PrintF(&#x27;   REF16    &#x27;)
+         CASE EXT_DEXT32    ; PrintF(&#x27;   DEXT32   &#x27;)
+         CASE EXT_DEXT16    ; PrintF(&#x27;   DEXT16   &#x27;)
+         CASE EXT_RELREF32  ; PrintF(&#x27;   RELREF32 &#x27;)
+         DEFAULT            ; PrintF(&#x27;   ???      &#x27;)
+         ENDSELECT
+         PrintF(&#x27;\l\s[20] &#x27;, ptr)
+         ptr := ptr + (b*4) -&gt; skip name
+         a := ptr[]++ -&gt; nr of offsets
+         IF c = NIL THEN PrintF(&#x27;(\d references)&#x27;, a)
+         PrintF(&#x27;\n&#x27;)
+         WHILE a
+            IF disasm THEN PrintF(&#x27;                                 $\h\n&#x27;, ptr[])
+            ptr++
+            a--
+         ENDWHILE
+         IF CtrlC() THEN Raise(0)
+     ENDWHILE
+     ptr++ -&gt; skip NIL-long
+     r := ptr
+   CASE HUNK_SYMBOL ; PrintF(&#x27;HUNK_SYMBOL\n&#x27;)
+      WHILE (a := ptr[]++) -&gt; name len in longs
+         PrintF(&#x27;   \s : &#x27;, ptr)
+         ptr := ptr + (a*4)
+         PrintF(&#x27;   $\h\n&#x27;, ptr[]++)
+      ENDWHILE
+      r := ptr
+   CASE HUNK_DEBUG ; PrintF(&#x27;HUNK_DEBUG\n&#x27;)
+      a := ptr[]++
+      PrintF(&#x27;   size: \d bytes\n&#x27;, Mul(a,4))
+      -&gt;ptr := ptr + 2
+      WHILE a
+         IF disasm THEN PrintF(&#x27;   $\z\h[8] \a\c\c\c\c\a\n&#x27;, ptr[], c0(ptr),c1(ptr),c2(ptr),c3(ptr))
+         ptr++
+         a--
+         IF CtrlC() THEN Raise(0)
+      ENDWHILE
+      r := ptr
+   CASE HUNK_END ; PrintF(&#x27;HUNK_END\n&#x27;) ; r := ptr
+   CASE HUNK_HEADER ; PrintF(&#x27;HUNK_HEADER\n&#x27;)
+      a := 0
+      WHILE ptr[]
+         PrintF(&#x27;   hunk \d \a\s\a\n&#x27;, a, ptr+4)
+         ptr := ptr + 4 + Mul(4,ptr[])
+      ENDWHILE
+      ptr++
+
+      b := ptr[]++ -&gt; nr of hunks
+      PrintF(&#x27;   nr of hunks: \d (\d-\d)\n&#x27;, b, ptr[0], ptr[1])
+      ptr := ptr + 8 -&gt; skip fisrt/last hunk nums
+
+		hunksizes :=  ptr  -&gt; save for reloc debug
+
+      FOR a := 0 TO b-1
+         PrintF(&#x27;   hunk \d size: \d bytes\n&#x27;, a, Mul(4,ptr[]++))
+      ENDFOR
+
+      r := ptr
+   CASE HUNK_OVERLAY
+   CASE HUNK_BREAK
+   CASE HUNK_DREL32
+   CASE HUNK_DREL16
+   CASE HUNK_DREL8
+   CASE HUNK_LIB
+   CASE HUNK_INDEX
+   CASE HUNK_RELOC32SHORT
+   CASE HUNK_RELRELOC32
+   CASE HUNK_ABSRELOC16
+   CASE NIL ; PrintF(&#x27;done.\n&#x27;) ; RETURN NIL
+   DEFAULT
+      PrintF(&#x27;HUNK_unknown! ID: $\h\n&#x27;, long) ; r := NIL
+   ENDSELECT
+EXCEPT
+   RETURN NIL
+ENDPROC r
+
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

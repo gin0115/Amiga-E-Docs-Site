@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>testhelp.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-newgui3-1updat.html">newgui3_1updat</a> &rsaquo; testhelp.e</div><h1>File: <code>testhelp.e</code></h1><p class="meta">70 lines · project <a href="../examples/pkg-newgui3-1updat.html"><code>newgui3_1updat</code></a></p><p class="pathctx">newgui3_1updat/NewGUI/Src/Examples/testhelp.e</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/newgui.html">newgui/newgui</a></li><li><a href="../modules/ng-showerror.html">newgui/ng_showerror</a></li></ul></div><h2>Source</h2><pre class="code">OPT     OSVERSION = 37
+OPT     LARGE
+
+MODULE  &#x27;newgui/newgui&#x27;
+MODULE  &#x27;newgui/ng_showerror&#x27;
+
+CONST   GUI_MAIN = 1
+
+DEF     gui:PTR TO LONG,
+        gh=NIL
+
+PROC main()     HANDLE
+ DEF top,bottom
+  top:=[COLS,
+         [SPACEH],
+-&gt;                                 .--------- INFO!
+-&gt;                                ||  .------ HOTKEY (NOTE: &quot;a&quot; is diffrent to &quot;A&quot; - CASE INSENSITIVE)
+-&gt;                                || ||    .- NODE (@node ...) of the AmigaGUIDE-Document for Online-Help
+-&gt;                                \/ \/   \/
+         [BUTTON,{change},&#x27;GUI _A&#x27;,0,&#x27;a&#x27;,&#x27;CH_0A&#x27;],
+         [SPACEH],
+         [BUTTON,{change},&#x27;GUI _B&#x27;,1,&#x27;b&#x27;,&#x27;CH_0B&#x27;],
+         [SPACEH],
+         [BUTTON,{change},&#x27;GUI _C&#x27;,2,&#x27;c&#x27;,&#x27;CH_0C&#x27;],
+         [SPACEH]
+       ]
+  bottom:=[BUTTON,{showguide},&#x27;_Show Guide&#x27;,NIL,&#x27;s&#x27;]
+
+  gui:=[
+         [ROWS,top,[SPACE],[SLIDE,{ignore},&#x27;Colors:&#x27;,FALSE,1,8,3,5,&#x27;&#x27;,NIL,NIL,&#x27;CH_0D&#x27;],bottom],
+         [ROWS,top,[SPACE],[CHECK,{ignore},&#x27;Ignore case&#x27;,TRUE,FALSE,NIL,NIL,&#x27;CH_0E&#x27;],bottom],
+         [ROWS,top,[SPACE],[PALETTE,{ignore},&#x27;Palette:&#x27;,3,5,2,0,0,NIL,&#x27;CH_0F&#x27;],bottom]
+       ]
+  newguiA([
+        NG_WINDOWTITLE, &#x27;NewGUI - Demo&#x27;,
+        NG_REXXNAME,    &#x27;NEWGUI&#x27;,               -&gt; Name of the ARexx-Port
+        NG_REXXPROC,    {rexxmsg},              -&gt; Procedure to parse the ARexx-Messages
+        NG_HELPGUIDE,   &#x27;edocs:e.guide&#x27;,        -&gt; Name from the Amiga-Guide-Online-Help (!!!! Change to your e.doc!!!)
+        NG_GUIID,       GUI_MAIN,               -&gt; Gui-ID
+        NG_GUI,         gui[],                  -&gt; Gui-Description (PTR to a List!!)
+        NIL,NIL],{getgui})
+EXCEPT DO
+ IF exception THEN ng_showerror(exception)
+CleanUp(exception)
+ENDPROC
+
+PROC ignore()   IS EMPTY                        -&gt; Do nothing (NOP)
+
+PROC getgui(g,s)        IS gh:=g                -&gt; Get the PTR to the Guihandle (s = screen-PTR!!!)
+
+PROC change(index,g)
+ ng_setattrsA([NG_GUI,  gh,                     -&gt; NG_GUI is ALWAYS (!) the MAIN-Guihandle (the first opened!)
+        NG_CHANGEGUI,   NG_NEWGUI,              -&gt; Change the GUI, ACTION = New GUI-Description (NG_NEWGUI)
+        NG_GUIID,       GUI_MAIN,               -&gt; Guihandle from the gui to change!
+        NG_NEWDATA,     gui[index],             -&gt; The NEW Gui DESCRIPTION (!) no Guihandle!
+        NIL,NIL])
+ENDPROC
+
+PROC showguide()
+ ng_setattrsA([NG_GUI,  gh,                     -&gt; NG_GUI = Mail-GUIhandle!
+        NG_SHOWGUIDE,   TRUE,                   -&gt; Show the HELP-Guide (main-node!)
+        NIL,NIL])
+ENDPROC
+
+PROC rexxmsg(s,mes=NIL)                         -&gt; Procedure to parese the ARexx-Message
+ WriteF(&#x27;\nRexx-Msg: &quot;\s&quot;&#x27;,s)                   -&gt; Display the receives String! 
+
+  mes:=NIL                                      -&gt; Reset the message-PTR
+ENDPROC  StrCmp(&#x27;QUIT&#x27;,s),0,&#x27;Reply-Message&#x27;     -&gt; Return-Codes ect... (look AFC/Rexxer-Doc for details!)
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

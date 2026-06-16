@@ -1,0 +1,520 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>hybrid.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-ignite-unf-mos-r2.html">ignite-unf-mos-r2</a> &rsaquo; hybrid.e</div><h1>File: <code>hybrid.e</code></h1><p class="meta">494 lines · project <a href="../examples/pkg-ignite-unf-mos-r2.html"><code>ignite-unf-mos-r2</code></a></p><p class="pathctx">ignite-unf-mos-r2/ignite-unf-mos/source/ignite/stuff/hybrid.e</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/colorwheel.html">colorwheel</a></li><li><a href="../modules/cybergraphics.html">morphos/cybergraphics</a></li></ul></div><h2>Source</h2><pre class="code">OPT PREPROCESS
+
+MODULE &#x27;morphos/cybergraphics&#x27;
+MODULE &#x27;colorwheel&#x27;
+
+
+CONST CALCW=800,HEIGHT=600, DEPTH=500
+
+PROC main() HANDLE
+  DEF xmax=CALCW!:DOUBLE,ymax=HEIGHT-1!:DOUBLE
+  DEF width=3.4:DOUBLE, height=3.4:DOUBLE
+  DEF left:DOUBLE,top:DOUBLE
+  DEF w,x,y,xr:DOUBLE
+  DEF r, g, b
+  DEF fx:DOUBLE, fy:DOUBLE, xc:DOUBLE, yc:DOUBLE
+  DEF _xmax:DOUBLE, _ymax:DOUBLE
+  DEF z, zr:DOUBLE
+
+
+
+  cybergfxbase := OpenLibrary(&#x27;cybergraphics.library&#x27;, 0)
+  IF cybergfxbase = NIL THEN Throw(&quot;LIB&quot;, &#x27;cybergraphics&#x27;)
+
+  colorwheelbase := OpenLibrary(&#x27;gadgets/colorwheel.gadget&#x27;, 0)
+  IF colorwheelbase = NIL THEN Throw(&quot;LIB&quot;, &#x27;colorwheel&#x27;)
+
+  IF w:=OpenW(20,11,CALCW+30,HEIGHT+40,$200,$E,&#x27;Hybrid? by LS&#x27;,NIL,1,NIL)
+    _xmax := !1.0 / xmax
+    _ymax := !1.0 / ymax
+    FOR z := 1 TO 1 STEP 1
+      width := !width+(!width*0.2)
+      height := !height+(!height*0.2)
+      left := !0.0-(!width*0.5)
+      top := !0.0-(!height*0.5)
+      FOR x:=0 TO CALCW-1
+         xr:=x!*_xmax*width+left
+         FOR y:=0 TO HEIGHT-1
+            fx := xr
+            fy := y!*_ymax*height+top
+            xc := Fsin(!fx)
+            yc := Fsin(!fy)
+            r, g, b := realflame(fx,fy, xc, yc,10, 5.0)
+            debug:                         WriteRGBPixel(stdrast, x+20,y+25, Long([0,r SHR 24,g SHR 24,b SHR 24]:CHAR))
+         ENDFOR
+      ENDFOR
+    ENDFOR
+    WaitIMessage(w)
+    CloseW(w)
+  ELSE
+     WriteF(&#x27;could not open window!\n&#x27;)
+  ENDIF
+
+EXCEPT DO
+
+   IF colorwheelbase THEN CloseLibrary(colorwheelbase)
+   IF cybergfxbase THEN CloseLibrary(cybergfxbase)
+
+ENDPROC
+
+#define fMin(a,b) (IF ! (a) &lt; (b) THEN a ELSE b)
+#define fMax(a,b) (IF ! (a) &gt; (b) THEN a ELSE b)
+
+
+PROC flamediv(x:DOUBLE,y:DOUBLE,xc:DOUBLE,yc:DOUBLE,it,tresh:DOUBLE)
+  DEF xtemp:DOUBLE,rgb[3]:ARRAY OF LONG, t=0
+  DEF a:DOUBLE, a2:DOUBLE, z0=0.0:DOUBLE, z1=0.0:DOUBLE
+
+  tresh := ! Fsqrt(!x*x+(!y*y)) * tresh
+
+  -&gt;xc := ! xc * 2.0 - 1.0
+  -&gt;yc := ! yc * 2.0 - 1.0
+  REPEAT
+    a := ! (!x*xc)+(!y*yc)/xc
+    y := ! (!x*yc)+(!y*xc)/yc
+    -&gt;a := ! (!x/xc)+(!y/yc)*xc
+    -&gt;y := ! (!x/yc)+(!y/xc)*yc
+    -&gt;a := ! (!xc/x)+(!yc/y)*xc
+    -&gt;y := ! (!yc/x)+(!xc/y)*yc
+    x := a
+    z0 := ! z0 + fMin(! tresh-(!x*x), 0.0)
+    z1 := ! z1 + fMin(! tresh-(!y*y), 0.0)
+    t++
+  UNTIL (t &gt; it) OR (! x*y &gt;= tresh)
+  z0 := ! z0 / tresh / (it!) * 65535.0
+  z1 := ! z1 / tresh / (it!) * 65535.0
+  ConvertHSBToRGB([!z1! SHL 16, -1, !z0! SHL 16]:LONG, rgb)
+ENDPROC rgb[0], rgb[1], rgb[2]
+
+PROC flameGrey(x:DOUBLE,y:DOUBLE,xc:DOUBLE,yc:DOUBLE,it,tresh:DOUBLE)
+  DEF t=0
+  DEF a:DOUBLE, z0=0.1:DOUBLE
+  DEF r
+
+  WHILE (t++ &lt; it) AND (!x*y &lt; tresh)
+    a := ! (!x*xc)+(!y*yc)/xc
+    y := ! (!x*yc)+(!y*xc)/yc
+    x := a
+    z0 := ! z0 + fMax(Fsqrt(!tresh-(!x*y)*10.0), 0.0)
+  ENDWHILE
+  r := ! z0 / tresh * 100000000.0 / (it!) !
+ENDPROC r SHL 8, r SHL 8, r SHL 8
+
+PROC flameRGB(x:DOUBLE,y:DOUBLE,xc:DOUBLE,yc:DOUBLE,it,tresh:DOUBLE)
+  DEF t=0, zc:DOUBLE
+  DEF a:DOUBLE, b:DOUBLE, c:DOUBLE
+  DEF z0=0.0:DOUBLE, z1=0.0:DOUBLE, z2=0.0:DOUBLE
+  DEF z:DOUBLE, ir, ig, ib
+
+  tresh := ! Fsqrt(!x*x+(!y*y)) * tresh
+
+  zc := ! xc + yc * 0.5
+  z := ! x + y * 0.5
+
+  WHILE (t++ &lt; it) -&gt;AND (!x*y &lt; tresh)
+    a := ! (!x*zc)+(!y*yc)+(!z*yc)/xc
+    b := ! (!x*zc)+(!y*xc)+(!z*yc)/yc
+    c := ! (!x*xc)+(!z*zc)+(!z*xc)/zc
+    x := a
+    y := b
+    z := c
+    z0 := ! z0 + fMax(Fsqrt(!tresh-(!x*x)), 0.0)
+    z1 := ! z1 + fMax(Fsqrt(!tresh-(!y*y)), 0.0)
+    z2 := ! z2 + fMax(Fsqrt(!tresh-(!z*z)), 0.0)
+  ENDWHILE
+  -&gt;ir := ! z0 / tresh * 100000000.0 / (it!) !
+  -&gt;ig := ! z1 / tresh * 100000000.0 / (it!) !
+  -&gt;ib := ! z2 / tresh * 100000000.0 / (it!) !
+  ir := ! z0 / Fsqrt(!tresh*(it!)) * 6000000.0!
+  ig := ! z1 / Fsqrt(!tresh*(it!)) * 6000000.0!
+  ib := ! z2 / Fsqrt(!tresh*(it!)) * 6000000.0!
+ENDPROC ir SHL 8, ig SHL 8, ib SHL 8
+
+PROC flameRGB2(x:DOUBLE,y:DOUBLE,xc:DOUBLE,yc:DOUBLE,it,tresh:DOUBLE)
+  DEF t=0, zc:DOUBLE
+  DEF a:DOUBLE, b:DOUBLE, c:DOUBLE
+  DEF z0=0.0:DOUBLE, z1=0.0:DOUBLE, z2=0.0:DOUBLE
+  DEF z:DOUBLE, ir, ig, ib
+
+  tresh := ! Fsqrt(!x*x+(!y*y)) * tresh
+
+  zc := Flog(! Fexp(xc) + Fexp(yc))
+  z := Flog(! Fexp(x) + Fexp(y))
+
+
+  WHILE (t++ &lt; it) -&gt;AND (!x*y &lt; tresh)
+    a := ! (!x*xc)+(!y*zc)+(!z*zc)/xc
+    b := ! (!x*yc)+(!y*yc)+(!z*xc)/yc
+    c := ! (!x*zc)+(!y*xc)+(!z*yc)/zc
+    x := a
+    y := b
+    z := c
+    z0 := ! z0 + (!tresh-z0/tresh*fMax(!tresh-(!x*x), 0.0))
+    z1 := ! z1 + (!tresh-z1/tresh*fMax(!tresh-(!y*y), 0.0))
+    z2 := ! z2 + (!tresh-z2/tresh*fMax(!tresh-(!z*z), 0.0))
+  ENDWHILE
+  ir := 16000000 - (! tresh - z0 / tresh * 16000000.0!)
+  ig := 16000000 - (! tresh - z1 / tresh * 16000000.0!)
+  ib := 16000000 - (! tresh - z2 / tresh * 16000000.0!)
+ENDPROC ir SHL 8, ig SHL 8, ib SHL 8
+
+PROC flameRGB2b(x:DOUBLE,y:DOUBLE,xc:DOUBLE,yc:DOUBLE,it,tresh:DOUBLE)
+  DEF t=0, zc:DOUBLE
+  DEF a:DOUBLE, b:DOUBLE, c:DOUBLE
+  DEF z0=0.1:DOUBLE, z1=0.1:DOUBLE, z2=0.1:DOUBLE
+  DEF z:DOUBLE, ir, ig, ib
+
+  tresh := ! Fsqrt(!x*x+(!y*y)) * tresh
+
+  z := Fsqrt(! x*x + (!y*y))
+  zc := Fsqrt(!xc*xc+(!yc*yc))
+
+  z := Fsin(z)
+  zc := Fsin(zc)
+
+  WHILE (t++ &lt; it) -&gt;AND (!x*y &lt; tresh)
+    a := ! x*x+(!y*z)/xc
+    b := ! y*y+(!x*z)/yc
+    c := ! z*z+(!x*y)/zc
+    x := a
+    y := b
+    z := c
+    z0 := ! z0 + (!tresh-z0/tresh*fMax(!tresh-(!x*x), 0.0))
+    z1 := ! z1 + (!tresh-z1/tresh*fMax(!tresh-(!y*y), 0.0))
+    z2 := ! z2 + (!tresh-z2/tresh*fMax(!tresh-(!z*z), 0.0))
+  ENDWHILE
+  ir := 16000000 - (! tresh - z0 / tresh * 16000000.0!)
+  ig := 16000000 - (! tresh - z1 / tresh * 16000000.0!)
+  ib := 16000000 - (! tresh - z2 / tresh * 16000000.0!)
+ENDPROC ir SHL 8, ig SHL 8, ib SHL 8
+
+PROC flameRGB2c(x:DOUBLE,y:DOUBLE,xc:DOUBLE,yc:DOUBLE,it,tresh:DOUBLE)
+  DEF t=0, zc:DOUBLE
+  DEF a:DOUBLE, b:DOUBLE, c:DOUBLE
+  DEF z0=0.0:DOUBLE, z1=0.0:DOUBLE, z2=0.0:DOUBLE
+  DEF z:DOUBLE, ir, ig, ib
+
+  tresh := ! Fsqrt(!x*x+(!y*y)) * tresh
+
+  z := Fsqrt(! x*x + (!y*y))
+  zc := Fsqrt(!xc*xc+(!yc*yc))
+
+  z := Fsin(z)
+  zc := Fcos(zc)
+
+  WHILE (t++ &lt; it) -&gt;AND (!x*y &lt; tresh)
+    a := ! (!x*xc)+(!y*yc)+(!z*zc)/(xc)
+    b := ! (!x*yc)+(!y*zc)+(!z*xc)/(yc)
+    c := ! (!x*zc)+(!y*xc)+(!z*yc)/(zc)
+    x := a
+    y := b
+    z := c
+    z0 := ! z0 + (!tresh-z0/tresh*fMax(!tresh-(!x*x), 0.0))
+    z1 := ! z1 + (!tresh-z1/tresh*fMax(!tresh-(!y*y), 0.0))
+    z2 := ! z2 + (!tresh-z2/tresh*fMax(!tresh-(!z*z), 0.0))
+  ENDWHILE
+  ir := 16000000 - (! tresh - z0 / tresh * 16000000.0!)
+  ig := 16000000 - (! tresh - z1 / tresh * 16000000.0!)
+  ib := 16000000 - (! tresh - z2 / tresh * 16000000.0!)
+ENDPROC ir SHL 8, ig SHL 8, ib SHL 8
+
+
+PROC flameRGB3(x:DOUBLE,y:DOUBLE,xc:DOUBLE,yc:DOUBLE,it,tresh:DOUBLE)
+  DEF t=0, zc:DOUBLE
+  DEF a:DOUBLE, b:DOUBLE, c:DOUBLE
+  DEF z0=0.0:DOUBLE, z1=0.0:DOUBLE, z2=0.0:DOUBLE
+  DEF z0max:DOUBLE, z1max:DOUBLE, z2max:DOUBLE
+  DEF z:DOUBLE, ir, ig, ib
+
+  tresh := ! Fsqrt(!x*x+(!y*y)) * tresh
+
+  zc := ! xc + yc * 0.5
+  z := ! x + y * 0.5
+
+  WHILE (t++ &lt; it) -&gt;AND (!x*y &lt; tresh)
+    a := ! (!x*xc)+(!y*zc)+(!z*zc)/xc
+    b := ! (!x*yc)+(!y*yc)+(!z*xc)/yc
+    c := ! (!x*zc)+(!y*xc)+(!z*yc)/zc
+    x := a
+    y := b
+    z := c
+    IF x &lt; 0.0
+       z0 := ! z0 + fMax(Fsqrt(!tresh-(!x*x)), 0.0)
+    ELSE
+       z0 := ! z0 - fMax(Fsqrt(!tresh-Fabs(!x*x)), 0.0)
+    ENDIF
+    IF y &lt; 0.0
+       z1 := ! z1 + fMax(Fsqrt(!tresh-(!y*y)), 0.0)
+    ELSE
+       z1 := ! z1 - fMax(Fsqrt(!tresh-Fabs(!y*y)), 0.0)
+    ENDIF
+    IF z &lt; 0.0
+       z2 := ! z2 + fMax(Fsqrt(!tresh-(!z*z)), 0.0)
+    ELSE
+       z2 := ! z2 - fMax(Fsqrt(!tresh-Fabs(!z*z)), 0.0)
+    ENDIF
+  ENDWHILE
+  -&gt;ir := ! z0 / tresh * 100000000.0 / (it!) !
+  -&gt;ig := ! z1 / tresh * 100000000.0 / (it!) !
+  -&gt;ib := ! z2 / tresh * 100000000.0 / (it!) !
+  ir := ! z0 / Fsqrt(!tresh*(it!)) * 6000000.0!
+  ig := ! z1 / Fsqrt(!tresh*(it!)) * 6000000.0!
+  ib := ! z2 / Fsqrt(!tresh*(it!)) * 6000000.0!
+ENDPROC ir SHL 8, ig SHL 8, ib SHL 8
+
+PROC realflame(x:DOUBLE,y:DOUBLE,xc:DOUBLE,yc:DOUBLE,it,tresh:DOUBLE)
+  DEF xtemp:DOUBLE,rgb[3]:ARRAY OF LONG, t=0
+  DEF a:DOUBLE, a2:DOUBLE, z0=0.1:DOUBLE, z1=0.1:DOUBLE
+  xc := !1.0/xc
+  yc := !1.0/yc
+
+   tresh := ! Fsqrt(!x*x+(!y*y)) * tresh
+
+  REPEAT
+    a := ! (!x*0.9)+(!y*-0.9)+xc
+    y := ! (!x*-0.9)+(!y*0.9)+yc
+    x := a
+    z0 := ! z0 + fMax(! x * z0, 0.0)
+    z1 := ! z1 + fMin(! y * z1, 0.0)
+    t++
+  UNTIL (t &gt; it) OR (! x*y &lt;= tresh)
+  ConvertHSBToRGB([!z0 * 65536.0! SHL 16, -1, !z1 * 65536.0 ! SHL 16]:LONG, rgb)
+ENDPROC rgb[0], rgb[1], rgb[2]
+
+-&gt; measure how many times x, y, z changes direction *NOPE*
+-&gt; measures maximum change in direction
+PROC flameRGB4(x:DOUBLE,y:DOUBLE,xc:DOUBLE,yc:DOUBLE,it,tresh:DOUBLE)
+  DEF t=0, zc:DOUBLE
+  DEF a:DOUBLE, b:DOUBLE, c:DOUBLE
+  DEF z0=0.0:DOUBLE, z1=0.0:DOUBLE, z2=0.0:DOUBLE
+  DEF z:DOUBLE, ir, ig, ib
+  DEF dx=-1, dy=-1, dz=-1
+
+  tresh := ! Fsqrt(!x*x+(!y*y)) * tresh
+
+  zc := (! xc + yc * 0.5)
+  z := (! x + y * 0.5)
+
+  WHILE (t++ &lt; it) -&gt;AND (!x*y &lt; tresh)
+    a := ! (!x*xc)+(!y*zc)+(!z*yc)/xc
+    b := ! (!x*yc)+(!y*xc)+(!z*zc)/yc
+    c := ! (!x*zc)+(!y*yc)+(!z*xc)/zc
+    IF dx &lt; 0
+       IF ! x &gt; a
+          dx := 1
+          z0 := fMax(z0, Fsqrt(!x-a))
+       ENDIF
+    ELSE
+       IF ! x &lt; a
+          dx := -1
+          z0 := fMax(z0, Fsqrt(!a-x))
+       ENDIF
+    ENDIF
+    IF dy &lt; 0
+       IF ! y &gt; b
+          dy := 1
+          z1 := fMax(z1, Fsqrt(!y-b))
+       ENDIF
+    ELSE
+       IF ! y &lt; b
+          dy := -1
+          z1 := fMax(z1, Fsqrt(!b-y))
+       ENDIF
+    ENDIF
+    IF dz &lt; 0
+       IF ! z &gt; c
+          dy := 1
+          z2 := fMax(z2, Fsqrt(!z-c))
+       ENDIF
+    ELSE
+       IF ! z &lt; c
+          dz := -1
+          z2 := fMax(z2, Fsqrt(!c-z))
+       ENDIF
+    ENDIF
+
+    x := a
+    y := b
+    z := c
+    -&gt;z0 := ! z0 + (!tresh-z0/tresh*fMax(!tresh-(!x*x), 0.0))
+    -&gt;z1 := ! z1 + (!tresh-z1/tresh*fMax(!tresh-(!y*y), 0.0))
+    -&gt;z2 := ! z2 + (!tresh-z2/tresh*fMax(!tresh-(!z*z), 0.0))
+  ENDWHILE
+  ir := (!z0 * 16000000.0 / tresh)!
+  ig := (!z1 * 16000000.0 / tresh)!
+  ib := (!z2 * 16000000.0 / tresh)!
+ENDPROC ir SHL 8, ig SHL 8, ib SHL 8
+
+
+PROC flameRGB2d(x:DOUBLE,y:DOUBLE,xc:DOUBLE,yc:DOUBLE,it,tresh:DOUBLE)
+  DEF t=0, zc:DOUBLE
+  DEF a:DOUBLE, b:DOUBLE, c:DOUBLE
+  DEF z0=0.0:DOUBLE, z1=0.0:DOUBLE, z2=0.0:DOUBLE
+  DEF z:DOUBLE, ir, ig, ib
+
+  zc := Fsqrt(! xc*xc + (!yc*yc))
+  z := Fsqrt(! x*x + (!y*y))
+
+  tresh := ! Fsqrt(!x*x+(!y*y)) * tresh
+
+  WHILE (t++ &lt; it) -&gt;AND (!x*y &lt; tresh)
+    a := ! x+(!y*z*xc)/xc
+    b := ! y+(!x*z*yc)/yc
+    c := ! z+(!x*y*zc)/zc
+    x := a
+    y := b
+    z := c
+    z0 := ! z0 + (!tresh-z0/tresh*fMax(!tresh-(!x*x), 0.0))
+    z1 := ! z1 + (!tresh-z1/tresh*fMax(!tresh-(!y*y), 0.0))
+    z2 := ! z2 + (!tresh-z2/tresh*fMax(!tresh-(!z*z), 0.0))
+  ENDWHILE
+  ir := 16000000 - (! tresh - z0 / tresh * 16000000.0!)
+  ig := 16000000 - (! tresh - z1 / tresh * 16000000.0!)
+  ib := 16000000 - (! tresh - z2 / tresh * 16000000.0!)
+ENDPROC ir SHL 8, ig SHL 8, ib SHL 8
+
+PROC flameRGB2e(x:DOUBLE,y:DOUBLE,xc:DOUBLE,yc:DOUBLE,it,tresh:DOUBLE)
+  DEF t=0, zc:DOUBLE
+  DEF a:DOUBLE, b:DOUBLE, c:DOUBLE
+  DEF z0=0.0:DOUBLE, z1=0.0:DOUBLE, z2=0.0:DOUBLE
+  DEF z:DOUBLE, ir, ig, ib
+
+  z := Fsin(Fsqrt(! x*x + (!y*y)))
+  zc := Fsin(Fsqrt(! xc*xc + (!yc*yc)))
+
+  tresh := ! Fsqrt(!x*x+(!y*y)) * tresh
+
+  WHILE (t++ &lt; it)
+    a := ! x+(!y*z*xc)/xc
+    b := ! y+(!x*z*yc)/yc
+    c := ! z+(!x*y*zc)/zc
+    x := a
+    y := b
+    z := c
+    z0 := ! z0 + (!tresh-z0/tresh*fMax(!tresh-(!x*x), 0.0))
+    z1 := ! z1 + (!tresh-z1/tresh*fMax(!tresh-(!y*y), 0.0))
+    z2 := ! z2 + (!tresh-z2/tresh*fMax(!tresh-(!z*z), 0.0))
+  ENDWHILE
+  ir := 16000000 - (! tresh - z0 / tresh * 16000000.0!)
+  ig := 16000000 - (! tresh - z1 / tresh * 16000000.0!)
+  ib := 16000000 - (! tresh - z2 / tresh * 16000000.0!)
+ENDPROC ir SHL 8, ig SHL 8, ib SHL 8
+
+PROC flameRGB2f(x:DOUBLE,y:DOUBLE,xc:DOUBLE,yc:DOUBLE,it,tresh:DOUBLE)
+  DEF t=0, zc:DOUBLE
+  DEF a:DOUBLE, b:DOUBLE, c:DOUBLE
+  DEF z0=0.0:DOUBLE, z1=0.0:DOUBLE, z2=0.0:DOUBLE
+  DEF z:DOUBLE, ir, ig, ib
+
+  z := Fsqrt(! x*x + (!y*y))
+  zc := Fsqrt(! xc*xc + (!yc*yc))
+
+  -&gt; gives a cool effect too..
+  -&gt;z := Fsin(z)
+  -&gt;zc := Fsin(zc)
+
+  tresh := ! Fsqrt(!x*x+(!y*y)) * tresh
+
+  WHILE (t++ &lt; it)
+    -&gt;a := ! x*x/xc-y-z-&gt;(!y*z*xc)
+    -&gt;b := ! y*y/yc-x-z-&gt;(!x*z*yc)
+    -&gt;c := ! z*z/zc-x-y-&gt;(!x*y*zc)
+    a := ! x+(!y*z)+xc-&gt;(!y*z*xc)
+    b := ! y+(!x*z)+yc-&gt;(!x*z*yc)
+    c := ! z+(!x*y)+zc-&gt;(!x*y*zc)
+    x := a
+    y := b
+    z := c
+    z0 := ! z0 + (!tresh-z0/tresh*fMax(!tresh-Fabs(x), 0.0))
+    z1 := ! z1 + (!tresh-z1/tresh*fMax(!tresh-Fabs(y), 0.0))
+    z2 := ! z2 + (!tresh-z2/tresh*fMax(!tresh-Fabs(z), 0.0))
+  ENDWHILE
+  ir := 16000000 - (! tresh - z0 / tresh * 16000000.0!)
+  ig := 16000000 - (! tresh - z1 / tresh * 16000000.0!)
+  ib := 16000000 - (! tresh - z2 / tresh * 16000000.0!)
+ENDPROC ir SHL 8, ig SHL 8, ib SHL 8
+
+PROC flameRGB2g(x:DOUBLE,y:DOUBLE,xc:DOUBLE,yc:DOUBLE,it,tresh:DOUBLE)
+  DEF t=0, zc:DOUBLE
+  DEF a:DOUBLE, b:DOUBLE, c:DOUBLE
+  DEF z0=0.0:DOUBLE, z1=0.0:DOUBLE, z2=0.0:DOUBLE
+  DEF z:DOUBLE, ir, ig, ib
+  DEF u:DOUBLE
+
+  z := Fsqrt(! x*x + (!y*y))
+  zc := Fsqrt(! xc*xc + (!yc*yc))
+
+  u := Fsqrt(!x*x+(!y*y)+(!z*z))
+
+  -&gt; gives a cool effect too..
+  -&gt;z := Fsin(z)
+  -&gt;zc := Fsin(zc)
+
+
+  WHILE (t++ &lt; it)
+    a := ! x+(!y*z)-xc-&gt;(!y*z*xc)
+    b := ! y+(!x*z)-yc-&gt;(!x*z*yc)
+    c := ! z+(!x*y)-zc-&gt;(!x*y*zc)
+    x := a
+    y := b
+    z := c
+    z0 := ! z0 + x*y
+    z1 := ! z1 + y*z
+    z2 := ! z2 + z*x
+  ENDWHILE
+  ir := (! z0 / (it!) * 16000000.0!)
+  ig := (! z1 / (it!) * 16000000.0!)
+  ib := (! z2 / (it!) * 16000000.0!)
+ENDPROC ir SHL 8, ig SHL 8, ib SHL 8
+
+
+PROC flameET(x:DOUBLE,y:DOUBLE,xc:DOUBLE,yc:DOUBLE,it,tresh:DOUBLE)
+  DEF t=0, zc:DOUBLE
+  DEF a:DOUBLE, b:DOUBLE, c:DOUBLE
+  DEF z0=0.0:DOUBLE, z1=0.0:DOUBLE, z2=0.0:DOUBLE
+  DEF z:DOUBLE, ir, ig, ib
+
+  z := Fsqrt(! x*x + (!y*y))
+  zc := z-&gt;Fsqrt(! xc*xc + (!yc*yc))
+
+  tresh := ! Fsqrt(!x*x+(!y*y)+(!z*z)) * tresh
+
+  WHILE (t++ &lt; it) AND (!Fsqrt(!x*x+(!y*y)+(!z*z)) &lt; tresh)
+    a := ! (!y-yc*x)+(!z-zc*x)-x-xc
+    b := ! (!x-xc*y)+(!z-zc*y)-y-yc
+    c := ! (!x-xc*z)+(!y-yc*z)-z-zc
+    x := a
+    y := b
+    z := c
+  ENDWHILE
+  ir := t! / (it!) * 16000000
+  ig := ir
+  ib := ir
+ENDPROC ir SHL 8, ig SHL 8, ib SHL 8
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

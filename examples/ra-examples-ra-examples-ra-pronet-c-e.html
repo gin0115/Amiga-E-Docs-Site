@@ -1,0 +1,404 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>RA-ProNET-C.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-ra-examples.html">RA-examples</a> &rsaquo; RA-ProNET-C.e</div><h1>File: <code>RA-ProNET-C.e</code></h1><p class="meta">378 lines · project <a href="../examples/pkg-ra-examples.html"><code>RA-examples</code></a></p><p class="pathctx">RA-examples/RA-examples/RA-ProNET-C.e</p><p class="prose">ProNET-Control&#x27;s <a href="../modules/reaction.html">reaction</a> gui in Amiga E by Dave Norris, expanded from ClickTabExample.e by Eric Sauvageau.</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/clicktab.html">clicktab</a></li><li><a href="../modules/types.html">exec/types</a></li><li><a href="../modules/constructors.html">tools/constructors</a></li></ul></div><h2>Source</h2><pre class="code">/*   ProNET-Control&#x27;s reaction gui in Amiga E by Dave Norris,
+     expanded from ClickTabExample.e by Eric Sauvageau.  */
+
+OPT PREPROCESS
+
+MODULE &#x27;tools/constructors&#x27;, &#x27;tools/boopsi&#x27;
+
+MODULE &#x27;exec/types&#x27;,&#x27;exec/memory&#x27;,&#x27;dos/dos&#x27;,&#x27;dos/dosextens&#x27;,&#x27;exec/lists&#x27;,
+       &#x27;exec/nodes&#x27;,&#x27;intuition&#x27;,&#x27;graphics&#x27;,&#x27;intuition/intuition&#x27;,&#x27;exec/ports&#x27;,
+       &#x27;intuition/gadgetclass&#x27;,&#x27;intuition/imageclass&#x27;,-&gt;&#x27;amigalib/boopsi&#x27;,
+       &#x27;intuition/intuitionbase&#x27;,&#x27;intuition/classusr&#x27;,-&gt;&#x27;&#x27;,
+       &#x27;intuition/gadgetclass&#x27;,&#x27;intuition/cghooks&#x27;,&#x27;intuition/icclass&#x27;,
+       &#x27;intuition/classes&#x27;,&#x27;intuition/sghooks&#x27;,&#x27;graphics/gfxbase&#x27;,
+       &#x27;graphics/text&#x27;,&#x27;graphics/gfxmacros&#x27;,&#x27;utility/tagitem&#x27;,&#x27;utility/hooks&#x27;
+
+MODULE &#x27;clicktab&#x27;,&#x27;gadgets/clicktab&#x27;,&#x27;window&#x27;,&#x27;classes/window&#x27;,&#x27;layout&#x27;,
+       &#x27;gadgets/layout&#x27;,&#x27;label&#x27;,&#x27;images/label&#x27;,&#x27;images/bevel&#x27;,
+       &#x27;space&#x27;,&#x27;gadgets/space&#x27;,&#x27;chooser&#x27;,&#x27;gadgets/chooser&#x27;,&#x27;images/glyph&#x27;,
+       &#x27;string&#x27;,&#x27;gadgets/string&#x27;,&#x27;listbrowser&#x27;,&#x27;gadgets/listbrowser&#x27;,
+       &#x27;reaction/reaction_macros&#x27;
+
+DEF listitems1:PTR TO mlh,listitems2:PTR TO mlh,listitems3:PTR TO mlh,
+    listitems5:PTR TO mlh,listitems4:PTR TO mlh,listitems6:PTR TO mlh,
+    listitems7:PTR TO mlh,listitems8:PTR TO mlh,appport:PTR TO mp,
+
+    listheader1[6]:ARRAY OF columninfo,listheader2[2]:ARRAY OF columninfo,
+    listheader3[2]:ARRAY OF columninfo
+
+
+ENUM ID_CLICKTAB1=1, ID_CLICKTAB2,
+     ID_LISTBROWSER1, ID_LISTBROWSER2, ID_LISTBROWSER3, ID_LISTBROWSER4,
+     ID_STRING1, ID_STRING2, ID_STRING3,
+     ID_CHOOSER1, ID_CHOOSER2, ID_CHOOSER3, ID_CHOOSER4,
+     ID_BUTTON1, ID_BUTTON2, ID_BUTTON3, ID_BUTTON4, ID_BUTTON5, ID_BUTTON6
+
+PROC clickTabNodes(list:PTR TO lh, labels:PTR TO LONG)
+DEF node=NIL, i=0
+  newlist(list)
+  WHILE labels[i]
+    IF (node:=AllocClickTabNodeA([TNA_TEXT, labels[i],
+                                  TNA_NUMBER, i,
+                                  TAG_DONE]))
+      AddTail(list,node)
+    ENDIF
+    INC i
+  ENDWHILE
+ENDPROC
+
+PROC freeClickTabNodes(list:PTR TO lh)
+DEF node:PTR TO ln, nextnode:PTR TO ln
+   node:=list.head
+   WHILE (nextnode = node.succ)
+      FreeClickTabNode(node)
+      node:=nextnode
+   ENDWHILE
+   END list  -&gt; Optional, the E cleanup code would do it for us anyway.
+ENDPROC
+
+PROC chooserNodes(list:PTR TO lh, labels:PTR TO LONG)
+DEF node=NIL, i=0
+
+  newlist(list)
+  WHILE labels[i]
+    IF (node:=AllocChooserNodeA([CNA_TEXT, labels[i],
+                                 TNA_NUMBER, i,
+                                 TAG_DONE]))
+      AddTail(list,node)
+    ENDIF
+    INC i
+  ENDWHILE
+ENDPROC
+
+PROC freeChooserNodes(list:PTR TO lh)
+DEF node:PTR TO ln, nextnode:PTR TO ln
+   node:=list.head
+   WHILE (nextnode = node.succ)
+      FreeChooserNode(node)
+      node:=nextnode
+   ENDWHILE
+   END list   -&gt; Optional, the E cleanup code would do it for us anyway.
+ENDPROC
+
+PROC listBrowserNodes(list:PTR TO lh, labels:PTR TO LONG)
+DEF node=NIL
+  newlist(list)
+  IF (node:=AllocListBrowserNodeA(1,
+                      [LBNA_COLUMN, 0,
+                         LBNCA_TEXT, labels[],
+                         LBNCA_MAXCHARS, 30,
+                       TAG_DONE]))
+    AddTail(list,node)
+  ENDIF
+ENDPROC
+
+PROC main()
+DEF win=NIL:PTR TO window, mainpage=NIL:PTR TO object, win_object=NIL:PTR TO object,
+    wait, signal, result, done = FALSE, code, tmpres,tmpres2
+
+DEF tablist1:PTR TO LONG,tablist2:PTR TO LONG,
+    chooserlist1:PTR TO LONG,chooserlist2:PTR TO LONG,
+    browserlist1:PTR TO LONG,browserlist2:PTR TO LONG,
+    node=NIL,x,startlist:PTR TO LONG,
+    ci_width:PTR TO LONG,ci_title:PTR TO LONG,ci_flags:PTR TO LONG
+
+  ci_width:=[50,50,70,70,50,-1]
+  ci_title:=[&#x27; Status&#x27;,&#x27; Local Name&#x27;,&#x27; Remote Name&#x27;,&#x27; Volumn Name&#x27;,&#x27; Unique&#x27;,0]
+  ci_flags:=[0,0,0,0,0,-1]
+
+  FOR x:=0 TO 5
+    listheader1[x].width:=ci_width[x]
+    listheader1[x].title:=ci_title[x]
+    listheader1[x].flags:=ci_flags[x]
+  ENDFOR
+
+  listheader2[0].width:=100
+  listheader2[0].title:=&#x27; Click on a unit to activate it &#x27;
+  listheader2[0].flags:=0
+
+  listheader2[1].width:=-1
+  listheader2[1].title:=0
+  listheader2[1].flags:=-1
+
+  listheader3[0].width:=100
+  listheader3[0].title:=&#x27; Units activated&#x27;
+  listheader3[0].flags:=0
+
+  listheader3[1].width:=-1
+  listheader3[1].title:=0
+  listheader3[1].flags:=-1
+
+  tablist1:=[&#x27; Startup&#x27;,&#x27; Server&#x27;,&#x27; Client&#x27;,NIL]
+  tablist2:=[&#x27; Mount&#x27;,&#x27; Page&#x27;,&#x27; Talk&#x27;,NIL]
+
+  chooserlist1:=[&#x27; 0&#x27;,&#x27; 1&#x27;,&#x27; 2&#x27;,NIL]
+  chooserlist2:=[&#x27; Open Window&#x27;,&#x27; Iconfiy&#x27;,NIL]
+
+  browserlist1:=[&#x27; .config file not yet loaded&#x27;,NIL]
+  browserlist2:=[&#x27; None&#x27;,NIL]
+
+  startlist:=[&#x27; &#x27;,&#x27; Example of using reaction in E.&#x27;,&#x27; &#x27;,&#x27; By Dave Norris.&#x27;,NIL]
+
+-&gt;  Open the classes
+
+  windowbase := OpenLibrary(&#x27;window.class&#x27;,0)
+  layoutbase := OpenLibrary(&#x27;gadgets/layout.gadget&#x27;,0)
+  clicktabbase := OpenLibrary(&#x27;gadgets/clicktab.gadget&#x27;,0)
+  labelbase := OpenLibrary(&#x27;images/label.image&#x27;,0)
+  spacebase := OpenLibrary(&#x27;gadgets/space.gadget&#x27;,0)
+  chooserbase := OpenLibrary(&#x27;gadgets/chooser.gadget&#x27;,0)
+  stringbase := OpenLibrary(&#x27;gadgets/string.gadget&#x27;,0)
+  listbrowserbase := OpenLibrary(&#x27;gadgets/listbrowser.gadget&#x27;,0)
+
+  appport:=CreateMsgPort()
+
+  IF (windowbase AND layoutbase AND clicktabbase AND labelbase AND spacebase AND chooserbase AND stringbase AND listbrowserbase)
+    clickTabNodes(NEW listitems1, tablist1)
+    clickTabNodes(NEW listitems2, tablist2)
+    chooserNodes(NEW listitems3 ,chooserlist1)
+    chooserNodes(NEW listitems4 ,chooserlist2)
+
+    newlist(NEW listitems5)
+    IF (node:=AllocListBrowserNodeA(5,
+                     [LBNA_COLUMN, 0,
+                        LBNCA_TEXT, &#x27;one&#x27;,
+                        LBNCA_MAXCHARS, 30,
+                      LBNA_COLUMN, 1,
+                        LBNCA_TEXT, &#x27;two&#x27;,
+                        LBNCA_MAXCHARS, 30,
+                      LBNA_COLUMN, 2,
+                        LBNCA_TEXT, &#x27;three&#x27;,
+                        LBNCA_MAXCHARS, 30,
+                      LBNA_COLUMN, 3,
+                        LBNCA_TEXT, &#x27;four&#x27;,
+                        LBNCA_MAXCHARS, 30,
+                      LBNA_COLUMN, 4,
+                        LBNCA_TEXT, &#x27;five&#x27;,
+                        LBNCA_MAXCHARS, 30,
+                      TAG_DONE]))
+        AddTail(listitems5,node)
+    ENDIF
+
+    listBrowserNodes(NEW listitems6 ,browserlist1)
+    listBrowserNodes(NEW listitems7 ,browserlist2)
+
+    newlist(NEW listitems8)
+    FOR x:=0 TO 3
+      IF (node:=AllocListBrowserNodeA(1,
+                      [LBNA_COLUMN, 0,
+                         LBNCA_TEXT, startlist[x],
+                         LBNCA_MAXCHARS, 30,
+                       TAG_DONE]))
+        AddTail(listitems8,node)
+      ENDIF
+    ENDFOR
+
+    win_object:=WindowObject,              -&gt; Create the window object.
+
+        [WA_SCREENTITLE,        &#x27; ProNET-C gui reaction example&#x27;,
+         WA_TITLE,              &#x27; ProNET-C gui reaction example&#x27;,
+         WA_SIZEGADGET,         TRUE,
+         WA_DEPTHGADGET,        TRUE,
+         WA_DRAGBAR,            TRUE,
+         WA_CLOSEGADGET,        TRUE,
+         WA_ACTIVATE,           TRUE,
+  -&gt;       WA_SMARTREFRESH,       TRUE,     -&gt; selected in reaction prefs
+         WINDOW_APPPORT,        appport,       -&gt; needed to use iconfiy
+         WINDOW_ICONIFYGADGET,  TRUE,
+         WINDOW_ICONTITLE,      &#x27;hello!&#x27;,
+         WINDOW_POSITION,       WPOS_CENTERSCREEN,
+         WINDOW_LAYOUT,         VLayoutObject,
+           LAYOUT_DEFERLAYOUT,    TRUE,
+           mainpage:=ClickTabTitles(listitems1,ID_CLICKTAB1),
+             ClickTabPages,
+
+               Page_so_si,
+                 Layout_so_si_v_cj,
+                   ListBrowser(ID_LISTBROWSER1),
+                     LISTBROWSER_COLUMNTITLES, FALSE,
+                     LISTBROWSER_LABELS, listitems8,
+                     GA_READONLY, TRUE,
+                   ListBrowserEnd,
+                   Layoutex_so_si(&#x27; Startup Prefs &#x27;),
+                     ChooserPU(listitems4,ID_CHOOSER1,2),
+                     Button_MinW(&#x27; Snapshot Window &#x27;,ID_BUTTON1),
+                   LayoutEnd,
+                   CHILD_WEIGHTEDHEIGHT, 0,
+                   CHILD_WEIGHTEDWIDTH, 0,
+                 LayoutEnd,
+               PageEnd,
+
+               Page_so_si,
+                 Layout_so_si_v,
+                 ListBrowser(ID_LISTBROWSER2),
+                   LISTBROWSER_COLUMNTITLES, TRUE,
+                   LISTBROWSER_COLUMNINFO,   listheader2,
+                   LISTBROWSER_LABELS, listitems6,
+                 ListBrowserEnd,
+                 Button(&#x27; Load units from Devs:ProNET/.config &#x27;,ID_BUTTON2),
+                 ListBrowser(ID_LISTBROWSER3),
+                   LISTBROWSER_COLUMNTITLES, TRUE,
+                   LISTBROWSER_COLUMNINFO,   listheader3,
+                   LISTBROWSER_LABELS, listitems7,
+                   GA_READONLY, TRUE,
+                 ListBrowserEnd,
+                 Button(&#x27; Stop ProNET-Server on all units &#x27;,ID_BUTTON3),
+                 LayoutEnd,
+               PageEnd,
+
+               Page,
+                 ClickTabTitles(listitems2,ID_CLICKTAB2),
+                   ClickTabPages,
+
+                     Page_so_si,
+                       Layout_so_si_v,
+                         ListBrowser(ID_LISTBROWSER4),
+                           LISTBROWSER_COLUMNTITLES, TRUE,
+                           LISTBROWSER_COLUMNINFO,   listheader1,
+                           LISTBROWSER_LABELS, listitems5,
+                           LISTBROWSER_MINVISIBLE, 9,
+                           LISTBROWSER_AUTOFIT, TRUE,
+                         ListBrowserEnd,
+                         Stringad_ro(&#x27;Start the remote server before attempting to scan it&#x27;,ID_STRING1,60,0),
+                         Layout_so_si,
+                           Layout_v,
+                             Button(&#x27; Scan Server &#x27;,ID_BUTTON4),
+                           LayoutEnd,
+                           Layout_v,
+                             ChooserPU(listitems3,ID_CHOOSER2,3), -&gt;CHILD_WEIGHTEDWIDTH, 0,
+                             Label(&#x27;  Unit:&#x27;),
+                           LayoutEnd,
+                           Layout_v,
+                             Stringad_d(&#x27;&#x27;,ID_STRING2,20,10),
+                             Label(&#x27;  Local Name:&#x27;),
+                           LayoutEnd,
+                         LayoutEnd,
+                       LayoutEnd,
+                     PageEnd,
+
+                     Page_so_si_cj,
+                       Layoutex_so_si_v_cj(&#x27; Send message to Server &#x27;),
+                         Space,
+                         Space,
+                         Label(&#x27; Message:\n &#x27;),
+                         Stringad(&#x27;&#x27;,ID_STRING3,60,0),  -&gt;Stringad(gid,text,maxchars,show)
+                         Layout_so_si,
+                           Space,
+                           ChooserPU(listitems3,ID_CHOOSER3,3),     -&gt;CHILD_WEIGHTEDWIDTH, 0,
+                           Label(&#x27;Unit:&#x27;),
+                           Space,
+                           Button_MinW(&#x27; Send message &#x27;,ID_BUTTON5),
+                           Space,
+                         LayoutEnd,
+                       LayoutEnd,
+                       CHILD_WEIGHTEDHEIGHT, 0,
+                     PageEnd,
+
+                     Page_so_si_cj,
+                       Layoutex_so_si_v_cj(&#x27; Chat with Server &#x27;),
+                         Button_MinW(&#x27; Start Pronet-talk on both machines &#x27;,ID_BUTTON6),
+                         ChooserPU(listitems3,ID_CHOOSER4,3),     -&gt;CHILD_WEIGHTEDWIDTH, 0,
+                         Label(&#x27;Unit:&#x27;),
+                       LayoutEnd,
+                       CHILD_WEIGHTEDHEIGHT, 0,
+                       CHILD_WEIGHTEDWIDTH, 0,
+                     PageEnd,
+
+                   ClickTabPagesEnd,
+                 ClickTabTitlesEnd,
+               PageEnd,
+
+             ClickTabPagesEnd,
+           ClickTabTitlesEnd,
+         LayoutEnd,
+       WindowEnd  -&gt; NIL])
+
+     IF win_object                                   -&gt; Object creation sucessful?
+      IF (win:=RA_OpenWindow(win_object))            -&gt; Open the window.
+        GetAttr(WINDOW_SIGMASK,win_object,{signal})  -&gt; Get the window wait signal mask.
+        WHILE done=FALSE                             -&gt; Input Event Loop
+          wait:=Wait(signal OR SIGBREAKF_CTRL_C)
+          IF (wait AND SIGBREAKF_CTRL_C)
+            done:=TRUE
+          ELSE
+            WHILE (result:=RA_HandleInput(win_object,code)) &lt;&gt; WMHI_LASTMSG
+              tmpres:=(result AND WMHI_CLASSMASK)
+              SELECT tmpres
+                CASE WMHI_CLOSEWINDOW;  done:=TRUE
+                CASE WMHI_ICONIFY
+                  RA_Iconify(win_object)
+                  win:=NIL
+                CASE WMHI_UNICONIFY
+                  IF (win:=RA_Uniconify(win_object))
+                    GetAttr(WINDOW_SIGMASK,win_object,{signal})
+                  ELSE
+                    done:=TRUE
+                  ENDIF
+                CASE WMHI_GADGETUP
+                  tmpres2:=(result AND WMHI_GADGETMASK)
+                  SELECT tmpres2
+                    CASE ID_BUTTON4; PrintF(&#x27;Scan button was clicked\n&#x27;)
+                  ENDSELECT
+              ENDSELECT
+            ENDWHILE
+          ENDIF
+        ENDWHILE
+      ENDIF
+
+      /* Disposing of the window object will also close the window if it is
+       * already opened and it will dispose of all objects attached to it. */
+
+      DisposeObject(win_object)
+    ENDIF
+  ELSE
+    PrintF(&#x27;failed to open a library\n&#x27;)
+  ENDIF
+
+  FreeListBrowserList(listitems8)
+  FreeListBrowserList(listitems7)
+  FreeListBrowserList(listitems6)
+  FreeListBrowserList(listitems5)
+  freeChooserNodes(listitems4)
+  freeChooserNodes(listitems3)
+  freeClickTabNodes(listitems2)
+  freeClickTabNodes(listitems1)
+
+   /* Close the classes. */
+
+  IF listbrowserbase THEN CloseLibrary(listbrowserbase)
+  IF stringbase THEN CloseLibrary(stringbase)
+  IF chooserbase THEN CloseLibrary(chooserbase)
+  IF spacebase THEN CloseLibrary(spacebase)
+  IF labelbase THEN CloseLibrary(labelbase)
+  IF clicktabbase THEN CloseLibrary(clicktabbase)
+  IF layoutbase THEN CloseLibrary(layoutbase)
+  IF windowbase THEN CloseLibrary(windowbase)
+
+ENDPROC
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

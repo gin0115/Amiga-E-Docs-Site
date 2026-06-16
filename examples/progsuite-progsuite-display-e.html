@@ -1,0 +1,236 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Display.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-progsuite.html">ProgSuite</a> &rsaquo; Display.e</div><h1>File: <code>Display.e</code></h1><p class="meta">210 lines · project <a href="../examples/pkg-progsuite.html"><code>ProgSuite</code></a></p><p class="pathctx">ProgSuite/ProgSuite/Display.e</p><p class="prose">Display - ProgSuite V1.0 Display program</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/ports.html">amigalib/ports</a></li><li><a href="../modules/memory.html">exec/memory</a></li><li><a href="../modules/intuition.html">intuition/intuition</a></li><li><a href="../modules/ilbm.html">tools/ilbm</a></li></ul></div><h2>Source</h2><pre class="code">/* Display - ProgSuite V1.0 Display program */
+
+MODULE &#x27;intuition/intuition&#x27;, &#x27;intuition/screens&#x27;, &#x27;graphics/view&#x27;
+MODULE &#x27;tools/ilbm&#x27;, &#x27;tools/ilbmdefs&#x27;
+MODULE &#x27;amigalib/ports&#x27;, &#x27;dos/dos&#x27;
+MODULE &#x27;exec/memory&#x27;, &#x27;exec/nodes&#x27;, &#x27;exec/ports&#x27;
+
+MODULE &#x27;*Defs&#x27;
+
+/* Screen size */
+CONST SIZEX = 640, SIZEY = 480
+
+/* Variable to hold our own name (should be a constant...) */
+DEF progname: PTR TO CHAR
+
+/* Communication variables */
+DEF displayport = NIL: PTR TO mp,
+    wakemsg = NIL: PTR TO portMessage, finishmsg = NIL: PTR TO portMessage,
+    recvmsg: PTR TO portMessage
+
+/* Screen and window pointers */
+DEF progsuitescreen: PTR TO screen, panelwin: PTR TO window
+
+/* variables for between-calls memory */
+DEF mx = 0, my = 0, prevsecs = 0
+
+/* The main procedure */
+
+PROC main () HANDLE
+
+  progname := &#x27;Display&#x27;
+  progsuitescreen := NIL ; panelwin := NIL
+  displayport := portCreate (&#x27;DisplayPort&#x27;, progname)
+  wakemsg := messageCreate (displayport, progname)
+  wakemsg.msn := WAKEMSG  -&gt; Our WakeUp message
+  finishmsg := messageCreate (displayport, progname)
+  finishmsg.msn := FINISHMSG  -&gt; Our Finish message
+
+  -&gt; Display the instruments panel
+  initPanel ()
+
+  -&gt; Report our readyness to the master
+  WriteF (&#x27;\s: Sending WakeUp message (\d) to Master...\n&#x27;, progname, wakemsg.msn)
+  IF FALSE = messageSend (wakemsg, &#x27;MasterPort&#x27;) THEN Raise (ERR_FINDPORT)
+
+  -&gt; Wait for messages, and act accordingly
+  displayLoop ()
+
+  -&gt; Finish off
+  finishPanel ()
+
+  Raise (ERR_NONE)
+EXCEPT DO
+  IF displayport THEN portRemove (displayport)
+  IF wakemsg THEN Dispose (wakemsg)
+  IF finishmsg THEN Dispose (finishmsg)
+  IF (panelwin) THEN finishPanel ()
+  SELECT exception
+  CASE ERR_FINDSCREEN
+    WriteF (&#x27;\s: Can&#x27;&#x27;t find ProgSuite Screen: This program should be started from Master!\n&#x27;, progname)
+  CASE &quot;WIN&quot;
+    UnlockPubScreen (NIL, progsuitescreen)
+    WriteF (&#x27;\s: Can&#x27;&#x27;t open window!\n&#x27;, progname)
+  CASE &quot;PORT&quot;
+    WriteF (&#x27;\s: Can&#x27;&#x27;t create messageport &quot;DisplayPort&quot;!\n&#x27;, progname)
+  CASE ERR_FINDPORT
+    WriteF (&#x27;\s: Can&#x27;&#x27;t find messageport &quot;MasterPort&quot;!&#x27;, progname)
+  CASE &quot;MEM&quot;
+    WriteF (&#x27;\s: Can&#x27;&#x27;t get memory!\n&#x27;, progname)
+  ENDSELECT
+ENDPROC
+
+/* procedures to display/remove the instruments panel */
+
+PROC initPanel ()
+DEF ilbm, filename[30]:STRING, width, height, bmh:PTR TO bmhd, pi:PTR TO picinfo, bmptr = NIL
+
+  StringF (filename, &#x27;PROGDIR:Pictures/panel.iff&#x27;)
+  IF ilbm := ilbm_New (filename, 0)
+    ilbm_LoadPicture (ilbm, [ILBML_GETBITMAP, {bmptr}, 0])
+
+    -&gt; get a pointer to the image&#x27;s picture-info.
+    -&gt; extract the bitmap header, and read the picture&#x27;s size.
+    pi := ilbm_PictureInfo (ilbm)
+    bmh := pi.bmhd
+    width := bmh.w
+    height := bmh.h
+    -&gt; the ilbm-handle is no longer needed, we can free it
+    ilbm_Dispose (ilbm)
+
+    -&gt; if a bitmap actually opened,
+    IF bmptr
+      -&gt; Open our window on the common screen (horizontally centered, and as low as possible)
+      progsuitescreen := LockPubScreen (&#x27;ProgSuiteScreen&#x27;)
+      panelwin := OpenW ((SIZEX - width) / 2, (SIZEY - height), width, height,
+-&gt;                         IDCMP_MOUSEBUTTONS OR IDCMP_INTUITICKS,
+                         IDCMP_MOUSEBUTTONS,
+                         WFLG_BORDERLESS OR WFLG_RMBTRAP, NIL, NIL, NIL, NIL,
+                         [WA_PUBSCREEN, progsuitescreen, 0])
+      UnlockPubScreen (NIL, progsuitescreen)
+
+      -&gt; blit the picture into our window
+      -&gt; blit into actual dimensions the OS gave us
+      -&gt; (the window might be smaller than the picture)
+      BltBitMapRastPort (bmptr, 0, 0, 
+                         panelwin.rport, 0, 0,
+                         width, height, $c0);
+      -&gt; now don&#x27;t need the bitmap anymore
+      ilbm_FreeBitMap (bmptr)
+      bmptr := NIL
+    ENDIF
+  ELSE
+    WriteF (&#x27;\s: Could not open picture file &quot;\s&quot;!\n&#x27;, progname, filename)
+  ENDIF
+ENDPROC
+
+PROC finishPanel ()
+  CloseW (panelwin) ; panelwin := NIL
+ENDPROC
+
+/* The main message loop */
+
+PROC displayLoop ()
+  DEF portsig, winsig, usersig, signal, finish = FALSE
+  portsig := Shl (1, displayport.sigbit)
+  winsig := Shl (1, panelwin.userport.sigbit)
+  usersig := SIGBREAKF_CTRL_C  -&gt; Give user a &#x27;break&#x27; signal.
+                               -&gt; Note: does not seem to work here...
+
+  REPEAT
+    -&gt; (for now, wait for the QUIT message)
+    signal := Wait (portsig OR winsig OR usersig)
+    IF signal AND usersig  -&gt; The user wants to abort.
+      WriteF (&#x27;\s: Sending Finish message (\d) to Master...\n&#x27;, progname, finishmsg.msn)
+      messageSend (finishmsg, &#x27;MasterPort&#x27;) ; finish := TRUE
+    ENDIF
+    IF signal AND winsig THEN handleWindowMessages ()
+    IF signal AND portsig THEN finish := handlePortMessages ()
+  UNTIL finish
+
+ENDPROC
+
+/* Procedure to handle incoming Exec messages */
+
+PROC handlePortMessages ()
+DEF mesnum, finish = FALSE
+  WHILE recvmsg := GetMsg (displayport)
+    messageCheckOwn (recvmsg, displayport, progname)
+    mesnum := recvmsg.msn
+    SELECT mesnum
+      CASE QUITDISPLMSG
+        finish := TRUE
+    ENDSELECT
+    messageReply (recvmsg, displayport)
+  ENDWHILE
+ENDPROC finish
+
+/* Procedure to handle Intuition messages */
+
+PROC handleWindowMessages ()
+DEF recvimsg: PTR TO intuimessage, class, code
+  WHILE recvimsg := GetMsg (panelwin.userport)
+    class := recvimsg.class ; code := recvimsg.code
+    WriteF (&#x27;\s: IDCMP received: \d \d\n&#x27;, progname, class, code)
+    SELECT class
+      CASE IDCMP_INTUITICKS
+        WriteF (&#x27;\s: IntuiTick message received\n&#x27;, progname)
+        handleTimeTick (recvimsg.seconds, recvimsg.micros)
+      CASE IDCMP_MOUSEBUTTONS
+        WriteF (&#x27;\s: MouseButton message received: \d \d \d\n&#x27;, progname, code, recvimsg.mousex, recvimsg.mousey)
+        handleMouseButtons (code, recvimsg.mousex, recvimsg.mousey)
+    ENDSELECT
+    messageReply (recvimsg, displayport)
+  ENDWHILE
+ENDPROC
+
+PROC handleTimeTick (seconds, micros)
+  IF prevsecs = 0 THEN prevsecs := seconds
+  IF seconds &gt; prevsecs
+    WriteF (&#x27;\s: One second passed\n&#x27;, progname)
+-&gt;    messageSend (tickmsg, &#x27;MasterPort&#x27;)
+    prevsecs := seconds
+  ENDIF
+ENDPROC
+
+PROC handleMouseButtons (icode, imx, imy)
+  SELECT icode
+    CASE SELECTDOWN
+        WriteF (&#x27;\s: SelectDown message received: \d \d\n&#x27;, progname, imx, imy)
+      mx := imx ; my := imy
+    CASE SELECTUP
+        WriteF (&#x27;\s: SelectUp message received: \d \d\n&#x27;, progname, imx, imy)
+      IF mx = imx AND my = imy THEN checkButton (mx, my)
+    CASE MENUDOWN
+        WriteF (&#x27;\s: MenuDown message received: \d \d\n&#x27;, progname, imx, imy)
+      mx := imx ; my := imy
+    CASE MENUUP
+        WriteF (&#x27;\s: MenuUp message received: \d \d\n&#x27;, progname, imx, imy)
+      IF mx = imx AND my = imy THEN doSubwin (mx, my)
+  ENDSELECT
+ENDPROC
+
+PROC doSubwin (mx, my)
+  WriteF (&#x27;\s: Subwindow selected...\n&#x27;, progname)
+ENDPROC
+
+PROC checkButton (mx, my)
+  WriteF (&#x27;\s: Button selected...\n&#x27;, progname)
+ENDPROC
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

@@ -1,0 +1,496 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ScreenFX.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-screenfx.html">ScreenFX</a> &rsaquo; ScreenFX.e</div><h1>File: <code>ScreenFX.e</code></h1><p class="meta">470 lines · project <a href="../examples/pkg-screenfx.html"><code>ScreenFX</code></a></p><p class="pathctx">ScreenFX/ScreenFX.e</p><p class="prose">on a boring weekend i tried how to code such screen effects some blankers do while &quot;blanking&quot; the screen. the result is this demonstration program written using wouters e (i guess everybody should &quot;translate&quot; it into his/her favourit language) greez fly to Knuddel, &quot;PackMAN&quot; Falk Zühlsdorff, &quot;Zet&quot; M</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/intuitionbase.html">intuition/intuitionbase</a></li></ul></div><h2>Source</h2><pre class="code">
+/*
+
+  on a boring weekend i tried how to code such screen effects some blankers
+  do while &quot;blanking&quot; the screen.
+  the result is this demonstration program written using wouters e (i guess
+  everybody should &quot;translate&quot; it into his/her favourit language)
+
+  greez fly to Knuddel, &quot;PackMAN&quot; Falk Zühlsdorff, &quot;Zet&quot; Mathhias Zinke,
+  Marcus, the DOSen-Friix and any other who knows me (or even not ;)
+
+  read the routines notes so can find tips for optimizing and making
+  more funny effects; the spot effect is &quot;in work&quot; so maybe ScreenFX 2
+  will follow with some more and other effect (write me if you have
+  suggestions!)
+
+  the code is documented, but if you have any question you may mail:
+
+            jt18@irz.inf.tu-dresden.de
+
+  SPECIAL NOTE: USAGE IS YOUR OWN RISK!!!!! FAILURE OR LOST DATA ARE NOT
+                MY FAULT.
+
+  now have fun,
+  savage
+
+*/
+
+MODULE &#x27;intuition/intuitionbase&#x27;,
+       &#x27;intuition/intuition&#x27;,
+       &#x27;intuition/screens&#x27;,
+       &#x27;graphics/gfx&#x27;,
+       &#x27;graphics/view&#x27;,
+       &#x27;graphics/rastport&#x27;,
+       &#x27;graphics/videocontrol&#x27;,
+       &#x27;exec/memory&#x27;,
+       &#x27;hardware/blit&#x27;
+
+ENUM BYE,MELT,BACKPOINTS,BLACKPOINTS,DISSOLVE,FADE,BLUR
+
+ENUM DOWN=100,SWIM,SUCK
+
+DEF copyscreen=NIL : PTR TO screen,
+    copyviewport=NIL : PTR TO viewport,
+    copywindow=NIL : PTR TO window,
+    rastport=NIL : PTR TO rastport,
+    numbercolors=0
+
+PROC main()
+
+DEF response
+
+  -&gt; init the rnd-generator
+  Rnd(-1)
+
+  WHILE (response := req(&#x27;Welcome to ScreenFX by Jens Tröger\n\n&#x27;+
+                         &#x27;This will show you how to program\n&#x27;+
+                         &#x27;several Effects like Blankers do.\n\n&#x27;+
+                         &#x27;USAGE IS YOUR OWN RISK !&#x27;,
+                         &#x27;Melt|BackPoints|BlackPoints|Dissolve|Fade|Blur| Bye &#x27;)) &lt;&gt; BYE
+
+/***************************************************************************
+
+ the melt function use the BltBitMap() gfx function to blit random parts
+ of the source bitmap into the same bitmap; try different minterms
+ (mad: ANBNC OR ANBC ;)
+
+ all other procs use simple gfx functions such like RectFill(), WritePixel(),
+ SetRGB4() and so on...
+
+ ***************************************************************************/
+
+
+      -&gt; the folowing will only call the routines (if nothing happens
+      -&gt; copyFirstScreen() failed (i did *NO* error message handling!)
+      SELECT response
+
+        CASE MELT
+
+          response := req(&#x27;Select type of melt...&#x27;,&#x27;Suck|Down|Swim&#x27;)
+
+          SELECT response
+            CASE 1
+
+              IF copyFirstScreen()
+                melt(SUCK, ABNC OR ABC)
+                closeCopyScreen()
+              ENDIF
+
+            CASE 2
+
+              IF copyFirstScreen()
+                melt(DOWN, ABNC OR ABC)
+                closeCopyScreen()
+              ENDIF
+
+            CASE 0
+
+              IF copyFirstScreen()
+                melt(SWIM, ABNC OR ABC)
+                closeCopyScreen()
+              ENDIF
+              
+          ENDSELECT
+
+        CASE BACKPOINTS
+
+          IF copyFirstScreen()
+            backPoints()
+            closeCopyScreen()
+          ENDIF
+
+        CASE BLACKPOINTS
+
+          IF copyFirstScreen()
+            blackPoints()
+            closeCopyScreen()
+          ENDIF
+
+        CASE DISSOLVE
+
+          IF copyFirstScreen()
+            dissolve()
+            closeCopyScreen()
+          ENDIF
+
+        CASE FADE
+
+          IF copyFirstScreen()
+            fade()
+            closeCopyScreen()
+          ENDIF
+
+        CASE BLUR
+
+          IF copyFirstScreen()
+            blur()
+            closeCopyScreen()
+          ENDIF
+
+      ENDSELECT
+
+  ENDWHILE
+
+ENDPROC
+
+PROC copyFirstScreen()
+
+/*
+    NOTE (taken from RKRM)
+    &quot;An application may not steal the bitmap of a screen that it
+    does not own. Stealing the Workbench screen`s bitmap, or that
+    of any other public screen, is strictly illegal.&quot;
+
+    NOTE
+    i should not draw into screens rastport directly so i open a
+    &quot;fullsize&quot; window and copy source-screens bitmap into windows
+    rastport
+
+    NOTE
+    returns TRUE or FALSE, !!*NOT*!! the screen address!!!!
+*/
+
+-&gt; define some variables as pointers
+DEF intbase=NIL: PTR TO intuitionbase,
+    iblock=NIL,
+    srcscreen=NIL: PTR TO screen,
+    srcbitmap=NIL: PTR TO bitmap,
+    srcviewport=NIL: PTR TO viewport,
+    srcrastport=NIL: PTR TO rastport,
+    srccolormap=NIL: PTR TO colormap
+
+  -&gt; so i can examine the intuitionbase
+  intbase := intuitionbase
+
+  -&gt; lock the intuitionbase and get the pointer to the frontmost
+  -&gt; screen (firstscreen)
+  iblock := LockIBase(NIL)
+  srcscreen := intbase.firstscreen
+  UnlockIBase(iblock)
+
+  -&gt; initialize some pointers
+  srcrastport := srcscreen.rastport
+  srcbitmap := srcrastport.bitmap
+  srcviewport := srcscreen.viewport
+  srccolormap := srcviewport.colormap
+
+  -&gt; calc number of colors from screens depth
+  numbercolors := Shl(2,srcbitmap.depth-1)
+
+  -&gt; now open the screen
+  copyscreen := OpenScreenTagList(NIL,
+                                  [SA_LEFT,srcscreen.leftedge,
+                                   SA_TOP,0,
+                                   SA_WIDTH,srcscreen.width,
+                                   SA_HEIGHT,srcscreen.height,
+                                   SA_DEPTH,srcbitmap.depth,
+                                   SA_DISPLAYID,GetVPModeID(srcscreen.viewport),
+                                   SA_BEHIND,TRUE,
+                                   NIL])
+  IF copyscreen
+
+    -&gt; get the viewport OF the copyscreen
+    copyviewport := copyscreen.viewport
+
+    -&gt; set colors
+    LoadRGB4(copyscreen.viewport,srccolormap.colortable,srccolormap.count)
+
+    copywindow := OpenWindowTagList(NIL,
+                                    [WA_LEFT,0,
+                                     WA_TOP,0,
+                                     WA_WIDTH,srcscreen.width,
+                                     WA_HEIGHT,srcscreen.height,
+                                     WA_BORDERLESS,TRUE,
+                                     WA_CUSTOMSCREEN,copyscreen,
+                                     NIL])
+    IF copywindow
+
+      -&gt; copy source-screens`s bitmap (disable task-switching)
+      Forbid()
+      BltBitMapRastPort(srcbitmap,0,0,
+                        copywindow.rport,0,0,
+                        copywindow.width,copywindow.height,
+                        $C0)
+      Permit()
+
+      -&gt; set the global rastport and the e-internal reastport
+      -&gt; to my windows rastport
+      rastport := copywindow.rport
+      SetStdRast(copywindow.rport)
+
+      -&gt; pop the screen to front
+      ScreenToFront(copyscreen)
+
+      RETURN TRUE
+
+    ENDIF
+
+    CloseScreen(copyscreen)
+
+  ENDIF
+
+ENDPROC FALSE
+PROC closeCopyScreen()
+
+  -&gt; move the screen to back and close the window and screen
+  ScreenToBack(copyscreen)
+  CloseWindow(copywindow)
+  CloseScreen(copyscreen)
+
+ENDPROC
+PROC borderOff()
+
+  -&gt; switch off the border
+  VideoControl(copyviewport.colormap,[VTAG_BORDERBLANK_SET,0,NIL])
+
+  -&gt; now refresh the display (RethinkDisplay() is not enough :)
+  RemakeDisplay()
+
+ENDPROC
+PROC req(text, gads)
+
+  -&gt; simply set up a intuition requester and return its response
+  RETURN EasyRequestArgs(NIL,[20,0,&#x27;ScreenFX by Jens Tröger&#x27;,text,gads]:LONG,NIL,NIL)
+
+ENDPROC
+
+PROC blur()
+
+DEF x,y
+
+  WHILE Not(LeftMouse(copywindow))
+
+    -&gt; get a random pixel of my screen...
+    x := Rnd(copyscreen.width)
+    y := Rnd(copyscreen.height)
+
+    -&gt; ...find and set its color as apen...
+    SetAPen(rastport, ReadPixel(rastport,x,y))
+
+    -&gt; ...and paint a little rect in this color
+    RectFill(rastport,x,y,x+1,y+1)
+
+  ENDWHILE
+
+ENDPROC
+PROC fade()
+
+-&gt; NOTE: you will get a smoother fading if you do not set every register
+-&gt;       itself by calling SetRGB4() but creating a own colormap via
+-&gt;       GetColorMap(), fill it an after this call LoadRGB4()
+
+-&gt; inspirated by Holger Gzella (thanx Holger: are you in Germany again??)
+
+DEF fade=TRUE,count,color,red,green,blue
+
+  -&gt; fade will be set to TRUE if one of the color registers is
+  -&gt; not zero (black)
+  WHILE (fade = TRUE) AND (Not(LeftMouse(copywindow)))
+
+    -&gt; do with every color register starting by 0
+    FOR count := 0 TO numbercolors-1
+
+      -&gt; get color register`s color
+      -&gt; NOTE: all are 4-bit-rgb-values!
+      color := GetRGB4(copyviewport.colormap,count)
+
+      -&gt; if color is not black get the parts of it (red, green, blue)
+      -&gt; with shifting and masking the bits and count down these values
+      IF color &gt; 0
+
+        -&gt; get the parts
+        red := Shr(And(color,$0f00),8)
+        green := Shr(And(color,$00f0),4)
+        blue := And(color,$000f)
+
+        -&gt; count down
+        IF (red&gt;=blue) AND (red&gt;=green) AND (red&gt;0) THEN red--
+        IF (green&gt;=blue) AND (green&gt;=red) AND (green&gt;0) THEN green--
+        IF (blue&gt;=red) AND (blue&gt;=green) AND (blue&gt;0) THEN blue--
+
+        -&gt; set the new (a little darker) color
+        SetRGB4(copyviewport,count,red,green,blue)
+
+        -&gt; wait a little time (5 x 1/50s)
+        Delay(5)
+
+        -&gt; set fade to true for a new loop
+        fade := TRUE
+
+      ELSE
+
+        -&gt; all (or the last) are black!
+        fade := FALSE
+
+      ENDIF
+
+    ENDFOR
+
+  ENDWHILE
+
+ENDPROC
+PROC dissolve()
+
+DEF x,y
+
+  WHILE Not(LeftMouse(copywindow))
+
+    -&gt; get a random pixel
+    x := Rnd(copyscreen.width)
+    y := Rnd(copyscreen.height)
+
+    -&gt; mask the bitplanes using Rnd()
+    rastport.mask := Rnd(numbercolors+1)
+
+    -&gt; scroll my random rect (size is 5x5) in a random direction
+    -&gt; (direction is max 5 pixel horizontal and/or vertical)
+    ScrollRaster(rastport,Rnd(5), Rnd(5),x,y,x+5,y+5)
+
+  ENDWHILE                                                  
+
+ENDPROC
+PROC blackPoints()
+
+  -&gt; use black as draw-pen (hope reg 1 will hold black!!!, otherwise
+  -&gt; use the pen-array given by the draw-info structure to find the
+  -&gt; darkest color)
+  SetAPen(rastport,1)
+
+  -&gt; switch off the border
+  borderOff()
+
+  WHILE Not(LeftMouse(copywindow))
+
+    -&gt; draw and draw and draw black pixels
+    WritePixel(rastport,Rnd(copyscreen.width),Rnd(copyscreen.height))
+
+  ENDWHILE
+
+ENDPROC
+PROC backPoints()
+
+  -&gt; if reg 0 holds the background pen this will work otherwise use the
+  -&gt; draw-info BACKGROUNDPEN
+  SetAPen(rastport,0)
+
+  WHILE Not(LeftMouse(copywindow))
+
+    -&gt; draw and draw &quot;invisible&quot; pixels
+    WritePixel(rastport,Rnd(copyscreen.width),Rnd(copyscreen.height))
+
+  ENDWHILE
+
+ENDPROC
+
+PROC melt(mode,minterm)
+
+-&gt; this code was inspirated/taken from &quot;MELT.C&quot; by Stephen Coy and
+-&gt; modified for different effects
+
+DEF mask,x,y,u,v,dx,dy,temp
+
+  -&gt; BltBitMap() needs some CHIP-Mem as a temporary memory
+  -&gt; if there are overlapping blits
+  IF (temp := NewM(MAXBYTESPERROW, MEMF_CHIP OR MEMF_CLEAR)) = NIL THEN RETURN
+
+  -&gt; do melting while the LMB is not pressed
+  WHILE Not(LeftMouse(copywindow))
+
+    -&gt; bitplane mask
+    mask := 1
+
+    REPEAT
+
+      -&gt; get the dimension of the blit-rect and its
+      -&gt; position
+      u := Rnd((copyscreen.width-3)/2)+1
+      v := Rnd((copyscreen.height-3)/2)+1
+      x := Rnd(copyscreen.width-1-u)+1
+      y := Rnd(copyscreen.height-2-v)+1
+
+      -&gt; check what melt and randowmize the
+      -&gt; dirction
+      IF mode = DOWN
+        dx := Rnd(3)-1
+        dy := Rnd(3)
+      ELSEIF mode = SWIM
+        dx := Rnd(3)-1
+        dy := Rnd(3)-1
+      ELSEIF mode = SUCK
+        IF (x &lt; (copyscreen.width / 2))
+          IF (y &lt; (copyscreen.height / 2))
+            dx := Rnd(3)
+            dy := Rnd(3)
+          ELSE
+            dx := Rnd(3)
+            dy := - Rnd(3)-2
+          ENDIF
+        ELSE
+          IF (y &lt; (copyscreen.height / 2))
+            dx := - Rnd(3)-2
+            dy := Rnd(3)
+          ELSE
+            dx := - Rnd(3)-2
+            dy := - Rnd(3)-2
+          ENDIF
+        ENDIF
+      ENDIF
+
+      -&gt; now blit the rect
+      -&gt; ZET-NOTE (and other friix): replace mask with $FFFFFFFF  ;0)
+      BltBitMap(rastport.bitmap, x, y,
+                rastport.bitmap, x+dx, y+dy,
+                u, v, minterm, mask, temp);
+
+      -&gt; activate next bitplanes
+      mask ++
+
+    UNTIL mask &gt;= (numbercolors-1)
+
+  ENDWHILE
+
+  -&gt; free the temporary memory
+  Dispose(temp)
+
+ENDPROC
+
+
+
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

@@ -1,0 +1,651 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>PsiloPlayer.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-psiloplayer.html">PsiloPlayer</a> &rsaquo; PsiloPlayer.e</div><h1>File: <code>PsiloPlayer.e</code></h1><p class="meta">625 lines · project <a href="../examples/pkg-psiloplayer.html"><code>PsiloPlayer</code></a></p><p class="pathctx">PsiloPlayer/PsiloPlayer/Src/PsiloPlayer.e</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/easygui.html">tools/easygui</a></li></ul></div><h2>Source</h2><pre class="code">
+OPT OSVERSION=39
+OPT PREPROCESS
+
+MODULE &#x27;tools/easygui&#x27;,&#x27;intuition/screens&#x27;,&#x27;tools/exceptions&#x27;,
+       &#x27;intuition/intuition&#x27;,&#x27;protracker&#x27;,&#x27;graphics/rastport&#x27;,
+       &#x27;graphics/text&#x27;,&#x27;asl&#x27;,&#x27;libraries/asl&#x27;,&#x27;utility/tagitem&#x27;,
+       &#x27;dos/dos&#x27;,&#x27;exec/memory&#x27;,&#x27;xpkmaster&#x27;,&#x27;libraries/xpk&#x27;,
+       &#x27;libraries/gadtools&#x27;,&#x27;commodities&#x27;,&#x27;icon&#x27;,&#x27;amigalib/argarray&#x27;,
+       &#x27;exec/ports&#x27;,&#x27;libraries/commodities&#x27;,&#x27;tools/ports&#x27;,&#x27;utility&#x27;,
+       &#x27;med/mmd&#x27;,&#x27;medplayer&#x27;,&#x27;med/reloc&#x27;,&#x27;octaplayer&#x27;,&#x27;playsid&#x27;,
+       &#x27;libraries/playsidbase&#x27;,&#x27;exec/execbase&#x27;,&#x27;replay/jamcracker&#x27;
+
+
+RAISE &quot;LIB&quot;  IF OpenLibrary()=0,
+      &quot;FONT&quot; IF OpenFont()=0,
+      &quot;DRI&quot;  IF GetScreenDrawInfo()=0,
+      &quot;ASL&quot;  IF AllocAslRequest()=0,
+      &quot;SCR&quot;  IF LockPubScreen()=0,
+      &quot;PORT&quot; IF CreateMsgPort()=0,
+      &quot;cxOB&quot; IF CreateCxObj()=0,
+           1 IF CxBroker()=0
+
+
+OBJECT modinfo OF plugin
+    window:PTR TO window
+PRIVATE
+    rawkey:LONG
+    visible:INT
+    size:LONG
+    name[128]:ARRAY OF CHAR
+    type[128]:ARRAY OF CHAR
+    author[128]:ARRAY OF CHAR
+    comment[128]:ARRAY OF CHAR
+ENDOBJECT
+
+
+DEF mi:PTR TO modinfo,mp=0:PTR TO mmd0,ml=0,freq=0:PTR TO filerequester,
+    sreq=0:PTR TO filerequester,pl=0,mfl=0,gh=0:PTR TO guihandle,
+    defldir[256]:STRING,defsdir[256]:STRING,sc:PTR TO screen,
+    brokerPort=0:PTR TO mp,broker=0,filter=0,type=0,sg,song,minsong,maxsong
+
+-&gt;fs &quot;modinfo class code&quot;
+PROC modinfo(name=NIL,size=0,t=0,au=0,com=0) OF modinfo
+    IF name THEN AstrCopy(self.name,name,128) ELSE AstrCopy(self.name,&#x27;No module loaded&#x27;,128)
+    self.size:=size
+    IF t THEN AstrCopy(self.type,t,128) ELSE AstrCopy(self.type,&#x27;None&#x27;,128)
+    IF au THEN AstrCopy(self.author,au,128) ELSE AstrCopy(self.author,&#x27;Unknown&#x27;,128)
+    IF com THEN AstrCopy(self.comment,com,128) ELSE AstrCopy(self.comment,&#x27;None&#x27;,128)
+ENDPROC
+
+PROC will_resize() OF modinfo IS RESIZEX
+
+PROC min_size(fh) OF modinfo IS fh*10,fh*5
+
+PROC render(x,y,xs,ys,wd:PTR TO window) OF modinfo
+    DEF rp:PTR TO rastport,w,tw,s[32]:STRING,c,dri:PTR TO drawinfo,
+        font:PTR TO textfont
+    self.visible:=TRUE
+    self.window:=wd
+    font:=OpenFont(wd.wscreen.font)
+    dri:=GetScreenDrawInfo(wd.wscreen)
+    rp:=wd.rport
+    SetAPen(rp,dri.pens[BACKGROUNDPEN])
+    RectFill(rp,x,y,x+xs-1,y+ys-1)
+    SetAPen(rp,dri.pens[TEXTPEN])
+    SetFont(rp,font)
+    tw:=Max(TextLength(rp,&#x27;Comment: &#x27;,9),Max(TextLength(rp,&#x27;Author: &#x27;,8),Max(TextLength(rp,&#x27;Name: &#x27;,6),Max(TextLength(rp,&#x27;Size: &#x27;,6),TextLength(rp,&#x27;Type: &#x27;,6)))))
+    Move(rp,x,y+rp.font.baseline)
+    Text(rp,&#x27;Name:&#x27;,5)
+    Move(rp,x,y+rp.font.baseline+rp.font.ysize)
+    Text(rp,&#x27;Size:&#x27;,5)
+    Move(rp,x,y+rp.font.baseline+Shl(rp.font.ysize,1))
+    Text(rp,&#x27;Type:&#x27;,5)
+    Move(rp,x,y+rp.font.baseline+Shl(rp.font.ysize,1)+rp.font.ysize)
+    Text(rp,&#x27;Author:&#x27;,7)
+    Move(rp,x,y+rp.font.baseline+Shl(rp.font.ysize,2))
+    Text(rp,&#x27;Comment:&#x27;,8)
+    StringF(s,&#x27;\d&#x27;,self.size)
+    Move(rp,x+tw,y+rp.font.baseline)
+    c:=StrLen(self.name)
+    w:=TextLength(rp,self.name,c)
+    WHILE w&gt;(xs-tw)
+        DEC c
+        EXIT c=0
+        w:=TextLength(rp,self.name,c)
+    ENDWHILE
+    IF c THEN Text(rp,self.name,c)
+    Move(rp,x+tw,y+rp.font.baseline+rp.font.ysize)
+    c:=StrLen(s)
+    w:=TextLength(rp,s,c)
+    WHILE w&gt;(xs-tw)
+        DEC c
+        EXIT c=0
+        w:=TextLength(rp,s,c)
+    ENDWHILE
+    IF c THEN Text(rp,s,c)
+    Move(rp,x+tw,y+rp.font.baseline+Shl(rp.font.ysize,1))
+    c:=StrLen(self.type)
+    w:=TextLength(rp,self.type,c)
+    WHILE w&gt;(xs-tw)
+        DEC c
+        EXIT c=0
+        w:=TextLength(rp,self.type,c)
+    ENDWHILE
+    IF c THEN Text(rp,self.type,c)
+    Move(rp,x+tw,y+rp.font.baseline+Shl(rp.font.ysize,1)+rp.font.ysize)
+    c:=StrLen(self.author)
+    w:=TextLength(rp,self.author,c)
+    WHILE w&gt;(xs-tw)
+        DEC c
+        EXIT c=0
+        w:=TextLength(rp,self.author,c)
+    ENDWHILE
+    IF c THEN Text(rp,self.author,c)
+    Move(rp,x+tw,y+rp.font.baseline+Shl(rp.font.ysize,2))
+    c:=StrLen(self.comment)
+    w:=TextLength(rp,self.comment,c)
+    WHILE w&gt;(xs-tw)
+        DEC c
+        EXIT c=0
+        w:=TextLength(rp,self.comment,c)
+    ENDWHILE
+    IF c THEN Text(rp,self.comment,c)
+    FreeScreenDrawInfo(wd.wscreen,dri)
+    CloseFont(font)
+ENDPROC
+
+PROC clear_render(u) OF modinfo
+    self.visible:=FALSE
+    self.window:=NIL
+ENDPROC
+
+PROC message_test(imsg:PTR TO intuimessage,wd:PTR TO window) OF modinfo
+    IF imsg.class=IDCMP_RAWKEY
+        self.rawkey:=imsg.code
+        RETURN TRUE
+    ENDIF
+ENDPROC FALSE
+
+PROC message_action(wd:PTR TO window) OF modinfo
+    DEF k
+    k:=self.rawkey
+    SELECT k
+        CASE $19
+            play()
+        CASE $21
+            stop()
+        CASE $12
+            eject()
+        CASE $34
+            save()
+        CASE $28
+            load()
+        CASE $45
+            RETURN TRUE
+        CASE CURSORLEFT
+            prev()
+        CASE CURSORRIGHT
+            next()
+    ENDSELECT
+ENDPROC FALSE
+
+PROC setname(name=0) OF modinfo
+    IF name THEN AstrCopy(self.name,name,128) ELSE AstrCopy(self.name,&#x27;No module loaded&#x27;,128)
+    IF self.visible THEN self.render(self.x,self.y,self.xs,self.ys,self.window)
+ENDPROC
+
+PROC setsize(size=0) OF modinfo
+    self.size:=size
+    IF self.visible THEN self.render(self.x,self.y,self.xs,self.ys,self.window)
+ENDPROC
+
+PROC settype(t=0) OF modinfo
+    IF t THEN AstrCopy(self.type,t,128) ELSE AstrCopy(self.type,&#x27;None&#x27;,128)
+    IF self.visible THEN self.render(self.x,self.y,self.xs,self.ys,self.window)
+ENDPROC
+
+PROC setauthor(au=0) OF modinfo
+    IF au THEN AstrCopy(self.author,au,128) ELSE AstrCopy(self.author,&#x27;Unknown&#x27;,128)
+    IF self.visible THEN self.render(self.x,self.y,self.xs,self.ys,self.window)
+ENDPROC
+
+PROC setcomment(com=0) OF modinfo
+    IF com THEN AstrCopy(self.comment,com,128) ELSE AstrCopy(self.comment,&#x27;None&#x27;,128)
+    IF self.visible THEN self.render(self.x,self.y,self.xs,self.ys,self.window)
+ENDPROC
+
+PROC setinfo(name=0,size=0,t=0,au=0,com=0) OF modinfo
+    IF name THEN AstrCopy(self.name,name,128) ELSE AstrCopy(self.name,&#x27;No module loaded&#x27;,128)
+    self.size:=size
+    IF t THEN AstrCopy(self.type,t,128) ELSE AstrCopy(self.type,&#x27;None&#x27;,128)
+    IF au THEN AstrCopy(self.author,au,128) ELSE AstrCopy(self.author,&#x27;Unknown&#x27;,128)
+    IF com THEN AstrCopy(self.comment,com,128) ELSE AstrCopy(self.comment,&#x27;None&#x27;,128)
+    IF self.visible THEN self.render(self.x,self.y,self.xs,self.ys,self.window)
+ENDPROC
+-&gt;fe
+
+PROC main() HANDLE
+    DEF res=-1,mask=0,sig,ttypes=NIL,msg,msgtype,msgid
+
+    aslbase:=OpenLibrary(&#x27;asl.library&#x27;,37)
+    xpkbase:=OpenLibrary(&#x27;xpkmaster.library&#x27;,2)
+    iconbase:=OpenLibrary(&#x27;icon.library&#x27;,37)
+    cxbase:=OpenLibrary(&#x27;commodities.library&#x27;,37)
+    utilitybase:=OpenLibrary(&#x27;utility.library&#x27;,37)
+
+    brokerPort:=CreateMsgPort()
+    IF (ttypes:=argArrayInit())=0 THEN Raise(&quot;args&quot;)
+    broker:=CxBroker([NB_VERSION,0,
+                      &#x27;PsiloPlayer&#x27;,
+                      &#x27;PsiloPlayer v1.0&#x27;,
+                      &#x27;A small module player&#x27;,
+                      NBU_UNIQUE OR NBU_NOTIFY,COF_SHOW_HIDE,
+                      argInt(ttypes,&#x27;CX_PRIORITY&#x27;,0),0,
+                      brokerPort,0]:newbroker,NIL)
+    AttachCxObj(broker,filter:=CxFilter(argString(ttypes,&#x27;CX_POPKEY&#x27;,&#x27;ctrl alt d&#x27;)))
+    AttachCxObj(filter,CxSender(brokerPort,23))
+    AttachCxObj(filter,CxTranslate(NIL))
+    IF CxObjError(filter) THEN Raise(&quot;cxFU&quot;)
+    ActivateCxObj(broker,TRUE)
+
+    loadprefs()
+
+    freq:=AllocAslRequest(ASL_FILEREQUEST,[ASLFR_PRIVATEIDCMP,TRUE,
+                                           ASLFR_SLEEPWINDOW,TRUE,
+                                           ASLFR_TITLETEXT,&#x27;Select a module to load&#x27;,
+                                           ASLFR_POSITIVETEXT,&#x27;Load&#x27;,
+                                           ASLFR_NEGATIVETEXT,&#x27;Cancel&#x27;,
+                                           ASLFR_REJECTICONS,TRUE,
+                                           ASLFR_INITIALDRAWER,defldir,
+                                           TAG_DONE])
+    sreq:=AllocAslRequest(ASL_FILEREQUEST,[ASLFR_PRIVATEIDCMP,TRUE,
+                                           ASLFR_SLEEPWINDOW,TRUE,
+                                           ASLFR_TITLETEXT,&#x27;Select filename to save as&#x27;,
+                                           ASLFR_POSITIVETEXT,&#x27;Save&#x27;,
+                                           ASLFR_NEGATIVETEXT,&#x27;Cancel&#x27;,
+                                           ASLFR_REJECTICONS,TRUE,
+                                           ASLFR_DOSAVEMODE,TRUE,
+                                           ASLFR_INITIALDRAWER,defsdir,
+                                           TAG_DONE])
+
+    sc:=LockPubScreen(NIL)
+
+    IF Stricmp(&#x27;yes&#x27;,argString(ttypes,&#x27;CX_POPUP&#x27;,&#x27;yes&#x27;))=0 THEN opengui()
+
+    WHILE res&lt;0
+        mask:=Shl(1,brokerPort.sigbit)
+        IF gh THEN mask:=Or(mask,gh.sig)
+        sig:=Wait(mask)
+        IF And(sig,Shl(1,brokerPort.sigbit))
+            WHILE msg:=GetMsg(brokerPort)
+                msgtype:=CxMsgType(msg)
+                msgid:=CxMsgID(msg)
+                ReplyMsg(msg)
+                SELECT msgtype
+                    CASE CXM_IEVENT
+                        IF msgid=23
+                            IF gh THEN closegui() ELSE opengui()
+                        ENDIF
+                    CASE CXM_COMMAND
+                        SELECT msgid
+                            CASE CXCMD_APPEAR
+                                opengui()
+                            CASE CXCMD_DISAPPEAR
+                                closegui()
+                            CASE CXCMD_DISABLE
+                                ActivateCxObj(broker,FALSE)
+                            CASE CXCMD_ENABLE
+                                ActivateCxObj(broker,TRUE)
+                            CASE CXCMD_KILL
+                                res:=0
+                            CASE CXCMD_UNIQUE
+                                opengui()
+                        ENDSELECT
+                ENDSELECT
+            ENDWHILE
+        ELSEIF gh
+            IF And(sig,gh.sig) THEN res:=guimessage(gh)
+            IF res=23
+                res:=-1
+                closegui()
+            ENDIF
+        ENDIF
+    ENDWHILE
+
+    saveprefs()
+
+EXCEPT DO
+    eject()
+    closegui()
+    IF sc THEN UnlockPubScreen(NIL,sc)
+    IF sreq THEN FreeAslRequest(sreq)
+    IF freq THEN FreeAslRequest(freq)
+    IF broker THEN DeleteCxObjAll(broker)
+    IF ttypes THEN argArrayDone()
+    IF brokerPort THEN deletePortSafely(brokerPort)
+    IF utilitybase THEN CloseLibrary(utilitybase)
+    IF cxbase THEN CloseLibrary(cxbase)
+    IF iconbase THEN CloseLibrary(iconbase)
+    IF xpkbase THEN CloseLibrary(xpkbase)
+    IF aslbase THEN CloseLibrary(aslbase)
+    IF exception&gt;1 THEN report_exception()
+ENDPROC
+
+PROC opengui()
+    IF gh THEN RETURN
+    gh:=guiinit(&#x27;PsiloPlayer&#x27;,  [ROWS,
+                                    [BAR],
+                                    [BEVELR,[PLUGIN,0,NEW mi.modinfo(name(mp,type),ml,typename(type),author(mp,type),comment(mp,type))]],
+                                    [BAR],
+                                    sg:=[TEXT,&#x27;No module loaded&#x27;,0,TRUE,10],
+                                    [EQCOLS,
+                                        [SBUTTON,{play},&#x27;Play&#x27;],
+                                        [SBUTTON,{stop},&#x27;Stop&#x27;],
+                                        [SBUTTON,{prev},&#x27;Prev&#x27;],
+                                        [SBUTTON,{next},&#x27;Next&#x27;],
+                                        [SBUTTON,{eject},&#x27;Eject&#x27;],
+                                        [SBUTTON,{save},&#x27;Save&#x27;],
+                                        [SBUTTON,{load},&#x27;Load&#x27;]
+                                    ],
+                                    [BAR]
+                                ],0,sc,0,[NM_TITLE,0,&#x27;Project&#x27;,0,0,0,0,
+                                          NM_ITEM,0, &#x27;Load module...&#x27;,&#x27;L&#x27;,NM_COMMANDSTRING,0,{load},
+                                          NM_ITEM,0, &#x27;Save module...&#x27;,&#x27;V&#x27;,NM_COMMANDSTRING,0,{save},
+                                          NM_ITEM,0, NM_BARLABEL,0,0,0,0,
+                                          NM_ITEM,0, &#x27;Eject module&#x27;,&#x27;E&#x27;,NM_COMMANDSTRING,0,{eject},
+                                          NM_ITEM,0, NM_BARLABEL,0,0,0,0,
+                                          NM_ITEM,0, &#x27;Hide&#x27;,&#x27;H&#x27;,0,0,23,
+                                          NM_ITEM,0, &#x27;Quit&#x27;,&#x27;ESC&#x27;,NM_COMMANDSTRING,0,0,
+                                          NM_TITLE,0,&#x27;Edit&#x27;,0,0,0,0,
+                                          NM_ITEM,0, &#x27;Play&#x27;,&#x27;P&#x27;,NM_COMMANDSTRING,0,{play},
+                                          NM_ITEM,0, &#x27;Stop&#x27;,&#x27;S&#x27;,NM_COMMANDSTRING,0,{stop},
+                                          NM_ITEM,0, NM_BARLABEL,0,0,0,0,
+                                          NM_ITEM,0, &#x27;Previous song&#x27;,&#x27;LEFT&#x27;,NM_COMMANDSTRING,0,{prev},
+                                          NM_ITEM,0, &#x27;Next song&#x27;,&#x27;RIGHT&#x27;,NM_COMMANDSTRING,0,{next},
+                                          NM_END,0,0,0,0,0,0
+                                         ]:newmenu)
+ENDPROC
+
+PROC closegui(i=0)
+    IF gh
+        cleangui(gh)
+        gh:=0
+    ENDIF
+ENDPROC
+
+PROC load(i=0)
+    IF AslRequest(freq,[ASLFR_WINDOW,mi.window,TAG_DONE])=0 THEN RETURN
+    loadmodule(freq.drawer,freq.file)
+ENDPROC
+
+PROC loadmodule(d,n)
+    DEF s[512]:STRING
+    IF mp THEN eject()
+    StrCopy(s,d)
+    AddPart(s,n,512)
+    SetStr(s,StrLen(s))
+    status(&#x27;Loading module...&#x27;)
+    XpkUnpack([XPK_INNAME,s,XPK_GETOUTBUF,{mp},XPK_GETOUTLEN,{ml},
+               XPK_GETOUTBUFLEN,{mfl},XPK_OUTMEMTYPE,MEMF_CHIP,
+               XPK_PASSTHRU,TRUE,TAG_DONE])
+    IF (type:=checkformat(mp))=0
+        FreeMem(mp,mfl)
+        mp:=0
+        status(&#x27;Wrong format!&#x27;)
+    ELSE
+        mi.setinfo(name(mp,type),ml,typename(type),author(mp,type),comment(mp,type))
+        play()
+    ENDIF
+ENDPROC
+
+PROC save(i=0)
+    IF mp=0
+        status(&#x27;Load a module first!&#x27;)
+    ELSE
+        IF AslRequest(sreq,[ASLFR_WINDOW,mi.window,
+                            ASLFR_INITIALFILE,freq.file,
+                            TAG_DONE])=0 THEN RETURN
+        status(&#x27;Saving module...&#x27;)
+        savemodule(sreq.drawer,sreq.file)
+        status(&#x27;Module saved.&#x27;)
+    ENDIF
+ENDPROC
+
+PROC savemodule(d,n)
+    DEF s[512]:STRING
+    StrCopy(s,d)
+    AddPart(s,n,512)
+    SetStr(s,StrLen(s))
+    XpkPack([XPK_INBUF,mp,XPK_INLEN,ml,XPK_OUTNAME,s,
+             XPK_PACKMETHOD,&#x27;SQSH&#x27;,XPK_PACKMODE,100,
+             TAG_DONE])
+ENDPROC
+
+PROC play(i=0)
+    DEF execbase:PTR TO execbase
+    IF mp=0 THEN status(&#x27;Load a module first!&#x27;)
+    IF mp AND (pl=0)
+        BSET    #1,$BFE001
+        SELECT type
+            CASE 1  -&gt; ProTracker
+                ptbase:=OpenLibrary(&#x27;protracker.library&#x27;,1)
+                pl:=Mt_StartInt(mp)
+                IF pl=0
+                    CloseLibrary(ptbase)
+                    ptbase:=0
+                ENDIF
+            CASE 2  -&gt; MED
+                medplayerbase:=OpenLibrary(&#x27;medplayer.library&#x27;,5)
+                pl:=IF GetPlayer(0) THEN FALSE ELSE TRUE
+                IF pl
+                    SetModnum(song)
+                    PlayModule(mp)
+                ELSE
+                    CloseLibrary(medplayerbase)
+                    medplayerbase:=0
+                ENDIF
+            CASE 3  -&gt; OctaMED
+                octaplayerbase:=OpenLibrary(&#x27;octaplayer.library&#x27;,5)
+                pl:=IF GetPlayer8() THEN FALSE ELSE TRUE
+                IF pl
+                    SetModnum8(song)
+                    PlayModule8(mp)
+                ELSE
+                    CloseLibrary(octaplayerbase)
+                    octaplayerbase:=0
+                ENDIF
+            CASE 4  -&gt; PlaySID
+                playsidbase:=OpenLibrary(&#x27;playsid.library&#x27;,1)
+                pl:=AllocEmulResource()
+                IF pl=0
+                    execbase:=Long(4)
+                    SetVertFreq(execbase.powersupplyfrequency)
+                    SetModule(mp,mp,ml)
+                    pl:=StartSong(song)
+                    IF pl THEN FreeEmulResource()
+                ENDIF
+                IF pl
+                    CloseLibrary(playsidbase)
+                    playsidbase:=0
+                ENDIF
+                pl:=IF pl THEN FALSE ELSE TRUE
+            CASE 5  -&gt; JamCracker
+                pl:=jc_StartInt(mp)
+        ENDSELECT
+        IF pl THEN status(&#x27;Playing module...&#x27;) ELSE status(&#x27;Can&#x27;&#x27;t play module!&#x27;)
+    ENDIF
+ENDPROC
+
+PROC eject(i=0)
+    IF mp
+        stop()
+        FreeMem(mp,mfl)
+        mp:=0;ml:=0
+        type:=0
+        mi.setinfo()
+        status(&#x27;Module ejected.&#x27;)
+    ELSE
+        status(&#x27;No module loaded!&#x27;)
+    ENDIF
+ENDPROC
+
+PROC stop(i=0)
+    IF pl
+        SELECT type
+            CASE 1  -&gt; ProTracker
+                Mt_StopInt()
+                CloseLibrary(ptbase)
+                ptbase:=0
+            CASE 2  -&gt; MED
+                StopPlayer()
+                FreePlayer()
+                CloseLibrary(medplayerbase)
+                medplayerbase:=0
+            CASE 3  -&gt; OctaMED
+                StopPlayer8()
+                FreePlayer8()
+                CloseLibrary(octaplayerbase)
+                octaplayerbase:=0
+            CASE 4  -&gt; PlaySID
+                StopSong()
+                FreeEmulResource()
+                CloseLibrary(playsidbase)
+                playsidbase:=0
+            CASE 5  -&gt; JamCracker
+                jc_StopInt()
+        ENDSELECT
+        pl:=0
+        status(&#x27;Module stopped.&#x27;)
+    ELSE
+        status(&#x27;No module playing!&#x27;)
+    ENDIF
+ENDPROC
+
+PROC checkformat(m:PTR TO mmd0)
+    DEF v
+    song:=0
+    minsong:=0
+    maxsong:=0
+    IF Long(m+1080)=&quot;M.K.&quot; THEN RETURN 1
+    v:=Long(m)
+    IF v=&quot;BeEp&quot; THEN RETURN 5
+    IF v=&quot;PSID&quot;
+        song:=m::sidheader.defsong
+        minsong:=1
+        maxsong:=m::sidheader.number
+        RETURN 4
+    ENDIF
+    IF (v=&quot;MMD0&quot;) OR (v=&quot;MMD1&quot;) OR (v=&quot;MMD2&quot;)
+        relocModule(m)
+        song:=0
+        minsong:=0
+        maxsong:=m.extra_songs
+        RETURN IF And(m.song.flags,FLAG_8CHANNEL) THEN 3 ELSE 2
+    ENDIF
+ENDPROC 0
+
+PROC name(mod:PTR TO mmd0,t)
+    IF mod=0 THEN RETURN &#x27;No module loaded&#x27;
+    SELECT t
+        CASE 0  -&gt; None loaded
+            RETURN &#x27;Fnord!&#x27;
+        CASE 1  -&gt; ProTracker
+            PutChar(mod+19,0)
+            RETURN mod
+        CASE 2  -&gt; MED
+            RETURN mod.expdata.songname
+        CASE 3  -&gt; OctaMED
+            RETURN mod.expdata.songname
+        CASE 4  -&gt; PlaySID
+            RETURN mod::sidheader.name
+        CASE 5  -&gt; JamCracker
+            RETURN freq.file
+    ENDSELECT
+ENDPROC &#x27;Untitled&#x27;
+
+PROC author(mod:PTR TO mmd0,t)
+    DEF i,j
+    IF mod=0 THEN RETURN &#x27;No module loaded&#x27;
+    SELECT t
+        CASE 0  -&gt; None loaded
+            RETURN &#x27;Prof. Adam Weishaupt&#x27;
+        CASE 1  -&gt; ProTracker
+            IF Char(mod+20)&lt;&gt;&quot;#&quot; THEN RETURN &#x27;Unknown&#x27;
+            i:=mod+21
+            WHILE Char(i)=&quot;#&quot; DO INC i
+            j:=i
+            WHILE (Char(i)&lt;&gt;&quot;#&quot;) AND (i&lt;(mod+42)) DO INC i
+            IF Char(i)=&quot;#&quot; THEN PutChar(i,0) ELSE PutChar(i-1,0)
+            RETURN j
+        CASE 2  -&gt; MED
+            RETURN &#x27;Unknown&#x27;
+        CASE 3  -&gt; OctaMED
+            RETURN &#x27;Unknown&#x27;
+        CASE 4  -&gt; PlaySID
+            RETURN mod::sidheader.author
+        CASE 5  -&gt; JamCracker
+            RETURN &#x27;Unknown&#x27;
+    ENDSELECT
+ENDPROC &#x27;Untitled&#x27;
+
+PROC comment(mod:PTR TO mmd0,t)
+    IF mod=0 THEN RETURN &#x27;No module loaded&#x27;
+    SELECT t
+        CASE 0  -&gt; None loaded
+            RETURN &#x27;Fnord!&#x27;
+        CASE 1  -&gt; ProTracker
+            RETURN &#x27;None&#x27;
+        CASE 2  -&gt; MED
+            RETURN mod.expdata.annotxt
+        CASE 3  -&gt; OctaMED
+            RETURN mod.expdata.annotxt
+        CASE 4  -&gt; PlaySID
+            RETURN mod::sidheader.copyright
+        CASE 5  -&gt; JamCracker
+            RETURN &#x27;None&#x27;
+    ENDSELECT
+ENDPROC &#x27;Untitled&#x27;
+
+PROC typename(t) IS ListItem([&#x27;None&#x27;,&#x27;ProTracker&#x27;,&#x27;OctaMED 4-Channel&#x27;,
+                              &#x27;OctaMED 8-Channel&#x27;,&#x27;PlaySID&#x27;,&#x27;JamCracker&#x27;],t)
+
+PROC status(t) IS settext(gh,sg,t)
+
+PROC loadprefs()
+    DEF fh
+    fh:=Open(&#x27;ENVARC:PsiloPlayer.prefs&#x27;,MODE_OLDFILE)
+    IF fh
+        ReadStr(fh,defldir)
+        ReadStr(fh,defsdir)
+        Close(fh)
+    ENDIF
+ENDPROC
+
+PROC saveprefs()
+    DEF fh
+    fh:=Open(&#x27;ENVARC:PsiloPlayer.prefs&#x27;,MODE_NEWFILE)
+    IF fh=0 THEN Raise(&quot;FILE&quot;)
+    VfPrintf(fh,&#x27;%s\n%s\n&#x27;,[freq.drawer,sreq.drawer])
+    Close(fh)
+ENDPROC
+
+PROC next(i=0)
+    IF song&lt;maxsong
+        stop()
+        INC song
+        play()
+    ELSE
+        status(&#x27;This is the last song!&#x27;)
+    ENDIF
+ENDPROC
+
+PROC prev(i=0)
+    IF song&gt;minsong
+        stop()
+        DEC song
+        play()
+    ELSE
+        status(&#x27;This is the first song!&#x27;)
+    ENDIF
+ENDPROC
+
+
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

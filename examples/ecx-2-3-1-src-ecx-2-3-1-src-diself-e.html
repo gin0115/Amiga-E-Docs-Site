@@ -1,0 +1,603 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>diself.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-ecx-2-3-1-src.html">ECX_2.3.1-src</a> &rsaquo; diself.e</div><h1>File: <code>diself.e</code></h1><p class="meta">577 lines · project <a href="../examples/pkg-ecx-2-3-1-src.html"><code>ECX_2.3.1-src</code></a></p><p class="pathctx">ECX_2.3.1-src/ecx-2.3.1-src/diself.e</p><p class="prose">DisELF by Leif Salomonsson [ecx tele2 se] is Copyright (c) 2003-2007. Released under ECX TOOLS LICENSE, see ECXTOOLSLICENSE.TXT</p><h2>Source</h2><pre class="code">-&gt; DisELF by Leif Salomonsson [ecx tele2 se] is Copyright (c) 2003-2007.
+-&gt; Released under ECX TOOLS LICENSE, see ECXTOOLSLICENSE.TXT
+
+OPT PREPROCESS
+
+MODULE &#x27;*ecxelf&#x27;
+MODULE &#x27;*ppcdisasm&#x27;
+
+-&gt; Jan, Apr, Jul 2003
+-&gt; Jan 2004: added HIT option.
+-&gt;           fixed mtspr, mfspr
+-&gt; Apr 2004: added SECT option: SECT sectname.
+
+-&gt; todo: show symbols within code disasm.
+
+-&gt; May 2004: now interprets .line sections.
+
+-&gt; fixed fabs in ppcdisasm.e
+
+-&gt; April 2007: fixes to HIT information..
+-&gt; April 2007: adjstments for sligthly changed .line format (numlines added)
+
+-&gt; Aug 2007: - fixed some STT_XXX names that was wrong.
+-&gt;           - added bunch of reloc types missing
+-&gt;           - added getrelocname(id,str), added mos specific relocs
+-&gt;           - replaced cx() functions with char() func and fixed a bug, thx Stefan H.
+
+-&gt; June 2008: some improvements on page header display.
+
+-&gt; June 2011: adding symbol disassembly. also needs ecx now.
+
+-&gt; bug: only shows first smbol in a section that
+-&gt; matches a hit..
+
+RAISE &quot;FILE&quot; IF FileLength()=-1,
+      &quot;OPEN&quot; IF Open()=NIL,
+      &quot;ARGS&quot; IF ReadArgs()=NIL,
+      &quot;^C&quot;   IF CtrlC()=TRUE
+
+PROC shr(x,v)
+#ifndef ECX_VERSION
+   MOVE.L x, D0
+   MOVE.L v, D1
+   LSR.L D1, D0
+ENDPROC D0
+#endif
+
+#ifdef ECX_VERSION
+ENDPROC x SHR v
+#endif
+
+
+OBJECT args
+	file
+	dis
+	hit
+	sect
+	label
+ENDOBJECT	
+
+STATIC phdrtypes = [&#x27;NULL&#x27;,
+                 &#x27;LOAD&#x27;,
+                 &#x27;DYNAMIC&#x27;,
+                 &#x27;INTERP&#x27;,
+                 &#x27;NOTE&#x27;,
+                 &#x27;SHLIB&#x27;,
+                 &#x27;PHDR&#x27;,
+                 &#x27;???&#x27;]
+	
+STATIC shdrtypes =   [&#x27;&#x27;,
+                   &#x27;PROGBITS&#x27;,
+                   &#x27;SYMTAB&#x27;,
+                   &#x27;STRTAB&#x27;,
+                   &#x27;RELA&#x27;,
+                   &#x27;HASH&#x27;,
+                   &#x27;DYNAMIC&#x27;,
+                   &#x27;7&#x27;,
+                   &#x27;NOBITS&#x27;,
+                   &#x27;REL&#x27;,
+                   &#x27;10&#x27;,
+                   &#x27;DYNSYM&#x27;,
+                   &#x27;???&#x27;]
+
+
+
+STATIC symbolbinds = [&#x27;LOCAL&#x27;,
+                   &#x27;GLOBAL&#x27;,
+                   &#x27;WEAK&#x27;,
+                   &#x27;???&#x27;]
+
+STATIC symboltypes = [&#x27;NOTYPE&#x27;,
+                   &#x27;OBJECT&#x27;,
+                   &#x27;FUNC&#x27;,
+                   &#x27;SECTION&#x27;,
+                   &#x27;FILE&#x27;,
+                   &#x27;COMMON&#x27;,
+                   &#x27;TLS&#x27;,
+                   &#x27;???&#x27;]
+
+DEF args:args
+DEF fbuf, flen
+
+PROC main() HANDLE
+   DEF fh=NIL, rdargs=NIL
+   DEF ehdr:PTR TO ehdr, phdr:PTR TO phdr, phnum
+   DEF shdr:PTR TO shdr, shnum
+   DEF shstrtable, a, b, t
+   DEF sym:PTR TO sym
+   DEF shdr2:PTR TO shdr, strtable
+   DEF rel:PTR TO rel, rela:PTR TO rela
+   DEF str[100]:STRING
+   DEF c, hit, sectname[12]:STRING
+   
+
+   /* read agrs */
+   rdargs := ReadArgs(&#x27;FILE/A,&#x27;+
+                      &#x27;DIS/S,&#x27;+
+                      &#x27;HIT/N,&#x27;+
+                      &#x27;SECT/K,&#x27;+
+                      &#x27;LABEL/K&#x27;,
+                      args, NIL)
+
+   flen := FileLength(args.file)
+   fbuf := NewR(flen+4)
+   fh := Open(args.file, OLDFILE)
+   Read(fh, fbuf, flen)
+   Close(fh) ; fh := NIL
+
+   WriteF(&#x27;\s -&gt; \q\s\q\n&#x27;, {verstr}, args.file)
+
+   hit := IF args.hit THEN Long(args.hit) ELSE -1
+   IF args.sect THEN StrCopy(sectname, args.sect)
+
+   ehdr := fbuf
+
+   IF ehdr.ident[EI_MAG0] &lt;&gt; 127 THEN Throw(&quot;FORM&quot;, &#x27;elf id&#x27;)
+   IF ehdr.ident[EI_MAG1] &lt;&gt; &quot;E&quot; THEN Throw(&quot;FORM&quot;, &#x27;elf id&#x27;)
+   IF ehdr.ident[EI_MAG2] &lt;&gt; &quot;L&quot; THEN Throw(&quot;FORM&quot;, &#x27;elf id&#x27;)
+   IF ehdr.ident[EI_MAG3] &lt;&gt; &quot;F&quot; THEN Throw(&quot;FORM&quot;, &#x27;elf id&#x27;)
+
+   IF ehdr.ident[EI_CLASS] &lt;&gt; ELFCLASS32 THEN Raise(&quot;BITS&quot;)
+   IF ehdr.ident[EI_DATA] &lt;&gt; ELFDATA2MSB THEN Raise(&quot;ENDI&quot;)
+
+   IF hit &gt; -1
+      showhit(hit, ehdr)
+      Raise(0)
+   ENDIF
+   
+   IF args.label
+		show_label(ehdr, args.label)
+		Raise(0)
+	ENDIF
+		
+   IF EstrLen(sectname) = NIL
+
+      WriteF(&#x27;EHDR\n&#x27;)
+      WriteF(&#x27;   BITS=\d, ENDIAN=\s, IDENT[8-11]=\z$\h[8] IDENT[12-15]=\z$\h[8]\n&#x27;,
+      IF Long(4+ehdr.ident) = 2 THEN 64 ELSE 32, IF Long(8+ehdr.ident) = 1 THEN &#x27;LITTLE&#x27; ELSE &#x27;BIG&#x27;,Long(8+ehdr.ident) ,Long(12+ehdr.ident))
+      WriteF(&#x27;   TYPE=\s, MACHINE=\d, VERSION=\d, FLAGS=$\h\n&#x27;, ListItem([&#x27;0&#x27;,&#x27;REL&#x27;,&#x27;EXEC&#x27;,&#x27;DYN&#x27;,&#x27;???&#x27;], ehdr.type), ehdr.machine, ehdr.version, ehdr.flags)
+      WriteF(&#x27;   ENTRY=\d, PHOFF=$\h, SHOFF=$\h\n&#x27;, ehdr.entry, ehdr.phoff, ehdr.shoff)
+      WriteF(&#x27;   EHSIZE=\d, PHENTSIZE=\d, PHNUM=\d\n&#x27;, ehdr.ehsize, ehdr.phentsize, ehdr.phnum)
+      WriteF(&#x27;   SHENTSIZE=\d, SHNUM=\d, SHSTRNDX=\d\n&#x27;, ehdr.shentsize, ehdr.shnum, ehdr.shstrndx)
+
+      a := 0
+      WHILE phdr := get_phdr(ehdr, a)
+
+         WriteF(&#x27;PHDR \d[3], \s[6], $\h[6], \d[6], \d[6], \d[6], \d[6], &#x27;, a,
+         IF phdr.type &lt;= ListLen(phdrtypes) THEN ListItem(phdrtypes,phdr.type) ELSE StringF(str, &#x27;\d&#x27;, phdr.type),
+         phdr.offset, phdr.vaddr, phdr.paddr, phdr.filesz, phdr.memsz)
+
+         t := phdr.flags
+         SetStr(str, 0)
+         IF t AND PF_R
+            StrAdd(str, &#x27;R &#x27;)
+            t := t AND Not(PF_R)
+         ENDIF
+         IF t AND PF_W
+            StrAdd(str, &#x27;W &#x27;)
+            t := t AND Not(PF_W)
+         ENDIF
+         IF t AND PF_X
+            StrAdd(str, &#x27;X &#x27;)
+            t := t AND Not(PF_X)
+         ENDIF
+         IF t
+            WriteF(&#x27;\h[8], \d\n&#x27;, phdr.flags, phdr.align)
+         ELSE
+            WriteF(&#x27;\s[6], \d\n&#x27;, str, phdr.align)
+         ENDIF
+
+			a++
+         CtrlC()
+
+      ENDWHILE
+
+   ENDIF
+
+   shdr := get_shdr(ehdr, ehdr.shstrndx)
+   shstrtable := ehdr + shdr.offset
+  
+   a := 0
+   WHILE shdr := get_shdr(ehdr, a)
+
+      IF EstrLen(sectname)
+         IF shdr.name &lt; 0 THEN JUMP _sectionskip
+         IF StrCmp(shdr.name + shstrtable, sectname) = FALSE
+            JUMP _sectionskip
+         ENDIF
+      ENDIF
+
+      WriteF(&#x27;SHDR \z\d[3] \l\s[12] \l\s[10] &#x27;, a,
+      IF shdr.name &gt; -1 THEN shstrtable + shdr.name ELSE StringF(str, &#x27;$\h&#x27;, shdr.name),
+      IF shdr.type &lt;= ListLen(shdrtypes) THEN ListItem(shdrtypes,shdr.type) ELSE StringF(str, &#x27;\d&#x27;, shdr.type))
+
+      t := shdr.flags
+      SetStr(str, 0)
+      IF t AND SHF_WRITE
+         StrAdd(str, &#x27;WRITE &#x27;)
+         t := t AND Not(SHF_WRITE)
+      ENDIF
+      IF t AND SHF_ALLOC
+         StrAdd(str, &#x27;ALLOC &#x27;)
+         t := t AND Not(SHF_ALLOC)
+      ENDIF
+      IF t AND SHF_EXECINSTR
+         StrAdd(str, &#x27;EXECINSTR &#x27;)
+         t := t AND Not(SHF_EXECINSTR)
+      ENDIF
+      IF t THEN StringF(str, &#x27;$\h &#x27;, shdr.flags)
+      WriteF(&#x27;\s[20]&#x27;, str)
+
+      WriteF(&#x27;\r\d[2] \d[2] (\z\d[3]) \d, $\h, \d, \d\n&#x27;,
+      shdr.addralign, shdr.entsize, shdr.link,
+      shdr.size, shdr.offset, shdr.info, shdr.addr)
+
+      IF (shdr.type = SHT_SYMTAB) OR (shdr.type = SHT_DYNSYM)
+         shdr2 := get_shdr(ehdr, shdr.link)
+         strtable := ehdr + shdr2.offset
+         b := 0
+         WHILE sym := get_shent(ehdr, shdr, b)
+            WriteF(&#x27;   SYM \r\z\d[6] (\z\d[3]) L\z\r\h[8] \l\s[7] \l\s[7] \a\s\a \d, \d\n&#x27;, b++,
+            sym.shndx,
+            sym.value,
+            IF ST_BIND(sym.info) &lt;= ListLen(symbolbinds) THEN ListItem(symbolbinds,
+            ST_BIND(sym.info)) ELSE StringF(str, &#x27;\d&#x27;, ST_BIND(sym.info)),
+            IF ST_TYPE(sym.info) &lt;= ListLen(symboltypes) THEN ListItem(symboltypes,
+            ST_TYPE(sym.info)) ELSE StringF(str, &#x27;\d&#x27;, ST_TYPE(sym.info)),
+            strtable + sym.name,
+            sym.size,
+            sym.other)
+            CtrlC()
+         ENDWHILE
+      ELSEIF (shdr.type = SHT_REL) AND (args.dis&lt;&gt;FALSE)
+         shdr2 := get_shdr(ehdr, shdr.link) -&gt; symbol shdr
+         sym := ehdr + shdr2.offset -&gt; symboltable
+         shdr2 := get_shdr(ehdr, shdr2.link) -&gt; str shdr
+         strtable := ehdr + shdr2.offset
+         b := 0
+         WHILE rel := get_shent(ehdr, shdr, b)
+            WriteF(&#x27;   REL \r\z\d[6] (\z\d[3]) L\z\h[7] \a\s\a \s = L\z\h[7]\n&#x27;,
+            b++,
+            R_SYM(rel.info),
+            rel.offset,
+            sym[R_SYM(rel.info)].name + strtable,
+            getrelocname(R_TYPE(rel.info), str),
+            peekSym(ehdr, sym[R_SYM(rel.info)], rel.offset))
+            CtrlC()
+         ENDWHILE
+      ELSEIF (shdr.type = SHT_RELA) AND (args.dis &lt;&gt; FALSE)
+         shdr2 := get_shdr(ehdr, shdr.link) -&gt; symbol shdr
+         sym := ehdr + shdr2.offset -&gt; symboltable
+         shdr2 := get_shdr(ehdr, shdr2.link) -&gt; str shdr
+         strtable := ehdr + shdr2.offset
+         b := 0
+         WHILE rela := get_shent(ehdr, shdr, b)
+            WriteF(&#x27;   RELA \r\z\d[6] (\z\d[3]) L\z\h[7] \a\s\a \s, $\h\n&#x27;,
+            b++,
+            R_SYM(rela.info),
+            rela.offset,
+            sym[R_SYM(rela.info)].name + strtable,
+            getrelocname(R_TYPE(rela.info), str),
+            rela.addend)
+            CtrlC()
+         ENDWHILE
+      ELSEIF (shdr.type = SHT_PROGBITS) AND (args.dis&lt;&gt;FALSE)
+         b := 0
+         c := ehdr + shdr.offset
+         WHILE b &lt; shdr.size
+            IF shdr.flags AND SHF_EXECINSTR
+               dodis(b, Long(c), str)
+               WriteF(&#x27;   L\z\h[7]: \l\s[24] [\z\r\h[8]] \a\c\c\c\c\a  (\d\n&#x27;,
+                  b, str, Long(c), char(c), char(c+1), char(c+2), char(c+3), b)
+            ELSE
+               WriteF(&#x27;   L\z\h[7]: [\z\r\h[8]] \a\c\c\c\c\a  (\d\n&#x27;,
+                  b, Long(c), char(c), char(c+1), char(c+2), char(c+3), b)
+            ENDIF
+            b := b + 4
+            c := c + 4
+            CtrlC()
+         ENDWHILE
+      ENDIF
+
+_sectionskip:
+
+      a++
+      CtrlC()
+
+   ENDWHILE
+
+   WriteF(&#x27;&lt;END&gt;\n&#x27;)
+
+EXCEPT DO
+   IF fh THEN Close(fh)
+
+	IF rdargs THEN FreeArgs(rdargs) 
+
+   SELECT exception
+   CASE &quot;FILE&quot; ; WriteF(&#x27;unable to open file.\n&#x27;)
+   CASE &quot;OPEN&quot; ; WriteF(&#x27;unable to open file.\n&#x27;)
+   CASE &quot;ARGS&quot; ; WriteF(&#x27;bad args.\n&#x27;)
+   CASE &quot;FORM&quot; ; WriteF(&#x27;format is not understood: \s.\n&#x27;, exceptioninfo)
+   CASE &quot;^C&quot;   ; WriteF(&#x27;user aborted.\n&#x27;)
+   CASE &quot;BITS&quot; ; WriteF(&#x27;elf is not of 32bit type&#x27;)
+   CASE &quot;ENDI&quot; ; WriteF(&#x27;elf is not big endian&#x27;)
+   ENDSELECT
+ENDPROC
+
+PROC getrelocname(id, str)
+   DEF relocnames, relocnames200
+
+relocnames :=  [&#x27;NONE&#x27;,
+                   &#x27;ADDR32&#x27;,
+                   &#x27;ADDR24&#x27;,
+                   &#x27;ADDR16&#x27;,
+                   &#x27;ADDR16_LO&#x27;,
+                   &#x27;ADDR16_HI&#x27;,
+                   &#x27;ADDR16_HA&#x27;,
+                   &#x27;ADDR14&#x27;,
+                   &#x27;ADDR14_BRTAKEN&#x27;,
+                   &#x27;ADDR14_BRNTAKEN&#x27;,
+                   &#x27;REL24&#x27;,
+                   &#x27;REL14&#x27;,
+                   &#x27;REL14_BRTAKEN&#x27;,
+                   &#x27;REL14_BRNTAKEN&#x27;,
+      &#x27;GOT16&#x27;,
+      &#x27;GOT16_LO&#x27;,
+      &#x27;GOT16_HI&#x27;,
+      &#x27;GOT16_HA&#x27;,
+      &#x27;PLTREL24&#x27;,
+      &#x27;COPY&#x27;,
+      &#x27;GLOB_DAT&#x27;,
+      &#x27;JMP_SLOT&#x27;,
+      &#x27;RELATIVE&#x27;,
+      &#x27;LOCAL24PC&#x27;,
+      &#x27;UADDR32&#x27;,
+      &#x27;UADDR16&#x27;,
+      &#x27;REL32&#x27;,
+      &#x27;PLT32&#x27;,
+      &#x27;PLTREL32&#x27;,
+      &#x27;PLT16_LO&#x27;,
+      &#x27;PLT16_HI&#x27;,
+      &#x27;PLT16_HA&#x27;,
+      &#x27;SDAREL16&#x27;,
+      &#x27;SECTOFF&#x27;,
+      &#x27;SECTOFF_LO&#x27;,
+      &#x27;SECTOFF_HI&#x27;,
+      &#x27;SECTOFF_HA&#x27;]
+
+   relocnames200 := [&#x27;MORPHOS_DREL&#x27;,
+                     &#x27;MORPHOS_DREL_LO&#x27;,
+                     &#x27;MORPHOS_DREL_HI&#x27;,
+                     &#x27;MORPHOS_DREL_HA&#x27;]
+
+   IF id &lt; ListLen(relocnames)
+      StrCopy(str, ListItem(relocnames,id))
+   ELSEIF id &lt; (ListLen(relocnames200)+200)
+      StrCopy(str, ListItem(relocnames200, id-200))
+   ELSE
+      StringF(str, &#x27;\d&#x27;, id)
+   ENDIF
+
+ENDPROC str
+
+PROC peekSym(ehdr:PTR TO ehdr, sym:PTR TO sym, offset)
+   DEF shdr:PTR TO shdr
+   shdr := get_shdr(ehdr, sym.shndx)
+ENDPROC Long(ehdr + shdr.offset + offset)
+
+PROC char(ptr)
+   DEF c
+   c := Char(ptr)
+   IF (c &gt; 31) AND (c &lt; 127) THEN RETURN c
+ENDPROC &quot;.&quot;
+
+
+
+   CHAR 0, &#x27;$VER:&#x27;
+verstr:
+   CHAR &#x27;DisELF 1.10 by LS 2003-11&#x27;, 0
+
+
+OBJECT line
+   line
+   offset
+ENDOBJECT
+
+PROC showhit(ofs:PTR TO LONG, ehdr:PTR TO ehdr)
+   DEF shdr:PTR TO shdr, shnum
+   DEF shstrtable, a, b, t, c:PTR TO LONG
+   DEF shdr2:PTR TO shdr, strtable
+   DEF str[100]:STRING
+   DEF sym:PTR TO sym, offsetsym:PTR TO sym
+   DEF lptr:PTR TO LONG, d, line:PTR TO line, tline:PTR TO line
+
+   ofs := ofs AND $FFFFFC
+
+   shdr := get_shdr(ehdr, ehdr.shstrndx)
+   shstrtable := ehdr + shdr.offset
+
+   a := 0
+   WHILE shdr := get_shdr(ehdr, a)
+
+      IF shdr.type = SHT_PROGBITS
+      IF shdr.flags AND SHF_EXECINSTR
+      IF shdr.size &gt; ofs
+         WriteF(&#x27;\n   HIT at offset $\h in section \d:\n\n&#x27;, ofs, a)
+
+         IF ofs &gt; 3
+            c := ehdr + shdr.offset + ofs - 4
+            dodis(ofs-4, c[], str)
+            WriteF(&#x27;   L\z\h[7]: \l\s[24] [\z\r\h[8]] \a\c\c\c\c\a\n&#x27;,
+                  ofs-4, str, c[], char(c), char(c+1), char(c+2), char(c+3))
+         ENDIF
+
+         c := ehdr + shdr.offset + ofs
+         dodis(ofs, c[], str)
+         WriteF(&#x27;--&gt;L\z\h[7]: \l\s[24] [\z\r\h[8]] \a\c\c\c\c\a\n&#x27;,
+               ofs, str, c[], char(c), char(c+1), char(c+2), char(c+3))
+
+         c := ehdr + shdr.offset + ofs + 4
+         dodis(ofs+4, c[], str)
+         WriteF(&#x27;   L\z\h[7]: \l\s[24] [\z\r\h[8]] \a\c\c\c\c\a\n&#x27;,
+               ofs+4, str, c[], char(c), char(c+1), char(c+2), char(c+3))
+      ENDIF ; ENDIF ; ENDIF
+
+      IF (shdr.type = SHT_SYMTAB) OR (shdr.type = SHT_DYNSYM)
+         sym := ehdr + shdr.offset -&gt; symboltable
+         shdr2 := get_shdr(ehdr,  shdr.link) -&gt;
+         strtable := ehdr + shdr2.offset
+         offsetsym := NIL
+         FOR b := 0 TO (shdr.size / shdr.entsize) -1
+            IF sym.shndx &gt; 0
+               IF sym.value &lt;= ofs
+                  IF offsetsym
+                     IF sym.value &gt; offsetsym.value THEN offsetsym := sym
+                  ELSE
+                     offsetsym := sym
+                  ENDIF
+               ENDIF
+            ENDIF
+            sym := sym + shdr.entsize
+            CtrlC()
+         ENDFOR
+         IF offsetsym
+            IF StrLen(offsetsym.name + strtable)
+               WriteF(&#x27;\n   Below symbol \a\s\a ($\h) in section \d\n&#x27;,
+               strtable + offsetsym.name,
+               offsetsym.value,
+               offsetsym.shndx)
+            ENDIF
+         ENDIF
+      ENDIF
+
+      IF (shdr.type = SHT_PROGBITS) AND (shdr.flags = NIL) AND (shdr.name &gt; 0)
+         IF StrCmp(shdr.name + shstrtable, &#x27;.ldbg&#x27;)
+            tline := NIL
+            d := NIL
+            lptr := shdr.offset + ehdr
+            WHILE lptr[]++ = &quot;LDBG&quot;
+            -&gt;WriteF(&#x27;&quot;LINE&quot; numlines=\d name=\s\n&#x27;, lptr[], lptr + 8)
+               t := lptr[]++  -&gt; numlines
+               b := lptr + 4  -&gt; save ptr to name
+               line := lptr + Shl(lptr[]++, 2) + 4-&gt; jump over name
+               -&gt;WriteF(&#x27;low offset=\d, highoffset=\d\n&#x27;, line.offset, line[t-1].offset)
+               IF (ofs &gt;= line.offset) AND (ofs &lt;= line[t-1].offset)
+                  d := b
+                  WHILE t
+                     t--
+                     IF line.offset &lt;= ofs THEN tline := line
+                     line++
+                  ENDWHILE
+                  lptr := line
+               ELSE
+                  lptr := line + Mul(t, SIZEOF line)
+               ENDIF
+               EXIT d
+            ENDWHILE
+            IF d
+               WriteF(&#x27;\n   Source: &quot;\s&quot;\n   Line: \d\n&#x27;, d, tline.line)
+            ENDIF
+         ENDIF
+      ENDIF
+
+      a++
+
+      CtrlC()
+
+   ENDWHILE
+
+   WriteF(&#x27;&lt;END&gt;\n&#x27;)
+
+ENDPROC
+
+-&gt; 1.10
+PROC get_phdr(ehdr:PTR TO ehdr, i)
+	IF i &gt;= ehdr.phnum THEN RETURN NIL
+ENDPROC ehdr + ehdr.phoff + (i * ehdr.phentsize)
+
+PROC get_shdr(ehdr:PTR TO ehdr, i)
+	IF i &gt;= ehdr.shnum THEN RETURN NIL
+ENDPROC ehdr + (ehdr.shoff) + (ehdr.shentsize * i)
+
+PROC get_shent(ehdr:PTR TO ehdr, shdr:PTR TO shdr, i)
+	IF (i * shdr.entsize) &gt;= shdr.size THEN RETURN NIL
+ENDPROC ehdr + shdr.offset + (shdr.entsize * i)
+
+PROC find_sym(ehdr:PTR TO ehdr, name)
+	DEF a, shdr:PTR TO shdr, sym:PTR TO sym, shdr2:PTR TO shdr, b, strtable	
+	a := 0
+   WHILE shdr := get_shdr(ehdr, a)
+      IF (shdr.type = SHT_SYMTAB) OR (shdr.type = SHT_DYNSYM)
+         shdr2 := get_shdr(ehdr,  shdr.link) -&gt;
+         strtable := ehdr + shdr2.offset
+			b := 0
+         WHILE sym := get_shent(ehdr, shdr, b++)
+				IF StrCmp(name, strtable + sym.name) THEN RETURN sym
+         ENDWHILE
+      ENDIF
+      a++
+   ENDWHILE
+ENDPROC NIL
+   
+PROC show_label(ehdr, name)
+	DEF sym:PTR TO sym, shdr:PTR TO shdr, ofs:PTR TO LONG, endofs, c:PTR TO LONG
+	DEF str[128]:STRING
+	
+	sym := find_sym(ehdr, name)
+	IFN sym THEN RETURN NIL
+	IF ST_TYPE(sym.info) = NIL THEN RETURN NIL
+	shdr := get_shdr(ehdr, sym.shndx)
+	IFN shdr THEN RETURN NIL
+	IF shdr.type &lt;&gt; SHT_PROGBITS THEN RETURN NIL
+	
+	WriteF(&#x27;\nLabel &quot;\s&quot; in section \d @ offset $\h with size \d and other \d:\n\n&#x27;, 
+            name,
+            sym.shndx,
+            sym.value,
+            sym.size,
+            sym.other)
+	
+	ofs := sym.value
+	endofs := ofs + sym.size
+	c := ehdr + shdr.offset + ofs
+	
+	WHILE ofs &lt; endofs
+	
+				dodis(ofs, c[], str)
+		WriteF(&#x27;   L\z\h[7]: \l\s[24] [\z\r\h[8]] \a\c\c\c\c\a\n&#x27;,
+         ofs, str, c[], char(c), char(c+1), char(c+2), char(c+3))
+		ofs++
+		c++
+	ENDWHILE
+	
+	WriteF(&#x27;\n&#x27;)
+   
+ENDPROC TRUE
+   </pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

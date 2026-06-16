@@ -1,0 +1,234 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>AddButtons.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-energy.html">energy</a> &rsaquo; AddButtons.e</div><h1>File: <code>AddButtons.e</code></h1><p class="meta">208 lines · project <a href="../examples/pkg-energy.html"><code>energy</code></a></p><p class="pathctx">energy/Energy/C2E/BGUI/AddButtons.e</p><p class="prose">** AddButtons.e ** ** (C) Copyright 1994 Paul Weterings. ** All Rights Reserved. ** ** Modified by Ian J. Einman, 4/26/96 ** Modified by Dominique Dutoit, 5/1/96</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/bgui.html">libraries/bgui</a></li></ul></div><h2>Source</h2><pre class="code">/*
+**      AddButtons.e
+**
+**      (C) Copyright 1994 Paul Weterings.
+**          All Rights Reserved.
+**
+**      Modified by Ian J. Einman, 4/26/96
+**      Modified by Dominique Dutoit, 5/1/96
+*/
+
+OPT OSVERSION=37
+OPT PREPROCESS
+
+MODULE &#x27;libraries/bgui&#x27;,
+       &#x27;libraries/bgui_macros&#x27;,
+       &#x27;libraries/gadtools&#x27;,
+       &#x27;bgui&#x27;,
+       &#x27;tools/boopsi&#x27;,
+       &#x27;utility/tagitem&#x27;,
+       &#x27;intuition/classes&#x27;,
+       &#x27;intuition/classusr&#x27;,
+       &#x27;intuition/gadgetclass&#x27;,
+       &#x27;graphics/text&#x27;
+/*
+ *      Object ID&#x27;s. Please note that the ID&#x27;s are shared
+ *      between the menus and the gadget objects.
+ */
+CONST   ID_ADD = 21,
+        ID_QUIT= 22,
+        ID_INS=23,
+        ID_REM=24
+/*
+ *      Simple button creation macros.
+ */
+#define AddButton\
+    ButtonObject,\
+        LAB_LABEL,              &#x27;Added&#x27;,\
+        LAB_STYLE,              FSF_BOLD,\
+        FuzzButtonFrame,\
+    EndObject
+
+#define InsButton\
+    ButtonObject,\
+        LAB_LABEL,              &#x27;Inserted&#x27;,\
+        LAB_STYLE,              FSF_BOLD,\
+        FuzzButtonFrame,\
+    EndObject
+
+#define FuzzButton(label,id)\
+    ButtonObject,\
+        LAB_LABEL,              label,\
+        LAB_UNDERSCORE,         &quot;_&quot;,\
+        GA_ID,                  id,\
+        FuzzButtonFrame,\
+    EndObject
+
+PROC main()
+        DEF window
+        DEF wo_window, go_add, go_quit, go_ins, go_rem
+        DEF addobj[20]:ARRAY OF LONG, base
+        DEF signal = 0, rc
+        DEF running = TRUE, ok = FALSE
+        DEF x = 0, xx
+        DEF simplemenu
+
+        /*
+        *      Simple menu strip.
+        */
+        simplemenu := [ Title( &#x27;Project&#x27; ),
+                            Item( &#x27;Add&#x27;,        &#x27;A&#x27;,    ID_ADD ),
+                            Item( &#x27;Insert&#x27;,     &#x27;I&#x27;,    ID_INS ),
+                            Item( &#x27;Remove All&#x27;, &#x27;R&#x27;,    ID_REM ),
+                            ItemBar,
+                            Item( &#x27;Quit&#x27;,       &#x27;Q&#x27;,    ID_QUIT),
+                        End ]:newmenu
+
+        /*
+        **      Open the library.
+        **/
+        IF bguibase := OpenLibrary( &#x27;bgui.library&#x27;, 0 )
+                /*
+                **      Create a window object.
+                **/
+                wo_window := WindowObject,
+                        WINDOW_TITLE,           &#x27;Add/Insert Demo&#x27;,
+                        WINDOW_MENUSTRIP,       simplemenu,
+                        WINDOW_LOCKHEIGHT,      TRUE,
+                        WINDOW_AUTOASPECT,      TRUE,
+                        WINDOW_AUTOKEYLABEL,    TRUE,
+                        WINDOW_MASTERGROUP,
+                                base := HGroupObject,
+                                    StartMember, go_add  := FuzzButton( &#x27;_Add&#x27;,        ID_ADD  ), EndMember,
+                                    StartMember, go_ins  := FuzzButton( &#x27;_Insert&#x27;,     ID_INS  ), EndMember,
+                                    StartMember, go_rem  := FuzzButton( &#x27;_Remove all&#x27;, ID_REM  ), EndMember,
+                                    StartMember, go_quit := FuzzButton( &#x27;_Quit&#x27;,       ID_QUIT ), EndMember,
+                                EndObject,
+                        EndObject
+
+                /*
+                **      Object created OK?
+                **/
+                IF ( wo_window )
+                        /*
+                        **      Open up the window.
+                        **/
+                        IF ( window := WindowOpen( wo_window ) )
+                                /*
+                                **      Obtain signal mask.
+                                **/
+                                GetAttr( WINDOW_SIGMASK, wo_window, {signal} )
+                                /*
+                                **      Poll messages.
+                                **/
+                                WHILE running = TRUE
+                                        /*
+                                        **      Wait for the signal.
+                                        **/
+                                        Wait( signal )
+                                        /*
+                                        **      Call uppon the event handler.
+                                        **/
+                                        WHILE ( rc := HandleEvent( wo_window )) &lt;&gt; WMHI_NOMORE
+                                                SELECT rc
+                                                        CASE    WMHI_CLOSEWINDOW
+                                                                running := FALSE
+                                                        CASE    ID_QUIT
+                                                                running := FALSE
+                                                        CASE    ID_ADD
+                                                                IF ( x = 19 )
+                                                                    WriteF( &#x27;Max Nr. of gadgets\n&#x27; )
+                                                                ELSE
+                                                                    INC x
+                                                                    WindowClose( wo_window )
+
+                                                                    addobj[ x ] := AddButton
+
+                                                                    ok := domethod( base, [ GRM_ADDMEMBER,      addobj[ x ],
+                                                                                            LGO_FIXMINHEIGHT,   FALSE,
+                                                                                            LGO_WEIGHT,         DEFAULT_WEIGHT,
+                                                                                            TAG_END ] )
+
+                                                                    window := WindowOpen( wo_window )
+
+                                                                    IF ( ok = 0 ) OR ( window = 0 )
+                                                                        domethod( base, [ GRM_REMMEMBER, addobj[ x ], TAG_END ] )
+                                                                        DEC x
+                                                                        window := WindowOpen( wo_window )
+                                                                        WriteF( &#x27;Last object did not fit!\n&#x27; )
+                                                                    ENDIF
+                                                                ENDIF
+                                                        CASE    ID_REM
+                                                                IF ( x &gt; 0 )
+                                                                    WindowClose( wo_window )
+
+                                                                    FOR xx := 1 TO x
+                                                                        domethod( base, [ GRM_REMMEMBER, addobj[ xx ], TAG_END ] )
+                                                                    ENDFOR
+
+                                                                    window := WindowOpen( wo_window )
+                                                                    x := 0
+                                                                ELSE
+                                                                    WriteF( &#x27;Were out of gadgets!\n&#x27; )
+                                                                ENDIF
+                                                        CASE    ID_INS
+                                                                IF ( x = 19 )
+                                                                    WriteF( &#x27;Max Nr. of gadgets\n&#x27; )
+                                                                ELSE
+                                                                    INC x
+                                                                    WindowClose( wo_window )
+
+                                                                    addobj[ x ] := InsButton
+
+                                                                    ok := domethod( base, [ GRM_INSERTMEMBER,   addobj[ x ], go_rem,
+                                                                                            LGO_FIXMINHEIGHT,   FALSE,
+                                                                                            LGO_WEIGHT,         DEFAULT_WEIGHT,
+                                                                                            TAG_END ] )
+
+                                                                    window := WindowOpen( wo_window )
+
+                                                                    IF ( ok = 0 ) OR ( window = 0 )
+                                                                        domethod( base, [ GRM_REMMEMBER, addobj[ x ], TAG_END ] )
+                                                                        DEC x
+                                                                        window := WindowOpen( wo_window )
+                                                                        WriteF( &#x27;Last object did not fit!\n&#x27; )
+                                                                    ENDIF
+                                                                ENDIF
+                                                ENDSELECT
+                                        ENDWHILE
+                                ENDWHILE
+                        ELSE
+                            WriteF( &#x27;Unable to open the window\n&#x27; )
+                        ENDIF
+                        /*
+                        **      Disposing of the object
+                        **      will automatically close the window
+                        **      and dispose of all objects that
+                        **      are attached to the window.
+                        **/
+                        DisposeObject( wo_window )
+                ELSE
+                        WriteF( &#x27;Unable to create a window object\n&#x27; )
+                ENDIF
+                CloseLibrary(bguibase)
+        ELSE
+                WriteF( &#x27;Unable to open the bgui.library\n&#x27; )
+        ENDIF
+ENDPROC NIL
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

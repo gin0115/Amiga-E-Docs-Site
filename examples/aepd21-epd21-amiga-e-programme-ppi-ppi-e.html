@@ -1,0 +1,490 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>PPI.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-aepd21.html">AEPD21</a> &rsaquo; PPI.e</div><h1>File: <code>PPI.e</code></h1><p class="meta">464 lines · project <a href="../examples/pkg-aepd21.html"><code>AEPD21</code></a></p><p class="pathctx">AEPD21/EPD21/Amiga_E-Programme/PPI/PPI.e</p><p class="prose">PPI - Programming Project Interface Meant to satisfy all the &#x27;would-have-been&#x27; users of ESEE. Written by Vincent Platt - (c) 1994 - All Rights Reserved Modifying &amp; distributing this source is prohibited. Source may be modified for own personal use. This program and its source are freeware and no cha</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/gadtools.html">gadtools</a></li></ul></div><h2>Source</h2><pre class="code">/*
+
+PPI - Programming Project Interface
+
+Meant to satisfy all the &#x27;would-have-been&#x27; users of ESEE.
+
+Written by Vincent Platt - (c) 1994 - All Rights Reserved
+Modifying &amp; distributing this source is prohibited.
+Source may be modified for own personal use.
+
+This program and its source are freeware and no charge may be
+made for this program, its source, or its documentation.
+
+SrcGen used to create original code skeleton.
+
+A modified version of Eformat was used to make things uniform.
+(My version makes indents a single space, rather than a tab char.)
+
+
+*/
+
+OPT OSVERSION=37
+
+MODULE &#x27;gadtools&#x27;,&#x27;libraries/gadtools&#x27;,&#x27;intuition/intuition&#x27;,
+&#x27;intuition/screens&#x27;, &#x27;intuition/gadgetclass&#x27;, &#x27;graphics/text&#x27;,
+&#x27;Asl&#x27;, &#x27;libraries/Asl&#x27;, &#x27;dos/dos&#x27;
+
+ENUM NONE, NOCONTEXT, NOGADGET, NOWB, NOVISUAL, OPENGT, NOWINDOW, NOMENUS
+ENUM EDIT_BUTTON, COMPILE_BUTTON, ACTION1_BUTTON, ACTION2_BUTTON,
+PICK_BUTTON, SAVESETTINGS_BUTTON, EDITOR_STRING, COMPILER_STRING,
+ACTION1_STRING, ACTION2_STRING, KILL_CBOX
+ENUM EDIT, COMPILE, ACTION1, ACTION2
+
+DEF ppiwnd:PTR TO window, ppiglist, scr:PTR TO screen, visual=NIL,
+offx,offy,tattr
+
+/* strings for launch&#x27;s and files */
+
+DEF pickfile[256]:STRING, compile[256]:STRING, edit[256]:STRING,
+action1[256]:STRING, action2[256]:STRING
+
+/* for the checkbox */
+DEF checked=TRUE
+
+PROC setupscreen()
+ IF (gadtoolsbase:=OpenLibrary(&#x27;gadtools.library&#x27;,37))=NIL THEN RETURN OPENGT
+ IF (scr:=LockPubScreen(&#x27;Workbench&#x27;))=NIL THEN RETURN NOWB
+ IF (visual:=GetVisualInfoA(scr,NIL))=NIL THEN RETURN NOVISUAL
+ offy:=scr.wbortop+Int(scr.rastport+58)-10
+ tattr:=[&#x27;topaz.font&#x27;,8,0,0]:textattr
+ENDPROC
+
+PROC closedownscreen()
+ IF visual THEN FreeVisualInfo(visual)
+ IF scr THEN UnlockPubScreen(NIL,scr)
+ IF gadtoolsbase THEN CloseLibrary(gadtoolsbase)
+ENDPROC
+
+PROC openppiwindow()
+ DEF g:PTR TO gadget
+ IF (g:=CreateContext({ppiglist}))=NIL THEN RETURN NOCONTEXT
+
+ IF (g:=CreateGadgetA(BUTTON_KIND,g,
+  [offx+410,offy+22,120,19,&#x27;_Edit&#x27;,tattr,EDIT_BUTTON,16,visual,0]:newgadget,
+  [GT_UNDERSCORE,&quot;_&quot;,
+  NIL]))=NIL THEN RETURN NOGADGET
+  IF (g:=CreateGadgetA(BUTTON_KIND,g,
+   [offx+410,offy+40,120,19,&#x27;_Compile&#x27;,tattr,COMPILE_BUTTON,16,visual,0]:newgadget,
+   [GT_UNDERSCORE,&quot;_&quot;,
+   NIL]))=NIL THEN RETURN NOGADGET
+   IF (g:=CreateGadgetA(BUTTON_KIND,g,
+    [offx+410,offy+58,120,19,&#x27;Action _1&#x27;,tattr,ACTION1_BUTTON,16,visual,0]:newgadget,
+    [GT_UNDERSCORE,&quot;_&quot;,
+    NIL]))=NIL THEN RETURN NOGADGET
+    IF (g:=CreateGadgetA(BUTTON_KIND,g,
+     [offx+410,offy+76,120,19,&#x27;Action _2&#x27;,tattr,ACTION2_BUTTON,16,visual,0]:newgadget,
+     [GT_UNDERSCORE,&quot;_&quot;,
+     NIL]))=NIL THEN RETURN NOGADGET
+     IF (g:=CreateGadgetA(BUTTON_KIND,g,
+      [offx+410,offy+94,120,19,&#x27;_Pick&#x27;,tattr,PICK_BUTTON,16,visual,0]:newgadget,
+      [GT_UNDERSCORE,&quot;_&quot;,
+      NIL]))=NIL THEN RETURN NOGADGET
+      IF (g:=CreateGadgetA(BUTTON_KIND,g,
+       [offx+410,offy+112,120,19,&#x27;_Save Settings&#x27;,tattr,SAVESETTINGS_BUTTON,16,visual,0]:newgadget,
+       [GT_UNDERSCORE,&quot;_&quot;,
+       NIL]))=NIL THEN RETURN NOGADGET
+
+       IF (g:=CreateGadgetA(STRING_KIND,g,
+        [offx+96,offy+23,224,12,&#x27;Editor:&#x27;,tattr,EDITOR_STRING,1,visual,0]:newgadget,
+        [GTST_MAXCHARS,256,GTST_STRING,edit,
+        NIL]))=NIL THEN RETURN NOGADGET
+        IF (g:=CreateGadgetA(STRING_KIND,g,
+         [offx+97,offy+42,224,12,&#x27;Compiler:&#x27;,tattr,COMPILER_STRING,1,visual,0]:newgadget,
+         [GTST_MAXCHARS,256,GTST_STRING,compile,
+         NIL]))=NIL THEN RETURN NOGADGET
+         IF (g:=CreateGadgetA(STRING_KIND,g,
+          [offx+97,offy+61,224,12,&#x27;Action 1:&#x27;,tattr,ACTION1_STRING,1,visual,0]:newgadget,
+          [GTST_MAXCHARS,256,GTST_STRING,action1,
+          NIL]))=NIL THEN RETURN NOGADGET
+          IF (g:=CreateGadgetA(STRING_KIND,g,
+           [offx+96,offy+80,224,12,&#x27;Action 2:&#x27;,tattr,ACTION2_STRING,1,visual,0]:newgadget,
+           [GTST_MAXCHARS,256,GTST_STRING,action2,
+           NIL]))=NIL THEN RETURN NOGADGET
+
+           IF (g:=CreateGadgetA(CHECKBOX_KIND,g,
+            [offx+170,offy+115,26,11,&#x27;Kill Extension For Compiling&#x27;,tattr,KILL_CBOX,4,visual,0]:newgadget,
+            [GTCB_CHECKED,checked,
+            NIL]))=NIL THEN RETURN NOGADGET
+
+            IF (ppiwnd:=OpenWindowTagList(NIL,
+             [WA_LEFT,0,
+             WA_TOP,17,
+             WA_WIDTH,offx+579,
+             WA_HEIGHT,offy+149,
+             WA_IDCMP,IDCMP_GADGETUP+IDCMP_CLOSEWINDOW+IDCMP_VANILLAKEY,
+             WA_FLAGS,WFLG_DEPTHGADGET+WFLG_SMART_REFRESH+WFLG_DRAGBAR+WFLG_CLOSEGADGET+WFLG_RMBTRAP,
+             WA_TITLE,&#x27;Programming Project Interface (PPI) -- (c) 1994 Vincent Platt&#x27;,
+             WA_CUSTOMSCREEN,scr,
+             WA_MINWIDTH,67,
+             WA_MINHEIGHT,21,
+             WA_MAXWIDTH,$23A,
+             WA_MAXHEIGHT,145,
+             WA_AUTOADJUST,1,
+             WA_AUTOADJUST,1,
+             WA_GADGETS,ppiglist,
+             NIL]))=NIL THEN RETURN NOWINDOW
+             Gt_RefreshWindow(ppiwnd,NIL)
+
+ENDPROC
+
+PROC closeppiwindow()
+ IF ppiwnd THEN CloseWindow(ppiwnd)
+ IF ppiglist THEN FreeGadgets(ppiglist)
+ENDPROC
+
+PROC reporterr(er)
+ DEF erlist:PTR TO LONG
+ IF er
+  erlist:=[&#x27;get context&#x27;,&#x27;create gadget&#x27;,&#x27;lock wb&#x27;,&#x27;get visual infos&#x27;,
+  &#x27;open &quot;gadtools.library&quot; v37+&#x27;,&#x27;open window&#x27;,&#x27;create menus&#x27;]
+  EasyRequestArgs(0,[20,0,0,&#x27;Could not \s!&#x27;,&#x27;ok&#x27;],0,[erlist[er-1]])
+ ENDIF
+ENDPROC er
+
+PROC request_file()
+
+ DEF req:PTR TO filerequester
+ DEF a[2]:STRING
+
+ IF aslbase:=OpenLibrary(&#x27;asl.library&#x27;,37)
+  IF req:=AllocFileRequest()
+   RequestFile(req)
+
+   /* first see if the user bothered to pick a file, if not then get out */
+   IF StrCmp(req.file,&#x27;&#x27;,ALL) THEN JUMP getout
+
+   /* copy path name to our full file name string */
+   StrCopy(pickfile,req.drawer,ALL)
+
+   /* tack a &#x27;/&#x27; on to the end of pickfile if req.dir is not empty and
+   the last char of req.dir is not &#x27;:&#x27; */
+   IF (StrCmp(req.drawer,&#x27;&#x27;,ALL)=FALSE)
+    MidStr(a,req.drawer,StrLen(req.drawer)-1,ALL)
+    IF (StrCmp(a,&#x27;:&#x27;,ALL)=FALSE)
+     StrAdd(pickfile,&#x27;/&#x27;,ALL)
+    ENDIF
+   ENDIF
+
+   /* then tack the filename on to the end of pickfile */
+   StrAdd(pickfile,req.file,ALL)
+
+   getout:
+   FreeFileRequest(req)
+  ELSE
+   WriteF(&#x27;Could not open filerequester!\n&#x27;)
+  ENDIF
+  CloseLibrary(aslbase)
+ ELSE
+  WriteF(&#x27;Could not open asl.library!\n&#x27;)
+ ENDIF
+ENDPROC
+
+
+PROC launch(whichone)
+ DEF orgstr[256]:STRING
+ DEF str[256]:STRING
+ DEF x, test[1]:STRING
+ DEF oldpickfile[256]:STRING
+ StrCopy(str,&#x27;&#x27;,ALL)
+
+ /* this is done so the compile section can mess with the pickfile
+ pickfile is restored when everything is done */
+ StrCopy(oldpickfile,pickfile,ALL)
+
+ SELECT whichone
+
+  CASE EDIT
+   StrCopy(orgstr,edit,ALL)
+
+  CASE COMPILE
+   IF checked
+    FOR x:= StrLen(pickfile)-1 TO 0 STEP -1
+     MidStr(test,pickfile,x,1)
+     IF StrCmp(test,&#x27;.&#x27;,ALL)
+      StrCopy(pickfile,pickfile,x)
+     ENDIF
+    ENDFOR
+   ENDIF
+   StrCopy(orgstr,compile,ALL)
+
+  CASE ACTION1
+   StrCopy(orgstr,action1,ALL)
+
+  CASE ACTION2
+   StrCopy(orgstr,action2,ALL)
+
+ ENDSELECT
+
+ FOR x:= 0 TO StrLen(orgstr)-1
+  MidStr(test,orgstr,x,1)
+  IF StrCmp(test,&#x27;%&#x27;,ALL)
+   MidStr(test,orgstr,x+1,1)
+   IF StrCmp(test,&#x27;s&#x27;,ALL)
+    StrAdd(str,pickfile,ALL)
+    INC x /* inc to skip the s as well as the % */
+    JUMP z /* don&#x27;t add % and s chars now that they have been handled */
+   ELSE
+    StrAdd(str,&#x27;%&#x27;,ALL)
+   ENDIF
+  ENDIF
+  StrAdd(str,test,ALL)
+  z:
+ ENDFOR
+
+ Execute(str,0,0)
+ StrCopy(pickfile,oldpickfile,ALL)
+
+ENDPROC
+
+
+PROC pick()
+ request_file()
+ TextF(18,140,&#x27;Workfile =                                                         &#x27;)
+ TextF(18,140,&#x27;Workfile = \s&#x27;,pickfile)
+ENDPROC
+
+PROC savesettings()
+ DEF file
+
+ IF file:= Open(&#x27;s:PPI.prefs&#x27;, NEWFILE)
+  Fputs(file,&#x27;PPI Prefs\n&#x27;)
+
+  Fputs(file,pickfile)
+  Fputs(file,&#x27;\n&#x27;)
+
+  Fputs(file,edit)
+  Fputs(file,&#x27;\n&#x27;)
+
+  Fputs(file,compile)
+  Fputs(file,&#x27;\n&#x27;)
+
+  Fputs(file,action1)
+  Fputs(file,&#x27;\n&#x27;)
+
+  Fputs(file,action2)
+  Fputs(file,&#x27;\n&#x27;)
+
+  IF checked
+   Fputs(file,&#x27;T\n&#x27;)
+  ELSE
+   Fputs(file,&#x27;F\n&#x27;)
+  ENDIF
+
+  Close(file)
+ ENDIF
+ENDPROC
+
+PROC loadsettings()
+ DEF file
+ DEF buf[260]:STRING
+
+ IF file:= Open(&#x27;s:PPI.prefs&#x27;, OLDFILE)
+  Fgets(file,buf,260)
+
+  StrCopy(buf,&#x27;&#x27;,ALL)
+  Fgets(file,buf,260)
+  StrCopy(pickfile,buf,StrLen(buf)-1)
+
+  StrCopy(buf,&#x27;&#x27;,ALL)
+  Fgets(file,buf,260)
+  StrCopy(edit,buf,StrLen(buf)-1)
+
+  StrCopy(buf,&#x27;&#x27;,ALL)
+  Fgets(file,buf,260)
+  StrCopy(compile,buf,StrLen(buf)-1)
+
+  StrCopy(buf,&#x27;&#x27;,ALL)
+  Fgets(file,buf,260)
+  StrCopy(action1,buf,StrLen(buf)-1)
+
+  StrCopy(buf,&#x27;&#x27;,ALL)
+  Fgets(file,buf,260)
+  StrCopy(action2,buf,StrLen(buf)-1)
+
+  StrCopy(buf,&#x27;&#x27;,ALL)
+  Fgets(file,buf,260)
+  StrCopy(buf,buf,StrLen(buf)-1)
+
+  IF StrCmp(buf,&#x27;F&#x27;,ALL)
+   checked:=FALSE
+  ELSE
+   checked:=TRUE
+  ENDIF
+  Close(file)
+
+ ELSE
+  Close(file)
+ ENDIF
+ENDPROC
+
+PROC main()
+
+ DEF class, code, iaddress, dummy: PTR TO stringinfo, dummy2
+ DEF mes: PTR TO intuimessage
+ DEF clicked: PTR TO gadget, gadgetid
+
+ loadsettings()
+
+ IF reporterr(setupscreen())=0
+  reporterr(openppiwindow())
+
+  stdrast:=ppiwnd.rport
+  Colour(1,0)
+  TextF(18,140,&#x27;Workfile = \s&#x27;,pickfile)
+
+  LOOP
+   class:=FALSE
+   REPEAT
+    IF mes:=Gt_GetIMsg(ppiwnd.userport)
+     class:=mes.class
+     code:=mes.code
+     iaddress:=mes.iaddress
+     Gt_ReplyIMsg(mes)
+     IF class=IDCMP_REFRESHWINDOW
+      Gt_BeginRefresh(ppiwnd)
+      Gt_EndRefresh(ppiwnd,TRUE)
+      TextF(18,140,&#x27;Workfile =                                                         &#x27;)
+      TextF(18,140,&#x27;Workfile = \s&#x27;,pickfile)
+      class:=FALSE
+     ELSEIF ((class&lt;&gt;IDCMP_CLOSEWINDOW) AND (class&lt;&gt;IDCMP_GADGETUP) AND (class&lt;&gt;IDCMP_VANILLAKEY))
+      class:=FALSE
+     ENDIF
+    ELSE
+     WaitPort(ppiwnd.userport)
+    ENDIF
+   UNTIL class
+
+   SELECT class
+
+    CASE IDCMP_CLOSEWINDOW
+     BRA x
+
+    CASE IDCMP_VANILLAKEY
+     /* here we must check to see if one of our hotkeys were pressed and
+     then react appropriately for each case */
+
+     SELECT code
+
+      /* &quot;e&quot; or &quot;E&quot; = Edit Button */
+      CASE &quot;e&quot;
+       launch(EDIT)
+      CASE &quot;E&quot;
+       launch(EDIT)
+
+       /* &quot;c&quot; or &quot;C&quot; = Compile Button */
+      CASE &quot;c&quot;
+       launch(COMPILE)
+      CASE &quot;C&quot;
+       launch(COMPILE)
+
+       /* &quot;1&quot; = Action1 Button */
+      CASE &quot;1&quot;
+       launch(ACTION1)
+
+       /* &quot;2&quot; = Action2 Button */
+      CASE &quot;2&quot;
+       launch(ACTION2)
+
+       /* &quot;p&quot; or &quot;P&quot; = Pick Button */
+      CASE &quot;p&quot;
+       pick()
+      CASE &quot;P&quot;
+       pick()
+
+       /* &quot;s&quot; or &quot;S&quot; = SaveSettings Button */
+      CASE &quot;s&quot;
+       savesettings()
+      CASE &quot;S&quot;
+       savesettings()
+
+     ENDSELECT
+
+
+    CASE IDCMP_GADGETUP
+     clicked:=iaddress
+     gadgetid:=clicked.gadgetid
+
+     SELECT gadgetid
+      CASE EDIT_BUTTON
+       launch(EDIT)
+
+      CASE COMPILE_BUTTON
+       launch(COMPILE)
+
+      CASE ACTION1_BUTTON
+       launch(ACTION1)
+
+      CASE ACTION2_BUTTON
+       launch(ACTION2)
+
+      CASE PICK_BUTTON
+       pick()
+
+      CASE SAVESETTINGS_BUTTON
+       savesettings()
+
+      CASE EDITOR_STRING
+       dummy := clicked.specialinfo
+       dummy2 := dummy.buffer
+       StrCopy(edit, dummy2, ALL)
+
+      CASE COMPILER_STRING
+       dummy := clicked.specialinfo
+       dummy2 := dummy.buffer
+       StrCopy(compile, dummy2, ALL)
+
+      CASE ACTION1_STRING
+       dummy := clicked.specialinfo
+       dummy2 := dummy.buffer
+       StrCopy(action1, dummy2, ALL)
+
+      CASE ACTION2_STRING
+       dummy := clicked.specialinfo
+       dummy2 := dummy.buffer
+       StrCopy(action2, dummy2, ALL)
+
+      CASE KILL_CBOX
+       IF checked
+        checked:=FALSE
+       ELSE
+        checked:=TRUE
+       ENDIF
+
+     ENDSELECT
+   ENDSELECT
+
+  ENDLOOP
+
+ ENDIF
+ x: closedownscreen()
+ closeppiwindow()
+ CleanUp(0)
+ENDPROC
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

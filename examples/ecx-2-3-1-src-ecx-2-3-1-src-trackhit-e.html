@@ -1,0 +1,224 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>TrackHit.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-ecx-2-3-1-src.html">ECX_2.3.1-src</a> &rsaquo; TrackHit.e</div><h1>File: <code>TrackHit.e</code></h1><p class="meta">198 lines · project <a href="../examples/pkg-ecx-2-3-1-src.html"><code>ECX_2.3.1-src</code></a></p><p class="pathctx">ECX_2.3.1-src/ecx-2.3.1-src/TrackHit.e</p><p class="prose">TrackHit.e by Leif Salomonsson is Copyright (c) 2003-2008 Released under ECX TOOLS LICENSE, see ECXTOOLSLICENSE.TXT</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/doshunks.html">dos/doshunks</a></li></ul></div><h2>Source</h2><pre class="code">-&gt; TrackHit.e by Leif Salomonsson is Copyright (c) 2003-2008
+-&gt; Released under ECX TOOLS LICENSE, see ECXTOOLSLICENSE.TXT
+
+MODULE &#x27;dos/doshunks&#x27;
+
+-&gt; 2006: now expects no &quot;NIL&quot; long before &quot;LINE&quot; long.. like ELF format..
+-&gt; 2007: HAH, now it actually works good :)
+-&gt; 2007: adapted to small change in line format.
+
+RAISE &quot;FILE&quot; IF FileLength()=-1,
+      &quot;OPEN&quot; IF Open()=NIL,
+      &quot;ARGS&quot; IF ReadArgs()=NIL
+
+OBJECT symb
+   next
+   name
+   offset
+ENDOBJECT
+
+DEF symblist:PTR TO symb
+
+PROC main() HANDLE
+   DEF fbuf, flen
+   DEF fh=NIL, rdargs=NIL, args:PTR TO LONG
+   DEF name, line, source, offset, symbol:PTR TO symb
+   DEF read
+
+   NEW args[5]
+
+   /* read agrs */
+   rdargs := ReadArgs(&#x27;FILE/A,&#x27;+
+                      &#x27;OFFSET/A&#x27;,
+                      args, NIL)
+
+   name := args[0]
+   offset, read := Val(args[1])
+
+   IF read = 0 THEN Raise(&quot;VAL&quot;)
+
+   flen := FileLength(name)
+   fbuf := NewR(flen+4)
+   fh := Open(name, OLDFILE)
+   Read(fh, fbuf, flen)
+   Close(fh) ; fh := NIL
+
+
+   WriteF(&#x27;TrackHit 1.1\nCopyright (c) 2003-2007 Leif Salomonsson\n -&gt; \q\s\q, $\h\n&#x27;, name, offset)
+
+   line, source, symbol := trackhit(fbuf, offset)
+
+   IF line = FALSE THEN line := -1
+   IF source = NIL THEN source := &#x27;???&#x27;
+   IF symbol = NIL THEN symbol := [0,&#x27;???&#x27;,-1]:symb
+
+   WriteF(&#x27;SOURCE \q\s\q\nLINE \d, below symbol \q\s\q ($\h)\n&#x27;, source, line, symbol.name, symbol.offset)
+
+EXCEPT DO
+
+   IF rdargs THEN FreeArgs(rdargs)
+
+   IF fh THEN Close(fh)
+
+
+   SELECT exception
+   CASE &quot;ARGS&quot; ; WriteF(&#x27;Error: args\n&#x27;)
+   CASE &quot;FILE&quot; ; WriteF(&#x27;Error: file\n&#x27;)
+   CASE &quot;OPEN&quot; ; WriteF(&#x27;Error: open\n&#x27;)
+   CASE &quot;FORM&quot; ; WriteF(&#x27;Error: format -&gt; \s\n&#x27;, exceptioninfo)
+   CASE &quot;MEM&quot;  ; WriteF(&#x27;Error: mem\n&#x27;)
+   CASE &quot;VAL&quot;  ; WriteF(&#x27;Error: offset argument invalid\n&#x27;)
+   ENDSELECT
+ENDPROC
+
+OBJECT line
+   line
+   offset
+ENDOBJECT
+
+PROC trackhit(ptr:PTR TO LONG, ofs)
+   DEF a, b, c:PTR TO LONG, d, linenum=FALSE, source=FALSE, symbol=FALSE
+   DEF symbnode:PTR TO symb, rofs, t, end
+   DEF line:PTR TO line, tline:PTR TO line
+
+   IF ptr[]++ &lt;&gt; HUNK_HEADER THEN Throw(&quot;FORM&quot;, &#x27;not executable file&#x27;)
+   WHILE ptr[] DO ptr := ptr + 4 + Mul(4,ptr[])
+   ptr++
+   b := ptr[]++ -&gt; nr of hunks
+   ptr := ptr + 8 -&gt; skip fisrt/last hunk nums
+   ptr := ptr + Mul(4,b) -&gt; skip sizes
+
+   IF ptr[]++ &lt;&gt; HUNK_CODE THEN Throw(&quot;FORM&quot;, &#x27;code hunk not found&#x27;)
+   ptr := ptr + Mul(4,ptr[]) + 4 -&gt; skip code
+
+   IF ptr[] = HUNK_ABSRELOC32
+      ptr++
+      WHILE (a := ptr[]++) DO ptr := ptr + Mul(a,4) + 4
+   ENDIF
+
+   IF ptr[] = HUNK_END THEN ptr++
+
+   IF ptr[] &lt;&gt; HUNK_DEBUG THEN Throw(&quot;FORM&quot;, &#x27;debug hunk not found (Compile with DEBUG)&#x27;)
+
+   WHILE (ptr[] = HUNK_DEBUG)
+      ptr++
+      a := ptr[]++ -&gt; size in longs
+      end := ptr + Mul(a,4)
+      IF ptr[] = &quot;LDBG&quot;
+            tline := NIL
+            d := NIL
+            WHILE ptr[]++ = &quot;LDBG&quot;
+               t := ptr[]++  -&gt; numlines
+               b := ptr + 4  -&gt; save ptr to name
+               line := ptr + Shl(ptr[]++, 2) + 4-&gt; jump over name
+               IF (ofs &gt;= line.offset) AND (ofs &lt;= line[t-1].offset)
+                  d := b
+                  WHILE t
+                     t--
+                     IF line.offset &lt;= ofs THEN tline := line
+                     line++
+                  ENDWHILE
+               ELSE
+                  ptr := line + Mul(t, SIZEOF line)
+               ENDIF
+               EXIT d
+            ENDWHILE
+            IF d
+               source := d
+               linenum := tline.line
+            ENDIF
+
+      ENDIF
+      ptr := end
+   ENDWHILE
+
+   IF ptr[]++ = HUNK_SYMBOL
+      WHILE (a := ptr[]++) -&gt; name len in longs
+         NEW symbnode
+         symbnode.name := ptr -&gt; name
+         ptr := ptr + (a*4) -&gt; skip name
+         symbnode.offset := ptr[]++ -&gt; offset
+         addSymb(symbnode)
+      ENDWHILE
+      -&gt;printSymbols()
+      symbol := findSymb(ofs)
+
+   ENDIF
+
+ENDPROC linenum, source, symbol
+
+PROC addSymb(s:PTR TO symb)
+   DEF symb:PTR TO symb, prev=NIL:PTR TO symb
+
+
+   symb := symblist
+   WHILE symb
+      IF s.offset &lt; symb.offset
+         IF prev
+            prev.next := s
+            s.next := symb
+         ELSE
+            symblist := s
+            s.next := symb
+         ENDIF
+         RETURN
+      ELSE
+         prev := symb
+         symb := symb.next
+      ENDIF
+   ENDWHILE
+
+   IF prev THEN prev.next := s ELSE symblist := s
+
+ENDPROC
+
+PROC findSymb(ofs)
+   DEF symb:PTR TO symb, prev=NIL:PTR TO symb
+   symb := symblist
+   WHILE symb
+      EXIT symb.offset &gt; ofs
+      prev := symb
+      symb := symb.next
+   ENDWHILE
+
+ENDPROC prev
+
+PROC printSymbols()
+   DEF s:PTR TO symb
+   s := symblist
+
+   WHILE s
+      WriteF(&#x27;\s = \d\n&#x27;, s.name, s.offset)
+      s := s.next
+   ENDWHILE
+
+ENDPROC NIL
+
+CHAR &#x27;$VER: TrackHit July 2003-07 by LS&#x27;,0
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

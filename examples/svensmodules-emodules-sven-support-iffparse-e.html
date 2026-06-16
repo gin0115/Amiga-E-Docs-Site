@@ -1,0 +1,232 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>iffparse.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-svensmodules.html">SvensModules</a> &rsaquo; iffparse.e</div><h1>File: <code>iffparse.e</code></h1><p class="meta">206 lines · project <a href="../examples/pkg-svensmodules.html"><code>SvensModules</code></a></p><p class="pathctx">SvensModules/emodules/sven/Support/iffparse.e</p><p class="prose">This module makes usage of <a href="../modules/iffparse.html">iffparse</a>.<a href="../modules/library.html">library</a> much easier. ** Its recommented to use it because it handles <a href="../modules/errors.html">errors</a> automatical ** and throws <a href="../modules/exceptions.html">exceptions</a> if necessary. ** Remember: - you need an <a href="../modules/exception.html">exception</a>-handler! ** - the <a href="../modules/iffparse.html">iffparse</a>.<a href="../modules/library.html">library</a> must be opened ** ** Usage: ** o Loading ** .... ** DEF myiff=NIL</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/iffparse.html">iffparse</a></li></ul></div><h2>Source</h2><pre class="code">/* This module makes usage of iffparse.library much easier.
+** Its recommented to use it because it handles errors automatical
+** and throws exceptions if necessary.
+** Remember: - you need an exception-handler!
+**           - the iffparse.library must be opened
+**
+** Usage:
+**  o Loading
+**     ....
+**     DEF myiff=NIL,
+**         finish,cn,
+**         id,size,type,
+**         buf:PTR TO CHAR
+**     ...
+**       myiff:=initLoadIFF(filename)
+**       REPEAT
+**         finish,cn:=stepIFF(myiff)                -&gt; next chunk
+**         IF cn
+**           id,size,type:=analyseChunk(cn)         -&gt; get chunk-specifies
+**           IF (id&lt;&gt;ID_FORM) AND                   -&gt; never a ID_FORM-chunk
+**              (your own type/id-checks)
+**             bufsize,buf,readbytes:=readCurrentChunk(iff,size) -&gt; read Chunk-datas
+**             -&gt; Do what you want with this datas
+**             END buf[bufsize]                        -&gt; Dispose buf
+**           ENDIF
+**         ENDIF
+**       UNTIL finish                               -&gt; until eof reached
+**     ...
+**     EXCEPT DO
+**       closeLoadIFF(myiff)                        -&gt; never forget this
+**       ...
+**
+** ------
+**
+**  o Saving
+**     ...
+**     DEF myiff=NIL
+**       ...
+**       iff:=initSaveIFF(filename,type)
+**       -&gt; Save your datas
+**       newChunk(myiff, validID)                    -&gt; push new chunk
+**       writeCurrentChunk(myiff,buffer,buffersize)  -&gt; write data to chunk
+**       endChunk(myiff)                             -&gt; pop chunk
+**       ...
+**     EXCEPT DO
+**       closeSaveIFF(myiff)                         -&gt; never forget
+**       ...
+*/
+
+OPT MODULE
+OPT PREPROCESS
+OPT REG=5
+
+MODULE &#x27;iffparse&#x27;,&#x27;libraries/iffparse&#x27;
+
+OBJECT stringChunk
+  len
+ENDOBJECT
+
+RAISE &quot;MEM&quot;  IF AllocIFF()=NIL,
+      &quot;OPEN&quot; IF Open()=NIL,
+      &quot;OPEN&quot; IF OpenIFF()&lt;&gt;0
+
+EXPORT PROC initLoadIFF(name) HANDLE
+DEF iff=NIL:PTR TO iffhandle
+
+  iff:=AllocIFF()
+  iff.stream:=Open(name,OLDFILE)
+  InitIFFasDOS(iff)
+  OpenIFF(iff,IFFF_READ)
+
+EXCEPT
+  closeLoadIFF(iff)
+  ReThrow()
+ENDPROC iff
+
+EXPORT PROC closeLoadIFF(iff:PTR TO iffhandle)
+  IF iff
+    CloseIFF(iff)
+    IF iff.stream THEN Close(iff.stream)
+    FreeIFF(iff)
+  ENDIF
+ENDPROC
+
+/* Steps through the iff-file. Returns TRUE on EOF and the
+** context of current chunk (contextnode)
+**/
+EXPORT PROC stepIFF(iff:PTR TO iffhandle)
+DEF error,finish=FALSE,top=NIL:PTR TO contextnode
+
+  error:=ParseIFF(iff,IFFPARSE_RAWSTEP)
+  IF error=IFFERR_EOC
+  ELSEIF error
+    finish:=TRUE
+  ELSE
+    top:=CurrentChunk(iff)
+  ENDIF
+
+ENDPROC finish,top
+
+/* Should be used instead of accessing the contextnode self */
+EXPORT PROC analyseChunk(cn:PTR TO contextnode) IS cn.id,cn.size,cn.type
+
+/* Creates a new Buffer and reads the chunk into it,
+** size must be the size of the chunk
+** Returns the size and the buffer
+** Note: you have to free this buffer !!
+*/
+EXPORT PROC readCurrentChunk(iff:PTR TO iffhandle,size)
+DEF buf=NIL:PTR TO CHAR,error
+
+  NEW buf[size]
+  error:=ReadChunkBytes(iff,buf,size)
+  IF error&lt;0
+    END buf[size]
+    Raise(&quot;IN&quot;)
+  ENDIF
+
+ENDPROC size,buf,error
+
+EXPORT PROC initSaveIFF(name,type) HANDLE
+DEF iff=NIL:PTR TO iffhandle
+
+  iff:=AllocIFF()
+  iff.stream:=Open(name,NEWFILE)
+  InitIFFasDOS(iff)
+  OpenIFF(iff,IFFF_WRITE)
+
+  newChunk(iff,ID_FORM,type)
+
+EXCEPT
+  closeSaveIFF(iff,FALSE)
+  ReThrow()
+ENDPROC iff
+
+/* Note: Only initSaveIFF() is allowed to play with the
+**       &#x27;ok&#x27;-parameter!!
+*/
+EXPORT PROC closeSaveIFF(iff:PTR TO iffhandle,ok=TRUE)
+  IF iff
+    IF ok THEN endChunk(iff)
+    CloseIFF(iff)
+    IF iff.stream THEN Close(iff.stream)
+    FreeIFF(iff)
+  ENDIF
+ENDPROC
+
+/* pushs a new Chunk on Stack
+** Should be only used on iffhandles from initSaveIFF()
+*/
+EXPORT PROC newChunk(iff,id,type=0)
+  IF PushChunk(iff,type,id,IFFSIZE_UNKNOWN) THEN Raise(&quot;IFF&quot;)
+ENDPROC
+
+/* popss the current Chunk from Stack (its saved)
+** Should be only used on iffhandles from initSaveIFF() and on a valid
+** newChunk()-call
+*/
+EXPORT PROC endChunk(iff)
+  IF PopChunk(iff) THEN Raise(&quot;IFF&quot;)
+ENDPROC
+
+/* Writes buf to the current chunk
+** Should be only used on iffhandles from initSaveIFF() and between
+** newChunk() and endChunk()
+*/
+EXPORT PROC writeCurrentChunk(iff,buf,size)
+  IF WriteChunkBytes(iff,buf,size)&lt;&gt;size THEN Raise(&quot;OUT&quot;)
+ENDPROC
+
+/* Here are two functions to support writing Strings into a chunk.
+**
+** Format: 4 Bytes containing lengths of string and then the string (inclusive
+**         \0-Byte.
+**
+*/
+
+/* Writes &#x27;stri&#x27; into the current chunk.
+** Should be only used on iffhandles from initSaveIFF() and between
+** newChunk() and endChunk()
+*/
+EXPORT PROC writeString(iff,stri)
+DEF sc:stringChunk
+
+  sc.len:=StrLen(stri)+1
+  writeCurrentChunk(iff,sc,SIZEOF stringChunk)
+  writeCurrentChunk(iff,stri,sc.len)
+
+ENDPROC
+
+/* Reads a string from &#x27;buf&#x27; into E-String &#x27;stri&#x27;
+**   buf    - must be a buffer returned from readCurrentChunk()
+**   offset - offset of the string
+**   stri   - pointer to an estring
+** Returns the new offset (to next data after the string)
+*/
+EXPORT PROC readString(buf:PTR TO CHAR,offset,stri)
+DEF sc:PTR TO stringChunk
+
+  sc:=buf+offset
+  buf:=sc+SIZEOF stringChunk
+  StrCopy(stri,buf,sc.len)
+
+ENDPROC offset+sc.len+SIZEOF stringChunk
+
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

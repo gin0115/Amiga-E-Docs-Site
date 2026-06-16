@@ -1,0 +1,425 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>multiGUI_Browser.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-aepd42.html">AEPD42</a> &rsaquo; multiGUI_Browser.e</div><h1>File: <code>multiGUI_Browser.e</code></h1><p class="meta">399 lines · project <a href="../examples/pkg-aepd42.html"><code>AEPD42</code></a></p><p class="pathctx">AEPD42/EPD42/Programme/multiGUI/Demos/multiGUI_Browser.e</p><p class="prose">This is a small browser which shows how to use the module &#x27;multiGUI&#x27;.  Note: multiGUI is an module which enable you to use several easyGUIs at the same time (user could use every <a href="../modules/window.html">window</a> at any time). Shows how to use dynamic-created GUIs.</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/lists.html">exec/lists</a></li><li><a href="../modules/easygui.html">tools/easygui</a></li></ul></div><h2>Source</h2><pre class="code">-&gt; This is a small browser which shows how to use the module &#x27;multiGUI&#x27;.
+-&gt;
+-&gt; Note: multiGUI is an module which enable you to use several easyGUIs
+-&gt;       at the same time (user could use every window at any time).
+-&gt;       Shows how to use dynamic-created GUIs.
+
+OPT OSVERSION=37
+OPT PREPROCESS
+
+MODULE &#x27;exec/lists&#x27;,&#x27;exec/nodes&#x27;,
+       &#x27;dos/dos&#x27;,&#x27;dos/dosasl&#x27;,
+       &#x27;libraries/gadtools&#x27;,
+       &#x27;asl&#x27;,&#x27;libraries/asl&#x27;,
+       &#x27;utility/tagitem&#x27;
+MODULE &#x27;tools/EasyGUI&#x27;,
+       &#x27;tools/constructors&#x27;,
+       &#x27;tools/multiGUI&#x27;
+
+RAISE &quot;MEM&quot;  IF String()=NIL
+
+CONST MAXPATH=255,                -&gt; Maximum path length
+      TYPE_FILE=0,                -&gt; Entry is an file
+      TYPE_DIR=1                  -&gt; entry is an directory
+CONST PATHLENGTH=MAXPATH-1
+
+
+OBJECT dir_node OF ln
+  direntrytype
+ENDOBJECT
+
+OBJECT lister_data           -&gt; every gui gets such an structure as info-value
+  path                       -&gt; path of this lister
+  dirlist:PTR TO lh          -&gt; contents fo this directory (list of dir_node)
+  actentry:PTR TO dir_node   -&gt; selected listentry
+  gui_lv                     -&gt; listview (easygui gadget); shows contents
+  gui_txtname                -&gt; textgadget; shows name of selected entry
+  gui_txttype                -&gt; textgadget; shows type of selected entry
+  gl                         -&gt; guientry of this gui
+  ghandle:PTR TO guihandle   -&gt; guihandle of this gui
+ENDOBJECT
+
+DEF mg=NIL:PTR TO multiGUI,
+    filereq=NIL:PTR TO filerequester
+
+
+-&gt;========================== Main START ======================================
+
+PROC main() HANDLE
+RAISE &quot;SCR&quot;  IF LockPubScreen()=NIL,
+      &quot;LIB&quot;  IF OpenLibrary()=NIL,
+      &quot;aslr&quot; IF AllocFileRequest()=NIL
+
+DEF pubscreen=NIL
+
+  NEW mg.multiGUI()
+  mg.setStdScreen(pubscreen:=LockPubScreen(NIL))
+  ScreenToFront(pubscreen)
+
+  -&gt; Open asl.library and alloc a filerequest.
+  aslbase:=OpenLibrary(ASLNAME,37)
+  filereq:=AllocAslRequest(ASL_FILEREQUEST,
+                           [ASLFR_SCREEN, pubscreen,
+                            ASLFR_TITLETEXT, &#x27;Select a directory...&#x27;,
+                            ASLFR_DRAWERSONLY, TRUE,
+                            TAG_DONE,0])
+
+  -&gt; create our first lister
+  newLister()
+
+  -&gt; Wait for user-action. Stop when all gui&#x27;s are closed.
+  WHILE mg.getCounter()&gt;0 DO mg.wait()
+
+EXCEPT DO
+
+  -&gt; CleanUp
+  IF filereq THEN FreeFileRequest(filereq)
+  CloseLibrary(aslbase)
+
+  END mg
+  IF pubscreen THEN UnlockPubScreen(NIL,pubscreen)
+
+  IF exception AND (exception&lt;&gt;&quot;quit&quot;)
+    /* Print error description */
+    PrintF(&#x27;Error: &#x27;)
+    SELECT exception
+      CASE &quot;MEM&quot;  ; PrintF(&#x27;Not enough memory.\n&#x27;)
+      CASE &quot;addp&quot; ; PrintF(&#x27;Path too long !?\n&#x27;)
+      CASE &quot;LIB&quot;  ; PrintF(&#x27;Could not open library.\n&#x27;)
+      DEFAULT     ; PrintF(&#x27;\s (\s)\n&#x27;,[exception,0]:LONG,exceptioninfo)
+    ENDSELECT
+  ENDIF
+
+ENDPROC
+
+-&gt;========================== Main STOP =======================================
+
+CHAR &#x27;$VER: multiGUI_Browser 0.05 (25.06.96)&#x27;,0
+
+-&gt;========================== Lister START ====================================
+
+-&gt; creates and initialize a new lister
+PROC newLister(path=NIL) HANDLE
+DEF gui=NIL,
+    lister=NIL:PTR TO lister_data,
+    listview,txtname,txttype,
+    dummypath[MAXPATH]:STRING
+
+  -&gt; If no path was specified pop up an aslrqeuester.
+  IF path=NIL
+    IF AslRequest(filereq,NIL)=FALSE THEN RETURN
+    path:=connectParts(dummypath,filereq.drawer,filereq.file)
+  ENDIF
+
+  -&gt; our lister-structure
+  NEW lister
+  -&gt; remember the path
+  lister.path:=getFullName(path)
+  -&gt; create list of this directory
+  lister.dirlist:=createDirList(path)
+
+  -&gt; create our gui (dynamical)
+  gui:=NEW [ROWS,
+         listview:=NEW [LISTV,{proc_listv},NIL,30,10,lister.dirlist,FALSE,0,0],
+         txtname:=NEW [TEXT,&#x27;&#x27;,&#x27;Name&#x27;,TRUE,3],
+         txttype:=NEW [TEXT,&#x27;&#x27;,&#x27;Type&#x27;,TRUE,3],
+         NEW [EQCOLS,
+           NEW [SBUTTON, {proc_browse},&#x27;Browse&#x27;],
+           NEW [SBUTTON, {proc_parent},&#x27;Parent&#x27;]
+         ]
+       ]
+
+  -&gt; remember the gui-elements
+  lister.gui_lv:=listview
+  lister.gui_txtname:=txtname
+  lister.gui_txttype:=txttype
+
+  -&gt; open gui; Pass lister-structure as info-value
+  lister.gl:=mg.addGUI(lister.path,gui,lister,NIL,NIL,
+                       [NM_TITLE,0,&#x27;Filer&#x27;,     NIL,0,0,NIL,
+                        NM_ITEM, 0,&#x27;New lister&#x27;,&#x27;n&#x27;,0,0,{proc_newlister},
+                        NM_ITEM, 0,&#x27;Close this&#x27;,&#x27;c&#x27;,0,0,NIL,
+                        NM_ITEM, 0,NM_BARLABEL, NIL,0,0,NIL,
+                        NM_ITEM, 0,&#x27;Close all&#x27;, &#x27;a&#x27;,0,0,{proc_closeall},
+                        NM_END]:newmenu)
+  -&gt; store guihandle
+  lister.ghandle:=mg.getGUIHandle(lister.gl)
+
+  -&gt; Set action-funcs of this gui. &#x27;std_disposegui&#x27; dispose our
+  -&gt; dynamical guilist and the lister-structure
+  -&gt; (therefore we store the lister-structure as userdata before)
+  mg.setGUIUserData(lister.gl,lister)
+  mg.setGUIProcs(lister.gl,NIL,{std_disposegui})
+
+EXCEPT
+
+  -&gt; there went something wrong.
+  -&gt; dispose data-structures
+  disposeLister(lister)
+  IF gui THEN disposegui(gui)
+
+  -&gt; and inform the user
+  userRequest(&#x27;Could not create GUI&#x27;,&#x27;Ok&#x27;)
+
+ENDPROC
+
+-&gt; Disposes a lister-structure
+PROC disposeLister(lister:PTR TO lister_data)
+
+  IF lister
+    -&gt; dispose directorylist
+    disposeDirList(lister.dirlist)
+    -&gt; dispose path-string
+    IF lister.path THEN DisposeLink(lister.path)
+    -&gt; dispose listerstructure
+    END lister
+  ENDIF
+
+ENDPROC
+
+-&gt;======================== Lister STOP =======================================
+
+
+-&gt;=================== action-procs of gui START ==============================
+
+-&gt; This is the action function of the listview.
+PROC proc_listv(info:PTR TO lister_data,num_selected)
+
+  -&gt; set active listviewentry. (easygui does nothing (v3.2). bug??)
+  setlistvselected(info.ghandle,info.gui_lv,num_selected)
+  -&gt; get actual entry (:PTR TO dir_node)
+  info.actentry:=getListEntry(info.dirlist,num_selected)
+  -&gt; put filename and type of current entry into textgadget
+  settext(info.ghandle,info.gui_txtname,info.actentry.name)
+  settext(info.ghandle,info.gui_txttype,
+          IF info.actentry.direntrytype=TYPE_FILE THEN &#x27;File&#x27; ELSE &#x27;Directory&#x27;)
+
+ENDPROC
+
+-&gt; Action function of &#x27;browse&#x27;-button
+PROC proc_browse(info:PTR TO lister_data)
+DEF stri[MAXPATH]:STRING
+
+  IF info.actentry
+    IF info.actentry.direntrytype=TYPE_DIR
+      -&gt; If it the active entry is an directory, open a new lister
+      -&gt; with that path
+      newLister(connectParts(stri,info.path,info.actentry.name))
+    ELSE
+      -&gt; If not, inform the user.
+      userRequest(&#x27;Could not browse into a file&#x27;,&#x27;Ok&#x27;)
+    ENDIF
+  ENDIF
+
+ENDPROC
+
+-&gt; Action function of &#x27;parent&#x27;-button
+PROC proc_parent(info:PTR TO lister_data)
+
+  -&gt; get parent.
+  SetStr(info.path,PathPart(info.path)-info.path)
+  -&gt; update window title
+  SetWindowTitles(info.ghandle.wnd,info.path,-1)
+
+  -&gt; initialize new listview contents
+  setlistvlabels(info.ghandle,info.gui_lv,-1)
+  disposeDirList(info.dirlist)
+  info.dirlist:=createDirList(info.path)
+  info.actentry:=NIL
+  setlistvlabels(info.ghandle,info.gui_lv,info.dirlist)
+
+  -&gt; reset textgadgets
+  settext(info.ghandle,info.gui_txtname,&#x27;&#x27;)
+  settext(info.ghandle,info.gui_txttype,&#x27;&#x27;)
+
+ENDPROC
+
+-&gt; Is called by menu &#x27;Filer/Close all&#x27;. Closes all guis.
+PROC proc_closeall(info:PTR TO lister_data) IS Raise(&quot;quit&quot;)
+
+-&gt; Is called by menu &#x27;Filer/New lister&#x27;. Opens a new lister.
+PROC proc_newlister(info:PTR TO lister_data) IS newLister()
+
+-&gt; Disposes a dynamical created gui. This is the action function of an gui.
+PROC std_disposegui(mg:PTR TO multiGUI,gl,res)
+
+  -&gt; Dispose the guilist
+  disposegui(mg.getGUIDescription(gl))
+  -&gt; dispose the lister-structure (stored in the userdata-field)
+  disposeLister(mg.getGUIUserData(gl))
+
+ENDPROC
+
+-&gt;=================== action procs of gui STOP================================
+
+
+-&gt;======================= DirList START ======================================
+
+-&gt; creates a new dir_node. &#x27;name&#x27; is *not* stored but copied.
+-&gt; Returns the new node.
+PROC createDirNode(name=NIL,type=0,pri=0,user=0) HANDLE
+DEF ln=NIL:PTR TO dir_node
+
+  NEW ln
+  -&gt; create new string, copy &#x27;name&#x27; into it, add &#x27;/&#x27; to directories.
+  ln.name:=StringF(String(StrLen(name)+1),&#x27;\s\s&#x27;,name,IF user=TYPE_DIR THEN &#x27;/&#x27; ELSE NIL)
+  ln.pri:=pri
+  ln.type:=type
+  ln.direntrytype:=user
+
+EXCEPT
+  -&gt; something went wrong, free structures.
+  disposeDirNode(ln)
+  ReThrow()
+
+ENDPROC ln
+
+-&gt; Disposes a dir_node allocated with createDirNode().
+PROC disposeDirNode(ln:PTR TO dir_node)
+
+  IF ln
+    IF ln.name THEN DisposeLink(ln.name)
+    END ln
+  ENDIF
+
+ENDPROC
+
+-&gt; creates a list (:PTR TO lh) of the directory &#x27;path&#x27;
+PROC createDirList(path) HANDLE
+DEF info:PTR TO fileinfoblock,
+    anchor=NIL:PTR TO anchorpath,
+    mypath[MAXPATH]:STRING,
+    error,
+    fullpath,
+    lh=NIL
+
+  -&gt; add wildcard
+  connectParts(mypath,path,&#x27;#?&#x27;)
+  -&gt; create new listheader
+  lh:=newlist()
+
+  /* Create and initialize anchor structure needed for
+  ** scanning through directory.
+  ** This structure has no fixed size.
+  */
+  anchor:=NewR(SIZEOF anchorpath+MAXPATH)
+  anchor.strlen:=PATHLENGTH
+
+  -&gt; Get start of string
+  fullpath:=anchor+SIZEOF anchorpath
+
+  error:=MatchFirst(mypath,anchor)
+  WHILE error=DOSFALSE
+
+    info:=anchor.info                           -&gt; get fileinfoblock
+    IF info.direntrytype&gt;0                      -&gt; is it a directory ?
+
+      AddTail(lh,createDirNode(info.filename,NT_USER,0,TYPE_DIR))
+
+    ELSE
+
+      AddTail(lh,createDirNode(info.filename,NT_USER,0,TYPE_FILE))
+
+    ENDIF
+
+    error:=MatchNext(anchor)                    -&gt; Next entry
+  ENDWHILE
+
+EXCEPT DO
+
+  IF anchor
+    MatchEnd(anchor)                            -&gt; Clean up
+    Dispose(anchor)
+  ENDIF
+  IF exception THEN disposeDirList(lh)          -&gt; only dispose on error
+
+  ReThrow()
+
+ENDPROC lh
+
+-&gt; disposes a dirlist created with createDirList()
+PROC disposeDirList(lh:PTR TO lh)
+DEF ln:PTR TO dir_node
+
+  IF lh
+    WHILE ln:=RemTail(lh) DO disposeDirNode(ln)
+    END lh
+  ENDIF
+
+ENDPROC
+
+-&gt;========================= DirList STOP =====================================
+
+
+-&gt;======================== Support Procs START ===============================
+
+-&gt; Returns the &#x27;nr&#x27;th entry in the list &#x27;lh&#x27;.
+-&gt; &#x27;nr&#x27; have to be a valid number.
+PROC getListEntry(lh:PTR TO lh,nr)
+DEF i,ln:PTR TO dir_node
+
+  ln:=lh.head
+  FOR i:=1 TO nr DO ln:=ln.succ
+
+ENDPROC ln
+
+-&gt; Adds the path- or filename &#x27;addi&#x27; to the path &#x27;path&#x27;.
+-&gt; The result is stored in &#x27;dest&#x27;. Returns &#x27;dest&#x27;
+PROC connectParts(dest,path,addi)
+RAISE &quot;addp&quot; IF AddPart()=DOSFALSE
+
+  StrCopy(dest,path,ALL)
+  AddPart(dest,addi,StrMax(dest))
+  SetStr(dest,StrLen(dest))
+
+ENDPROC dest
+
+-&gt; creates a new string, gets full name of &#x27;path&#x27; into the new string.
+-&gt; returns the new string.
+PROC getFullName(path)
+DEF lock
+
+  IF lock:=Lock(path,SHARED_LOCK)
+    path:=String(MAXPATH)
+    NameFromLock(lock,path,StrMax(path))
+    SetStr(path,StrLen(path))
+    UnLock(lock)
+  ENDIF
+
+ENDPROC path
+
+
+-&gt; Pops up an Requester with &#x27;text&#x27; as infotext, &#x27;butt&#x27; as buttons and
+-&gt; &#x27;args&#x27; as arguments to &#x27;text&#x27;.
+PROC userRequest(text,butt,args=NIL) IS
+  EasyRequestArgs(NIL,[20,0,0,text,butt],0,args)
+
+-&gt;======================== Support Procs STOP ================================
+
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

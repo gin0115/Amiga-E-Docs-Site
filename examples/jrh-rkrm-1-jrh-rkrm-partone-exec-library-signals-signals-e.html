@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>signals.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-jrh-rkrm-1.html">JRH-RKRM-1</a> &rsaquo; signals.e</div><h1>File: <code>signals.e</code></h1><p class="meta">72 lines · project <a href="../examples/pkg-jrh-rkrm-1.html"><code>JRH-RKRM-1</code></a></p><p class="pathctx">JRH-RKRM-1/JRH-RKRM-PartOne/Exec_Library/Signals/signals.e</p><p class="prose">signals.e</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/tasks.html">amigalib/tasks</a></li></ul></div><h2>Source</h2><pre class="code">-&gt; signals.e
+
+-&gt; E-Note: eCodeTask() protects an E function so you can call it from other
+-&gt;         tasks and have access to the global variables of this program
+MODULE &#x27;amigalib/tasks&#x27;,
+       &#x27;other/ecode&#x27;,
+       &#x27;dos/dos&#x27;
+
+ENUM ERR_NONE, ERR_ECODE, ERR_SIG, ERR_TASK
+
+RAISE ERR_SIG IF AllocSignal()=-1
+
+DEF mainsignum=-1, mainsig, wakeupsigs, maintask=NIL, subtask=NIL
+
+PROC main() HANDLE
+  DEF done=FALSE, waitingForSubtask=TRUE, ecode, subtaskname
+  subtaskname:=&#x27;RKM_signal_subtask&#x27;
+
+  -&gt; We must allocate any special signals we want to receive.
+  mainsignum:=AllocSignal(-1)
+
+  mainsig:=Shl(1, mainsignum)  -&gt; subtask can access this global
+  maintask:=FindTask(NIL)      -&gt; subtask can access this global
+
+  WriteF(&#x27;We alloc a signal, create a task, wait for signals\n&#x27;)
+  IF NIL=(ecode:=eCodeTask({subtaskcode})) THEN Raise(ERR_ECODE)
+  IF NIL=(subtask:=createTask(subtaskname, 0, ecode, 2000)) THEN Raise(ERR_TASK)
+
+  WriteF(&#x27;After subtask signals, press CTRL-C or CTRL-D to exit\n&#x27;)
+
+  REPEAT
+    -&gt; Wait on the combined mask for all of the signals we are interested in.
+    -&gt; All processes have the CTRL_C thru CTRL_F signals.  We&#x27;re also Waiting
+    -&gt; on the mainsig we allocated for our subtask to signal us with.  We could
+    -&gt; also Wait on the signals of any ports/windows our main task created...
+    wakeupsigs:=Wait(mainsig OR SIGBREAKF_CTRL_C OR SIGBREAKF_CTRL_D)
+
+    -&gt; Deal with all signals that woke us up - may be more than one
+    IF wakeupsigs AND mainsig
+      WriteF(&#x27;Signalled by subtask\n&#x27;)
+      waitingForSubtask:=FALSE  -&gt; OK to kill subtask now
+    ENDIF
+    IF wakeupsigs AND SIGBREAKF_CTRL_C
+      WriteF(&#x27;Got CTRL-C signal\n&#x27;)
+      done:=TRUE
+    ENDIF
+    IF wakeupsigs AND SIGBREAKF_CTRL_D
+      WriteF(&#x27;Got CTRL-D signal\n&#x27;)
+      done:=TRUE
+    ENDIF
+  UNTIL done AND (waitingForSubtask=FALSE)
+EXCEPT DO
+  IF subtask
+    Forbid()
+    deleteTask(subtask)
+    Permit()
+  ENDIF
+  IF mainsignum&lt;&gt;-1 THEN FreeSignal(mainsignum)
+  SELECT exception
+  CASE ERR_SIG;   WriteF(&#x27;No signals available\n&#x27;)
+  CASE ERR_TASK;  WriteF(&#x27;Can&#x27;&#x27;t create subtask\n&#x27;)
+  CASE ERR_ECODE; WriteF(&#x27;Ran out of memory in eCodeTask()\n&#x27;)
+  ENDSELECT
+ENDPROC
+
+PROC subtaskcode()
+  Signal(maintask, mainsig)
+  Wait(NIL)  -&gt; Safe state in which this subtask can be deleted
+ENDPROC
+
+verstag: CHAR 0, &#x27;$VER: signals 37.1 (28.3.91)&#x27;, 0
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

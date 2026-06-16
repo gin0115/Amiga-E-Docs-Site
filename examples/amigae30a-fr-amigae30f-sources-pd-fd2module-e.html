@@ -1,0 +1,232 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>FD2Module.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-amigae30a-fr.html">amigae30a_fr</a> &rsaquo; FD2Module.e</div><h1>File: <code>FD2Module.e</code></h1><p class="meta">206 lines · project <a href="../examples/pkg-amigae30a-fr.html"><code>amigae30a_fr</code></a></p><p class="pathctx">amigae30a_fr/AmigaE30f/Sources/Pd/FD2Module.e</p><p class="prose">fd2module V1.0 Alex McCracken Mar 1994 Ce programme est essentiellement basé sur Pragma2Module de Wouter van Oortmerssen. En fait, 90% de code appartient à Wouter, donc, pas de remerciement pour ça. Cependant, tant que le Pragma2Module de Wouter marche très bienpour les fichiers au bon format, je do</p><h2>Source</h2><pre class="code">/*
+
+fd2module V1.0
+Alex McCracken Mar 1994
+
+Ce programme est essentiellement basé sur Pragma2Module de Wouter van
+Oortmerssen. En fait, 90% de code appartient à Wouter, donc, pas de
+remerciement pour ça. Cependant, tant que le Pragma2Module de Wouter marche
+très bienpour les fichiers au bon format, je doit admettre que si ça plante,
+c&#x27;est certainement de ma faute. Vous pouvez utiliser ce programme si il vous
+convient. S&#x27;il doit planter et mange votre chien, fait exploser votre TV, ou
+cause des problêmes quelconques, on ne pourra pas me rendre responsable. En
+d&#x27;autres mots, utilisez le à vos propres risques. J&#x27;ai fait tous les efforts
+pour m&#x27;assurer qu&#x27;il marche, mais je ne peut garantir d&#x27;avoir trouvé tous les
+petits trucs qui plante tous les programmes.
+
+Utilisation
+
+Le programme est appelé en tapant (CLI uniquement):
+
+        fd2module &lt;libname&gt;
+
+où libname est le nom du fichier sans _lib.fd.
+Ca produira un fichier &lt;libname&gt;.m. Pour le moment le programme annonce que le
+fichier fd est lu, mais ca peut changer dans le futur. Vous devez donner
+au programme le nom de la bibliothèque explicitement (mais, encore une fois,
+ça peut changer.
+
+Distribution
+
+Ceci peut être distribué par n&#x27;importe quel moyen. Cependant, je retient le
+droit de mettre à niveau l&#x27;ensemble sans informer quiconque. Cette distribution
+contient :
+        fd2module               L&#x27;éxécutable
+        fd2module.doc           Ce document
+
+Me contacter
+
+Je peut être joind :
+
+par courier postal:
+        Alex McCracken
+        11 Charles Street
+        Kilmarnock
+        Ayrshire
+        KA1 2DX
+        Scotland
+
+par courier Internet :
+        mccracal@dcs.gla.ac.uk
+
+Je n&#x27;utilise mon compte email que pendant les temps &#x27;Term&#x27;, donc pendant l&#x27;été
+il vaudrait mieux m&#x27;envoyer un lettre par la poste. L&#x27;adresse email devrait rester
+valide jusqu&#x27;à l&#x27;été 95.
+
+*/
+
+/* FD2Module
+   convertis un fichier bibliothèque fd en un module E.
+   Usage: fd2module &lt;file&gt;
+   convertis &lt;file_lib.fd&gt; en &lt;file.m&gt;                  */
+
+ENUM INPUT_ERROR=10,OUTPUT_ERROR,FORMAT_ERROR
+
+DEF cfh,efh,eof,done,
+    gotbase=FALSE,
+    public=TRUE,
+    offset=30,
+    cfile[200]:STRING,
+    efile[200]:STRING,
+    cstring[200]:STRING
+
+PROC main()
+  StrCopy(cfile,arg,ALL)
+  StrAdd(cfile,&#x27;_lib.fd&#x27;,ALL)
+  StrCopy(efile,arg,ALL)
+  StrAdd(efile,&#x27;.m&#x27;,ALL)
+  WriteF(&#x27;Amiga E FD2Module\nconvertis: &quot;\s&quot; en &quot;\s&quot;\n&#x27;,cfile,efile)
+  IF (cfh:=Open(cfile,OLDFILE))=0 THEN closeall(INPUT_ERROR)
+  IF (efh:=Open(efile,NEWFILE))=0 THEN closeall(OUTPUT_ERROR)
+  REPEAT
+    eof:=ReadStr(cfh,cstring)
+    done:=convert(cstring)
+  UNTIL eof OR done
+  WriteF(&#x27;dernier offset: -\d\n&#x27;,offset)
+  Out(efh,$FF)
+  WriteF(&#x27;Terminé.\n&#x27;)
+  closeall(0)
+ENDPROC
+
+PROC closeall(er)
+  IF cfh&lt;&gt;0 THEN Close(cfh)
+  IF efh&lt;&gt;0 THEN Close(efh)
+  SELECT er
+    CASE INPUT_ERROR;  WriteF(&#x27;Ne peut pas ouvrir le fichier d\aentrée!\n&#x27;)
+    CASE OUTPUT_ERROR; WriteF(&#x27;Ne peut pas ouvrir le fichier de sortie!\n&#x27;)
+    CASE FORMAT_ERROR; WriteF(&#x27;Erreur dans le format du fichier définition des fonctions!\n&#x27;)
+  ENDSELECT
+  CleanUp(er)
+ENDPROC
+
+/* format de ligne à convertir:
+   ##base _&lt;Basename&gt;
+     or
+   ##bias &lt;offset&gt;
+     or
+   ##public
+     or
+   ##private
+     or
+   ##end
+     or
+   * &lt;comment&gt;
+     or
+   &lt;funcname&gt;(&lt;paramlist&gt;)(&lt;reglist&gt;)*/
+
+PROC convert(str)
+DEF     pos,pos2,off2,len,narg,a,empty,dstr[50]:STRING,basestr[50]:STRING,
+        funcstr[50]:STRING,regstr[20]:STRING,libstr[50]:STRING,
+        tstr[80]:STRING,t2str[80]:STRING,t3str[80]:STRING,reg,check
+  MidStr(tstr,str,TrimStr(str)-str,ALL)
+  LowerStr(tstr)
+  WriteF(&#x27;\s\n&#x27;,str)
+  IF StrCmp(tstr,&#x27;##base &#x27;,STRLEN) OR StrCmp(tstr,&#x27;##base\t&#x27;,STRLEN)
+    pos:=STRLEN
+    pos2:=InStr(tstr,&#x27;_&#x27;,0)
+    IF pos2=-1 THEN closeall(FORMAT_ERROR)
+    IF gotbase=FALSE
+      gotbase:=TRUE
+      MidStr(basestr,str,(pos2+1),ALL)
+      LowerStr(basestr)
+      WriteF(&#x27;Base will be: \s\n&#x27;,basestr)
+      WriteF(&#x27;Correct name of this library (with the &quot;.library&quot; or &quot;.device&quot;):\n&gt;&#x27;)
+      ReadStr(stdout,libstr)
+      Write(efh,[&quot;EM&quot;,&quot;OD&quot;,6]:INT,6)
+      Write(efh,libstr,EstrLen(libstr)+1)
+      Write(efh,basestr,EstrLen(basestr)+1)
+    ENDIF
+  ELSEIF StrCmp(tstr,&#x27;##bias &#x27;,STRLEN) OR StrCmp(tstr,&#x27;##bias\t&#x27;,STRLEN)
+    pos:=STRLEN
+    MidStr(t2str,tstr,pos,ALL)
+    pos2:=TrimStr(t2str)
+    MidStr(t3str,t2str,pos2-t2str,ALL)
+    off2:=Val(t3str,NIL)
+    IF off2=0 THEN closeall(FORMAT_ERROR)
+    WHILE off2&lt;&gt;offset
+      Write(efh,&#x27;Dum&#x27;,3)                     /* &quot;Emplacement vide de fonction&quot; */
+      Out(efh,16)
+      IF offset&gt;off2 THEN closeall(FORMAT_ERROR)
+      offset:=offset+6
+    ENDWHILE
+  ELSEIF StrCmp(tstr,&#x27;##private&#x27;,ALL)
+    public:=FALSE
+  ELSEIF StrCmp(tstr,&#x27;##public&#x27;,ALL)
+    public:=TRUE
+  ELSEIF StrCmp(tstr,&#x27;##end&#x27;,ALL)
+    RETURN TRUE
+  ELSEIF StrCmp(tstr,&#x27;*&#x27;,STRLEN)
+    NOP
+  ELSE
+    IF public
+      pos:=0
+      pos2:=InStr(str,&#x27;(&#x27;,pos)
+      IF pos2=-1 THEN closeall(FORMAT_ERROR)
+      MidStr(funcstr,str,pos,pos2-pos)
+      IF funcstr[0]&gt;=&quot;a&quot; THEN funcstr[0]:=funcstr[0]-32
+      IF funcstr[1]&lt;&quot;a&quot; THEN funcstr[1]:=funcstr[1]+32
+      Write(efh,funcstr,EstrLen(funcstr))
+      pos:=pos2+1
+      pos2:=InStr(str,&#x27;(&#x27;,pos)
+      IF pos2=-1 THEN closeall(FORMAT_ERROR)
+      narg:=0
+      MidStr(dstr,str,pos2+1,ALL)
+      UpperStr(dstr)
+      WHILE StrCmp(dstr,&#x27;)&#x27;,1)=FALSE
+        IF EstrLen(dstr)&lt;2 THEN closeall(FORMAT_ERROR)
+        MidStr(regstr,dstr,0,2)
+        IF StrCmp(regstr,&#x27;D&#x27;,1) OR StrCmp(regstr,&#x27;A&#x27;,1)
+          IF StrCmp(regstr,&#x27;D&#x27;,1)
+            reg:=0
+          ELSEIF StrCmp(regstr,&#x27;A&#x27;,1)
+            reg:=8
+          ENDIF
+          MidStr(regstr,regstr,1,ALL)
+          reg:=reg+Val(regstr,{check})
+          IF check&lt;1 THEN closeall(FORMAT_ERROR)
+        ELSE
+          closeall(FORMAT_ERROR)
+        ENDIF
+        MidStr(dstr,dstr,2,ALL)
+        IF StrCmp(dstr,&#x27;,&#x27;,1) OR StrCmp(dstr,&#x27;/&#x27;,1)
+          MidStr(dstr,dstr,1,ALL)
+        ENDIF
+        Out(efh,reg)
+        INC narg
+      ENDWHILE
+      IF narg=0 THEN Out(efh,16)
+      offset:=offset+6
+    ELSE
+      Write(efh,&#x27;Dum&#x27;,3)
+      Out(efh,16)
+      offset:=offset+6
+    ENDIF
+  ENDIF
+ENDPROC FALSE
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

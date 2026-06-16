@@ -1,0 +1,432 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ecdebug.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-ec33a-src.html">ec33a_src</a> &rsaquo; ecdebug.e</div><h1>File: <code>ecdebug.e</code></h1><p class="meta">406 lines · project <a href="../examples/pkg-ec33a-src.html"><code>ec33a_src</code></a></p><p class="pathctx">ec33a_src/ec33a_src/extra/tools/ecdebug.e</p><p class="prose">EC debugger</p><h2>Source</h2><pre class="code">-&gt; EC debugger
+
+OBJECT debuginfo
+  objs,procs,identhash,dbugval,dbugadr,modinfolist,codelist,memlist,heap,macrohash
+ENDOBJECT
+
+PROC main()
+  DEF s[10]:STRING,c=1,port,db:PTR TO debuginfo
+  WriteF(&#x27;EC structure debugger\n&#x27;)
+  port:=FindPort(&#x27;EmoduleCache&#x27;)
+  IF port=NIL
+    WriteF(&#x27;no Cache!\n&#x27;)
+    RETURN 10
+  ENDIF
+  WHILE c
+    WriteF(&#x27;show which datastructure? (&lt;lf&gt; to quit)\n&#x27;)
+    WriteF(&#x27;[&quot;O&quot;bjects,&quot;P&quot;procs,&quot;I&quot;dents,&quot;V&quot;alue,&quot;A&quot;dr,&quot;M&quot;odInfo,&quot;C&quot;odeRem,\n&quot;K&quot;ookiecheck,&quot;H&quot;eap,mac&quot;R&quot;os]: &#x27;)
+    ReadStr(stdin,s)
+    LowerStr(s)
+    lf()
+    c:=s[]
+    db:=Long(port+42)
+    do(c,db)
+    lf()
+  ENDWHILE
+ENDPROC
+
+PROC do(c,db:PTR TO debuginfo) HANDLE
+  SELECT c
+    CASE &quot;o&quot;; object(Long(db.objs))
+    CASE &quot;p&quot;; proc(Long(db.procs))
+    CASE &quot;m&quot;; modinfo(Long(db.modinfolist))
+    CASE &quot;c&quot;; coderem(Long(db.codelist))
+    CASE &quot;k&quot;; cookie(Long(db.memlist))
+    CASE &quot;h&quot;; heaps(db.heap)
+    CASE &quot;i&quot;; identhash(db.identhash)
+    CASE &quot;v&quot;; val(db.dbugval)
+    CASE &quot;a&quot;; mem(db.dbugadr)
+    CASE &quot;r&quot;; macros(db.macrohash)
+    CASE &quot;\0&quot;; WriteF(&#x27;\ndone.\n&#x27;)
+    DEFAULT; WriteF(&#x27;Unsupported datastructure\n&#x27;)
+  ENDSELECT
+EXCEPT
+  WriteF(IF exception=&quot;INV&quot; THEN &#x27;terminated because of invalid address\n&#x27; ELSE &#x27;exception!&#x27;)
+ENDPROC
+
+PROC valid(a)
+  IF (a&lt;$20000) OR (a&gt;$A00000)        -&gt; based on 2meg chip and 8meg fast
+    IF a
+      WriteF(&#x27;[INVALID:$\z\h[8]]&#x27;,a)
+      RETURN FALSE
+    ENDIF
+  ENDIF
+ENDPROC TRUE
+
+PROC string(s) IS IF valid(s) THEN WriteF(IF s THEN &#x27;str=&quot;\s&quot;; &#x27; ELSE &#x27;str=NIL; &#x27;,s) ELSE 0
+PROC str(name,s) IS IF valid(s) THEN IF s&lt;&gt;NIL THEN WriteF(&#x27;\s=&quot;\s&quot;; &#x27;,name,s) ELSE 0 ELSE 0
+PROC flags(b) IS WriteF(&#x27;flags=$\h; &#x27;,b)
+PROC int(s,i) IS WriteF(&#x27;\s=\d; &#x27;,s,i)
+PROC lf() IS WriteF(&#x27;\n&#x27;)
+PROC t() IS WriteF(&#x27;  &#x27;)
+PROC negnext(o) IS Long(o-4)
+
+OBJECT objectheader
+  -&gt;onext:LONG			-&gt; -4
+  odel:INT			-&gt; 0, delegate size
+  otype:CHAR			-&gt; 2, flags: bit 0=export
+  dummy:CHAR			-&gt; 3, _empty_spot_
+  osize:INT			-&gt; 4, sizeof object
+  oid:INT			-&gt; 6, object ID
+  oascii:LONG			-&gt; 8
+  omemb:LONG			-&gt; 12, memberlist
+  omethod:LONG			-&gt; 16, methodlist
+  osuper:LONG			-&gt; 20, superclass
+  odcode			-&gt; 24
+  oacc				-&gt; 28
+  odeloff:INT			-&gt; 32
+  odestr:INT			-&gt; 34
+ENDOBJECT
+
+PROC object(a:PTR TO objectheader)
+  DEF s:PTR TO objectheader
+  IF valid(a)
+    IF a
+      IF a.otype AND 2 = 0
+        string(a.oascii)
+        flags(a.otype)
+        int(&#x27;sizeof&#x27;,a.osize)
+        int(&#x27;id&#x27;,a.oid)
+        int(&#x27;delsize&#x27;,a.odel)
+        int(&#x27;deloff&#x27;,a.odeloff)
+        int(&#x27;destr&#x27;,a.odestr)
+        s:=a.osuper
+        IF s THEN s:=s.oascii
+        WriteF(&#x27;superclass:&#x27;)
+        string(s)
+        WriteF(&#x27;\nmemberlist:\n&#x27;)
+        member(a.omemb)
+        WriteF(&#x27;methodlist:\n&#x27;)
+        method(a.omethod)
+        lf()
+        object(negnext(a))
+      ENDIF
+    ENDIF
+  ENDIF
+ENDPROC
+
+OBJECT member
+  -&gt; onext:PTR TO member	-&gt; -4
+  ooff:INT			-&gt; 0, offset
+  oflags:CHAR			-&gt; 2, SET PRIVATE,HASPTRTYPE
+  dummy:CHAR			-&gt; 3, _empty_spot_
+  osize:INT			-&gt; 4, fieldsize [1,2,4,0=array]
+  oid:INT			-&gt; 6, object ID
+  oascii:LONG			-&gt; 8, NIL if PRIVATE
+  optrtype:LONG			-&gt; 12, only if HASPTRTYPE
+ENDOBJECT
+
+PROC member(m:PTR TO member)
+  IF m
+    IF valid(m)
+      t(); string(m.oascii)
+      int(&#x27;offset&#x27;,m.ooff)
+      int(&#x27;size&#x27;,m.osize)
+      int(&#x27;id&#x27;,m.oid)
+      flags(m.oflags)
+      IF m.oflags AND 2
+        IF m.optrtype AND $FFFFFFF0 = 0
+          int(&#x27;ptrtype&#x27;,m.optrtype)
+        ELSE
+          WriteF(&#x27;ptrtype=&lt;object&gt;&#x27;)
+        ENDIF
+      ENDIF
+      lf()
+      member(negnext(m))
+    ENDIF
+  ENDIF
+ENDPROC
+
+OBJECT proc
+  -&gt; next:PTR TO proc		-&gt; -4
+  nrargs:INT			-&gt; 0
+  flags:CHAR			-&gt; 2, SET COMPILE_RTD,METHOD
+  numregvars:CHAR		-&gt; 3, 0..3
+  nrloc:INT			-&gt; 4, -(nrloc*4)
+  defargs:LONG			-&gt; 6
+  of_object:LONG		-&gt; 10
+  ident:LONG			-&gt; 14
+  self				-&gt; 18
+  method			-&gt; 22
+  regtab:PTR TO LONG		-&gt; 26
+ENDOBJECT
+
+OBJECT method
+  m_next:LONG			-&gt; 0
+  m_proc:LONG			-&gt; 4
+  m_type:CHAR			-&gt; 8 [0=MT_METHOD, 1=MT_FROZEN, 2=MT_SHARED]
+  m_flags:CHAR			-&gt; 9 SET INHERITED
+  m_off:INT			-&gt; 10 delegate offset
+  m_name:LONG			-&gt; 12
+ENDOBJECT
+
+PROC method(m:PTR TO method)
+  DEF p:PTR TO proc
+  IF m
+    IF valid(m)
+      t(); string(m.m_name)
+      int(&#x27;type&#x27;,m.m_type)
+      flags(m.m_flags)
+      int(&#x27;deloff&#x27;,m.m_off)
+      WriteF(&#x27; -&gt; proc: &#x27;)
+      p:=m.m_proc
+      int(&#x27;nargs&#x27;,p.nrargs)
+      lf()
+      method(m.m_next)
+    ENDIF
+  ENDIF
+ENDPROC
+
+PROC val(x)
+  WriteF(&#x27;value = \d, $\h\n&#x27;,x,x)
+ENDPROC
+
+PROC mem(a:PTR TO LONG)
+  DEF b,c
+  c:=a
+  WriteF(&#x27;dump ($\h) = &#x27;,a)
+  IF valid(a)
+    FOR b:=1 TO 16 DO WriteF(&#x27;\z$\h[8] &#x27;,a[]++)
+  ENDIF
+  WriteF(&#x27;\n&quot;\s&quot;\n&#x27;,c)
+  lf()
+ENDPROC
+
+PROC identhash(p:PTR TO LONG)
+  DEF x
+  IF valid(p)
+    IF p
+      FOR x:=1 TO 256 DO IF p[] THEN ident(p[]++) ELSE p++
+    ENDIF
+  ENDIF
+ENDPROC
+
+OBJECT ident
+
+-&gt; flags = SET USED,SYS_VAR,EXPORT(in main var is uit module),REG,REAL|METHOD
+-&gt; etype = PTR TO [1,2,4] | PTR TO &lt;object&gt;
+-&gt; offset = +arg, -localvar
+
+  -&gt;next:LONG			-&gt; -4
+  etype:LONG			-&gt; 0, [type,type,ascii]
+  type:CHAR			-&gt; 4, [local,global,lab] = [1,2,3]
+  flags:CHAR			-&gt; 5
+  pr:LONG			-&gt; 6, [proc,PTR TO globinfo|NIL,proc|NIL if lab]
+  info:INT			-&gt; 10, [offset/regnum,offset,ID=label]
+  heavy:LONG			-&gt; VARHEAVY, only for local+reg_alloc
+ENDOBJECT
+
+PROC ident(p:PTR TO ident)
+  DEF t,n=NIL,pr=NIL,tn,f,fs[100]:STRING,type=NIL
+  IF valid(p)
+    IF (p.flags AND 2)=0 AND p
+      t:=p.type
+      f:=p.flags
+      IF f AND 4 THEN StrAdd(fs,&#x27;EXPORT&#x27;)
+      IF f AND 8 THEN StrAdd(fs,&#x27;REG&#x27;)
+      IF f AND 16 THEN StrAdd(fs,&#x27;METHOD/REAL&#x27;)
+      IF EstrLen(fs)=0 THEN fs:=NIL
+      SELECT t
+        CASE 1; tn:=&#x27;LOCAL&#x27;; pr:=Long(Long(p.pr+14))
+        CASE 2; tn:=&#x27;GLOB&#x27;
+        CASE 3; tn:=&#x27;PROC&#x27;; IF p.pr=NIL THEN tn:=&#x27;LAB&#x27;; n:=p.etype
+        DEFAULT; tn:=&#x27;UNDEF&#x27;
+      ENDSELECT
+      IF (t=1) OR (t=2)
+        type:=p.etype
+        SELECT type
+          CASE 1; type:=NIL
+          CASE 2; type:=&#x27;INT&#x27;
+          CASE 4; type:=&#x27;LONG&#x27;
+          DEFAULT; type:=Long(p.etype+8)
+        ENDSELECT
+      ENDIF
+      WriteF(&#x27;  &#x27;)
+      str(&#x27;proc&#x27;,pr)
+      str(&#x27;name&#x27;,n)
+      str(&#x27;sort&#x27;,tn)
+      str(&#x27;flags&#x27;,fs)
+      str(&#x27;ptr_to&#x27;,type)
+      WriteF(&#x27;info=\d; heavy=$\h\n&#x27;,p.info,p.heavy)
+      ident(negnext(p))
+    ENDIF
+  ENDIF
+ENDPROC
+
+PROC proc(p:PTR TO proc)
+  DEF i:PTR TO ident, s:PTR TO objectheader, rt:PTR TO LONG
+  IF valid(p)
+    IF p
+      WriteF(&#x27;at:$\h; &#x27;,p)
+      int(&#x27;args&#x27;,p.nrargs)
+      int(&#x27;locals&#x27;,p.nrloc)
+      int(&#x27;numregvars&#x27;,p.numregvars)
+      flags(p.flags)
+      WriteF(&#x27;ident:&#x27;)
+      i:=p.ident
+      IF i AND valid(i) THEN string(i.etype)
+      IF i:=p.self
+        IF valid(i)
+          WriteF(&#x27;\n    self:&#x27;)
+          IF valid(s:=i.etype) THEN string(s.oascii)
+        ENDIF
+      ENDIF
+      lf()
+      IF rt:=p.regtab
+        WriteF(&#x27;\tregalloc:&#x27;)
+        WHILE rt[]
+          WriteF(&#x27; \d&#x27;,Shr(Long(rt[]+12),8)-1)
+          rt++
+        ENDWHILE
+        lf()
+      ENDIF
+      proc(negnext(p))
+    ENDIF
+  ENDIF
+ENDPROC
+
+OBJECT modinfo
+  next,flags:INT,namelen,mod,list,name
+ENDOBJECT
+
+OBJECT procclass
+  next,type:INT,info,acc
+ENDOBJECT
+
+OBJECT acc
+  next,code
+ENDOBJECT
+
+PROC modinfo(p:PTR TO modinfo)
+  IF valid(p)
+    IF p
+      str(&#x27;mod&#x27;,p.name)
+      int(&#x27;flags&#x27;,p.flags)
+      lf()
+      procclass(p.list)
+      modinfo(p.next)
+    ENDIF
+  ENDIF
+ENDPROC
+
+PROC procclass(p:PTR TO procclass)
+  DEF x=0,l:PTR TO acc
+  IF valid(p)
+    IF p
+      int(&#x27;type&#x27;,p.type)
+      l:=p.acc
+      WHILE l
+        x++
+        l:=l.next
+      ENDWHILE
+      IF p.type=2 THEN str(&#x27;lab&#x27;,Long(p.info))
+      int(&#x27;numacc&#x27;,x)
+      lf()
+      procclass(p.next)
+    ENDIF
+  ENDIF
+ENDPROC
+
+OBJECT coderem
+  next,type:INT,info1,info2
+ENDOBJECT
+
+PROC coderem(p:PTR TO coderem)
+  IF valid(p)
+    IF p
+      int(&#x27;type&#x27;,p.type)
+      IF (p.type=5) OR (p.type=6) THEN str(&#x27;ref_name&#x27;,p.info1)
+      lf()
+      coderem(p.next)
+    ENDIF
+  ENDIF
+ENDPROC
+
+PROC template(p:PTR TO proc)
+  IF valid(p)
+    IF p
+      -&gt; ...
+      template(negnext(p))
+    ENDIF
+  ENDIF
+ENDPROC
+
+CONST COOKIE=$BE
+
+OBJECT memlist
+  next,size
+ENDOBJECT
+
+PROC cookie(meml:PTR TO memlist)
+  DEF a
+  WHILE meml
+    IF valid(meml)
+      a:=meml+meml.size-1
+      IF a[]&lt;&gt;COOKIE
+        DisplayBeep(NIL)
+        DisplayBeep(NIL)
+        DisplayBeep(NIL)
+        WriteF(&#x27;cookie check failed!!!!!!!!!\n&#x27;)
+        RETURN
+      ENDIF
+      meml:=meml.next
+    ELSE
+      RETURN
+    ENDIF
+  ENDWHILE
+ENDPROC
+
+PROC heaps(h:PTR TO LONG)
+  WHILE CtrlC()=FALSE
+    IF (h[2]-100&gt;h[]) OR (h[2]+13000&lt;h[])
+      WriteF(&#x27;!!!!\n&#x27;)
+      DisplayBeep(NIL)
+      Delay(10)
+    ENDIF
+  ENDWHILE
+ENDPROC
+
+OBJECT macro
+  next:PTR TO macro
+  name,body
+  nargs:INT
+  flags:CHAR
+ENDOBJECT
+
+PROC macros(m:PTR TO LONG)
+  DEF a,l:PTR TO macro
+  FOR a:=0 TO 255
+    l:=m[a]
+    WHILE l
+      WriteF(&#x27;\s/\d = &quot;\s&quot;\n&#x27;,l.name,l.nargs,l.body)
+      l:=l.next
+    ENDWHILE
+  ENDFOR
+ENDPROC
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

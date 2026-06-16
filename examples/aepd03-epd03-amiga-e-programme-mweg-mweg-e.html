@@ -1,0 +1,283 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>MWeg.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-aepd03.html">AEPD03</a> &rsaquo; MWeg.e</div><h1>File: <code>MWeg.e</code></h1><p class="meta">257 lines · project <a href="../examples/pkg-aepd03.html"><code>AEPD03</code></a></p><p class="pathctx">AEPD03/EPD03/Amiga_E-Programme/MWeg/MWeg.e</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/nodes.html">exec/nodes</a></li></ul></div><h2>Source</h2><pre class="code">MODULE &#x27;exec/nodes&#x27;, &#x27;exec/ports&#x27;,
+       &#x27;intuition/intuition&#x27;,
+       &#x27;gadtools&#x27;, &#x27;libraries/gadtools&#x27;
+
+ENUM ER_NONE, ER_NOGT, ER_NOSCRN, ER_NOVISUAL, ER_NOMENUS, ER_NOINITWIN
+
+ENUM CM_NONE,
+     CM_NEW, CM_QUIT,
+     CM_NEXT, CM_PREV, CM_ZOOM, CM_BACK, CM_FRONT, CM_CLOSE
+
+OBJECT wininfolist
+  head:     LONG
+  tail:     LONG
+  tailpred: LONG
+ENDOBJECT
+
+OBJECT wininfo
+  succ:     LONG
+  pred:     LONG
+  winptr:   LONG
+ENDOBJECT
+
+DEF winlist: PTR TO wininfolist, /* linked list of windows    */
+    menuptr = NIL: PTR TO menu,  /* menus built by GadTools   */
+    scr = NIL,                   /* pointer to default screen */
+    visual = NIL                 /* pointer to VisualInfo     */
+
+/* Display an error using an EasyRequest */
+PROC errmsg(msgptr)
+  EasyRequestArgs(0, [20, 0, &#x27;Error&#x27;, msgptr, &#x27;OK&#x27;], 0, 0)
+ENDPROC
+
+/* Open a new window */
+PROC openwin()
+  DEF wi: PTR TO wininfo, w: PTR TO window,
+      success = FALSE
+
+  /* Get some memory for the node */
+  wi := New(SIZEOF wininfo)
+
+  IF wi
+    IF (w := OpenWindowTagList(NIL,
+      [WA_LEFT, Rnd(300), WA_TOP, Rnd(100),
+       WA_WIDTH,    340, WA_HEIGHT,    156,
+       WA_MINWIDTH, 160, WA_MINHEIGHT,  70,
+       WA_MAXWIDTH,  -1, WA_MAXHEIGHT,  -1,
+       WA_TITLE, &#x27;A window&#x27;,
+       WA_FLAGS, WFLG_SIMPLE_REFRESH OR WFLG_ACTIVATE OR WFLG_DRAGBAR OR
+                 WFLG_CLOSEGADGET OR WFLG_DEPTHGADGET OR WFLG_SIZEGADGET,
+       WA_IDCMP, IDCMP_CLOSEWINDOW OR IDCMP_MENUPICK,
+       WA_SCREENTITLE, &#x27;Multi-Windows Example by David Higginson&#x27;,
+       NIL, NIL])) = NIL 
+      errmsg(&#x27;Could not open window.&#x27;)
+      Dispose(wi)
+    ELSE
+      IF SetMenuStrip(w, menuptr)
+        wi.winptr := w
+        success := TRUE
+      ELSE
+        CloseWindow(w)
+        Dispose(wi)
+        errmsg(&#x27;Could not attach menus to new window.&#x27;)
+      ENDIF
+    ENDIF
+  ELSE
+    errmsg(&#x27;Out of memory.&#x27;)
+  ENDIF
+
+  /* Link it in */
+  IF success THEN AddHead(winlist, wi)
+  /* N.B. New nodes MUST be added at head of list */
+ENDPROC success
+
+PROC cm_new()
+  IF openwin() = FALSE THEN errmsg(&#x27;Could not open window.&#x27;)
+ENDPROC
+
+PROC cm_next(wi: PTR TO wininfo)
+  wi := wi.succ
+  IF wi.succ = FALSE THEN wi := winlist.head
+  IF wi.succ THEN ActivateWindow(wi.winptr)
+ENDPROC
+
+PROC cm_prev(wi: PTR TO wininfo)
+  wi := wi.pred
+  IF wi.pred = FALSE THEN wi := winlist.tailpred
+  IF wi.pred THEN ActivateWindow(wi.winptr)
+ENDPROC
+
+/* Set up libraries, screens, menus */
+PROC setup()
+  /* Open gadtools library */
+  IF (gadtoolsbase := OpenLibrary(&#x27;gadtools.library&#x27;, 37)) = NIL THEN
+    Raise(ER_NOGT)
+
+  /* Set up exec list to hold window information */
+  winlist := [0, 0, 0]
+  winlist.head := Mul(winlist + 4,1)
+  winlist.tailpred := winlist
+
+  /* Get default screen and visualinfo info */
+  IF (scr := LockPubScreen(NIL)) = NIL THEN Raise(ER_NOSCRN)
+  IF (visual := GetVisualInfoA(scr, NIL)) = NIL THEN Raise(ER_NOVISUAL)
+
+  /* Create menus */
+  IF (menuptr := CreateMenusA([NM_TITLE, 0, &#x27;Project&#x27;, 0, 0, 0, 0,
+    NM_ITEM, 0, &#x27;New...&#x27;,           &#x27;N&#x27;, 0, 0, CM_NEW,
+    NM_ITEM, 0, NM_BARLABEL,         0 , 0, 0, 0,
+    NM_ITEM, 0, &#x27;Quit&#x27;,             &#x27;Q&#x27;, 0, 0, CM_QUIT,
+    NM_TITLE, 0, &#x27;Window&#x27;,           0 , 0, 0, 0,
+    NM_ITEM, 0, &#x27;Next&#x27;,             &#x27;,&#x27;, 0, 0, CM_NEXT,
+    NM_ITEM, 0, &#x27;Previous&#x27;,         &#x27;.&#x27;, 0, 0, CM_PREV,
+    NM_ITEM, 0, NM_BARLABEL,         0 , 0, 0, 0,
+    NM_ITEM, 0, &#x27;Zoom&#x27;,             &#x27;Z&#x27;, 0, 0, CM_ZOOM,
+    NM_ITEM, 0, NM_BARLABEL,         0 , 0, 0, 0,
+    NM_ITEM, 0, &#x27;Bring to front&#x27;,   &#x27;&gt;&#x27;, 0, 0, CM_FRONT,
+    NM_ITEM, 0, &#x27;Send to back&#x27;,     &#x27;&lt;&#x27;, 0, 0, CM_BACK,
+    NM_ITEM, 0, NM_BARLABEL,         0 , 0, 0, 0,
+    NM_ITEM, 0, &#x27;Close&#x27;,            &#x27;K&#x27;, 0, 0, CM_CLOSE,
+    NM_END, 0, 0, 0, 0, 0, 0]:newmenu, NIL)) = NIL THEN Raise(ER_NOMENUS)
+
+  IF LayoutMenusA(menuptr, visual, NIL) = FALSE THEN Raise(ER_NOMENUS)
+
+  /* Open initial window */
+  IF openwin() = FALSE THEN Raise(ER_NOINITWIN)
+ENDPROC
+
+/* Wait for messages */
+PROC eventloop()
+  DEF quit = FALSE,
+      msg: PTR TO intuimessage, class,
+      sig, bitmask, recalc_bitmask = TRUE,
+      close_this_win,
+      wi: PTR TO wininfo, tempwi: PTR TO wininfo,
+      w: PTR TO window, u: PTR TO mp,
+      item: PTR TO menuitem, code, id
+
+  REPEAT
+    /* Recalculate mask formed by ORing all sigbits */
+    IF recalc_bitmask
+      bitmask := 0
+      wi := winlist.head
+      WHILE wi.succ
+        w := wi.winptr
+        u := w.userport
+        bitmask := bitmask OR Shl(1,u.sigbit)
+        wi := wi.succ
+      ENDWHILE
+    ENDIF
+
+    /* Wait for something to happen */
+    sig := Wait(bitmask)
+
+    /* Now test all windows&#x27; sigbits */
+    wi := winlist.head
+    WHILE wi.succ
+      tempwi := wi.succ
+      w := wi.winptr
+      u := w.userport
+      IF sig AND Shl(1,u.sigbit)
+        /* Message(s) received from this window */
+
+        close_this_win := FALSE
+
+        WHILE u
+          IF msg:=GetMsg(u)
+            class := msg.class
+            code := MENUNULL
+
+            SELECT class
+
+              CASE IDCMP_CLOSEWINDOW
+                /* User selected close gadget */
+                /* Can&#x27;t close yet because msgport would disappear */
+                close_this_win := TRUE
+
+              CASE IDCMP_MENUPICK
+                code := msg.code
+
+            ENDSELECT
+
+            ReplyMsg(msg)
+
+            /* Process menu events after messaged replied */
+            WHILE code &lt;&gt; MENUNULL
+              item := ItemAddress(menuptr, code)
+              IF item
+                id := Long(item + 34)
+                SELECT id
+                  CASE CM_NEW;    cm_new()
+                  CASE CM_QUIT;   quit := TRUE
+                  CASE CM_NEXT;   cm_next(wi)
+                  CASE CM_PREV;   cm_prev(wi)
+                  CASE CM_ZOOM;   IF w THEN ZipWindow(w)
+                  CASE CM_FRONT;  IF w THEN WindowToFront(w)
+                  CASE CM_BACK;   IF w THEN WindowToBack(w)
+                  CASE CM_CLOSE;  close_this_win := TRUE
+                ENDSELECT
+                code := item.nextselect
+              ELSE
+                code := MENUNULL
+              ENDIF
+            ENDWHILE
+
+            IF close_this_win
+              recalc_bitmask := TRUE
+
+              ClearMenuStrip(w)
+              CloseWindow(w)
+              Remove(wi)
+              Dispose(wi)
+            
+              IF winlist.tailpred = winlist THEN quit := TRUE
+              u := NIL
+
+            ENDIF
+          ELSE
+            u := NIL /* No more messages */
+          ENDIF        
+        ENDWHILE
+      ENDIF
+      
+      wi := tempwi
+
+    ENDWHILE
+
+  UNTIL quit
+ENDPROC
+
+PROC shutdown()
+  DEF wi: PTR TO wininfo
+  WHILE wi := RemTail(winlist)
+    ClearMenuStrip(wi.winptr)
+    CloseWindow(wi.winptr)
+    Dispose(wi)
+  ENDWHILE
+  FreeMenus(menuptr)
+  FreeVisualInfo(visual)
+  UnlockPubScreen(scr, NIL)
+  CloseLibrary(gadtoolsbase)
+ENDPROC
+  
+PROC main() HANDLE
+  DEF erlist:PTR TO LONG
+  setup()
+  eventloop()
+  Raise(ER_NONE)
+EXCEPT
+  shutdown()
+  erlist := [&#x27;This program requires gadtools library.&#x27;,
+             &#x27;Could not find default public screen.&#x27;,
+             &#x27;Could not get visual info for screen.&#x27;,
+             &#x27;Could not create menus.&#x27;,
+             &#x27;Could not create initial window.&#x27;]
+  IF exception&gt;0 THEN errmsg(erlist[exception - 1])
+ENDPROC
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

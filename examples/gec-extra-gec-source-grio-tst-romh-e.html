@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>romh.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-gec-extra.html">GEC-extra</a> &rsaquo; romh.e</div><h1>File: <code>romh.e</code></h1><p class="meta">61 lines · project <a href="../examples/pkg-gec-extra.html"><code>GEC-extra</code></a></p><p class="pathctx">GEC-extra/GEC/source/Grio/tst/romh.e</p><p class="prose">MODULE &#x27;grio/file&#x27;</p><h2>Source</h2><pre class="code">-&gt;MODULE &#x27;grio/file&#x27;
+
+CONST JSRT=$4EB9,JMPT=$4EF9,LEA0=$41F9,LEA1=$43F9,LEA2=$45F9,LEA3=$47F9,
+      LEA4=$49F9,LEA5=$4BF9,LEA6=$4DF9
+
+PROC main()
+DEF file=$78780000,size=$80000,tab:PTR TO INT,count,x,temp
+-&gt;IF arg[]=0
+-&gt;   WriteF(&#x27;USAGE: &lt;rom image&gt;\n&#x27;)
+-&gt;   RETURN
+-&gt;ENDIF
+tab:=[JSRT,JMPT,LEA0,LEA1,LEA2,LEA3,LEA4,LEA5,LEA6]:INT
+-&gt;file,size:=gReadFile(arg)
+Disable()
+IF file
+   FOR count:=0 TO size STEP 2
+      FOR x:=0 TO ListLen(tab)-1
+	  IF tab[x]=Int(file+count)
+	     temp:=Shr(Long(file+count+2),8)
+	     temp:=Shr(Shr(temp,8),4)
+	     IF temp=$F
+		temp:=Long(file+count+2)-$F80000
+		/*
+		WriteF(&#x27;puting new address (count = \d) $\h,\h,\h\n&#x27;,
+		count,Long(file+count),Long(file+count+4),Long(file+count+8))
+		*/
+		PutLong(file+count+2,$7BF80000+temp)
+		INC count,6
+	     ELSEIF Shr(temp,8)=$7
+		INC count,6
+	     ENDIF
+	  ENDIF
+      ENDFOR
+      EXIT CtrlC()=TRUE
+   ENDFOR
+   PutLong(file+$7FFE8,romresum(file,size))
+  -&gt; gWriteFile(&#x27;ram:Kick&#x27;,file,size)
+  -&gt; gFreeFile(file)
+ENDIF
+Enable()
+ENDPROC
+
+
+PROC romresum(rom,size)
+  MOVE.L  rom,A0
+  MOVE.L  size,D0
+  MOVE.L  D0,D1
+  LSR.L   #2,D1
+  MOVE.L  -$18(A0,D0.L),D0
+  NOT.L   D0
+  rr_loop:
+  ADD.L   (A0)+,D0
+  BCC.B   rr_skip
+  ADDQ.L  #1,D0
+  rr_skip:
+  SUBQ.L  #1,D1
+  BNE.B   rr_loop
+  NOT.L   D0
+ENDPROC D0
+
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

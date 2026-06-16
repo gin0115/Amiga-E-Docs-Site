@@ -1,0 +1,201 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>dynamic_array.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-lsestuff.html">lsEstuff</a> &rsaquo; dynamic_array.e</div><h1>File: <code>dynamic_array.e</code></h1><p class="meta">175 lines · project <a href="../examples/pkg-lsestuff.html"><code>lsEstuff</code></a></p><p class="pathctx">lsEstuff/dynamic_array.e</p><h2>Source</h2><pre class="code">OPT MODULE
+
+-&gt;
+-&gt; fast dynamic array of CHAR/INT/LONG
+-&gt; not as flexible/much functions as collextionX.
+-&gt; but much faster when using it not-so-randomly :)
+-&gt; and its ofcource alot smaller and simler..
+-&gt;
+
+MODULE &#x27;LeifOO/xli&#x27;
+
+EXPORT CONST DAVS_CHAR=1, DAVS_INT=2, DAVS_LONG=4
+
+OBJECT xnode OF xni
+   values[4]:ARRAY OF CHAR
+ENDOBJECT
+
+
+EXPORT OBJECT dynamic_array
+   PRIVATE
+   xlist:PTR TO xli
+   valuesize:CHAR -&gt;1/2/4, (CHAR/INT/LONG)
+   valuespernode:INT 
+   storagesize:INT
+ENDOBJECT
+
+PROC dynamic_array(valuesize=1, alloc=64) OF dynamic_array
+   IF (valuesize &lt; 1) OR (valuesize &gt; 4) THEN RETURN NIL
+   IF alloc &gt; 8000 THEN RETURN NIL
+   self.valuesize := valuesize
+   self.valuespernode := alloc * 4
+   self.storagesize := valuesize * self.valuespernode
+   NEW self.xlist
+ENDPROC self.valuesize
+
+PROC end() OF dynamic_array
+   self.clear()
+   END self.xlist
+ENDPROC
+
+PROC set(x, value) OF dynamic_array
+   DEF nodenum,
+       nodevaluenum,
+       xnode:PTR TO xnode
+
+   nodenum := x / self.valuespernode
+   nodevaluenum := x - (nodenum * self.valuespernode)
+
+   xnode := self.xlist.find(nodenum)
+
+   IF xnode = NIL
+      xnode := AllocMem( (SIZEOF xnode) - 4 + self.storagesize, NIL)
+      xnode.id := nodenum
+      self.xlist.addTail(xnode)
+   ENDIF
+
+   setxnodeval(self, xnode, nodevaluenum, value)
+ENDPROC
+
+PROC unset(x) OF dynamic_array
+   DEF nodenum,
+       nodevaluenum,
+       xnode:PTR TO xnode
+
+   nodenum := x / self.valuespernode
+   nodevaluenum := x - (nodenum * self.valuespernode)
+
+   xnode := self.xlist.find(nodenum)
+ 
+   IF xnode = NIL THEN RETURN NIL
+
+   setxnodeval(self, xnode, nodevaluenum, NIL)
+
+   IF xnodeisNIL(self, xnode)
+      self.xlist.remove(xnode)
+      FreeMem(xnode, (SIZEOF xnode) - 4 + self.storagesize)
+   ENDIF
+ENDPROC
+
+PROC get(x) OF dynamic_array
+   DEF nodenum,
+   nodevaluenum,
+   xnode:PTR TO xnode
+ 
+   nodenum := x / self.valuespernode
+   nodevaluenum := x - (nodenum * self.valuespernode)
+
+   xnode := self.xlist.find(nodenum)
+ 
+   IF xnode &lt;&gt; NIL
+      RETURN getxnodeval(self, xnode, nodevaluenum)
+   ENDIF
+ENDPROC NIL
+
+PROC count() OF dynamic_array
+   DEF xnode:PTR TO xnode, c=NIL, a, stop
+   xnode:=self.xlist.first()
+   stop:=self.valuespernode
+   stop--
+      WHILE xnode
+         FOR a:=0 TO stop
+            IF getxnodeval(self, xnode, a) THEN c++
+         ENDFOR
+         xnode:=xnode.next
+      ENDWHILE
+ENDPROC c
+
+PROC clear() OF dynamic_array
+   freememall(self.xlist, (SIZEOF xnode) - 4 + self.storagesize)
+ENDPROC
+
+PROC freememall(xli:PTR TO xli, nodesize)
+   DEF xni:PTR TO xni
+   xni:=xli.first()
+   WHILE xni
+      xli.remove(xni)
+      FreeMem(xni, nodesize)
+      xni:=xni.next
+   ENDWHILE
+ENDPROC
+
+
+PROC xnodeisNIL(da:PTR TO dynamic_array, xnode:PTR TO xnode)
+   DEF a:REG, ptr:REG PTR TO LONG, stop:REG
+   stop := (da.storagesize) / 4
+   stop--
+   ptr := xnode.values
+   FOR a := 0 TO stop
+      IF ptr[a] &lt;&gt; NIL THEN RETURN FALSE
+   ENDFOR
+ENDPROC TRUE
+
+PROC getxnodeval(da:PTR TO dynamic_array, xnode:PTR TO xnode, valuenum)
+   DEF ptr:PTR TO CHAR, valuesize, value,
+       iptr:PTR TO INT, lptr:PTR TO LONG
+   valuesize := da.valuesize
+   ptr := (xnode.values) + (valuenum * valuesize)
+   SELECT valuesize
+   CASE DAVS_CHAR
+      value := ptr[]
+   CASE DAVS_INT
+      iptr := ptr
+      value := iptr[]
+   CASE DAVS_LONG
+      lptr := ptr
+      value := lptr[]
+   ENDSELECT
+ENDPROC value
+
+PROC setxnodeval(da:PTR TO dynamic_array, xnode:PTR TO xnode, valuenum, value)
+   DEF ptr:PTR TO CHAR, valuesize, iptr:PTR TO INT, lptr:PTR TO LONG
+   valuesize := da.valuesize
+   ptr := (xnode.values) + (valuenum * valuesize)
+   SELECT valuesize
+   CASE DAVS_CHAR
+      ptr[] := value
+   CASE DAVS_INT
+      iptr := ptr
+      iptr[] := value
+   CASE DAVS_LONG
+      lptr := ptr
+      lptr[] := value
+   ENDSELECT
+ENDPROC
+
+OBJECT parse_point
+   value
+   x
+   PRIVATE
+   c_xnode:PTR TO xnode
+   c_valuenum:LONG
+ENDOBJECT
+ 
+
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

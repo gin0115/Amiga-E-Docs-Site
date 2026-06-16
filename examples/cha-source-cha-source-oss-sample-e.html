@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>oss_sample.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-cha-source.html">cha_source</a> &rsaquo; oss_sample.e</div><h1>File: <code>oss_sample.e</code></h1><p class="meta">92 lines · project <a href="../examples/pkg-cha-source.html"><code>cha_source</code></a></p><p class="pathctx">cha_source/cha_source/oss_sample.e</p><p class="prose">==========================================================================+ | oss_sample.e | | get info about an OSS sample | +--------------------------------------------------------------------------</p><h2>Source</h2><pre class="code">/*==========================================================================+
+| oss_sample.e                                                              |
+| get info about an OSS sample                                              |
++--------------------------------------------------------------------------*/
+
+OPT PREPROCESS
+OPT MODULE
+
+MODULE &#x27;*oss&#x27;, &#x27;*calcs&#x27;, &#x27;*debug&#x27;, &#x27;utility&#x27;, &#x27;utility/tagitem&#x27;
+
+/*-------------------------------------------------------------------------*/
+
+EXPORT ENUM OSS_SA_SAMPLE = TAG_USER,
+            OSS_SA_TYPE,
+            OSS_SA_CHANNELS,
+            OSS_SA_BITS,
+            OSS_SA_LENGTH,
+            OSS_SA_NOTE,
+            OSS_SA_FINETUNE,
+            OSS_SA_TRANSPOSE,
+            OSS_SA_RATE,
+            OSS_SA_DATA,
+            SAMPLETYPE_EMPTY = 0,
+            SAMPLETYPE_SAMPLE8,
+            SAMPLETYPE_SAMPLE16,
+            SAMPLETYPE_UNKNOWN,
+            CHANNELS_MONO = 1,
+            CHANNELS_STEREO,
+            BITS_8 = 8,
+            BITS_16 = 16,
+            NOTE_C_3 = 25
+
+/*-------------------------------------------------------------------------*/
+
+EXPORT OBJECT oss_sample
+PUBLIC
+	sample    : LONG   -&gt; octamed sample number (1 .. 63)
+	type      : LONG   -&gt; SAMPLETYPE_#?
+	-&gt; following only for samples
+	channels  : LONG   -&gt; 1 or 2
+	bits      : LONG   -&gt; 8 or 16
+	length    : LONG   -&gt; length of sample (in samples)
+	note      : LONG   -&gt; note number
+	finetune  : LONG   -&gt; finetune
+	transpose : LONG   -&gt; transpose
+	rate      : LONG   -&gt; sample rate
+	-&gt; following only for mono samples
+	data      : LONG   -&gt; sample data (either SBYTES or SWORDS)
+ENDOBJECT
+
+PROC oss_sample(sample) OF oss_sample
+	DEF type
+	IF (1 &lt;= sample) AND (sample &lt;= 63)
+		self.sample := sample
+		oss(&#x27;in_select \d&#x27;, sample)
+		self.channels := IF ossv(&#x27;in_isstereo&#x27;) THEN CHANNELS_STEREO ELSE CHANNELS_MONO
+		type := oss(&#x27;in_gettype&#x27;)
+		IF     StrCmp(&#x27;EMPTY&#x27;, type)
+			self.type := SAMPLETYPE_EMPTY
+		ELSEIF StrCmp(&#x27;SAMPLE&#x27;, type)
+			self.type := SAMPLETYPE_SAMPLE8
+			self.bits := BITS_8
+			IF self.channels = CHANNELS_MONO THEN self.data := oss_samplebase(sample)
+		ELSEIF StrCmp(&#x27;SAMPLE16&#x27;, type)
+			self.type := SAMPLETYPE_SAMPLE16
+			self.bits := BITS_16
+			IF self.channels = CHANNELS_MONO THEN self.data := oss_samplebase(sample)
+		ELSE
+			self.type := SAMPLETYPE_UNKNOWN
+		ENDIF
+		self.length := ossv(&#x27;sa_getsamplelength&#x27;)
+		self.note      := ossv(&#x27;in_getdefaultpitch&#x27;)
+		IF self.note = 0 THEN self.note := NOTE_C_3
+		self.finetune  := ossv(&#x27;in_getfinetune&#x27;)
+		self.transpose := ossv(&#x27;in_gettranspose&#x27;)
+		self.rate := oss_Period2Frequency(type := oss_NoteFinetune2Period(
+		                        self.note + self.transpose, self.finetune))
+		debug([&#x27;oss_input.sample = \d[8]&#x27;,   self.sample])
+		debug([&#x27;oss_input.bits   = \d[8]&#x27;,   self.bits  ])
+		debug([&#x27;oss_input.length = \d[8]&#x27;,   self.length])
+		debug([&#x27;oss_input.data   = \z\h[8]&#x27;, self.data  ])
+	ELSE
+		Throw(&quot;oss&quot;, &#x27;sample number out of range&#x27;)
+	ENDIF
+ENDPROC
+
+PROC end() OF oss_sample IS EMPTY
+
+/*--------------------------------------------------------------------------+
+| END: oss_sample.e                                                         |
++==========================================================================*/
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

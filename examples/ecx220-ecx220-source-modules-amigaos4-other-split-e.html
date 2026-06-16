@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>split.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-ecx220.html">ecx220</a> &rsaquo; split.e</div><h1>File: <code>split.e</code></h1><p class="meta">62 lines · project <a href="../examples/pkg-ecx220.html"><code>ecx220</code></a></p><p class="pathctx">ecx220/ecx220/source/modules/amigaos4/other/split.e</p><h2>Source</h2><pre class="code">OPT MODULE, AMIGAOS4
+
+ENUM A_BEGIN, A_SPACE, A_QUOTE, A_QUOTE2, A_END
+
+CONST NUM=&quot;\a&quot;+1
+
+-&gt; Split the string &quot;str&quot; (which defaults to the arguments string &quot;arg&quot;)
+EXPORT PROC argSplit(str=NIL) IS splitStr_(IF str THEN str ELSE arg)
+
+-&gt; A small function to split an argument string like &quot;arg&quot; into a C-like array
+-&gt; of arguments, handling quoted arguments properly.  Uses recursion to collect
+-&gt; list contents, then allocate list and set contents.  Result is NIL if out of
+-&gt; memory, or an E-list of pointers to (normal) strings (this list is also NIL
+-&gt; terminated so you have a choice of how to use it).  The original string is
+-&gt; effectively destroyed and should not be used after calling this function.
+PROC splitStr_(str, len=0)
+  DEF tmp=A_BEGIN:PTR TO LONG, s  -&gt; Reuse tmp to save stack space
+  s:=str
+  WHILE tmp&lt;&gt;A_END
+    SELECT NUM OF str[]
+    CASE 0, &quot;\n&quot;, &quot;\b&quot;
+      IF tmp=A_BEGIN THEN s:=NIL
+      str[]:=0
+      tmp:=A_END
+    CASE &quot;\q&quot;
+      SELECT A_END OF tmp
+      CASE A_BEGIN; tmp:=A_QUOTE; s++
+      CASE A_QUOTE; tmp:=A_END;   str[]:=0
+      ENDSELECT
+      str++
+    CASE &quot;\a&quot;
+      SELECT A_END OF tmp
+      CASE A_BEGIN;  tmp:=A_QUOTE2; s++
+      CASE A_QUOTE2; tmp:=A_END;    str[]:=0
+      ENDSELECT
+      str++
+    CASE &quot; &quot;, &quot;\t&quot;
+      SELECT A_END OF tmp
+      CASE A_BEGIN;  s++
+      CASE A_SPACE;  tmp:=A_END; str[]:=0
+      ENDSELECT
+      str++
+    DEFAULT
+      IF tmp=A_BEGIN THEN tmp:=A_SPACE
+      str++
+    ENDSELECT
+  ENDWHILE
+  IF s  -&gt; If not the last one...
+    IF FreeStack()&gt;=1000  -&gt; (Check stack since recursing...)
+      tmp:=splitStr_(str, len+1)  -&gt; ... split the rest,
+      IF tmp THEN tmp[len]:=s   -&gt; and add this one in
+    ELSE
+      tmp:=NIL
+    ENDIF
+  ELSE  -&gt; Else reached the end of arg...
+    tmp:=List(len+1)  -&gt; ... allocate list and set length
+    IF tmp            -&gt; (Extra element is for NIL termination)
+      tmp[len]:=NIL
+      SetList(tmp, len)
+    ENDIF
+  ENDIF
+ENDPROC tmp  -&gt; Returns NIL if List() fails</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

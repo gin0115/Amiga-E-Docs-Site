@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>epdprog.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-aepd22.html">AEPD22</a> &rsaquo; epdprog.e</div><h1>File: <code>epdprog.e</code></h1><p class="meta">95 lines · project <a href="../examples/pkg-aepd22.html"><code>AEPD22</code></a></p><p class="pathctx">AEPD22/EPD22/Amiga_E-Programme/epdprog/epdprog.e</p><p class="prose">** File: epdprog.e ** Description: EPD-Gesamtverzeichnis nach <a href="../modules/string.html">String</a> durchsuchen ** Copyright: None ** Status: Public Domain ** ** $Author: Daniel van Gerpen ** $VER: epdprog 0.1 (09 Apr 1995) ** $Date: 1995/04/09 13:59:31 *</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/dosextens.html">dos/dosextens</a></li></ul></div><h2>Source</h2><pre class="code">/*
+**             File: epdprog.e
+**      Description: EPD-Gesamtverzeichnis nach String durchsuchen
+**        Copyright: None
+**           Status: Public Domain
+**
+**          $Author: Daniel van Gerpen
+**             $VER: epdprog 0.1 (09 Apr 1995)
+**            $Date: 1995/04/09 13:59:31
+**/         
+
+MODULE &#x27;dos/dosextens&#x27;
+
+CONST MXLEN   =1000,
+      PATHLEN =128
+
+DEF   full[MXLEN]         :STRING, /* Für Ausgabe */
+      last=NIL,
+      s,
+      first=NIL,
+      pos                          /* Position */
+
+PROC main()
+  DEF fh,                          /* FileHandle */
+      lock : PTR TO filelock,      /* Programm - Verzeichnis */
+      progdir[PATHLEN]  : STRING,
+      fullpath[PATHLEN] : STRING,
+      buf[MXLEN]          :ARRAY,  /* Zeilenbuffer */
+      casebuf[MXLEN]      :STRING, /* Für Vergleich */
+      n=0,                         /* Zeilencounter */
+      f=0,                         /* Fundstellen */
+      lowarg                       /* Lowercase Arg */
+
+  lock:=GetProgramDir()                   /* Programmverzeichnis ermitteln */
+  NameFromLock(lock,progdir,PATHLEN)
+  StrCopy(fullpath,progdir)
+  StrAdd(fullpath,&#x27;/allEPD.txt&#x27;)
+
+  IF fh:=Open(fullpath,OLDFILE)
+
+    WHILE Fgets(fh,buf,MXLEN)
+
+      IF (s:=String(StrLen(buf)))=NIL THEN Raise(&quot;MEM&quot;)
+      StrCopy(s,buf,ALL)
+      IF last THEN Link(last,s) ELSE first:=s
+      last:=s
+      INC n
+
+    ENDWHILE
+
+    Close(fh)
+    s:=first
+
+    lowarg:=arg
+    LowerStr(lowarg)
+
+    WriteF(&#x27;\nName                      Datum      EPD\n&#x27;)
+    WriteF(&#x27;----------------------------------------\n&#x27;)
+
+    WHILE s                                           /* Eigentliche Suche */
+      StrCopy(casebuf,s)                              /* groß/klein mißachten */
+      LowerStr(casebuf)
+      pos := InStr(casebuf,lowarg)
+      IF pos&lt;&gt;-1                                      /* arg vorhanden ? */
+        write_line()
+        INC f                                         /* Zähler erhöhen */
+      ENDIF
+      s := Next(s)
+    ENDWHILE
+
+    WriteF(&#x27;\nDatei enthält \d Programme. Davon ausgegeben : \d.\n&#x27;,n,f)
+    DisposeLink(first)
+  ELSE
+    WriteF(&#x27;Keine Quelldatei verfügbar.\n&#x27;)
+  ENDIF
+ENDPROC
+
+PROC write_line()                         /* Gibt eine gefundene Zeile aus */
+  DEF tmp1[MXLEN]         :STRING,
+      tmp2[MXLEN]         :STRING
+
+  StrCopy(full,&#x27;&#x27;)                              /* full löschen */
+  StrCopy(full,s,pos)                           /* Zeichen bis &quot;arg&quot; */
+  StrAdd(full,&#x27;[1;32m&#x27;)                        /* Farbe 2 */
+  MidStr(tmp1,s,pos,StrLen(arg))                /* arg */
+  StrAdd(full,tmp1)                             /* anfügen */
+  StrAdd(full,&#x27;[0;31m&#x27;)                        /* Farbe 1 */
+  RightStr(tmp2,s,(StrLen(s)-StrLen(arg)-pos))  /* und den Rest */
+  StrAdd(full,tmp2)                             /* anfügen */
+  WriteF(&#x27;\s&#x27;,full)                             /* schreiben */
+ENDPROC
+
+
+
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

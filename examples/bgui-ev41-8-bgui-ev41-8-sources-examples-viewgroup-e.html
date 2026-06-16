@@ -1,0 +1,564 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ViewGroup.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-bgui-ev41-8.html">BGUI_Ev41_8</a> &rsaquo; ViewGroup.e</div><h1>File: <code>ViewGroup.e</code></h1><p class="meta">538 lines · project <a href="../examples/pkg-bgui-ev41-8.html"><code>BGUI_Ev41_8</code></a></p><p class="pathctx">BGUI_Ev41_8/bgui_ev41_8/sources/examples/ViewGroup.e</p><p class="prose">-- --------------------------------------------------------------- -- * * -- Programname..........: ViewGroup.e -- * * -- Description..........: Simple translation from the existing -- * * -- C-Version. -- * * -- -- * * -- Author...............: Daniel Kasmeroglu (alias Deekah) -- * * -- Version....</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/bgui.html">bgui</a></li><li><a href="../modules/bguim.html">libraries/bguim</a></li></ul></div><h2>Source</h2><pre class="code">/* -- --------------------------------------------------------------- -- *
+ * -- Programname..........: ViewGroup.e                              -- *
+ * -- Description..........: Simple translation from the existing     -- *
+ * --                        C-Version.                               -- *
+ * --                                                                 -- *
+ * -- Author...............: Daniel Kasmeroglu (alias Deekah)         -- *
+ * -- Version..............: 0.1     (22.02.1997)                     -- *
+ * -- --                                                           -- -- *
+ * -- History..............:                                          -- *
+ * --                                                                 -- *
+ * --         0.1          - Die erste Version ;-)                    -- *
+ * --                        (22.02.1997)                             -- *
+ * -- --------------------------------------------------------------- -- */
+
+
+     /* -- ------------------------------------------------- -- *
+      * --                     Compiler-Options              -- *
+      * -- ------------------------------------------------- -- */
+
+OPT REG = 5                -&gt; activate register-optimization
+OPT PREPROCESS             -&gt; enable preprocessor
+
+
+     /* -- ------------------------------------------------- -- *
+      * --                          Macros                   -- *
+      * -- ------------------------------------------------- -- */
+
+#define PageLab  [ &#x27;Information&#x27;, &#x27;Buttons&#x27;, &#x27;Strings&#x27;, &#x27;CheckBoxes&#x27;, &#x27;Radio-Buttons&#x27;, NIL ]
+#define MxLab    [ &#x27;MX #1&#x27;, &#x27;MX #2&#x27;, &#x27;MX #3&#x27;, &#x27;MX #4&#x27;, NIL ]
+
+#define MyCheckBox( label, id )\
+  CheckBoxObject,\
+    LAB_Label,         label,\
+    GA_ID,             id,\
+  EndObject
+
+
+     /* -- ------------------------------------------------- -- *
+      * --                         E-Modules                 -- *
+      * -- ------------------------------------------------- -- */
+
+MODULE &#x27;libraries/bguim&#x27;,
+       &#x27;libraries/bgui&#x27;,
+       &#x27;devices/inputevent&#x27;,
+       &#x27;devices/input&#x27;,
+       &#x27;utility/tagitem&#x27;,
+       &#x27;utility/hooks&#x27;,
+       &#x27;tools/installhook&#x27;,
+       &#x27;tools/inithook&#x27;,
+       &#x27;tools/boopsi&#x27;,
+       &#x27;intuition/gadgetclass&#x27;,
+       &#x27;intuition/intuition&#x27;,
+       &#x27;intuition/classusr&#x27;,
+       &#x27;intuition/classes&#x27;,
+       &#x27;intuition/imageclass&#x27;
+
+
+MODULE &#x27;bgui&#x27;
+
+ 
+     /* -- ------------------------------------------------- -- *
+      * --                        Constants                  -- *
+      * -- ------------------------------------------------- -- */
+
+CONST BOTH_SHIFT = IEQUALIFIER_LSHIFT OR IEQUALIFIER_RSHIFT
+
+ENUM GID_TABS = 1,        -&gt; Gadget-IDs
+     GID_DEPTH,
+     GID_HELP,
+     GID_PROPHORIZ,
+     GID_PROPVERT,
+     GID_INFO,
+     GID_QUIT,
+     GID_BUTTON1,
+     GID_BUTTON2,
+     GID_BUTTON3,
+     GID_STRING1,
+     GID_STRING2,
+     GID_STRING3,
+     GID_CHECK1,
+     GID_CHECK2,
+     GID_CHECK3,
+     GID_RADIO,
+     GRID_PAGE,           -&gt; GRoup-IDs
+     GRID_VIEW
+
+
+     /* -- ------------------------------------------------- -- *
+      * --                        Structures                 -- *
+      * -- ------------------------------------------------- -- */
+
+OBJECT ehook OF hook      -&gt; the data field is used by `installhook&#x27;
+  privatedata : LONG
+ENDOBJECT
+
+
+OBJECT viewgui
+  owindow       : PTR TO object
+  window        : PTR TO window
+  gadgets[ 19 ] : ARRAY OF LONG
+  ehook         : ehook
+ENDOBJECT
+
+
+     /* -- ------------------------------------------------- -- *
+      * --                        Methoden                   -- *
+      * -- ------------------------------------------------- -- */
+
+PROC vie_Constructor() OF viewgui
+
+  -&gt; installation of the hook (I don&#x27;t know what `inithook&#x27; does
+  -&gt; but this combination works in all my examples )
+  installhook( self.ehook, {glo_TabHookFunc} )
+  inithook(    self.ehook, {glo_TabHookFunc} )
+
+  -&gt; initializing simple objects
+  self.vie_InitGadgets()
+
+  -&gt; if the GRID_VIEW-Object exists all went ok !
+  IF self.gadgets[ GRID_VIEW - 1 ] &lt;&gt; NIL
+
+    -&gt; setup the window-object
+    self.owindow := WindowObject,
+                      WINDOW_Title,              &#x27;Border gadgets&#x27;,
+                      WINDOW_AutoKeyLabel,       TRUE,
+                      WINDOW_AutoAspect,         TRUE,
+                      WINDOW_CloseOnEsc,         TRUE,
+                      WINDOW_IDCMPHookBits,      IDCMP_RAWKEY,
+                      WINDOW_IDCMPHook,          self.ehook,
+                      WINDOW_TBorderGroup, 
+                        HGroupObject,
+                          StartMember,
+                            self.gadgets[ GID_DEPTH - 1 ],
+                          EndMember,
+                          StartMember,
+                            self.gadgets[ GID_HELP - 1 ],
+                          EndMember,
+                        EndObject,
+                      WINDOW_BBorderGroup,
+                        HGroupObject,
+                          StartMember,
+                            self.gadgets[ GID_PROPHORIZ - 1 ],
+                          EndMember,
+                        EndObject,
+                      WINDOW_RBorderGroup,
+                        VGroupObject,
+                          StartMember,
+                            self.gadgets[ GID_PROPVERT - 1 ],
+                          EndMember,
+                        EndObject,
+                      WINDOW_MasterGroup,
+                        VGroupObject,
+                          StartMember,
+                            self.gadgets[ GRID_VIEW - 1 ],
+                          EndMember,
+                        EndObject,
+                    EndObject
+             
+
+    -&gt; if the creation was successful 
+    IF self.owindow &lt;&gt; NIL
+
+      -&gt; store the address of the TABS-Object
+      self.ehook.privatedata := self.gadgets[ GID_TABS - 1 ]
+
+      -&gt; add a simple map
+      AddMap( self.gadgets[ GID_TABS - 1 ], self.gadgets[ GRID_PAGE - 1 ], {lab_Cyc2Page} )
+
+      -&gt; setup the TabCycling-Order
+      domethod( self.owindow, [ WM_TABCYCLE_ORDER,
+                                self.gadgets[ GID_STRING1 - 1 ],
+                                self.gadgets[ GID_STRING2 - 1 ],
+                                self.gadgets[ GID_STRING3 - 1 ], NIL ] )
+     
+      -&gt; attach some objects to the VIEW-Object
+      SetAttrsA( self.gadgets[ GRID_VIEW - 1 ], [ VIEW_HScroller, self.gadgets[ GID_PROPHORIZ - 1 ], TAG_END ] )
+      SetAttrsA( self.gadgets[ GRID_VIEW - 1 ], [ VIEW_VScroller, self.gadgets[ GID_PROPVERT  - 1 ], TAG_END ] )
+
+    ENDIF
+
+  ENDIF
+
+ENDPROC
+
+
+PROC vie_InitGadgets() OF viewgui
+DEF vie_run,vie_ok
+
+  -&gt; initialize all objects
+  self.gadgets[ GID_TABS  - 1 ] := MxObject,
+                                     MX_TabsObject,         TRUE,
+                                     MX_Labels,             PageLab, 
+                                     GA_ID,                 GID_TABS,
+                                   EndObject
+
+  self.gadgets[ GID_DEPTH - 1 ] := ButtonObject,
+                                     SYSIA_WHICH,           DEPTHIMAGE, 
+                                     GA_ID,                 GID_DEPTH,
+                                   EndObject
+
+  self.gadgets[ GID_HELP  - 1 ] := ButtonObject,
+                                     FRM_Type,              FRTYPE_BORDER,
+                                     FRM_InnerOffsetTop,    -1,
+                                     LAB_Label,             &#x27;Help...&#x27;,
+                                     BUTTON_EncloseImage,   TRUE,
+                                     GA_ID,                 GID_HELP,
+                                   EndObject
+
+  self.gadgets[ GID_PROPHORIZ - 1 ] := PropObject,
+                                         PGA_TOP,           15,
+                                         PGA_TOTAL,         20,
+                                         PGA_VISIBLE,       10,
+                                         PGA_FREEDOM,       FREEHORIZ,
+                                         PGA_NEWLOOK,       TRUE,
+                                         PGA_Arrows,        TRUE,
+                                         GA_ID,             GID_PROPHORIZ,
+                                       EndObject
+
+
+  self.gadgets[ GID_PROPVERT  - 1 ] := PropObject,
+                                         PGA_TOP,           15,
+                                         PGA_TOTAL,         20,
+                                         PGA_VISIBLE,       10,
+                                         PGA_FREEDOM,       FREEVERT,
+                                         PGA_NEWLOOK,       TRUE,
+                                         PGA_Arrows,        TRUE,
+                                         GA_ID,             GID_PROPVERT,
+                                       EndObject
+
+  
+  self.gadgets[ GID_INFO -  1 ] := InfoObject,
+                                     ButtonFrame,
+                                     FRM_Flags,             FRF_RECESSED,
+                                     INFO_TextFormat,       {lab_Text},
+                                     INFO_FixTextWidth,     TRUE,
+                                     INFO_MinLines,         14,
+                                     GA_ID,                 GID_INFO,
+                                   EndObject
+
+  self.gadgets[ GID_QUIT - 1 ] := ButtonObject,
+                                    GA_ID,                  GID_QUIT,
+                                    LAB_Label,              &#x27;_Quit&#x27;,
+                                    LAB_Underscore,         &quot;_&quot;,
+                                  EndObject
+
+  self.gadgets[ GID_BUTTON1 - 1 ] := PrefButton( &#x27;Button #_1&#x27;, GID_BUTTON1 )
+  self.gadgets[ GID_BUTTON2 - 1 ] := PrefButton( &#x27;Button #_2&#x27;, GID_BUTTON2 )
+  self.gadgets[ GID_BUTTON3 - 1 ] := PrefButton( &#x27;Button #_3&#x27;, GID_BUTTON3 )
+  
+  self.gadgets[ GID_STRING1 - 1 ] := PrefString( &#x27;String #_1&#x27;, NIL, 256, GID_STRING1 )
+  self.gadgets[ GID_STRING2 - 1 ] := PrefString( &#x27;String #_2&#x27;, NIL, 256, GID_STRING2 )
+  self.gadgets[ GID_STRING3 - 1 ] := PrefString( &#x27;String #_3&#x27;, NIL, 256, GID_STRING3 )
+
+  self.gadgets[ GID_CHECK1  - 1 ] := MyCheckBox( &#x27;CheckBox #_1&#x27;, GID_CHECK1 )
+  self.gadgets[ GID_CHECK2  - 1 ] := MyCheckBox( &#x27;CheckBox #_2&#x27;, GID_CHECK2 )
+  self.gadgets[ GID_CHECK3  - 1 ] := MyCheckBox( &#x27;CheckBox #_3&#x27;, GID_CHECK3 )
+
+  self.gadgets[ GID_RADIO   - 1 ] := MxObject,
+                                       GROUP_Style,              GRSTYLE_VERTICAL,
+                                       LAB_Label,                &#x27;_Mx Object&#x27;,
+                                       LAB_Place,                PLACE_ABOVE,
+                                       MX_Labels,                MxLab,
+                                       GA_ID,                    GID_RADIO,
+                                     EndObject
+
+
+
+  -&gt; check if all went ok
+  vie_ok := TRUE
+  FOR vie_run := GID_TABS TO GID_RADIO
+    IF self.gadgets[ vie_run - 1 ] = NIL THEN vie_ok := FALSE
+  ENDFOR
+
+  -&gt; if there was a fault, then dispose all successful
+  -&gt; created objects
+  IF vie_ok = FALSE
+    FOR vie_run := GID_TABS TO GID_RADIO
+      IF self.gadgets[ vie_run - 1 ] &lt;&gt; NIL
+        DisposeObject( self.gadgets[ vie_run - 1 ] )
+        self.gadgets[ vie_run - 1 ] := NIL
+      ENDIF
+    ENDFOR
+  ELSE
+
+    -&gt; setup the PAGE-Object
+    self.gadgets[ GRID_PAGE - 1 ] := PageObject,
+                                       PageMember,
+                                         VGroupObject,
+                                           NormalSpacing,
+                                           StartMember,
+                                             self.gadgets[ GID_INFO - 1 ],   
+                                           EndMember,
+                                           StartMember,
+                                             HGroupObject,
+                                               VarSpace(50),
+                                               StartMember,
+                                                 self.gadgets[ GID_QUIT - 1 ],
+                                               EndMember,
+                                               VarSpace(50),
+                                             EndObject,
+                                             FixMinHeight,
+                                           EndMember,
+                                         EndObject,
+                                       PageMember,
+                                         VGroupObject,
+                                           NormalSpacing,
+                                           VarSpace(DEFAULT_WEIGHT),
+                                           StartMember,
+                                             self.gadgets[ GID_BUTTON1 - 1 ],
+                                             FixMinHeight,
+                                           EndMember,
+                                           StartMember,
+                                             self.gadgets[ GID_BUTTON2 - 1 ],
+                                             FixMinHeight,
+                                           EndMember,
+                                           StartMember, 
+                                             self.gadgets[ GID_BUTTON3 - 1 ],
+                                             FixMinHeight,
+                                           EndMember,
+                                           VarSpace(DEFAULT_WEIGHT),
+                                         EndObject,
+                                       PageMember,
+                                         VGroupObject,
+                                           NormalSpacing,
+                                           VarSpace(DEFAULT_WEIGHT),
+                                           StartMember, 
+                                             self.gadgets[ GID_STRING1 - 1 ],
+                                             FixMinHeight,
+                                           EndMember,
+                                           StartMember, 
+                                             self.gadgets[ GID_STRING2 - 1 ],
+                                             FixMinHeight,
+                                           EndMember,
+                                           StartMember, 
+                                             self.gadgets[ GID_STRING3 - 1 ],
+                                             FixMinHeight,
+                                           EndMember,
+                                           VarSpace(DEFAULT_WEIGHT),
+                                         EndObject,
+                                       PageMember,
+                                         VGroupObject,
+                                           NormalSpacing,
+                                           VarSpace(DEFAULT_WEIGHT),
+                                           StartMember,
+                                             HGroupObject,
+                                               VarSpace(DEFAULT_WEIGHT),
+                                               StartMember,
+                                                 VGroupObject, 
+                                                   NormalSpacing,
+                                                   StartMember, self.gadgets[ GID_CHECK1 - 1 ], EndMember,
+                                                   StartMember, self.gadgets[ GID_CHECK2 - 1 ], EndMember,
+                                                   StartMember, self.gadgets[ GID_CHECK3 - 1 ], EndMember,
+                                                 EndObject, 
+                                                 FixMinWidth,
+                                               EndMember,
+                                               VarSpace(DEFAULT_WEIGHT),
+                                             EndObject,
+                                           EndMember, 
+                                           VarSpace(DEFAULT_WEIGHT),
+                                         EndObject,
+                                       PageMember,
+                                         VGroupObject,
+                                           VarSpace(DEFAULT_WEIGHT),
+                                           StartMember,
+                                             HGroupObject,
+                                               VarSpace( DEFAULT_WEIGHT ),
+                                               StartMember, self.gadgets[ GID_RADIO - 1 ], EndMember,
+                                               VarSpace( DEFAULT_WEIGHT ),
+                                             EndObject, 
+                                             FixMinHeight,
+                                           EndMember,
+                                           VarSpace(DEFAULT_WEIGHT),
+                                         EndObject,
+                                     EndObject
+
+
+    -&gt; if PAGE-Object was successfully created then create
+    -&gt; the VIEW-Object
+    IF self.gadgets[ GRID_PAGE - 1 ] &lt;&gt; NIL
+
+      self.gadgets[ GRID_VIEW - 1 ] := ViewObject,
+                                         FRM_Type,                  FRTYPE_NONE,
+                                         VIEW_ScaleMinWidth,        25,
+                                         VIEW_ScaleMinHeight,       25,
+                                         VIEW_Object,
+                                           VGroupObject,
+                                             NormalOffset,
+                                             NormalSpacing,
+                                             StartMember,
+                                               self.gadgets[ GID_TABS - 1 ],
+                                               FixMinHeight,
+                                             EndMember,
+                                             StartMember,
+                                               self.gadgets[ GRID_PAGE - 1 ],
+                                             EndMember,
+                                           EndObject,
+                                       EndObject
+
+    ENDIF
+
+  ENDIF
+  
+ENDPROC
+
+
+PROC vie_StartInterface() OF viewgui
+DEF sta_rc,sta_running,sta_signal
+
+  -&gt; the window-object should be available
+  IF self.owindow &lt;&gt; NIL
+
+    -&gt; open the window to make it visible
+    self.window := WindowOpen( self.owindow )
+    IF self.window &lt;&gt; NIL
+
+      -&gt; get the signal-mask
+      GetAttr( WINDOW_SigMask, self.owindow, {sta_signal} )
+
+      sta_running := TRUE
+      WHILE sta_running = TRUE
+
+        -&gt; wait until an event arrives
+        Wait( sta_signal )
+
+        WHILE (sta_rc := HandleEvent( self.owindow )) &lt;&gt; WMHI_NOMORE
+
+          -&gt; wow, what a great program or not 8)
+          SELECT sta_rc
+          CASE WMHI_CLOSEWINDOW ; sta_running := FALSE
+          CASE GID_QUIT         ; sta_running := FALSE
+          ENDSELECT
+
+        ENDWHILE
+ 
+      ENDWHILE
+
+      -&gt; this call is not necessary if the window should
+      -&gt; be opened only for one time because `DisposeObject&#x27;
+      -&gt; would close it, too
+      WindowClose( self.owindow )
+
+    ENDIF
+
+  ENDIF
+
+ENDPROC
+
+
+PROC end() OF viewgui
+  IF self.owindow &lt;&gt; NIL 
+    DisposeObject( self.owindow )
+  ELSEIF self.gadgets[ GRID_VIEW - 1 ] &lt;&gt; NIL
+    DisposeObject( self.gadgets[ GRID_VIEW     - 1 ] )
+    DisposeObject( self.gadgets[ GRID_PAGE     - 1 ] )
+    DisposeObject( self.gadgets[ GID_DEPTH     - 1 ] )
+    DisposeObject( self.gadgets[ GID_HELP      - 1 ] )
+    DisposeObject( self.gadgets[ GID_PROPVERT  - 1 ] )
+    DisposeObject( self.gadgets[ GID_PROPHORIZ - 1 ] )
+  ENDIF
+ENDPROC
+
+
+     /* -- ------------------------------------------------- -- *
+      * --                      Hook-Functions               -- *
+      * -- ------------------------------------------------- -- */
+
+PROC glo_TabHookFunc( tab_ehook : PTR TO ehook, tab_obj : PTR TO object, tab_msg : PTR TO intuimessage )
+DEF tab_window : PTR TO window
+DEF tab_mxobj  : PTR TO object
+DEF tab_pos
+
+  tab_mxobj := tab_ehook.privatedata
+
+  GetAttr( WINDOW_Window, tab_obj,   {tab_window} )
+  GetAttr( MX_Active,     tab_mxobj, {tab_pos}    )
+
+  -&gt; 66
+  IF tab_msg.code = $42
+
+    IF (tab_msg.qualifier AND BOTH_SHIFT) &lt;&gt; NIL
+      tab_pos--
+    ELSE
+      tab_pos++
+    ENDIF
+
+    SetGadgetAttrsA( tab_mxobj, tab_window, NIL,
+    [ MX_Active, tab_pos, TAG_END ] )
+
+  ENDIF
+
+ENDPROC
+
+
+     /* -- ------------------------------------------------- -- *
+      * --                          Main                     -- *
+      * -- ------------------------------------------------- -- */
+
+PROC main() HANDLE
+DEF ma_viewgui : PTR TO viewgui
+
+  ma_viewgui := NIL
+  bguibase   := OpenLibrary( &#x27;bgui.library&#x27;, 41 )
+  IF bguibase &lt;&gt; NIL
+    
+    NEW ma_viewgui.vie_Constructor()
+    ma_viewgui.vie_StartInterface()
+
+  ENDIF
+
+EXCEPT DO
+
+  IF ma_viewgui &lt;&gt; NIL THEN END ma_viewgui
+  IF bguibase   &lt;&gt; NIL THEN CloseLibrary( bguibase )
+   
+ENDPROC exception
+
+
+     /* -- ------------------------------------------------- -- *
+      * --                          Data                     -- *
+      * -- ------------------------------------------------- -- */
+
+lab_Cyc2Page:
+LONG MX_Active,        PAGE_Active,
+     TAG_END
+
+
+lab_Text:
+CHAR &#x27;This is also an updated example of how to manage border gadgets\n&#x27;,
+     &#x27;with BGUI.\n\n&#x27;,
+     &#x27;1. It is not necessary (or recommended) to add GA_#?Border\n&#x27;,
+     &#x27;tags anymore, BGUI now handles this automatically.\n\n&#x27;,
+     &#x27;2. You may use FRTYPE_BORDER for gadgets to get the proper\n&#x27;,
+     &#x27;fill colors.\n\n&#x27;,
+     &#x27;3. You do not need to specify any frames for prop gadgets,\n&#x27;,
+     &#x27;these are done automatically.\n\n&#x27;,
+     &#x27;4. Prop gadgets that are in borders now use sysiclass images\n&#x27;,
+     &#x27;for their arrows for a more conforming look.\n&#x27;,0
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

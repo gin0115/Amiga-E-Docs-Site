@@ -1,0 +1,690 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>system.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-eiffel.html">eiffel</a> &rsaquo; system.e</div><h1>File: <code>system.e</code></h1><p class="meta">664 lines · project <a href="../examples/pkg-eiffel.html"><code>eiffel</code></a></p><p class="pathctx">eiffel/flc/source/system.e</p><p class="prose">Copyright © 1995, Guichard Damien.</p><h2>Source</h2><pre class="code">
+-&gt; Copyright © 1995, Guichard Damien.
+
+-&gt; The entire Eiffel system, including kernel classes
+
+-&gt; TO DO :
+-&gt;   ARRAY[G], BIT n, REAL, DOUBLE, POINTER kernel classes
+
+OPT MODULE
+
+MODULE &#x27;*errors&#x27;,&#x27;*eiffel_lex&#x27;
+MODULE &#x27;*parser&#x27;,&#x27;*prime_server&#x27;
+MODULE &#x27;*entity&#x27;,&#x27;*entity_tree&#x27;,&#x27;*kernel_class&#x27;,&#x27;*current&#x27;
+MODULE &#x27;*class&#x27;,&#x27;*feature&#x27;,&#x27;*function&#x27;,&#x27;*procedure&#x27;,&#x27;*variable&#x27;,&#x27;*constant&#x27;
+MODULE &#x27;*argument&#x27;
+MODULE &#x27;*code&#x27;,&#x27;*ame&#x27;,&#x27;*ame_code&#x27;,&#x27;*label_server&#x27;
+
+-&gt; The Eiffel system (set of classes)
+EXPORT DEF system:PTR TO entity_tree
+
+-&gt; Kernel classes
+EXPORT DEF any_class:PTR TO class
+EXPORT DEF none_class:PTR TO kernel_class
+EXPORT DEF integer_class:PTR TO kernel_class
+EXPORT DEF boolean_class:PTR TO kernel_class
+EXPORT DEF character_class:PTR TO kernel_class
+EXPORT DEF real_class:PTR TO kernel_class
+EXPORT DEF double_class:PTR TO kernel_class
+EXPORT DEF pointer_class:PTR TO kernel_class
+EXPORT DEF string_class:PTR TO class
+EXPORT DEF array_class:PTR TO class
+
+EXPORT DEF class:PTR TO class       -&gt; class beeing parsed (passes 1 and 2)
+EXPORT DEF current:PTR TO current   -&gt; &#x27;Current&#x27; class (passes 1 and 2)
+
+EXPORT DEF lex:PTR TO eiffel_lex     -&gt; lexical analyser (passes 1 and 2)
+EXPORT DEF prime:PTR TO prime_server -&gt; Prime stream (pass 1)
+EXPORT DEF ll:PTR TO label_server    -&gt; local label server (pass 2)
+EXPORT DEF gl:PTR TO label_server    -&gt; global label server (pass 1)
+EXPORT DEF code:PTR TO ame_code      -&gt; executable code generated (pass 2)
+
+-&gt; Vectors for routines from ANY
+ENUM IS_EQUAL=1,STANDARD_IS_EQUAL,COPY,STANDARD_COPY,LASTCHAR,LASTINT,
+     LASTSTRING,NEW_LINE,PUTCHAR,PUTINT,PUTSTRING,READCHAR,READINT,
+     READSTRING,BIT_SIZE,LAST_VECTOR
+
+-&gt; Vectors for routines from STRING
+ENUM MAKE=LAST_VECTOR,APPEND,CLEAR,IS_EMPTY,EXTEND,FILL_BLANK,
+     HASH_CODE,HEAD,INDEX_OF,ITEM,ITEM_CODE,LEFT_ADJUST,
+     PRECEDE, PREPEND,PUT,REMOVE,REMOVE_ALL_OCCURRENCES ,RIGHT_ADJUST,SHRINK,
+     SUBSTRING,TAIL,TO_INTEGER,TO_LOWER,TO_UPPER
+
+-&gt; Declare the root of the Eiffel system
+EXPORT PROC root(class_name,creator,file_name) HANDLE
+  DEF file=NIL
+  DEF errors:PTR TO LONG
+  errors := [&#x27;&#x27;,
+    &#x27;Could not read source file&#x27;,
+    &#x27;Could not create executable file&#x27;,
+    &#x27;Feature not yet implemented&#x27;,
+    &#x27;Not a creation feature&#x27;,
+    &#x27;Syntax error&#x27;,
+    &#x27;VAOL&#x27;,&#x27;VAPE&#x27;,&#x27;VAVE&#x27;,&#x27;VBAR&#x27;,&#x27;VBGV&#x27;,&#x27;VCCH(1)&#x27;,&#x27;VCCH(2)&#x27;,
+    &#x27;VCFG(1)&#x27;,&#x27;VCFG(2)&#x27;,&#x27;VCRN&#x27;,&#x27;VDCN&#x27;,&#x27;VDJR&#x27;,&#x27;VDOC&#x27;,&#x27;VDRD(1)&#x27;,
+    &#x27;VDRD(2)&#x27;,&#x27;VDRD(3)&#x27;,&#x27;VDRD(4)&#x27;,&#x27;VDRD(5)&#x27;,&#x27;VDRD(6)&#x27;,&#x27;VDRD(7)&#x27;,&#x27;VDRD(8)&#x27;,
+    &#x27;VDRS(1)&#x27;,&#x27;VDRS(2)&#x27;,&#x27;VDRS(3)&#x27;,&#x27;VDRS(4)&#x27;,&#x27;VDUC&#x27;,&#x27;VDUS(1)&#x27;,&#x27;VDUS(2)&#x27;,
+    &#x27;VDUS(3)&#x27;,&#x27;VDUS(4)&#x27;,&#x27;VEEN&#x27;,&#x27;VFFD(1)&#x27;,&#x27;VFFD(2)&#x27;,&#x27;VFFD(3)&#x27;,&#x27;VFFD(4)&#x27;,
+    &#x27;VFFD(5)&#x27;,&#x27;VFFD(6)&#x27;,&#x27;VFFD(7)&#x27;,&#x27;VGCC(1)&#x27;,&#x27;VGCC(2)&#x27;,&#x27;VGCC(3)&#x27;,&#x27;VGCC(4)&#x27;,
+    &#x27;VGCC(5)&#x27;,&#x27;VGCC(6)&#x27;,&#x27;VGCI&#x27;,&#x27;VGCP(1)&#x27;,&#x27;VGCP(2)&#x27;,&#x27;VGCP(3)&#x27;,&#x27;VGCP(4)&#x27;,
+    &#x27;VGCP(5)&#x27;,&#x27;VGCS&#x27;,&#x27;VHAY&#x27;,&#x27;VHPR(1)&#x27;,&#x27;VHPR(2)&#x27;,&#x27;VHRC(1)&#x27;,&#x27;VHRC(2)&#x27;,
+    &#x27;VIEX&#x27;,&#x27;VIRW&#x27;,&#x27;VJAR&#x27;,&#x27;VJRV&#x27;,&#x27;VKCN&#x27;,&#x27;VLCP&#x27;,&#x27;VLEC&#x27;,
+    &#x27;VLEL(1)&#x27;,&#x27;VLEL(2)&#x27;,&#x27;VLEL(3)&#x27;,&#x27;VMCN&#x27;,&#x27;VMFN&#x27;,&#x27;VMRC&#x27;,&#x27;VMSS&#x27;,
+    &#x27;VNCB&#x27;,&#x27;VNCC&#x27;,&#x27;VNCE&#x27;,&#x27;VNCF&#x27;,&#x27;VNCG&#x27;,&#x27;VNCH&#x27;,&#x27;VNCN&#x27;,
+    &#x27;VNCS&#x27;,&#x27;VNCX&#x27;,&#x27;VOMB(1)&#x27;,&#x27;VOMB(2)&#x27;,&#x27;VOMB(3)&#x27;,&#x27;VOMB(4)&#x27;,&#x27;VOMB(5)&#x27;,
+    &#x27;VOMB(6)&#x27;,&#x27;VQMC&#x27;,&#x27;VQUI&#x27;,&#x27;VREG&#x27;,&#x27;VRFA&#x27;,&#x27;VRLE(1)&#x27;,&#x27;VRLE(2)&#x27;,
+    &#x27;VRRR(1)&#x27;,&#x27;VRRR(2)&#x27;,&#x27;VSCN&#x27;,&#x27;VSRC(1)&#x27;,&#x27;VSRC(2)&#x27;,&#x27;VTAT(1)&#x27;,&#x27;VTAT(2)&#x27;,
+    &#x27;VTAT(3)&#x27;,&#x27;VTBT&#x27;,&#x27;VTCG&#x27;,&#x27;VTCT&#x27;,&#x27;VTEC&#x27;,&#x27;VTUG&#x27;,&#x27;VUAR(1)&#x27;,
+    &#x27;VUAR(2)&#x27;,&#x27;VUCS&#x27;,&#x27;VUEX(1)&#x27;,&#x27;VUEX(2)&#x27;,&#x27;VUGV&#x27;,&#x27;VWBE&#x27;,&#x27;VWEQ&#x27;,
+    &#x27;VWCA&#x27;,&#x27;VWID&#x27;,&#x27;VWMA&#x27;,&#x27;VWMS(1)&#x27;,&#x27;VWMS(2)&#x27;,&#x27;VWOE&#x27;,&#x27;VWST&#x27;,&#x27;VXRC&#x27;,&#x27;VXRT&#x27;,
+    &#x27;&#x27;]
+
+  NEW code.buffer(16000)
+  code.global_labels(200,400)
+  code.local_labels(80,160)
+  code.putbinary({startup}+32,{end_startup}-4)
+
+  NEW system
+  NEW current
+  NEW gl
+  NEW ll
+  NEW prime.create()
+
+  class_graph(class_name)
+  explode(creator)
+  code.resolve_globals()
+  IF (file:=Open(file_name,NEWFILE))=NIL THEN Raise(ER_EXEFILE)
+  code.flush(file)
+EXCEPT DO
+  IF file THEN Close(file)
+  IF exception&lt;&gt;ER_NONE
+    IF exception=&quot;MEM&quot;
+      WriteF(&#x27;Not enough memory\n&#x27;)
+      RETURN
+    ELSEIF exception&lt;=ER_SYNTAX
+      WriteF(&#x27;\s in \s, line \d\n&#x27;,
+        errors[exception],class.name,lex.line)
+    ELSE
+      WriteF(&#x27;Validity violation \s in \s, line \d\n&#x27;,
+        errors[exception],UpperStr(class.name),lex.line)
+    ENDIF
+  ENDIF
+ENDPROC
+
+-&gt; construct a graph of classes
+PROC class_graph(class_name)
+  DEF skip
+  code.ame(I_LINK,M_LABEL,skip:=gl.next(),R_NONE)
+  kernel_none()
+  kernel_boolean()
+  kernel_numeric()
+  kernel_any()
+  kernel_character()
+  kernel_string()
+  kernel_array()
+  kernel_pointer()
+  NEW class.set_name(class_name,prime.next(),gl.next())
+  system.add(class)
+  class_declaration1()
+  class_declaration2()
+  code.ame(I_TABLE,M_LABEL,skip,R_NONE)
+ENDPROC
+
+-&gt; create the root object
+PROC explode(creator)
+  DEF f:PTR TO feature
+  DEF r:PTR TO procedure
+  code.ame(I_CREATE,class.access(),class.index(),R_NONE)
+  code.putF4(L,0,DREG,0,0,ARDIR,0)
+  f:=class.find_feature(creator)
+  IF f=NIL THEN Raise(ER_NOT_A_CREATION_FEATURE)
+  IF f.is_procedure()=FALSE THEN Raise(ER_NOT_A_CREATION_FEATURE)
+  r:=f
+  IF r.is_creator(class,none_class)=FALSE THEN
+    Raise(ER_NOT_A_CREATION_FEATURE)
+  IF r.arguments THEN Raise(ER_VSRC2)
+  code.ame(I_CALL,M_ROUTINE,r.vector(),R_NONE)
+  code.putword(IRTS)
+ENDPROC
+
+-&gt; NONE class
+PROC kernel_none()
+  NEW none_class.set_name(&#x27;none&#x27;,0,gl.next())
+ENDPROC
+
+-&gt; BOOLEAN class
+PROC kernel_boolean()
+  NEW boolean_class.set_name(&#x27;boolean&#x27;,prime.next(),0)
+ENDPROC
+
+-&gt; INTEGER, REAL, DOUBLE kernel classes
+PROC kernel_numeric()
+  NEW integer_class.set_name(&#x27;integer&#x27;,prime.next(),0)
+  NEW real_class.set_name(&#x27;real&#x27;,prime.next(),0)
+  NEW double_class.set_name(&#x27;double&#x27;,prime.next(),0)
+ENDPROC
+
+-&gt; ANY class
+-&gt; ANY includes STANDARD_FILES and so provides IO facilities
+PROC kernel_any()
+  DEF r:PTR TO procedure
+  DEF f:PTR TO function
+  DEF arguments:PTR TO argument
+  DEF lab:LONG
+  DEF table:PTR TO LONG
+  NEW any_class.set_name(&#x27;any&#x27;,1,gl.next())
+  NEW string_class.set_name(&#x27;string&#x27;,prime.next(),gl.next())
+
+-&gt; is_equal (other:like Current):BOOLEAN
+  NEW arguments.create(&#x27;other&#x27;)
+  arguments.set_type(current)
+  NEW f.create(&#x27;is_equal&#x27;,any_class,boolean_class)
+  f.add_arguments(arguments)
+  any_class.add_feature(f)
+
+-&gt; frozen standard_is_equal (other:like Current):BOOLEAN
+  NEW arguments.create(&#x27;other&#x27;)
+  arguments.set_type(current)
+  NEW f.create(&#x27;standard_is_equal&#x27;,any_class,boolean_class)
+  f.add_arguments(arguments)
+  f.freeze()
+  any_class.add_feature(f)
+
+-&gt; copy (other:like Current)
+  NEW arguments.create(&#x27;other&#x27;)
+  arguments.set_type(current)
+  NEW r.create(&#x27;copy&#x27;,any_class,NIL)
+  r.add_arguments(arguments)
+  any_class.add_feature(r)
+
+-&gt; frozen standard_copy (other:like Current)
+  NEW arguments.create(&#x27;other&#x27;)
+  arguments.set_type(current)
+  NEW r.create(&#x27;standard_copy&#x27;,any_class,NIL)
+  r.add_arguments(arguments)
+  r.freeze()
+  any_class.add_feature(r)
+
+-&gt; lastchar:CHARACTER
+  NEW f.create(&#x27;lastchar&#x27;,any_class,character_class)
+  any_class.add_feature(f)
+
+-&gt; lastint:INTEGER
+  NEW f.create(&#x27;lastint&#x27;,any_class,integer_class)
+  any_class.add_feature(f)
+
+-&gt; laststring:STRING
+  NEW f.create(&#x27;laststring&#x27;,any_class,string_class)
+  any_class.add_feature(f)
+
+-&gt; new_line
+  NEW r.create(&#x27;new_line&#x27;,any_class,NIL)
+  any_class.add_feature(r)
+
+-&gt; putchar (c:CHARACTER)
+  NEW arguments.create(&#x27;c&#x27;)
+  arguments.set_type(character_class)
+  NEW r.create(&#x27;putchar&#x27;,any_class,NIL)
+  r.add_arguments(arguments)
+  any_class.add_feature(r)
+
+-&gt; putint (i:INTEGER)
+  NEW arguments.create(&#x27;i&#x27;)
+  arguments.set_type(integer_class)
+  NEW r.create(&#x27;putint&#x27;,any_class,NIL)
+  r.add_arguments(arguments)
+  any_class.add_feature(r)
+
+-&gt; putstring (s:STRING)
+  NEW arguments.create(&#x27;s&#x27;)
+  arguments.set_type(string_class)
+  NEW r.create(&#x27;putstring&#x27;,any_class,NIL)
+  r.add_arguments(arguments)
+  any_class.add_feature(r)
+
+-&gt; readchar
+  NEW r.create(&#x27;readchar&#x27;,any_class,NIL)
+  any_class.add_feature(r)
+
+-&gt; readint
+  NEW r.create(&#x27;readint&#x27;,any_class,NIL)
+  any_class.add_feature(r)
+
+-&gt; readstring
+  NEW r.create(&#x27;readstring&#x27;,any_class,NIL)
+  any_class.add_feature(r)
+
+-&gt; bit_size:INTEGER
+  NEW f.create(&#x27;bit_size&#x27;,any_class,integer_class)
+  any_class.add_feature(f)
+
+  any_class.prepare_links()
+
+  table:=[IS_EQUAL,{is_equal},{end_is_equal},
+    STANDARD_IS_EQUAL,{standard_is_equal},{end_standard_is_equal},
+    COPY,{copy},{end_copy},
+    STANDARD_COPY,{standard_copy},{end_standard_copy},
+    LASTCHAR,{lastchar},{end_lastchar},
+    LASTINT,{lastint},{end_lastint},
+    LASTSTRING,{laststring},{end_laststring},
+    NEW_LINE,{new_line},{end_new_line},
+    PUTCHAR,{putchar},{end_putchar},
+    PUTINT,{putint},{end_putint},
+    PUTSTRING,{putstring},{end_putstring},
+    READCHAR,{readchar},{end_readchar},
+    READINT,{readint},{end_readint},
+    READSTRING,{readstring},{end_readstring},
+    BIT_SIZE,{bit_size},{end_bit_size},
+    NIL]
+  WHILE table[]
+    any_class.link_routine(table[]++,lab:=gl.next())
+    code.define_global(lab)
+    code.putbinary(32+table[]++,-4+table[]++)
+  ENDWHILE
+ENDPROC
+
+-&gt; CHARACTER class
+PROC kernel_character()
+  NEW character_class.set_name(&#x27;character&#x27;,prime.next(),0)
+ENDPROC
+
+-&gt; STRING class
+PROC kernel_string()
+  DEF v:PTR TO variable
+  DEF r:PTR TO procedure
+  DEF f:PTR TO function
+  DEF arguments:PTR TO argument
+  DEF argm:PTR TO argument
+  DEF lab:LONG
+  DEF table:PTR TO LONG
+  string_class.add_parent(any_class)
+  string_class.creators_section()
+
+-&gt; creation make (n:INTEGER)
+  NEW arguments.create(&#x27;n&#x27;)
+  arguments.set_type(integer_class)
+  NEW r.create(&#x27;make&#x27;,any_class,NIL)
+  r.add_arguments(arguments)
+  string_class.add_feature(r)
+  r.as_creator(string_class,any_class)
+
+-&gt; append (s:STRING)
+  NEW arguments.create(&#x27;s&#x27;)
+  arguments.set_type(string_class)
+  NEW r.create(&#x27;append&#x27;,any_class,NIL)
+  r.add_arguments(arguments)
+  string_class.add_feature(r)
+
+-&gt; capacity:INTEGER
+  NEW v.create(&#x27;capacity&#x27;,any_class,NIL)
+  string_class.add_feature(v)
+
+-&gt; clear
+  NEW r.create(&#x27;clear&#x27;,any_class,NIL)
+  string_class.add_feature(r)
+
+-&gt; copy (other:STRING)
+  NEW arguments.create(&#x27;other&#x27;)
+  arguments.set_type(string_class)
+  NEW r.create(&#x27;copy&#x27;,any_class,NIL)
+  r.add_arguments(arguments)
+  string_class.redeclare_feature(r)  -&gt; redefine copy
+
+-&gt; count:INTEGER
+  NEW v.create(&#x27;count&#x27;,any_class,NIL)
+  string_class.add_feature(v)
+
+-&gt; empty:BOOLEAN
+  NEW f.create(&#x27;empty&#x27;,any_class,boolean_class)
+  string_class.add_feature(f)
+
+-&gt; extend (c:CHARACTER)
+  NEW arguments.create(&#x27;c&#x27;)
+  arguments.set_type(character_class)
+  NEW r.create(&#x27;extend&#x27;,any_class,NIL)
+  r.add_arguments(arguments)
+  string_class.add_feature(r)
+
+-&gt; fill_blank
+  NEW r.create(&#x27;fill_blank&#x27;,any_class,NIL)
+  string_class.add_feature(r)
+
+-&gt; hash_code:INTEGER
+  NEW f.create(&#x27;hash_code&#x27;,any_class,integer_class)
+  string_class.add_feature(f)
+
+-&gt; head (n:INTEGER)
+  NEW arguments.create(&#x27;n&#x27;)
+  arguments.set_type(integer_class)
+  NEW r.create(&#x27;head&#x27;,any_class,NIL)
+  r.add_arguments(arguments)
+  string_class.add_feature(r)
+
+-&gt; index_of (c:CHARACTER; i:INTEGER):INTEGER
+  NEW arguments.create(&#x27;c&#x27;)
+  arguments.set_type(character_class)
+  NEW argm.create(&#x27;i&#x27;)
+  argm.set_type(integer_class)
+  arguments.add(argm)
+  NEW f.create(&#x27;index_of&#x27;,any_class,integer_class)
+  f.add_arguments(arguments)
+  string_class.add_feature(f)
+
+-&gt; is_equal (other:STRING):BOOLEAN  (inherited from ANY)
+  NEW arguments.create(&#x27;other&#x27;)
+  arguments.set_type(string_class)
+  NEW f.create(&#x27;is_equal&#x27;,any_class,boolean_class)
+  f.add_arguments(arguments)
+  string_class.redeclare_feature(f)  -&gt; redefine is_equal
+
+-&gt; item (n:INTEGER):CHARACTER
+  NEW arguments.create(&#x27;n&#x27;)
+  arguments.set_type(integer_class)
+  NEW f.create(&#x27;item&#x27;,any_class,character_class)
+  f.add_arguments(arguments)
+  string_class.add_feature(f)
+
+-&gt; item_code (n:INTEGER):INTEGER
+  NEW arguments.create(&#x27;n&#x27;)
+  arguments.set_type(integer_class)
+  NEW f.create(&#x27;item_code&#x27;,any_class,integer_class)
+  f.add_arguments(arguments)
+  string_class.add_feature(f)
+
+-&gt; left_adjust
+  NEW r.create(&#x27;left_adjust&#x27;,any_class,NIL)
+  string_class.add_feature(r)
+
+-&gt; precede (c:CHARACTER)
+  NEW arguments.create(&#x27;c&#x27;)
+  arguments.set_type(character_class)
+  NEW r.create(&#x27;precede&#x27;,any_class,NIL)
+  r.add_arguments(arguments)
+  string_class.add_feature(r)
+
+-&gt; prepend (s:STRING)
+  NEW arguments.create(&#x27;s&#x27;)
+  arguments.set_type(string_class)
+  NEW r.create(&#x27;prepend&#x27;,any_class,NIL)
+  r.add_arguments(arguments)
+  string_class.add_feature(r)
+
+-&gt; put (c:CHARACTER; i:INTEGER)
+  NEW arguments.create(&#x27;c&#x27;)
+  arguments.set_type(character_class)
+  NEW argm.create(&#x27;i&#x27;)
+  argm.set_type(integer_class)
+  arguments.add(argm)
+  NEW r.create(&#x27;put&#x27;,any_class,NIL)
+  r.add_arguments(arguments)
+  string_class.add_feature(r)
+
+-&gt; remove (i:INTEGER)
+  NEW arguments.create(&#x27;i&#x27;)
+  arguments.set_type(integer_class)
+  NEW r.create(&#x27;remove&#x27;,any_class,NIL)
+  r.add_arguments(arguments)
+  string_class.add_feature(r)
+
+-&gt; remove_all_occurrences (c:CHARACTER)
+  NEW arguments.create(&#x27;c&#x27;)
+  arguments.set_type(character_class)
+  NEW r.create(&#x27;remove_all_occurrences&#x27;,any_class,NIL)
+  r.add_arguments(arguments)
+  string_class.add_feature(r)
+
+-&gt; right_adjust
+  NEW r.create(&#x27;right_adjust&#x27;,any_class,NIL)
+  string_class.add_feature(r)
+
+-&gt; shrink (s:STRING; n1:INTEGER; n2:INTEGER)
+  NEW arguments.create(&#x27;s&#x27;)
+  arguments.set_type(string_class)
+  NEW argm.create(&#x27;n1&#x27;)
+  argm.set_type(integer_class)
+  arguments.add(argm)
+  NEW argm.create(&#x27;n2&#x27;)
+  argm.set_type(integer_class)
+  arguments.add(argm)
+  NEW r.create(&#x27;shrink&#x27;,any_class,NIL)
+  r.add_arguments(arguments)
+  string_class.add_feature(r)
+
+-&gt; substring (n1:INTEGER; n2:INTEGER):STRING
+  NEW arguments.create(&#x27;n1&#x27;)
+  arguments.set_type(integer_class)
+  NEW argm.create(&#x27;n2&#x27;)
+  argm.set_type(integer_class)
+  arguments.add(argm)
+  NEW f.create(&#x27;substring&#x27;,any_class,string_class)
+  f.add_arguments(arguments)
+  string_class.add_feature(f)
+
+-&gt; tail (n:INTEGER)
+  NEW arguments.create(&#x27;n&#x27;)
+  arguments.set_type(integer_class)
+  NEW r.create(&#x27;tail&#x27;,any_class,NIL)
+  r.add_arguments(arguments)
+  string_class.add_feature(r)
+
+-&gt; to_integer:INTEGER
+  NEW f.create(&#x27;to_integer&#x27;,any_class,integer_class)
+  string_class.add_feature(f)
+
+-&gt; to_lower
+  NEW r.create(&#x27;to_lower&#x27;,any_class,NIL)
+  string_class.add_feature(r)
+
+-&gt; to_upper
+  NEW r.create(&#x27;to_upper&#x27;,any_class,NIL)
+  string_class.add_feature(r)
+
+-&gt; feature {NONE} &quot;&quot;
+-&gt; it is a secret feature of STRING
+-&gt; is embodies the array of characters
+  NEW v.create(&#x27;&#x27;,none_class,NIL)
+  string_class.add_feature(v)
+
+  string_class.prepare_links()
+
+  table:=[MAKE,{make},{end_make},
+    APPEND,{append},{end_append},
+    CLEAR,{clear},{end_clear},
+    COPY,{string_copy},{end_string_copy},
+    IS_EMPTY,{empty},{end_empty},
+    EXTEND,{extend},{end_extend},
+    FILL_BLANK,{fill_blank},{end_fill_blank},
+    HASH_CODE,{hash_code},{end_hash_code},
+    HEAD,{head},{end_head},
+    INDEX_OF,{index_of},{end_index_of},
+    IS_EQUAL,{string_is_equal},{end_string_is_equal},
+    ITEM,{item},{end_item},
+    ITEM_CODE,{item_code},{end_item_code},
+    LEFT_ADJUST,{left_adjust},{end_left_adjust},
+    PRECEDE,{precede},{end_precede},
+    PREPEND,{prepend},{end_prepend},
+    PUT,{put},{end_put},
+    REMOVE,{remove},{end_remove},
+    REMOVE_ALL_OCCURRENCES,{remove_all_occurrences},{end_remove_all_occurrences},
+    RIGHT_ADJUST,{right_adjust},{end_right_adjust},
+    SHRINK,{shrink},{end_shrink},
+    SUBSTRING,{substring},{end_substring},
+    TAIL,{tail},{end_tail},
+    TO_INTEGER,{to_integer},{end_to_integer},
+    TO_LOWER,{to_lower},{end_to_lower},
+    TO_UPPER,{to_upper},{end_to_upper},
+    NIL]
+
+  WHILE table[]
+    string_class.link_routine(table[]++,lab:=gl.next())
+    code.define_global(lab)
+    code.putbinary(32+table[]++,-4+table[]++)
+  ENDWHILE
+
+ENDPROC
+
+-&gt; ARRAY class
+PROC kernel_array()
+  NEW array_class.set_name(&#x27;array&#x27;,prime.next(),0)
+ENDPROC
+
+-&gt; POINTER class
+PROC kernel_pointer()
+  NEW pointer_class.set_name(&#x27;pointer&#x27;,prime.next(),0)
+ENDPROC
+
+
+startup: INCBIN &#x27;startup/startup&#x27;
+end_startup:
+
+is_equal: INCBIN &#x27;ANY/is_equal&#x27;
+end_is_equal:
+
+standard_is_equal: INCBIN &#x27;ANY/standard_is_equal&#x27;
+end_standard_is_equal:
+
+copy: INCBIN &#x27;ANY/copy&#x27;
+end_copy:
+
+standard_copy: INCBIN &#x27;ANY/standard_copy&#x27;
+end_standard_copy:
+
+lastchar: INCBIN &#x27;ANY/lastchar&#x27;
+end_lastchar:
+
+lastint: INCBIN &#x27;ANY/lastint&#x27;
+end_lastint:
+
+laststring: INCBIN &#x27;ANY/laststring&#x27;
+end_laststring:
+
+new_line: INCBIN &#x27;ANY/new_line&#x27;
+end_new_line:
+
+putchar: INCBIN &#x27;ANY/putchar&#x27;
+end_putchar:
+
+putint: INCBIN &#x27;ANY/putint&#x27;
+end_putint:
+
+putstring: INCBIN &#x27;ANY/putstring&#x27;
+end_putstring:
+
+readchar: INCBIN &#x27;ANY/readchar&#x27;
+end_readchar:
+
+readint: INCBIN &#x27;ANY/readint&#x27;
+end_readint:
+
+readstring: INCBIN &#x27;ANY/readstring&#x27;
+end_readstring:
+
+bit_size: INCBIN &#x27;ANY/bit_size&#x27;
+end_bit_size:
+
+
+make: INCBIN &#x27;STRING/make&#x27;
+end_make:
+
+append: INCBIN &#x27;STRING/append&#x27;
+end_append:
+
+clear: INCBIN &#x27;STRING/clear&#x27;
+end_clear:
+
+string_copy: INCBIN &#x27;STRING/copy&#x27;
+end_string_copy:
+
+empty: INCBIN &#x27;STRING/empty&#x27;
+end_empty:
+
+extend: INCBIN &#x27;STRING/extend&#x27;
+end_extend:
+
+fill_blank: INCBIN &#x27;STRING/fill_blank&#x27;
+end_fill_blank:
+
+hash_code: INCBIN &#x27;STRING/hash_code&#x27;
+end_hash_code:
+
+head: INCBIN &#x27;STRING/head&#x27;
+end_head:
+
+index_of: INCBIN &#x27;STRING/index&#x27;
+end_index_of:
+
+string_is_equal: INCBIN &#x27;STRING/is_equal&#x27;
+end_string_is_equal:
+
+item: INCBIN &#x27;STRING/item&#x27;
+end_item:
+
+item_code: INCBIN &#x27;STRING/item_code&#x27;
+end_item_code:
+
+left_adjust: INCBIN &#x27;STRING/left_adjust&#x27;
+end_left_adjust:
+
+precede: INCBIN &#x27;STRING/precede&#x27;
+end_precede:
+
+prepend: INCBIN &#x27;STRING/prepend&#x27;
+end_prepend:
+
+put: INCBIN &#x27;STRING/put&#x27;
+end_put:
+
+remove: INCBIN &#x27;STRING/remove&#x27;
+end_remove:
+
+remove_all_occurrences: INCBIN &#x27;STRING/remove_all_occurrences&#x27;
+end_remove_all_occurrences:
+
+right_adjust: INCBIN &#x27;STRING/right_adjust&#x27;
+end_right_adjust:
+
+shrink: INCBIN &#x27;STRING/shrink&#x27;
+end_shrink:
+
+substring: INCBIN &#x27;STRING/substring&#x27;
+end_substring:
+
+tail: INCBIN &#x27;STRING/tail&#x27;
+end_tail:
+
+to_integer: INCBIN &#x27;STRING/to_integer&#x27;
+end_to_integer:
+
+to_lower: INCBIN &#x27;STRING/to_lower&#x27;
+end_to_lower:
+
+to_upper: INCBIN &#x27;STRING/to_upper&#x27;
+end_to_upper:
+
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

@@ -1,0 +1,138 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>SimpleCalculator.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-portable.html">PortablE</a> &rsaquo; SimpleCalculator.e</div><h1>File: <code>SimpleCalculator.e</code></h1><p class="meta">112 lines · project <a href="../examples/pkg-portable.html"><code>PortablE</code></a></p><p class="pathctx">PortablE/PortablE/Examples/std/GUI/SimpleCalculator.e</p><p class="prose">SimpleCalculator.e 18-07-2012 by Chris Handley BEWARE that this calculator cannot show non-<a href="../modules/integer.html">integer</a> results, like 1÷2, because I wanted to make this example code as simple as possible.</p><h2>Source</h2><pre class="code">/* SimpleCalculator.e 18-07-2012 by Chris Handley
+
+BEWARE that this calculator cannot show non-integer results, like 1÷2,
+because I wanted to make this example code as simple as possible.
+*/
+
+MODULE &#x27;std/cGui&#x27;, &#x27;std/cAppSimple&#x27;
+
+PROC main()
+	DEF win:PTR TO cGuiWindow
+	DEF quit:BOOL, item:PTR TO cGuiItem
+	DEF displayBox:PTR TO cGuiText,    displayNum, buttonLabel:ARRAY OF CHAR, buttonLetter:CHAR
+	DEF  lastOpBox:PTR TO cGuiText, lastResultNum,   lastOpStr:ARRAY OF CHAR
+	DEF temp[11]:STRING
+	
+	IsDesktopApp()
+	
+	-&gt;create the GUI
+	win := CreateGuiWindow(&#x27;Calculator&#x27;)
+	win.beginGroupVertical()
+		win.beginGroupHorizontal()
+			 lastOpBox := win.addText(&#x27;&#x27;).setState(&#x27;=&#x27;).initUseLeastSpace()
+			displayBox := win.addText(&#x27;&#x27;).setState(&#x27;0&#x27;).initAlignRight()
+		win.endGroup()
+		
+		win.beginGroupGrid(5).initEqualSizedItems()
+			win.addButton(&#x27;7&#x27;) ; win.addButton(&#x27;8&#x27;) ; win.addButton(&#x27;9&#x27;) ; win.addButton(&#x27;Del&#x27;) ; win.addButton(&#x27;Clr&#x27;)
+			win.addButton(&#x27;4&#x27;) ; win.addButton(&#x27;5&#x27;) ; win.addButton(&#x27;6&#x27;) ; win.addButton(&#x27;×&#x27;)   ; win.addButton(&#x27;÷&#x27;)
+			win.addButton(&#x27;1&#x27;) ; win.addButton(&#x27;2&#x27;) ; win.addButton(&#x27;3&#x27;) ; win.addButton(&#x27;+&#x27;)   ; win.addButton(&#x27;-&#x27;)
+			win.addButton(&#x27;0&#x27;) ; win.addLabel(&#x27;&#x27;)   ; win.addLabel(&#x27;&#x27;)   ; win.addButton(&#x27;±&#x27;)   ; win.addButton(&#x27;=&#x27;)
+		win.endGroup()
+	win.endGroup()
+	win.build()
+	
+	-&gt;handle GUI events
+	lastResultNum := 0
+	displayNum    := 0
+	quit := FALSE
+	REPEAT
+		item := WaitForChangedGuiItem()
+		IF item = NIL
+			-&gt;(a non-item event occured) so check if user tried to close the window
+			IF win.getCloseRequest() THEN quit := TRUE
+			
+		ELSE IF item.IsOfClassType(TYPEOF cGuiButton)
+			-&gt;(a button was pressed)
+			-&gt;we cheat here(!), by reading the button&#x27;s label, rather identify each button item individually
+			buttonLabel  := item::cGuiButton.infoLabel()
+			buttonLetter := buttonLabel[0]		-&gt;first character of label
+			
+			IF (buttonLetter &gt;= &quot;0&quot;) AND (buttonLetter &lt;= &quot;9&quot;)
+				-&gt;append digit
+				StringF(temp, &#x27;\d\c&#x27;, displayNum, buttonLetter)
+				displayNum := Val(temp)
+				
+				setDisplay(displayBox, displayNum)
+				
+			ELSE IF buttonLetter = &quot;D&quot;	-&gt;Del
+				-&gt;delete last digit
+				IF displayNum &lt;&gt; 0
+					StringF(temp, &#x27;\d&#x27;, displayNum)
+					SetStr(temp, Max(0, EstrLen(temp) - 1))
+					displayNum := Val(temp)
+					
+					setDisplay(displayBox, displayNum)
+				ENDIF
+				
+			ELSE IF buttonLetter = &quot;C&quot;	-&gt;Clr
+				-&gt;clear display &amp; all calculation results
+				lastResultNum := 0
+				displayNum    := 0
+				setDisplay(displayBox, displayNum)
+				lastOpBox.setState(&#x27;=&#x27;)
+				
+			ELSE IF buttonLetter = &quot;±&quot;
+				-&gt;negate the current number
+				IF displayNum = 0 THEN displayNum := lastResultNum
+				displayNum := -displayNum
+				setDisplay(displayBox, displayNum)
+				
+			ELSE	-&gt;&quot;×&quot;,&quot;÷&quot;,&quot;+&quot;,&quot;-&quot;,&quot;=&quot;
+				-&gt;calculate result of last operation
+				lastOpStr := lastOpBox.getState()
+				IF      lastOpStr[0] = &quot;=&quot; ; IF displayNum = 0 THEN displayNum := lastResultNum
+				ELSE IF lastOpStr[0] = &quot;×&quot; ; displayNum := lastResultNum * displayNum
+				ELSE IF lastOpStr[0] = &quot;÷&quot; ; displayNum := lastResultNum / displayNum
+				ELSE IF lastOpStr[0] = &quot;+&quot; ; displayNum := lastResultNum + displayNum
+				ELSE IF lastOpStr[0] = &quot;-&quot; ; displayNum := lastResultNum - displayNum
+				ENDIF
+				setDisplay(displayBox, displayNum)
+				
+				-&gt;prepare for next calculation
+				lastResultNum := displayNum
+				displayNum    := 0
+				lastOpBox.setState(buttonLabel)
+			ENDIF
+		ENDIF
+	UNTIL quit
+	
+	win.close()
+FINALLY
+	PrintException()
+	END temp
+ENDPROC
+
+-&gt;update the given text box with the given number
+PROC setDisplay(displayBox:PTR TO cGuiText, displayNum)
+	DEF displayStr[11]:STRING
+	StringF(displayStr, &#x27;\d&#x27;, displayNum)
+	displayBox.setState(displayStr)
+ENDPROC
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

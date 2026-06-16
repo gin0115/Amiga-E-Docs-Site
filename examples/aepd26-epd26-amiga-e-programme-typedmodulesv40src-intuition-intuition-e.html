@@ -1,0 +1,291 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>intuition.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-aepd26.html">AEPD26</a> &rsaquo; intuition.e</div><h1>File: <code>intuition.e</code></h1><p class="meta">265 lines · project <a href="../examples/pkg-aepd26.html"><code>AEPD26</code></a></p><p class="pathctx">AEPD26/EPD26/Amiga_E-Programme/TypedModulesV40Src/intuition/intuition.e</p><h2>Source</h2><pre class="code">Short: JRH&#x27;s useful E modules
+Type: dev/e
+Author: m88jrh@ecs.ox.ac.uk (Jason R. Hulance)
+Uploader: m88jrh@ecs.ox.ac.uk (Jason R. Hulance)
+
+JRH&#x27;s Useful Modules
+====================
+
+These modules are Copyright (C) 1995, Jason R. Hulance.
+
+You are free to use these modules in your programs, whether they are freeware
+or commercial.  However, if you want to distribute any of this archive you
+must include it all, unmodified, together with this file.
+
+Contents
+--------
+
+Various modules:
+
+  ecode.m:
+    PROC eCode(func)
+    PROC eCodePreserve(func)
+    PROC eCodeTask(func)
+    PROC eCodeASLHook(func)
+    PROC eCodeCxCustom(func)
+    PROC eCodeIntHandler(func)
+    PROC eCodeIntServer(func)
+    PROC eCodeSoftInt(func)
+    PROC eCodeDispose(addr)
+
+  split.m:
+    PROC argSplit(str=0)
+
+
+Amiga E does not support Resources (at least, not up to v3.1a, anyway).
+These modules rectify this.
+
+  battclock.m:
+    DEF battclockbase
+    PROC readBattClock()
+    PROC resetBattClock()
+    PROC writeBattClock(time)
+
+  battmem.m:
+    DEF battmembase
+    PROC obtainBattSemaphore()
+    PROC readBattMem(buffer,offset,length)
+    PROC releaseBattSemaphore()
+    PROC writeBattMem(buffer,offset,length)
+
+  cia.m:
+    PROC ableICR(resource,mask)
+    PROC addICRVector(resource,iCRBit,interrupt)
+    PROC remICRVector(resource,iCRBit,interrupt)
+    PROC setICR(resource,mask)
+
+  disk.m:
+    DEF diskbase
+    PROC allocUnit(unitNum)
+    PROC freeUnit(unitNum)
+    PROC getUnit(unitPointer)
+    PROC getUnitID(unitNum)
+    PROC giveUnit()
+    PROC readUnitID(unitNum)
+
+  misc.m:
+    DEF miscbase
+    PROC allocMiscResource(unitNum,name)
+    PROC freeMiscResource(unitNum)
+
+  potgo.m:
+    DEF potgobase
+    PROC allocPotBits(bits)
+    PROC freePotBits(bits)
+    PROC writePotgo(word,mask)
+
+
+Documentation
+-------------
+
+The standard documentation on the Resource functions suffices for the
+Resource modules.  All the other functions (eCodeXXX and split) return NIL
+if an error occurred, which is normally &quot;out of memory&quot;.
+
+  ecode.m:
+    o   eCode() takes the address of an E function (or a label) and wraps it
+      so that it can be called from other tasks/processes and still access
+      the global variables of the main program.  This function was created
+      for use with createTask(), but has other uses.
+    o   eCodePreserve() is similar, but it also protects the function by
+      preserving the non-scratch registers on the stack.  This means the
+      function can retrieve (and change) registers D2-D7/A2-A6 as local
+      variables.  For instance,
+        PROC fun(a6,a5,a4,a3,a2,d7,d6,d5,d4,d3,d2) IS d2:=d3+a3
+      will have the effect of changing register D2 (and D0) when the
+      function returns.  Note: you do not need to specify all registers,
+      just the suffix of the above that you are actually interested in.
+        PROC fun(a3,a2,d7,d6,d5,d4,d3,d2) IS d2:=d3+a3
+      would have done...
+    o   eCodeTask() is just eCode() with a more suggestive name.
+    o   eCodeASLHook() takes the address of an E function (or a label) and
+      returns something usable as an ASL hook function (nothing to do with
+      the utility library hooks, more&#x27;s the pity).
+    o   eCodeCxCustom() does the same for CX custom functions.
+    o   eCodeIntHandler() is for interrupt handlers: you get A1 and D1 as
+      arguments (in that order) to your function.  (A1 is the data element
+      of your interrupt, and D1 contains the interrupt flags.)
+    o   eCodeIntServer() is for interrupt servers: you get A1 (the data
+      element of your interrupt) as an argument.
+    o   eCodeSoftInt() is the same, but for software interrupts.
+    o   eCodeDispose() is passed the result of the one of the above
+      functions, and will to dispose the memory used by the special wrapper.
+      You will rarely need to use this, as the memory will be freed
+      automatically at the end of the program.
+    o   eCodeASLHook(), eCodeCxCustom(), eCodeIntHandler(), eCodeIntServer()
+      and eCodeSoftInt() all use their own private scratch area to preserve
+      registers, thus saving crucial stack space.  This has the disadvantage
+      of making the code non-reentrant, so if you need to use the same
+      function as multiple interrupt servers you must use eCodeIntServer()
+      multiple times.  Apart from that they should be OK, since they do
+      not get called from multiple tasks.  (If you find this a problem then
+      you can use eCodePreserve()...)
+    o   eCodePreserve() uses a big bit of stack to store registers, so be
+      careful...
+
+  split.m:
+    o   argSplit(str=NIL) splits a string of arguments like &quot;arg&quot; (which is
+      the default), handling quoted arguments correctly.  The result is an
+      E-list of strings, or NIL if an error occurred.  The list is also
+      NIL-terminated so you have a choice of ways to manipulate it.  The
+      string passed to this function (or &quot;arg&quot; by default) is *altered* by
+      this function, so you shouldn&#x27;t try using it directly.  You can
+      DisposeLink() the resulting list if you want to free it before the end
+      of the program.  (You are also responsible for freeing the string when
+      you are done with it, unless it was the default &quot;arg&quot;, of course.)
+
+The main reason for the creation of these modules was my translations of the
+RKRM examples.  These provide many examples of the use of these functions.
+  ‹937 bytes of embedded binary/non-text data elided›
+  ‹24 bytes of embedded binary/non-text data elided›
+  ‹212 bytes of embedded binary/non-text data elided›
+  ‹31 bytes of embedded binary/non-text data elided›
+  ‹43 bytes of embedded binary/non-text data elided›
+`
+  ‹31 bytes of embedded binary/non-text data elided›
+  ‹5033 bytes of embedded binary/non-text data elided›
+  ‹94 bytes of embedded binary/non-text data elided›
+  ‹45 bytes of embedded binary/non-text data elided›
+  ‹91 bytes of embedded binary/non-text data elided›
+  ‹29 bytes of embedded binary/non-text data elided›
+  ‹50 bytes of embedded binary/non-text data elided›
+  ‹70 bytes of embedded binary/non-text data elided›
+  ‹178 bytes of embedded binary/non-text data elided›
+ëEs$%Û[{Kcwiæ®ÊüWþ@`0P=$8000009B,
+      WA_HELPGROUPWINDOW=$8000009C,
+      HC_GADGETHELP=1
+
+OBJECT remember
+  nextremember:PTR TO remember
+  remembersize:LONG
+  memory:PTR TO CHAR
+ENDOBJECT     /* SIZEOF=12 */
+
+OBJECT colorspec
+  colorindex:INT
+  red:INT  -&gt; This is unsigned
+  green:INT  -&gt; This is unsigned
+  blue:INT  -&gt; This is unsigned
+ENDOBJECT     /* SIZEOF=8 */
+
+OBJECT easystruct
+  structsize:LONG
+  flags:LONG
+  title:PTR TO CHAR
+  textformat:PTR TO CHAR
+  gadgetformat:PTR TO CHAR
+ENDOBJECT     /* SIZEOF=20 */
+
+#define MENUNUM(n) (n AND $1F)
+#define ITEMNUM(n) (Shr(n,5) AND $3F)
+#define SUBNUM(n) (Shr(n,11) AND $1F)
+
+#define SHIFTMENU(n) (n AND $1F)
+#define SHIFTITEM(n) (Shl(n AND $3F,5))
+#define SHIFTSUB(n) (Shl(n AND $1F,11))
+
+#define FULLMENUNUM(menu,item,sub) (SHIFTSUB(sub) OR SHIFTITEM(item) OR SHIFTMENU(menu))
+
+#define SRBNUM(n) (8-Shr(n,4))
+#define SWBNUM(n) (8-(n AND $F))
+#define SSBNUM(n) (1+Shr(n,4))
+#define SPARNUM(n) (Shr(n,4))
+#define SHAKNUM(n) (n AND $F)
+
+CONST NOMENU=31,
+      NOITEM=$3F,
+      NOSUB=31,
+      MENUNULL=$FFFF,
+      CHECKWIDTH=19,
+      COMMWIDTH=27,
+      LOWCHECKWIDTH=13,
+      LOWCOMMWIDTH=16,
+      ALERT_TYPE=$80000000,
+      RECOVERY_ALERT=0,
+      DEADEND_ALERT=$80000000,
+      AUTOFRONTPEN=0,
+      AUTOBACKPEN=1,
+      AUTODRAWMODE=1,
+      AUTOLEFTEDGE=6,
+      AUTOTOPEDGE=3,
+      AUTOITEXTFONT=0,
+      AUTONEXTTEXT=0,
+      SELECTUP=$E8,
+      SELECTDOWN=$68,
+      MENUUP=$E9,
+      MENUDOWN=$69,
+      MIDDLEUP=$EA,
+      MIDDLEDOWN=$6A,
+      ALTLEFT=16,
+      ALTRIGHT=$20,
+      AMIGALEFT=$40,
+      AMIGARIGHT=$80,
+      AMIGAKEYS=$C0,
+      CURSORUP=$4C,
+      CURSORLEFT=$4F,
+      CURSORRIGHT=$4E,
+      CURSORDOWN=$4D,
+      KEYCODE_Q=16,
+      KEYCODE_Z=$31,
+      KEYCODE_X=$32,
+      KEYCODE_V=$34,
+      KEYCODE_B=$35,
+      KEYCODE_N=$36,
+      KEYCODE_M=$37,
+      KEYCODE_LESS=$38,
+      KEYCODE_GREATER=$39,
+      TABLETA_DUMMY=$8003A000,
+      TABLETA_TABLETZ=$8003A001,  -&gt; Data for this tag is unsigned INT
+      TABLETA_RANGEZ=$8003A002,
+      TABLETA_ANGLEX=$8003A003,
+      TABLETA_ANGLEY=$8003A004,
+      TABLETA_ANGLEZ=$8003A005,
+      TABLETA_PRESSURE=$8003A006,
+      TABLETA_BUTTONBITS=$8003A007,
+      TABLETA_INPROXIMITY=$8003A008,
+      TABLETA_RESOLUTIONX=$8003A009,
+      TABLETA_RESOLUTIONY=$8003A00A
+
+OBJECT tabletdata
+  xfraction:INT  -&gt; This is unsigned
+  yfraction:INT  -&gt; This is unsigned
+  tabletx:LONG
+  tablety:LONG
+  rangex:LONG
+  rangey:LONG
+  taglist:PTR TO tagitem
+ENDOBJECT     /* SIZEOF=24 */
+
+OBJECT tablethookdata
+  screen:PTR TO screen
+  width:LONG
+  height:LONG
+  screenchanged:LONG
+ENDOBJECT     /* SIZEOF=16 */
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

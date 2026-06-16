@@ -1,0 +1,470 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>zoneview.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-ignite-unf-mos-r2.html">ignite-unf-mos-r2</a> &rsaquo; zoneview.e</div><h1>File: <code>zoneview.e</code></h1><p class="meta">444 lines · project <a href="../examples/pkg-ignite-unf-mos-r2.html"><code>ignite-unf-mos-r2</code></a></p><p class="pathctx">ignite-unf-mos-r2/ignite-unf-mos/source/ignite/zoneview.e</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/boopsi.html">amigalib/boopsi</a></li><li><a href="../modules/lists.html">amigalib/lists</a></li><li><a href="../modules/memory.html">exec/memory</a></li><li><a href="../modules/gfx.html">graphics/gfx</a></li><li><a href="../modules/rastport.html">graphics/rastport</a></li><li><a href="../modules/classes.html">intuition/classes</a></li><li><a href="../modules/classusr.html">intuition/classusr</a></li><li><a href="../modules/intuition.html">intuition/intuition</a></li><li><a href="../modules/cybergraphics.html">libraries/cybergraphics</a></li><li><a href="../modules/mui.html">libraries/mui</a></li><li><a href="../modules/muip.html">libraries/muip</a></li><li><a href="../modules/cybergraphics.html">morphos/cybergraphics</a></li><li><a href="../modules/muicustomclass.html">mui/muicustomclass</a></li><li><a href="../modules/muimaster.html">muimaster</a></li><li><a href="../modules/installhook.html">tools/installhook</a></li><li><a href="../modules/utility.html">utility</a></li><li><a href="../modules/hooks.html">utility/hooks</a></li><li><a href="../modules/tagitem.html">utility/tagitem</a></li></ul></div><h2>Source</h2><pre class="code">OPT MODULE, PREPROCESS
+
+MODULE &#x27;*mainmisc&#x27;
+MODULE &#x27;*fractmisc&#x27;
+MODULE &#x27;muimaster&#x27;
+MODULE &#x27;libraries/mui&#x27;
+
+-&gt;MODULE &#x27;*modules&#x27;
+
+MODULE &#x27;libraries/muip&#x27;
+MODULE &#x27;utility&#x27;
+MODULE &#x27;graphics/gfx&#x27;
+MODULE &#x27;graphics/rastport&#x27;
+MODULE &#x27;mui/muicustomclass&#x27;
+MODULE &#x27;tools/installhook&#x27;
+MODULE &#x27;amigalib/boopsi&#x27;
+MODULE &#x27;amigalib/lists&#x27;
+MODULE &#x27;intuition/classes&#x27;
+
+MODULE &#x27;intuition/classusr&#x27;
+MODULE &#x27;utility/tagitem&#x27;
+MODULE &#x27;exec/memory&#x27;
+MODULE &#x27;intuition/intuition&#x27;
+MODULE &#x27;utility/hooks&#x27;
+
+MODULE &#x27;morphos/cybergraphics&#x27;
+MODULE &#x27;libraries/cybergraphics&#x27;
+
+#ifdef DEBUG
+   #define DEBUGF(str,...) DebugF(str,...)
+#else
+   #define DEBUGF(str,...)
+#endif
+
+-&gt; New zoneview class
+
+OBJECT zoneviewdata
+   disp:display
+   selfobj:PTR TO object
+   selectX
+   selectY
+   mousePressed
+   mouseOp
+   mouseX
+   mouseY
+   ehn:mui_eventhandlernode
+   actionhook:PTR TO hook
+   redrawmsg:PTR TO redrawmsg
+ENDOBJECT
+
+EXPORT PROC createZoneviewClass()
+ENDPROC eMui_CreateCustomClass(NIL,MUIC_Area,NIL,SIZEOF zoneviewdata,{zoneviewDispatcher})
+
+PROC zoneviewDispatcher(cl:PTR TO iclass, obj:PTR TO object, msg:PTR TO msg)
+   -&gt;DEBUGF(&#x27;zoneviewDispatcher() mid=$\h\n&#x27;, msg.methodid)
+   SELECT msg.methodid
+   CASE MUIM_Zoneview_Redraw_Msg;   RETURN        zoneviewRedrawMsg(cl, obj, msg)
+   CASE MUIM_HandleEvent          ;  RETURN       zoneviewHandleEvent(cl,obj,msg)
+   CASE OM_GET           ; RETURN        zoneviewGet(cl, obj, msg)
+   CASE MUIM_Draw        ;  RETURN        zoneviewDraw(cl, obj, msg)
+   CASE MUIM_Show        ;  RETURN        zoneviewShow(cl, obj, msg)
+   CASE MUIM_Hide        ;  RETURN        zoneviewHide(cl, obj, msg)
+   CASE MUIM_AskMinMax   ;  RETURN   zoneviewAskMinMax(cl, obj, msg)
+   CASE MUIM_Setup       ;  RETURN       zoneviewSetup(cl, obj, msg)
+   CASE MUIM_Cleanup     ;  RETURN     zoneviewCleanup(cl, obj, msg)
+   CASE OM_NEW           ;  RETURN         zoneviewNew(cl, obj, msg)
+   CASE OM_DISPOSE       ;  RETURN     zoneviewDispose(cl, obj, msg)
+   ENDSELECT
+
+ENDPROC doSuperMethodA(cl, obj, msg)
+
+PROC zoneviewAskMinMax(cl:PTR TO iclass,obj,msg:PTR TO muip_askminmax)
+
+   doSuperMethodA(cl,obj,msg)
+
+   msg.minmaxinfo.minwidth := msg.minmaxinfo.minwidth + 100
+   msg.minmaxinfo.defwidth := msg.minmaxinfo.defwidth + 600
+   msg.minmaxinfo.maxwidth := msg.minmaxinfo.maxwidth + 2048
+
+   msg.minmaxinfo.minheight := msg.minmaxinfo.minheight + 100
+   msg.minmaxinfo.defheight := msg.minmaxinfo.defheight + 400
+   msg.minmaxinfo.maxheight := msg.minmaxinfo.maxheight + 2048
+
+ENDPROC 0
+
+
+PROC zoneviewNew(cl:PTR TO iclass, obj:PTR TO object, msg:PTR TO opset) HANDLE
+   DEF data:PTR TO zoneviewdata, a, tag:PTR TO tagitem, tags
+   DEBUGF(&#x27;zoneviewNew()\n&#x27;)
+   IFN (obj := doSuperMethodA(cl, obj, msg)) THEN RETURN 0
+
+   data := INST_DATA(cl, obj)
+   data.selfobj := obj
+
+   tags := msg.attrlist
+   data.actionhook := GetTagData(MUIA_Zoneview_ActionHook, NIL, tags)
+   IFN data.actionhook THEN Raise(&quot;TAGS&quot;)
+
+EXCEPT
+
+   SetIoErr(exception)
+   coerceMethodA(cl, obj, [OM_DISPOSE])
+   RETURN NIL
+
+ENDPROC obj
+
+
+PROC zoneviewDispose(cl:PTR TO iclass, obj:PTR TO object, msg:PTR TO msg)
+   DEF data:PTR TO zoneviewdata
+
+   data := INST_DATA(cl, obj)
+
+   DEBUGF(&#x27;zoneviewDispose()\n&#x27;)
+
+   IF data.disp.rendbuf THEN FreeVec(data.disp.rendbuf)
+
+
+ENDPROC doSuperMethodA(cl, obj, msg)
+
+PROC zoneviewSetup(cl:PTR TO iclass, obj:PTR TO object, msg:PTR TO msg) HANDLE
+   DEF data:PTR TO zoneviewdata
+
+  IF doSuperMethodA(cl, obj, msg) = FALSE THEN RETURN FALSE
+
+  data := INST_DATA(cl, obj)
+
+  DEBUGF(&#x27;zoneviewSetup()\n&#x27;)
+
+  data.ehn.ehn_priority := 0
+  data.ehn.ehn_flags := 0
+  data.ehn.ehn_events := IDCMP_MOUSEBUTTONS -&gt;OR IDCMP_MOUSEMOVE
+  data.ehn.ehn_object := obj
+  data.ehn.ehn_class := cl
+
+  DOMETHODA(_win(obj), [MUIM_Window_AddEventHandler, data.ehn])
+
+EXCEPT
+
+   SetIoErr(exception)
+   coerceMethodA(cl, obj, [MUIM_Cleanup])
+   RETURN NIL
+
+ENDPROC MUI_TRUE
+
+
+PROC zoneviewCleanup(cl:PTR TO iclass, obj:PTR TO object, msg:PTR TO msg)
+   DEF data:PTR TO zoneviewdata
+
+   data := INST_DATA(cl, obj)
+
+   DEBUGF(&#x27;zoneviewCleanup()\n&#x27;)
+
+   DOMETHODA(_win(obj), [MUIM_Window_RemEventHandler, data.ehn])
+
+ENDPROC doSuperMethodA(cl, obj, msg)
+
+
+PROC zoneviewShow(cl:PTR TO iclass, obj:PTR TO object, msg)
+   DEF data:PTR TO zoneviewdata, oldw, oldh
+
+   data := INST_DATA(cl, obj)
+
+   oldw := data.disp.width
+   oldh := data.disp.height
+
+   DEBUGF(&#x27;zoneviewShow() oldw=\d, oldh=\d\n&#x27;, oldw, oldh)
+
+   data.disp.width := _mwidth(obj)
+   data.disp.height := _mheight(obj)
+
+   DEBUGF(&#x27;   _mwidth=\d, _mheight=\d\n&#x27;, data.disp.width, data.disp.height)
+
+      -&gt;DebugF(&#x27;zoneviewShow() bitmap\n&#x27;)
+
+   -&gt;DEBUGF(&#x27;zoneviewShow() HALFWAY\n&#x27;)
+
+
+   IF data.disp.rendbuf = NIL
+      data.disp.rendbuf := AllocVec(data.disp.width*data.disp.height*3, MEMF_CLEAR OR MEMF_PUBLIC)
+      IF data.disp.rendbuf = NIL THEN RETURN NIL
+   ELSEIF (data.disp.width &gt; oldw) OR (data.disp.height &gt; oldh)
+      CALLHOOKA(data.actionhook, obj, [AH_ABORTRENDER])  -&gt; abort possible render
+      FreeVec(data.disp.rendbuf)
+      data.disp.rendbuf := AllocVec(data.disp.width*data.disp.height*3, MEMF_CLEAR OR MEMF_PUBLIC)
+      IF data.disp.rendbuf = NIL THEN RETURN NIL
+      CALLHOOKA(data.actionhook, obj, [AH_RENDER, data])
+   ELSEIF (data.disp.width &lt; oldw) OR (data.disp.height &lt; oldh)
+      CALLHOOKA(data.actionhook, obj, [AH_RENDER, data])
+   ENDIF
+
+   DEBUGF(&#x27;zoneviewShow() DONE\n&#x27;)
+
+ENDPROC MUI_TRUE
+
+
+PROC zoneviewHide(cl:PTR TO iclass, obj:PTR TO object, msg:PTR TO muip_hide)
+   DEF data:PTR TO zoneviewdata
+
+   data := INST_DATA(cl, obj)
+
+   DEBUGF(&#x27;zoneviewHide()\n&#x27;)
+
+ENDPROC MUI_TRUE
+
+ENUM MOUSEOP_NONE, MOUSEOP_MOVE, MOUSEOP_ZOOM, MOUSEOP_DONE
+
+PROC zoneviewDraw(cl:PTR TO iclass,obj:PTR TO object,msg:PTR TO muip_draw)
+   DEF data:PTR TO zoneviewdata, redraw:PTR TO redrawmsg
+
+   DEBUGF(&#x27;zoneviewDraw()\n&#x27;)
+
+   doSuperMethodA(cl, obj, msg)
+
+   data := INST_DATA(cl, obj)
+
+   IF msg.flags AND MADF_DRAWOBJECT
+      DEBUGF(&#x27;   DRAWOBJECT\n&#x27;)
+
+      WritePixelArray(data.disp.rendbuf,
+                      0,
+                      0,
+                      data.disp.width*3,
+                      _rp(obj),
+                      _mleft(obj),
+                      _mtop(obj),
+                      _mwidth(obj),
+                      _mheight(obj),
+                      RECTFMT_RGB)
+
+   ELSEIF msg.flags AND MADF_DRAWUPDATE
+      DEBUGF(&#x27;   DRAWOBJECT\n&#x27;)
+      redraw := data.redrawmsg
+      DEBUGF(&#x27;   redraw = $\h\n&#x27;, redraw)
+      IF redraw THEN redraw.flags := redraw.flags OR RDF_BUSY
+
+      WHILE redraw
+
+         WritePixelArray(data.disp.rendbuf,
+                      redraw.left,
+                      redraw.top,
+                      data.disp.width*3,
+                      _rp(obj),
+                      _mleft(obj) + redraw.left,
+                      _mtop(obj) + redraw.top,
+                      redraw.width,
+                      redraw.height,
+                      RECTFMT_RGB)
+
+         redraw := redraw.next
+      ENDWHILE
+
+      IF data.redrawmsg
+         data.redrawmsg.flags := data.redrawmsg.flags AND Not(RDF_BUSY)
+         data.redrawmsg := NIL
+      ENDIF
+
+      IF data.mouseOp = MOUSEOP_MOVE
+          DEBUGF(&#x27;      drawing MOUSEOP_MOVE\n&#x27;)
+
+          WritePixelArray(data.disp.rendbuf,
+                      Min(Max(data.selectX-data.mouseX, 0), data.disp.width-1),
+                      Min(Max(data.selectY-data.mouseY, 0), data.disp.height-1),
+                      data.disp.width*3,
+                      _rp(obj),
+                      _mleft(obj) + Min(Max(data.mouseX-data.selectX, 0), data.disp.width-1),
+                      _mtop(obj) + Min(Max(data.mouseY-data.selectY, 0), data.disp.height-1),
+                      data.disp.width - Min(Abs(data.mouseX-data.selectX), data.disp.width),
+                      data.disp.height - Min(Abs(data.mouseY-data.selectY), data.disp.height),
+                      RECTFMT_RGB)
+
+
+      ELSEIF data.mouseOp = MOUSEOP_ZOOM
+
+         DEBUGF(&#x27;      drawing MOUSEOP_ZOOM\n&#x27;)
+
+          -&gt; draw box
+          SetAPen(_rp(obj), 3)
+          Move(_rp(obj), _mleft(obj) + data.selectX, _mtop(obj) + data.selectY)
+          PolyDraw(_rp(obj), 4, [_mleft(obj) + data.mouseX, _mtop(obj) + data.selectY,
+                                 _mleft(obj) + data.mouseX, _mtop(obj) + data.mouseY,
+                                 _mleft(obj) + data.selectX, _mtop(obj) + data.mouseY,
+                                 _mleft(obj) + data.selectX, _mtop(obj) + data.selectY]:INT)
+
+      ENDIF
+
+   ENDIF
+
+ENDPROC 0
+
+
+PROC zoneviewGet(cl:PTR TO iclass, obj:PTR TO object, msg:PTR TO opget)
+   DEF data:PTR TO zoneviewdata
+
+   data := INST_DATA(cl, obj)
+
+   DEBUGF(&#x27;zoneviewGet()\n&#x27;)
+
+   SELECT msg.attrid
+   CASE MUIA_Zoneview_Display ; PutLong(msg.storage, data.disp) ; RETURN MUI_TRUE
+   ENDSELECT
+
+ENDPROC doSuperMethodA(cl, obj, msg)
+
+
+PROC zoneviewRedrawMsg(cl, obj, msg:PTR TO LONG)
+   DEF data:PTR TO zoneviewdata
+   data := INST_DATA(cl, obj)
+   data.redrawmsg := msg[1]
+   Mui_Redraw(obj, MADF_DRAWUPDATE)
+ENDPROC
+
+#define _between(a,x,b) ((x&gt;=a) AND (x&lt;=b))
+#define _isinobject(x,y) (_between(_mleft(obj),x,_mright(obj)) AND _between(_mtop(obj),y,_bottom(obj)))
+
+PROC zoneviewHandleEvent(cl:PTR TO iclass,obj:PTR TO object,msg:PTR TO muip_handleevent)
+   DEF class, code
+   DEF r=NIL, data:PTR TO zoneviewdata
+   DEF rc=NIL
+
+   data := INST_DATA(cl, obj)
+
+   IF msg.imsg
+
+      class := msg.imsg.class
+      code := msg.imsg.code
+      SELECT class
+      CASE IDCMP_RAWKEY
+
+      CASE IDCMP_MOUSEBUTTONS
+         -&gt;-&gt;DebugF(&#x27;MOUSEBUTTON: \d &#x27;, code)
+         IF _isinobject(msg.imsg.mousex, msg.imsg.mousey)
+            IF code = SELECTDOWN
+               -&gt;-&gt;DebugF(&#x27;DOWN\n&#x27;, code)
+               IF data.mouseOp = MOUSEOP_ZOOM
+                  CALLHOOKA(data.actionhook, obj,
+                            [AH_ZOOM,
+                             data,
+                             data.selectX,
+                             data.selectY,
+                             data.mouseX,
+                             data.mouseY
+                            ]
+                           )
+                  data.selectX := NIL
+                  data.selectY := NIL
+                  data.mouseOp := MOUSEOP_DONE
+               ELSE
+                  data.mousePressed := TRUE
+                  data.selectX := msg.imsg.mousex - _mleft(obj)
+                  data.selectY := msg.imsg.mousey - _mtop(obj)
+                  setIDCMP(data, data.ehn.ehn_events OR IDCMP_MOUSEMOVE)
+               ENDIF
+            ELSEIF code = SELECTUP
+               -&gt;-&gt;DebugF(&#x27;UP\n&#x27;, code)
+               data.mousePressed := FALSE
+               IF data.mouseOp = MOUSEOP_MOVE
+                  ReadPixelArray(data.disp.rendbuf,
+                                 0,
+                                 0,
+                                 data.disp.width*3,
+                                 _rp(obj),
+                                 _mleft(obj),
+                                 _mtop(obj),
+                                 data.disp.width,
+                                 data.disp.height,
+                                 RECTFMT_RGB)
+                  CALLHOOKA(data.actionhook, obj,
+                              [AH_MOVE,
+                               data,
+                               data.selectX,
+                               data.selectY,
+                               data.mouseX,
+                               data.mouseY
+                              ])
+                  data.selectX := NIL
+                  data.selectY := NIL
+                  data.mouseX := NIL
+                  data.mouseY := NIL
+                  setIDCMP(data, data.ehn.ehn_events AND Not(IDCMP_MOUSEMOVE))
+                  data.mouseOp := MOUSEOP_DONE
+               ELSEIF data.mouseOp = MOUSEOP_DONE
+                  data.mouseOp := MOUSEOP_NONE
+               ELSEIF data.mouseOp = MOUSEOP_NONE
+                  data.mouseOp := MOUSEOP_ZOOM
+               ENDIF
+            ENDIF
+         ELSE
+            data.mousePressed := FALSE
+            IF data.mouseOp
+               data.mouseOp := MOUSEOP_NONE
+               data.selectX := NIL
+               data.selectY := NIL
+               Mui_Redraw(obj, MADF_DRAWOBJECT)
+            ENDIF
+            setIDCMP(data, data.ehn.ehn_events AND Not(IDCMP_MOUSEMOVE))
+         ENDIF
+         rc := NIL
+      CASE IDCMP_MOUSEMOVE
+         -&gt;-&gt;DebugF(&#x27;MOUSEMOVE: \d, \d\n&#x27;, msg.imsg.mousex, msg.imsg.mousey)
+         IF _isinobject(msg.imsg.mousex, msg.imsg.mousey)
+            IF data.mousePressed
+               data.mouseOp := MOUSEOP_MOVE
+            ELSEIF data.mouseOp = MOUSEOP_ZOOM
+               data.redrawmsg := [NIL,
+                               Min(data.selectX, data.mouseX),
+                               Min(data.selectY, data.mouseY),
+                               Abs(data.selectX - data.mouseX),
+                               Abs(data.selectY - data.mouseY),
+                               NIL]:redrawmsg
+            ENDIF
+            IF data.mouseOp
+               data.mouseX := msg.imsg.mousex - _mleft(obj)
+               data.mouseY := msg.imsg.mousey - _mtop(obj)
+               Mui_Redraw(obj, MADF_DRAWUPDATE)
+            ENDIF
+         ELSE
+            data.mousePressed := FALSE
+            data.mouseOp := MOUSEOP_NONE
+            data.selectX := NIL
+            data.selectY := NIL
+            setIDCMP(data, data.ehn.ehn_events AND Not(IDCMP_MOUSEMOVE))
+            Mui_Redraw(obj, MADF_DRAWOBJECT)
+         ENDIF
+      ENDSELECT
+
+   ENDIF
+
+
+
+ENDPROC rc
+
+PROC setIDCMP(data:PTR TO zoneviewdata, idcmp)
+  DEF oldidcmp
+  DOMETHODA(_win(data.selfobj), [MUIM_Window_RemEventHandler, data.ehn])
+  oldidcmp := data.ehn.ehn_events
+  data.ehn.ehn_events := idcmp
+  DOMETHODA(_win(data.selfobj), [MUIM_Window_AddEventHandler, data.ehn])
+ENDPROC oldidcmp
+
+
+
+
+
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

@@ -1,0 +1,191 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ClickTabExample.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-portable.html">PortablE</a> &rsaquo; ClickTabExample.e</div><h1>File: <code>ClickTabExample.e</code></h1><p class="meta">165 lines · project <a href="../examples/pkg-portable.html"><code>PortablE</code></a></p><p class="pathctx">PortablE/PortablE/Examples/Amiga/OS4_ClassAct/ClickTabExample.e</p><p class="prose">An old ClassAct example converted to PortablE. From http://aminet.net/package/dev/gui/ClassAct2Demo</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/clicktab.html">clicktab</a></li><li><a href="../modules/types.html">exec/types</a></li><li><a href="../modules/constructors.html">tools/constructors</a></li></ul></div><h2>Source</h2><pre class="code">/* An old ClassAct example converted to PortablE.
+   From http://aminet.net/package/dev/gui/ClassAct2Demo */
+
+/* ClickTabExample.e - Ported to E by Eric Sauvageau. */
+
+OPT AMIGAE
+OPT PREPROCESS
+
+MODULE &#x27;tools/constructors&#x27;, &#x27;tools/boopsi&#x27;
+
+MODULE &#x27;exec/types&#x27;,&#x27;exec/memory&#x27;,&#x27;dos/dos&#x27;,&#x27;dos/dosextens&#x27;,&#x27;exec/lists&#x27;,
+       &#x27;exec/nodes&#x27;,&#x27;intuition&#x27;,&#x27;graphics&#x27;,&#x27;intuition/intuition&#x27;,
+       &#x27;intuition/gadgetclass&#x27;,&#x27;intuition/imageclass&#x27;,
+       &#x27;intuition/intuitionbase&#x27;,&#x27;intuition/classusr&#x27;,
+       &#x27;intuition/gadgetclass&#x27;,&#x27;intuition/cghooks&#x27;,&#x27;intuition/icclass&#x27;,
+       &#x27;intuition/classes&#x27;,&#x27;intuition/sghooks&#x27;,&#x27;graphics/gfxbase&#x27;,
+       &#x27;graphics/text&#x27;,&#x27;graphics/gfxmacros&#x27;,&#x27;utility/tagitem&#x27;,&#x27;utility/hooks&#x27;
+
+
+MODULE &#x27;clicktab&#x27;,&#x27;gadgets/clicktab&#x27;,&#x27;window&#x27;,&#x27;classes/window&#x27;,&#x27;layout&#x27;,
+       &#x27;gadgets/layout&#x27;, &#x27;other/classact_macros&#x27;
+
+DEF listitems:PTR TO mlh
+
+
+CONST ID_CLICKTAB =1
+
+PROC clickTabNodes(list:PTR TO lh, labels:PTR TO LONG)
+DEF node=NIL, i=0
+
+   newlist(list)
+
+   WHILE labels[i]
+
+      IF (node := AllocClickTabNodeA([TNA_TEXT, labels[i],
+                                      TNA_NUMBER, i,
+                                      TNA_ENABLED, TRUE,
+                                      TNA_SPACING, 6,
+                                      TAG_DONE]))
+
+         AddTail(list,node)
+      ENDIF
+
+      INC i
+
+   ENDWHILE
+ENDPROC
+
+
+PROC freeClickTabNodes(list:PTR TO lh)
+DEF node:PTR TO ln, nextnode:PTR TO ln
+
+   node:= list.head
+
+   WHILE (nextnode := node.succ)
+      FreeClickTabNode(node)
+      node := nextnode
+   ENDWHILE
+
+   END list  -&gt; Optional, the E cleanup code would do it for us anyway.
+ENDPROC
+
+
+
+PROC main()
+DEF win=NIL:PTR TO window, tab_object=NIL:PTR TO object, win_object=NIL:PTR TO object
+DEF wait, signal, result, done = FALSE, code, tmpres,tmpres2
+DEF names:PTR TO LONG
+
+   names:=[&#x27;Tab_1&#x27;,&#x27;Tab_2&#x27;,&#x27;Tab_3&#x27;,&#x27;Tab_4&#x27;,NIL]
+
+-&gt;  Open the classes.  We could also use openClass() from classact_lib.m
+
+   windowbase := OpenLibrary(&#x27;window.class&#x27;,0)
+   layoutbase := OpenLibrary(&#x27;gadgets/layout.gadget&#x27;,0)
+   clicktabbase := OpenLibrary(&#x27;gadgets/clicktab.gadget&#x27;,0)
+
+   IF (windowbase AND layoutbase AND clicktabbase)
+      clickTabNodes(NEW listitems, names)
+
+      /* Create the window object. */
+      win_object := WindowObject,
+                       WA_SCREENTITLE, &#x27;ClassAct Copyright 1995, Phantom Development LLC.&#x27;,
+                       WA_TITLE, &#x27;ClassAct clicktab.gadget Example&#x27;,
+                       WA_SIZEGADGET, TRUE,
+                       WA_LEFT, 40,
+                       WA_TOP, 30,
+                       WA_DEPTHGADGET, TRUE,
+                       WA_DRAGBAR, TRUE,
+                       WA_CLOSEGADGET, TRUE,
+                       WA_ACTIVATE, TRUE,
+                       WA_SMARTREFRESH, TRUE,
+                       WINDOW_PARENTGROUP, VLayoutObject,
+                          LAYOUT_SPACEOUTER, TRUE,
+                          LAYOUT_DEFERLAYOUT, TRUE,
+                          LAYOUT_ADDCHILD, tab_object := ClickTabObject,
+                             GA_ID, ID_CLICKTAB,
+                             CLICKTAB_LABELS, listitems,
+                             CLICKTAB_CURRENT, 0,
+                          End,
+                       End,
+                    End
+
+-&gt; Object creation sucessful?
+
+      IF win_object
+
+-&gt; Open the window.
+
+         IF (win := CA_OpenWindow(win_object))
+				
+-&gt; Obtain the window wait signal mask.
+
+            GetAttr( WINDOW_SIGMASK, win_object, ADDRESSOF signal)
+
+-&gt; Input Event Loop
+
+            WHILE done = FALSE
+               wait:= Wait(signal OR SIGBREAKF_CTRL_C)
+
+               IF (wait AND SIGBREAKF_CTRL_C)
+                  done := TRUE					
+               ELSE
+
+                  WHILE (result := domethod(win_object, [WM_HANDLEINPUT,ADDRESSOF code])) &lt;&gt; WMHI_LASTMSG
+                     tmpres := (result AND WMHI_CLASSMASK)
+                     SELECT tmpres
+         
+                        CASE WMHI_CLOSEWINDOW
+                             done := TRUE
+
+                        CASE WMHI_GADGETUP
+                           tmpres2 := (result AND WMHI_GADGETMASK)
+
+                           SELECT tmpres2
+                             CASE ID_CLICKTAB ; NOP
+
+                           ENDSELECT
+
+                     ENDSELECT
+                  ENDWHILE
+               ENDIF
+            ENDWHILE
+         ENDIF
+
+         /* Disposing of the window object will
+          * also close the window if it is
+          * already opened and it will dispose of
+          * all objects attached to it.
+          */
+          DisposeObject(win_object)
+      ENDIF
+
+   ENDIF
+
+   freeClickTabNodes(listitems)
+
+   /* Close the classes. */
+
+   IF clicktabbase THEN CloseLibrary(clicktabbase)
+   IF layoutbase THEN CloseLibrary(layoutbase)
+   IF windowbase THEN CloseLibrary(windowbase)
+
+ENDPROC
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

@@ -1,0 +1,182 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>dd_busypointer.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-aepd37.html">AEPD37</a> &rsaquo; dd_busypointer.e</div><h1>File: <code>dd_busypointer.e</code></h1><p class="meta">156 lines · project <a href="../examples/pkg-aepd37.html"><code>AEPD37</code></a></p><p class="pathctx">AEPD37/EPD37/Programme/dd_Modules/dd_gui/dd_busypointer.e</p><p class="prose"><a href="../modules/dd-busypointer.html">dd_busypointer</a>.e - <a href="../modules/window.html">window</a> <a href="../modules/dd-windowcontrol.html#obj-busypointer">busypointer</a> <a href="../modules/class.html">class</a>  Copyrights © 1995 by Leon `LikeWise&#x27; Woestenberg, Digital Disturbance. All Rights Reserved  FOLDER opts</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/memory.html">exec/memory</a></li><li><a href="../modules/intuition.html">intuition/intuition</a></li><li><a href="../modules/tagitem.html">utility/tagitem</a></li></ul></div><h2>Source</h2><pre class="code">-&gt;
+-&gt; dd_busypointer.e - window busypointer class
+-&gt;
+-&gt; Copyrights © 1995 by Leon `LikeWise&#x27; Woestenberg, Digital Disturbance.
+-&gt; All Rights Reserved
+-&gt;
+-&gt; FOLDER opts
+OPT MODULE
+-&gt; ENDFOLDER
+-&gt; FOLDER modules
+MODULE &#x27;intuition/intuition&#x27;
+MODULE &#x27;utility/tagitem&#x27;
+MODULE &#x27;exec/memory&#x27;
+-&gt; ENDFOLDER
+-&gt; FOLDER classes
+EXPORT OBJECT busypointer
+  PRIVATE
+  window:PTR TO window
+ENDOBJECT
+-&gt; ENDFOLDER
+-&gt; FOLDER defs
+DEF busySprite:PTR TO INT,usecount
+-&gt; ENDFOLDER
+
+-&gt; FOLDER new
+EXPORT PROC new(window=NIL) OF busypointer
+
+  -&gt; Remember window we should act on.
+  self.window:=window
+
+  -&gt; A pre v39 system?
+  IF (KickVersion(39)=FALSE)
+
+    -&gt; Increase the busycount to allow nested calls.
+    usecount:=usecount+1
+    -&gt; Only act when this class (not object!) is used for the first time.
+    IF usecount=1
+
+      -&gt; If the busySprite is not yet in chip memory, we must take care
+      -&gt; of that ourselves.
+      IF (TypeOfMem({busySpriteData}) AND MEMF_CHIP)=0
+
+        -&gt; Allocate chip memory for the pointer sprite.
+        busySprite:=AllocMem(72,MEMF_CHIP)
+        IF busySprite
+
+          -&gt; Copy the busySprite to chip memory. Positions and length
+          -&gt; are longword alligned, so we use the CopyMemQuick one.
+          CopyMemQuick({busySpriteData},busySprite,72)
+
+        -&gt; We are out of chip memory here. I guess we can&#x27;t do much here,
+        -&gt; the user will have to live without busy pointer functionality.
+        ELSE
+        ENDIF
+      ELSE
+
+        -&gt; The busySprite already is in chip memory.
+        busySprite:={busySpriteData}
+
+      ENDIF
+    ENDIF
+  ENDIF
+ENDPROC
+-&gt; ENDFOLDER
+-&gt; FOLDER end
+EXPORT PROC end() OF busypointer
+
+  -&gt; A pre v39 system?
+  IF KickVersion(39)=FALSE
+
+    usecount:=usecount-1
+    -&gt; We only act if this class (not object!) becomes unused.
+    IF usecount=0
+
+      -&gt; Check if we have copied the busy pointer to another location.
+      -&gt; If so, we will have to free that copy ourselves.
+      IF busySprite&lt;&gt;{busySpriteData}
+
+        -&gt; Free the chip memory involved.
+        FreeMem(busySprite,72)
+
+        -&gt; And clear the chip memory pointer.
+        busySprite:=NIL
+
+      ENDIF
+    ENDIF
+  ENDIF
+
+  -&gt; Forget the window we did belong to.
+  self.window:=NIL
+
+ENDPROC
+-&gt; ENDFOLDER
+-&gt; FOLDER busy
+EXPORT PROC busy() OF busypointer
+
+  -&gt; window valid?
+  IF self.window
+
+    -&gt; v39+ system?
+    IF KickVersion(39)
+
+      -&gt; Set window busy pointer using v39+ system function.
+      SetWindowPointerA(self.window,[WA_BUSYPOINTER,TRUE,WA_POINTERDELAY,TRUE,TAG_DONE])
+
+    -&gt; This is a pre v39 system. We supply our own busypointer.
+    ELSE
+
+      -&gt; Set our busy pointer.
+      IF busySprite THEN SetPointer(self.window,busySprite,16,16,-6,0)
+
+    ENDIF
+  ENDIF
+ENDPROC
+-&gt; ENDFOLDER
+-&gt; FOLDER unbusy
+EXPORT PROC unbusy() OF busypointer
+
+  -&gt; window valid?
+  IF self.window
+    -&gt; v39+ system?
+    IF KickVersion(39)
+
+      -&gt; Clear busy pointer using v39 system function.
+      SetWindowPointerA(self.window,NIL)
+
+    -&gt; pre v39 system
+    ELSE
+
+      -&gt; Clear the busy pointer from our window.
+      ClearPointer(self.window)
+
+    ENDIF
+  ENDIF
+ENDPROC
+-&gt; ENDFOLDER
+
+-&gt; FOLDER busySpriteData
+
+  -&gt; We keep the busypointer data longword alligned. This way we can use
+  -&gt; quick memory copy operations.
+  LONG &quot;BUSY&quot;
+
+  -&gt; A copy of the actual busypointer sprite.
+  busySpriteData:
+  INT $0000,$0000,$0400,$07c0
+  INT $0000,$07c0,$0100,$0380
+  INT $0000,$07e0,$07c0,$1ff8
+  INT $1ff0,$3fec,$3ff8,$7fde
+  INT $3ff8,$7fbe,$7ffc,$ff7f
+  INT $7efc,$ffff,$7ffc,$ffff
+  INT $3ff8,$7ffe,$3ff8,$7ffe
+  INT $1ff0,$3ffc,$07c0,$1ff8
+  INT $0000,$07e0,$0000,$0000
+-&gt; ENDFOLDER
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

@@ -1,0 +1,245 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>nmList.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-lsestuff.html">lsEstuff</a> &rsaquo; nmList.e</div><h1>File: <code>nmList.e</code></h1><p class="meta">219 lines · project <a href="../examples/pkg-lsestuff.html"><code>lsEstuff</code></a></p><p class="pathctx">lsEstuff/nmList.e</p><h2>Source</h2><pre class="code">OPT MODULE
+
+-&gt;
+-&gt;the new listclass (991017)
+-&gt;nodes and the list inherits methods from lobject.
+-&gt;if nodes with methods is a problem, dont use this one!
+-&gt;be SURE to use only nodes inherited from nm!!
+
+-&gt;kinda skitbra !! skulle jag vilja säga.
+-&gt;extremt trevlig klass som man kan bygga vidare på
+-&gt;eller bara använda som den e..
+-&gt;används till tamejfan nästan allt i leifoo-lådan :)
+
+
+MODULE &#x27;leifoo/nm&#x27;
+
+EXPORT OBJECT nmList OF nm
+   id
+   PRIVATE
+   first:PTR TO nm
+   last:PTR TO nm
+ENDOBJECT
+
+EXPORT OBJECT nmList_travObj
+   node :PTR TO nm
+   list:PTR TO nmList
+ENDOBJECT
+
+PROC printObject() OF nmList
+   DEF n:PTR TO nm
+   WriteF(&#x27;list&#x27;)
+   SUPER self.printObject()
+   n := self.first()
+   WriteF(&#x27;nodes :\n&#x27;)
+   WHILE n
+      n.printObject()
+      n := n.next
+   ENDWHILE
+ENDPROC
+
+
+PROC end() OF nmList IS self.clear()
+
+PROC clear() OF nmList
+   DEF node:PTR TO nm
+   DEF next
+   node := self.first()
+   WHILE node
+      next := node.next
+      END node
+      node := next
+   ENDWHILE
+ENDPROC
+
+PROC getObjectName() OF nmList IS &#x27;nmList&#x27;
+
+PROC getObjectSize() OF nmList IS SIZEOF nmList
+
+PROC first() OF nmList IS self.first
+
+PROC last() OF nmList IS self.last
+
+
+PROC addFirst(nm:PTR TO nm) OF nmList
+   DEF next:PTR TO nm
+   next:=self.first
+
+   self.first:=nm
+   IF self.last=NIL THEN self.last:=nm
+   nm.prev:=NIL
+   nm.next:=next
+   IF next THEN next.prev:=nm
+ENDPROC nm
+
+PROC addLast(nm:PTR TO nm) OF nmList
+   DEF prev:PTR TO nm
+   prev:=self.last
+
+   self.last:=nm
+   IF self.first=NIL THEN self.first:=nm
+   nm.next:=NIL
+   nm.prev:=prev
+   IF prev THEN prev.next:=nm
+ENDPROC nm
+
+PROC remFirst() OF nmList
+   DEF remed:PTR TO nm, next:PTR TO nm
+   remed:=NIL
+   IF self.first
+      remed:=self.first
+      self.first:=remed.next
+      IF remed.next=NIL
+         self.last:=NIL
+      ELSE
+         next:=remed.next
+         next.prev:=NIL
+      ENDIF
+   ENDIF
+ENDPROC remed
+
+PROC remLast() OF nmList
+   DEF remed:PTR TO nm, prev:PTR TO nm
+   remed:=NIL
+   IF self.last
+      remed:=self.last
+      self.last:=remed.prev
+      IF remed.prev=NIL
+         self.first:=NIL
+      ELSE
+         prev:=remed.prev
+         prev.next:=NIL
+      ENDIF
+   ENDIF
+ENDPROC remed
+
+PROC remove(nm:PTR TO nm) OF nmList
+   DEF prev:PTR TO nm, next:PTR TO nm
+   IF nm.prev=NIL THEN RETURN self.remFirst()
+   IF nm.next=NIL THEN RETURN self.remLast()
+   prev:=nm.prev
+   next:=nm.next
+   prev.next:=next
+   next.prev:=prev
+ENDPROC nm
+
+PROC insert(nm:PTR TO nm, afterthis:PTR TO nm) OF nmList
+   DEF next:PTR TO nm
+   IF afterthis.next=NIL THEN RETURN self.addLast(nm)
+   next:=afterthis.next
+   afterthis.next:=nm
+   nm.prev:=afterthis
+   nm.next:=next
+   next.prev:=nm
+ENDPROC nm
+
+PROC countNodes(firstnode=NIL) OF nmList
+   DEF nm:REG PTR TO nm, count:REG
+   count:=NIL
+   nm := IF firstnode = NIL THEN self.first ELSE firstnode
+   WHILE nm
+      count++
+      nm:=nm.next
+   ENDWHILE
+ENDPROC count
+
+PROC listInsert(nmList:PTR TO nmList, afterthis:PTR TO nm) OF nmList
+   DEF nmL_last:PTR TO nm
+   DEF nmL_first:PTR TO nm
+   nmL_first := nmList.first
+   nmL_first.prev := afterthis
+   nmL_last := nmList.last
+   nmL_last.next := afterthis.next
+   afterthis.next := nmList.first
+   self.last := nmList.last
+ENDPROC
+
+PROC listAddFirst(nmList:PTR TO nmList) OF nmList
+   DEF thatlast:PTR TO nm
+   DEF thisfirst:PTR TO nm
+   thisfirst.prev := nmList.last
+   thatlast := nmList.last
+   thatlast.next := self.first
+   self.first := nmList.first
+ENDPROC
+
+PROC listAddLast(nmList:PTR TO nmList) OF nmList
+   DEF thatfirst:PTR TO nm
+   thatfirst := nmList.first
+   thatfirst.prev := self.last
+   self.last.next := thatfirst
+   self.last := nmList.last
+ENDPROC
+
+PROC delete(nm:PTR TO nm) OF nmList
+   self.remove(nm)
+   END nm
+ENDPROC
+
+PROC travNodes(proc, obj=NIL) OF nmList
+   DEF n:PTR TO nm
+   DEF to:PTR TO nmList_travObj
+   to := obj
+   IF to = NIL THEN NEW to
+   to.list := self
+   n := self.first
+   WHILE n
+      to.node := n
+      proc(to)
+      n := n.next
+   ENDWHILE
+   IF obj = NIL THEN END to
+ENDPROC
+
+PROC replace(oldnode:PTR TO nm, newnode:PTR TO nm) OF nmList
+   DEF prevnode:PTR TO nm
+   DEF nextnode:PTR TO nm
+
+   prevnode := oldnode.prev
+   nextnode := oldnode.next
+
+   newnode.prev := prevnode
+   newnode.next := nextnode
+
+   IF prevnode = NIL
+      self.first := newnode
+   ELSE
+      prevnode.next := newnode
+   ENDIF
+
+   IF nextnode = NIL
+      self.last := newnode
+   ELSE
+      nextnode.prev := newnode
+   ENDIF
+
+ENDPROC oldnode
+
+
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

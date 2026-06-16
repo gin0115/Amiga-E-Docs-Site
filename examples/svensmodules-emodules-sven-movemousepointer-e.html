@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>moveMousePointer.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-svensmodules.html">SvensModules</a> &rsaquo; moveMousePointer.e</div><h1>File: <code>moveMousePointer.e</code></h1><p class="meta">61 lines · project <a href="../examples/pkg-svensmodules.html"><code>SvensModules</code></a></p><p class="pathctx">SvensModules/emodules/sven/moveMousePointer.e</p><p class="prose">moves the mouse on screen &#x27;scr&#x27; to position (x,y) ** Needs at least <a href="../modules/intuition.html">intuition</a> V36</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/input.html">devices/input</a></li></ul></div><h2>Source</h2><pre class="code">/* moves the mouse on screen &#x27;scr&#x27; to position (x,y)
+** Needs at least intuition V36
+*/
+
+OPT MODULE
+OPT REG=5
+
+MODULE &#x27;devices/input&#x27;,&#x27;devices/inputevent&#x27;,
+       &#x27;exec/io&#x27;,&#x27;exec/ports&#x27;,&#x27;exec/memory&#x27;
+
+/* would look much better with exceptions but isn&#x27;t really
+** necessary here and would also make the generated code bigger.
+**
+** It would also be good to use E&#x27;s memory pool for allocating the inputevent
+** and iepointerpixel memory but FastNew() don&#x27;t set flags
+** MEMF_PUBLIC.
+*/
+EXPORT PROC moveMousePointer(scr,x,y,rel=FALSE)
+DEF inputio:PTR TO iostd,
+    inputmp:PTR TO mp,
+    fakeevent:PTR TO inputevent,
+    neopix:PTR TO iepointerpixel
+
+  IF scr
+    IF inputmp:=CreateMsgPort()
+      IF fakeevent:=AllocMem(SIZEOF inputevent,MEMF_PUBLIC)
+        IF neopix:=AllocMem(SIZEOF iepointerpixel,MEMF_PUBLIC)
+          IF inputio:=CreateIORequest(inputmp,SIZEOF iostd)
+            IF OpenDevice(&#x27;input.device&#x27;,0,inputio,0)=0
+
+              neopix.screen    := scr
+              neopix.positionx := x
+              neopix.positiony := y
+
+              fakeevent.eventaddress := neopix                                       /* IEPointerPixel */
+              fakeevent.nextevent    := NIL
+              fakeevent.class        := IECLASS_NEWPOINTERPOS                        /* new pointer pos */
+              fakeevent.subclass     := IESUBCLASS_PIXEL
+              fakeevent.code         := IECODE_NOBUTTON
+              fakeevent.qualifier    := IF rel THEN IEQUALIFIER_RELATIVEMOUSE ELSE 0 /* relative/absolute positioning */
+
+              inputio.data    := fakeevent
+              inputio.length  := SIZEOF inputevent
+              inputio.command := IND_WRITEEVENT
+              DoIO(inputio)
+
+              CloseDevice(inputio)
+            ENDIF
+            DeleteIORequest(inputio)
+          ENDIF
+          FreeMem(neopix,SIZEOF iepointerpixel)
+        ENDIF
+        FreeMem(fakeevent,SIZEOF inputevent)
+      ENDIF
+      DeleteMsgPort(inputmp)
+    ENDIF
+  ENDIF
+
+ENDPROC
+
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

@@ -1,0 +1,129 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>NodeMaster_Example.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-nodemaster.html">NodeMaster</a> &rsaquo; NodeMaster_Example.e</div><h1>File: <code>NodeMaster_Example.e</code></h1><p class="meta">103 lines · project <a href="../examples/pkg-nodemaster.html"><code>NodeMaster</code></a></p><p class="pathctx">NodeMaster/nodemaster/examples/NodeMaster_Example.e</p><p class="prose">** NodeMaster_Example n. 1 ** ** (C)1995/96 By Fabio Rotondo ** ** This code is placed in the Public Domain. ** It is intended FOR demostration of <a href="../modules/nodemaster.html">NodeMaster</a> only. ** ** Feel free of examine, modify AND DO whatever you want! **</p><h2>Source</h2><pre class="code">/*
+** NodeMaster_Example n. 1
+**
+** (C)1995/96 By Fabio Rotondo
+**
+** This code is placed in the Public Domain.
+** It is intended FOR demostration of NodeMaster only.
+**
+** Feel free of examine, modify AND DO whatever you want!
+**
+*/
+
+/*
+** DESCRIPTION:
+**
+** NodeMaster can HANDLE Exec Lists of everything.
+**
+** Just TO show its power, you&#x27;ll see a way of creating
+** multiwindows application relying on Wouter&#x27;s EasyGUI AND
+** my NodeMaster. This application is quite complicated AND I&#x27;ll try TO
+** explain it in the better way I can. ;)
+*/
+OPT OSVERSION = 37
+
+MODULE &#x27;fabio/nodemaster_oo&#x27;,               -&gt; This is OUR MODULE
+       &#x27;tools/exceptions&#x27;, &#x27;tools/easygui&#x27;  -&gt; tools/exceptions are FOR
+                                            -&gt; report_exception() PROC AND
+                                            -&gt; &#x27;tools/easygui&#x27;... GUESS!
+
+DEF nm:PTR TO nodemaster -&gt; This is an hinstance of our NodeMaster
+DEF quit=FALSE           -&gt; a quitvar... 8)
+
+PROC main() HANDLE       -&gt; Please, note: HANDLE keyword FOR EXCEPTIONS handling
+  NEW nm.nodemaster()    -&gt; Here we setup our OBJECT.
+
+  dogui()                -&gt; we MUST have at least one gui!
+
+  REPEAT                 -&gt; We will hear FOR GUI events
+    multiwait()          -&gt; (Of multiple windows ;) ...
+  UNTIL quit = TRUE      -&gt; UNTIL QUIT is set TO TRUE
+
+EXCEPT DO                -&gt; In CASE of some problems... (OR just TO quit)
+  report_exception()     -&gt; Here there is a brief explanation
+  END nm                 -&gt; Remeber ALWAYS TO END a OBJECT!!!
+  CleanUp(0)             -&gt; Let&#x27;s keep things clean...
+ENDPROC
+
+PROC dogui() HANDLE      -&gt; This PROC creates a GUI on the WB screen
+  DEF gh=NIL:PTR TO guihandle -&gt; a guihandle (NOTE: It is LOCAL! ;)
+
+  gh:=guiinit(&#x27;NEW EasyGUI Window!&#x27;,
+              [EQROWS,
+                [SBUTTON, {dogui}, &#x27;Create!&#x27;],  -&gt; This button just call dogui() again!
+                [BAR],
+                [SBUTTON, {closeall},&#x27;Quit!&#x27;]   -&gt; This will quit ALL!
+              ])
+
+  nm.add(gh)     -&gt; Here we add this GUI_handle TO our NodeMaster OBJECT
+  Wait(gh.sig)   -&gt; AND wait FOR this window&#x27;s first signal
+
+EXCEPT           -&gt; In CASE of any error
+  remgui(gh)     -&gt; we remove THIS window from thje Windows LIST
+  ReThrow()      -&gt; AND rethrow() error one level up!
+ENDPROC
+
+PROC multiwait()  -&gt; This is one of the most important PROCS!
+  DEF gh:PTR TO guihandle -&gt; Another LOCAL gui_handle var!
+  DEF res                 -&gt; Here we store Window event value...
+
+  IF nm.first()   -&gt; Let&#x27;s start from the first GUI_handler we have stored...
+    REPEAT
+      gh:=nm.obj()  -&gt; Here we set our gh TO original GUI_handler
+      res:=guimessage(gh) -&gt; We get one message
+      IF res&gt;=0           -&gt; AND eventually close this GUI window
+        remgui(gh)
+      ENDIF
+    UNTIL nm.succ() = FALSE  -&gt; Now we JUMP TO the next one
+  ENDIF
+ENDPROC
+
+PROC closeall(i=0) -&gt; This PROC just close ALL opened windows
+
+  IF nm.first() -&gt; We start from the first
+    REPEAT
+      cleangui(nm.obj())    -&gt; we clear things up
+    UNTIL nm.succ() = FALSE  -&gt; AND get the next
+  ENDIF
+
+  quit := TRUE  -&gt; Here we set the QUIT var TO TRUE
+ENDPROC
+
+PROC remgui(gh:PTR TO guihandle) -&gt; This PROC remove just one desired gui
+  IF nm.first()                  -&gt; Here we scan LIST from the first
+    REPEAT
+      IF gh = nm.obj()           -&gt; IF the current item is exactly the one we want
+        nm.del()                 -&gt; We remove the item from the LIST
+        cleangui(gh)             -&gt; AND clear the interface
+        RETURN                   -&gt; THEN exit without ending the LOOP
+      ENDIF
+    UNTIL nm.succ() = FALSE      -&gt; Here we look FOR the next item...
+  ENDIF
+ENDPROC
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

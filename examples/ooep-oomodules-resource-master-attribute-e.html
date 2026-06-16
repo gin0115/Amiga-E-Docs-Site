@@ -1,0 +1,293 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>attribute.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-ooep.html">OOEP</a> &rsaquo; attribute.e</div><h1>File: <code>attribute.e</code></h1><p class="meta">267 lines · project <a href="../examples/pkg-ooep.html"><code>OOEP</code></a></p><p class="pathctx">OOEP/oomodules/resource/master/attribute.e</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/esource.html">oomodules/file/textfile/programsource/esource</a></li></ul></div><h2>Source</h2><pre class="code">OPT MODULE
+OPT LARGE
+
+MODULE  &#x27;oomodules/file/textfile/programsource/esource&#x27;,
+        &#x27;oomodules/file/textfile/programsource/esource/eObject&#x27;,
+        &#x27;oomodules/file/textfile/programsource/esource/eVar&#x27;,
+        &#x27;oomodules/resource&#x27;,
+        &#x27;oomodules/object&#x27;,
+        &#x27;oomodules/list/queuestack&#x27;,
+        &#x27;oomodules/library/reqtools&#x27;
+
+EXPORT DEF  requester:PTR TO reqtools,
+            tempList
+
+
+EXPORT PROC getAttributeList(name:PTR TO CHAR,filename=NIL:PTR TO CHAR)
+-&gt; returns elist of attribute names (copied!) and PTR TO eObject
+
+-&gt; gets object of the name from file filename. returns attribute list
+-&gt; and pointer to object
+
+DEF file[255]:STRING,
+    eObject:PTR TO eObject,
+    parentObject:PTR TO eObject,
+    eVar:PTR TO eVar,
+    varList,
+    nuList,
+    index,
+    objectName[255]:STRING,
+    source:PTR TO eSource,
+    str:PTR TO CHAR,
+    inFile
+
+  IF name=NIL THEN RETURN
+  IF StrLen(name)=0 THEN RETURN
+
+  StrCopy(objectName,name)
+  LowerStr(objectName)
+
+  IF filename=NIL
+    requester.file(&#x27;Where is the object defined?&#x27;)
+
+    StrCopy(file,requester.dirbuf)
+    AddPart(file,requester.filebuf,255)
+  ELSE
+    StrCopy(file,filename)
+  ENDIF
+
+  IF file[0]=0 THEN RETURN
+
+  NEW source.new([&quot;suck&quot;,file])
+
+  source.getInfo()
+  source.getModules()
+
+  eObject := source.getObject(objectName)
+
+  IF eObject = NIL
+    END source
+    RETURN
+  ENDIF
+
+
+  IF (eObject.entryList=NIL)
+    END source
+    RETURN
+  ENDIF
+
+
+/*
+
+  a length of 0 is valid
+
+  IF ListLen(eObject.entryList)=0
+    END source
+    RETURN
+  ENDIF
+*/
+
+  varList := List(ListLen(eObject.entryList))
+
+  IF varList = NIL
+    END source
+    RETURN
+  ENDIF
+
+
+  FOR index := 0 TO ListLen(eObject.entryList)-1
+
+/*
+    eVar := ListItem(eObject.entryList, index)
+    str := String(StrLen(eVar.identifier))
+    StrCopy(str,eVar.identifier)
+    ListAdd(varList,[str],1)
+-&gt;    WriteF(&#x27;__ attribute \s\n&#x27;, str)
+*/
+
+    eVar := ListItem(eObject.entryList, index)
+    ListAdd(varList,[eVar],1)
+
+  ENDFOR
+
+  parentObject,inFile := eObject.getParentObject()
+
+  IF parentObject
+
+-&gt;    WriteF(&#x27;got parent object \s (at address \d) in file \s.\n&#x27;, parentObject.identifier,parentObject,inFile)
+  
+
+   /*
+    * Get the attribute list. Do not take the second return value since
+    * that is the pointer to the parent object (which is already in
+    * parentObject -- eObject is the pointer to the current object)
+    */
+
+    tempList := getAttributeList(parentObject.identifier,inFile)
+
+-&gt;    WriteF(&#x27;got object \s.attribute lst is \d.\n&#x27;,eObject.identifier,tempList)
+
+    END parentObject.source
+
+    DisposeLink(inFile)
+
+  
+    IF tempList
+    
+      nuList := List(ListLen(varList)+ListLen(tempList))
+
+    ELSE
+
+      nuList := List(ListLen(varList))
+
+    ENDIF
+
+    IF nuList
+
+      IF tempList
+
+        FOR index := 0 TO ListLen(tempList)-1
+
+          ListAdd(nuList, [ListItem(tempList,index)], 1)
+
+        ENDFOR
+
+      ENDIF
+
+      FOR index := 0 TO ListLen(varList)-1
+
+        ListAdd(nuList, [ListItem(varList,index)], 1)
+
+      ENDFOR
+
+      Dispose(varList)
+      varList := nuList
+
+    ENDIF
+
+    IF tempList THEN DisposeLink(tempList)
+
+  ENDIF
+
+
+
+  END source
+
+-&gt;  FOR index:=0 TO ListLen(varList)-1 DO WriteF(&#x27;\s\n&#x27;, ListItem(varList,index))
+
+  RETURN varList, eObject
+
+ENDPROC
+
+EXPORT PROC getAttributeValueString(attribute:PTR TO eVar, eObject:PTR TO eObject, offset)
+DEF type,
+    str,
+    eVar:PTR TO eVar,
+    formatString:PTR TO CHAR,
+    stringLen
+
+
+ /*
+  * search for the attribute in the attribute list
+
+
+  FOR index := 0 TO ListLen(eObject.entryList)-1
+
+    eVar := ListItem(eObject.entryList, index)
+    EXIT StrCmp(eVar.identifier, attributeName)
+
+  ENDFOR
+*/
+
+
+  type := attribute.varType
+
+  SELECT type
+
+    CASE VT_LONG
+      stringLen := 16
+      formatString := &#x27;\ld&#x27;
+
+    CASE VT_CHAR
+      stringLen := 8
+      formatString := &#x27;\c (\d)&#x27;
+
+    CASE VT_INT
+      stringLen := 8
+      formatString := &#x27;\d&#x27;
+
+    CASE VT_OBJECT
+      stringLen := 16
+      formatString := &#x27;\ld&#x27;
+
+    CASE VT_PTR_TO_CHAR
+      stringLen := 16
+      formatString := &#x27;\c\c\c\c\c\c\c\c\c\c\c\c\c\c\c\c...&#x27;
+
+    CASE VT_PTR_TO_INT
+      stringLen := 16
+      formatString := &#x27;\ld&#x27;
+
+    CASE VT_PTR_TO_LONG
+      stringLen := 16
+      formatString := &#x27;\ld&#x27;
+
+    CASE VT_PTR_TO_OBJECT
+      stringLen := 16
+      formatString := &#x27;\ld&#x27;
+
+    CASE VT_ARRAY_OF_CHAR
+      stringLen := eVar.arraySize*3 -&gt; text should be &#x27;\c, &#x27; for each char
+      formatString := &#x27;\c&#x27;
+
+    CASE VT_ARRAY_OF_INT
+      stringLen := eVar.arraySize*5 -&gt; &#x27;255, &#x27;
+      formatString := &#x27;\d&#x27;
+
+    CASE VT_ARRAY_OF_LONG
+      stringLen := eVar.arraySize*12 -&gt; &#x27;42341278, &#x27;
+      formatString := &#x27;\ld&#x27;
+
+    CASE VT_ARRAY_OF_OBJECT
+      stringLen := 16
+      formatString := &#x27;array of object&#x27;
+
+    ENDSELECT
+
+
+  str := String(stringLen)
+
+  IF str
+
+    StringF(str,formatString,eObject+offset) -&gt; put value in string
+
+    RETURN str
+
+  ELSE
+
+    RETURN NIL
+
+  ENDIF
+
+ENDPROC
+
+PROC filterAttributeList(attributes:PTR TO LONG)
+-&gt; just remove PRIVATE and PUBLIC
+ENDPROC
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

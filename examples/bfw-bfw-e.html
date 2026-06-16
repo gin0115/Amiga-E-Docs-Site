@@ -1,0 +1,488 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>BFW.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-bfw.html">bfw</a> &rsaquo; BFW.e</div><h1>File: <code>BFW.e</code></h1><p class="meta">462 lines · project <a href="../examples/pkg-bfw.html"><code>bfw</code></a></p><p class="pathctx">bfw/BFW.e</p><p class="prose">==========================================================================</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/intuition.html">intuition/intuition</a></li></ul></div><h2>Source</h2><pre class="code">/*==========================================================================*/
+
+-&gt; PROGRAM       BFW
+-&gt; VERSION       3.1b
+-&gt; AUTHOR        Martin &#x27;Bay-Tek&#x27; Zawadowicz
+-&gt; GUI DESIGN BY Bay-Tek
+-&gt; MAKE          ECDEMO v3.1
+
+/*==========================================================================*/
+/* NOTE: SOURCE IS FREEWARE!!!                                              */
+/*==========================================================================*/
+
+OPT PREPROCESS
+
+MODULE &#x27;intuition/intuition&#x27;,&#x27;gadtools&#x27;,&#x27;libraries/gadtools&#x27;,&#x27;intuition/gadgetclass&#x27;,
+       &#x27;intuition/screens&#x27;,&#x27;graphics/text&#x27;,&#x27;utility/tagitem&#x27;,&#x27;graphics/rastport&#x27;,
+       &#x27;dos/dos&#x27;,&#x27;dos/dosextens&#x27;,&#x27;dos/exall&#x27;,&#x27;dos/filehandler&#x27;,&#x27;dos/dostags&#x27;,
+       &#x27;exec/nodes&#x27;,&#x27;exec/lists&#x27;,&#x27;asl&#x27;,&#x27;libraries/asl&#x27;
+
+
+ENUM ERR_NONE,ERR_KICK,ERR_CONTEXT,ERR_GADGET,ERR_LOCKSCREEN,ERR_VISUAL,
+     ERR_GTOPEN,ERR_WINDOW,ERR_SCREEN,ERR_MENUS,ERR_DEVLIST,ERR_FORMAT,
+     ERR_BFNAME,ERR_DISKNAME
+
+CONST WNDIDCMP = IDCMP_MOUSEMOVE OR IDCMP_REFRESHWINDOW OR IDCMP_RAWKEY OR
+                 IDCMP_GADGETUP OR IDCMP_CLOSEWINDOW OR LISTVIEWIDCMP OR
+                 SCROLLERIDCMP
+
+CONST WNDFLAGS = WFLG_DRAGBAR OR WFLG_DEPTHGADGET OR WFLG_CLOSEGADGET OR
+                 WFLG_SMART_REFRESH OR WFLG_ACTIVATE OR WFLG_RMBTRAP
+
+DEF	screen:PTR TO screen,
+	quit_bfw=FALSE,
+	bfw_wnd:PTR TO window,
+	visual=NIL,
+	tattr:PTR TO textattr,
+	offx,offy,
+	bfw_glist,
+	bfw_Zoom[4]:ARRAY OF INT,
+	getfileimagedata_g:PTR TO image,getfileimagedata
+
+DEF	g_dname=NIL:PTR TO gadget,
+	g_drives=NIL:PTR TO gadget,
+	g_system=NIL:PTR TO gadget,
+	g_speed=NIL:PTR TO gadget,
+	g_quiet=NIL:PTR TO gadget,
+	g_getfile=NIL:PTR TO gadget,
+	g_bfname=NIL:PTR TO gadget,
+	g_format=NIL:PTR TO gadget,
+	g_about=NIL:PTR TO gadget
+
+DEF     drivesList=NIL:PTR TO mlh,
+        fileReq=NIL:PTR TO filerequester
+
+DEF     nameValue,
+        pathValue,
+        quiet_info[5]:STRING,
+        drive_info[50]:STRING,
+        system_info[5]:STRING,
+        speed_info[5]:STRING,
+        pubScrName[$50]:STRING,
+        pathBuff[256]:STRING
+
+/*==========================================================================*/
+
+
+PROC p_OpenLibraries()
+    IF (gadtoolsbase:=OpenLibrary(&#x27;gadtools.library&#x27;,37))=NIL THEN Raise(ERR_GTOPEN)
+ENDPROC
+
+PROC p_CloseLibraries()
+    IF gadtoolsbase THEN CloseLibrary(gadtoolsbase)
+ENDPROC
+
+PROC p_SetUpScreen()
+    IF (screen:=LockPubScreen(pubScrName))=NIL THEN Raise(ERR_LOCKSCREEN)
+        ScreenToFront(screen)
+    IF (visual:=GetVisualInfoA(screen,NIL))=NIL THEN Raise(ERR_VISUAL)
+    offy:=screen.wbortop+Int(screen.rastport+58)-10
+ENDPROC
+
+PROC p_SetDownScreen()
+    IF getfileimagedata THEN Dispose(getfileimagedata)
+    IF visual THEN FreeVisualInfo(visual)
+    IF screen THEN UnlockPubScreen(NIL,screen)
+ENDPROC
+
+PROC p_bfwGui()
+DEF g=NIL:PTR TO gadget
+DEF stringInfo_dn:PTR TO stringinfo,stringInfo_p:PTR TO stringinfo
+
+   drivesList:=New(SIZEOF mlh)
+     p_InitList(drivesList)
+
+ IF ( g:=CreateContext({bfw_glist}))=NIL THEN Raise (ERR_CONTEXT)
+  IF (g_dname:=g:=CreateGadgetA(STRING_KIND,g,
+    [offx+94,offy+17,169,14,&#x27;Disk Name&#x27;,tattr,0,1,visual,0]:newgadget,
+    [$80032013,1,
+     GTST_STRING,&#x27;Empty&#x27;,
+     GTST_MAXCHARS,256,
+     NIL]))=NIL THEN Raise (ERR_GADGET)
+     stringInfo_dn:=g_dname.specialinfo
+     nameValue:=stringInfo_dn.buffer
+
+  IF (g_drives:=g:=CreateGadgetA(LISTVIEW_KIND,g,
+    [offx+14,offy+55,91,56,&#x27;Drives:&#x27;,tattr,1,4,visual,0]:newgadget,
+    [GTLV_LABELS,NIL,
+     GTLV_SHOWSELECTED,NIL,
+     NIL]))=NIL THEN Raise (ERR_GADGET)
+  IF (g_system:=g:=CreateGadgetA(CYCLE_KIND,g,
+    [offx+174,offy+55,89,13,&#x27;System:&#x27;,tattr,2,1,visual,0]:newgadget,
+    [GTCY_LABELS,[&#x27;FFS&#x27;,&#x27;OFS&#x27;,0],
+     NIL]))=NIL THEN Raise (ERR_GADGET)
+  IF (g_speed:=g:=CreateGadgetA(CYCLE_KIND,g,
+    [offx+174,offy+75,89,13,&#x27;Speed:&#x27;,tattr,3,1,visual,0]:newgadget,
+    [GTCY_LABELS,[&#x27;FAST&#x27;,&#x27;QUICK&#x27;,&#x27;SLOW&#x27;,0],
+     NIL]))=NIL THEN Raise (ERR_GADGET)
+  IF (g_quiet:=g:=CreateGadgetA(CHECKBOX_KIND,g,
+    [offx+237,offy+96,26,11,&#x27;Quiet:&#x27;,tattr,4,1,visual,0]:newgadget,
+     NIL))=NIL THEN Raise (ERR_GADGET)
+  IF (g_getfile:=g:=CreateGadgetA(GENERIC_KIND,g,
+    [offx+243,offy+119,20,14,&#x27;&#x27;,tattr,5,0,visual,0]:newgadget,
+    [NIL]))=NIL THEN Raise (ERR_GADGET)
+        g_getfile.flags:=GFLG_GADGIMAGE
+        g_getfile.activation:=GACT_RELVERIFY
+        g_getfile.gadgetrender:=getfileimagedata_g
+  IF (g_bfname:=g:=CreateGadgetA(STRING_KIND,g,
+    [offx+14,offy+119,227,14,&#x27;&#x27;,tattr,6,0,visual,0]:newgadget,
+    [$80032013,1,
+     GTST_STRING,pathBuff,
+     GTST_MAXCHARS,256,
+     NIL]))=NIL THEN Raise (ERR_GADGET)
+     stringInfo_p:=g_bfname.specialinfo
+     pathValue:=stringInfo_p.buffer
+
+  IF (g_format:=g:=CreateGadgetA(BUTTON_KIND,g,
+    [offx+14,offy+145,124,15,&#x27;_FORMAT&#x27;,tattr,7,16,visual,0]:newgadget,
+    [GT_UNDERSCORE,&quot;_&quot;,
+     NIL]))=NIL THEN Raise (ERR_GADGET)
+  IF (g_about:=g:=CreateGadgetA(BUTTON_KIND,g,
+    [offx+139,offy+145,124,15,&#x27;_ABOUT&#x27;,tattr,8,16,visual,0]:newgadget,
+    [GT_UNDERSCORE,&quot;_&quot;,
+     NIL]))=NIL THEN Raise (ERR_GADGET)
+ENDPROC
+
+PROC  p_OpenbfwWindow()
+ bfw_Zoom[0]:=NIL
+ bfw_Zoom[1]:=NIL
+ bfw_Zoom[2]:=TextLength(screen.rastport,&#x27;BFW v3.1b&#x27;,8)+85
+ bfw_Zoom[3]:=screen.wbortop+screen.rastport.txheight+1
+
+ IF (bfw_wnd:=OpenWindowTagList(NIL,
+		 [WA_LEFT,(screen.width-277)/2,
+     		  WA_TOP,(screen.height-offy-168)/2,
+     		  WA_WIDTH,277,
+     		  WA_HEIGHT,offy+168,
+     		  WA_FLAGS,WNDFLAGS,
+     		  WA_IDCMP,WNDIDCMP,
+     		  WA_TITLE,&#x27;BFW v3.1b&#x27;,
+     		  WA_SCREENTITLE,&#x27;BFW by Bay-Tek/MAWI^SCUM^TSI&#x27;,
+     		  WA_GADGETS,bfw_glist,
+     		  WA_ZOOM,bfw_Zoom,
+     		  WA_AUTOADJUST,TRUE,
+                  WA_CUSTOMSCREEN,screen,
+     		  WA_NEWLOOKMENUS,TRUE,
+     		  TAG_DONE]))=NIL THEN Raise (ERR_WINDOW)
+
+   p_bfwRender()
+ENDPROC
+
+PROC p_ClosebfwWindow()
+  IF bfw_wnd THEN CloseWindow(bfw_wnd)
+  IF bfw_glist THEN FreeGadgets(bfw_glist)
+ENDPROC
+
+PROC p_bfwRender()
+  DrawBevelBoxA(bfw_wnd.rport,12+offx,144+offy,253,17,
+    [GT_VISUALINFO,visual,GTBB_RECESSED,TRUE,NIL])
+  DrawBevelBoxA(bfw_wnd.rport,4+offx,11+offy,269,26,
+    [GT_VISUALINFO,visual,NIL])
+  DrawBevelBoxA(bfw_wnd.rport,4+offx,113+offy,269,26,
+    [GT_VISUALINFO,visual,NIL])
+  DrawBevelBoxA(bfw_wnd.rport,4+offx,139+offy,269,27,
+    [GT_VISUALINFO,visual,NIL])
+  DrawBevelBoxA(bfw_wnd.rport,4+offx,37+offy,269,76,
+    [GT_VISUALINFO,visual,NIL])
+  Gt_RefreshWindow(bfw_wnd,NIL)
+ENDPROC
+
+/*==========================================================================*/
+
+PROC p_LookbfwMessage()
+DEF mes:PTR TO intuimessage,g:PTR TO gadget,
+    type=0,infos=NIL,listItemPosition=1
+
+  REPEAT
+   IF mes:=Gt_GetIMsg(bfw_wnd.userport)
+       type:=mes.class
+        infos:=mes.code
+       SELECT type
+          CASE IDCMP_CLOSEWINDOW
+             quit_bfw:=TRUE
+          CASE IDCMP_REFRESHWINDOW
+             Gt_BeginRefresh(bfw_wnd)
+             Gt_EndRefresh(bfw_wnd,TRUE)
+              p_bfwRender()
+             type:=0
+           CASE IDCMP_RAWKEY
+                IF infos=69
+                   quit_bfw:=TRUE
+                ELSEIF infos=35
+                   p_Format()
+                ELSEIF infos=32
+                   JUMP about
+                ENDIF
+           CASE IDCMP_GADGETUP
+              g:=mes.iaddress
+              SELECT g
+                 CASE  g_drives
+                   listItemPosition:=infos
+                   p_DriveName(listItemPosition)
+                 CASE  g_system
+                   IF infos=1
+                      StrCopy(system_info,&#x27;NOFFS&#x27;)
+                   ELSEIF infos=0
+                      StrCopy(system_info,&#x27;FFS&#x27;)
+                   ENDIF
+
+                 CASE  g_speed
+                   IF infos=1
+                      StrCopy(speed_info,&#x27;QUICK&#x27;)
+                   ELSEIF infos=2
+                      StrCopy(speed_info,&#x27;SLOW&#x27;)
+                   ELSEIF infos=0
+                      StrCopy(speed_info,&#x27;FAST&#x27;)
+                   ENDIF
+
+                 CASE  g_quiet
+                   IF infos THEN quiet_info:=&#x27;QuIeT&#x27; ELSE quiet_info:=FALSE
+
+                 CASE  g_getfile
+                   p_FileReqester()
+                 CASE  g_format
+                   p_Format()
+                 CASE  g_about
+about:             reqest({about_txt},&#x27;OK&#x27;)
+
+              ENDSELECT
+       ENDSELECT
+       Gt_ReplyIMsg(mes)
+     ELSE
+      WaitPort(bfw_wnd.userport)
+   ENDIF
+  UNTIL type
+ENDPROC
+
+PROC main() HANDLE
+DEF errlist:PTR TO LONG,args:PTR TO LONG,rdarg
+
+ args:=[&#x27;SYS:C/BFormat&#x27;,&#x27;Workbench&#x27;]
+
+   tattr:=[&#x27;topaz.font&#x27;,8,0,0]:textattr
+    IF KickVersion(37)=FALSE THEN Raise (ERR_KICK)
+     rdarg:=ReadArgs(&#x27;BFNAME/K/A,PUBSCR/K/A&#x27;,args,NIL)
+      StrCopy(pathBuff,args[0],ALL)
+        StrCopy(pubScrName,args[1],ALL)
+    p_OpenLibraries()
+    p_SetUpScreen()
+    p_AllocGetFileImage()
+    p_bfwGui()
+    p_OpenbfwWindow()
+    p_HuntDrives()
+    p_DriveName(0)
+      IF rdarg THEN FreeArgs(rdarg)
+       StrCopy(system_info,&#x27;FFS&#x27;)
+        StrCopy(speed_info,&#x27;FAST&#x27;)
+
+    REPEAT
+        p_LookbfwMessage()
+    UNTIL quit_bfw=TRUE
+
+    Raise(ERR_NONE)
+ EXCEPT
+    p_ClosebfwWindow()
+    p_SetDownScreen()
+    p_CloseLibraries()
+
+  IF exception=&quot;MEM&quot;
+      WriteF(&#x27;Sorry, out of memory!!!\n&#x27;) ; JUMP exit
+  ENDIF
+
+  IF exception=ERR_KICK THEN WriteF(&#x27;Sorry, you need KickStart v37+!!!\n&#x27;)
+  IF exception&gt;1
+     errlist:=[&#x27;get context&#x27;,&#x27;create gadget&#x27;,&#x27;lock screen&#x27;,&#x27;get visual infos&#x27;,
+               &#x27;open &quot;gadtools.library&quot; v37+&#x27;,&#x27;open window&#x27;,&#x27;open screen&#x27;,&#x27;create menus&#x27;]
+     EasyRequestArgs(0,[20,0,&#x27;Error!!!&#x27;,&#x27;Could not \s!&#x27;,&#x27;OK&#x27;],0,[errlist[exception-2]])
+  ENDIF
+exit:
+ENDPROC
+
+/*=======================================================================*/
+
+PROC p_InitList(l:PTR TO mlh)
+  l.head:=l+4
+  l.tail:=NIL
+  l.tailpred:=l
+ENDPROC
+
+
+PROC p_AddToList(string)
+DEF newNode=NIL:PTR TO ln, node:PTR TO ln,done=FALSE,itemPosition=0
+  newNode:=New(SIZEOF ln)
+  newNode.name:=String(StrLen(string))
+  StrCopy(newNode.name,string,ALL)
+  Gt_SetGadgetAttrsA (g_drives,bfw_wnd , NIL, [GTLV_LABELS, -1, TAG_DONE])
+  node:=drivesList.head
+  IF drivesList.tailpred=drivesList
+    AddHead(drivesList, newNode)
+  ELSEIF Char(node.name)&gt;string[]
+    AddHead(drivesList, newNode)
+  ELSEIF node=drivesList.tailpred
+    AddTail(drivesList,newNode)
+  ELSE
+    WHILE done=FALSE
+      node:=node.succ
+      INC itemPosition
+      IF Char(node.name)&gt;string[]
+        done:=TRUE
+      ELSEIF node.succ=NIL
+        done:=TRUE
+      ENDIF
+    ENDWHILE
+    Insert(drivesList, newNode, node.pred)
+  ENDIF
+  Gt_SetGadgetAttrsA (g_drives,bfw_wnd, NIL,
+                      [GTLV_LABELS, drivesList,
+                       GTLV_TOP,    0,
+                       GTLV_SELECTED,0,
+                       TAG_DONE])
+ENDPROC
+
+
+PROC p_DriveName(itemPosition)
+DEF node:PTR TO ln, i=0
+    node:=drivesList.head
+    WHILE i&lt;&gt;itemPosition
+         node:=node.succ
+         INC i
+    ENDWHILE
+    StrCopy(drive_info,node.name)
+ENDPROC
+
+/*==========================================================================*/
+
+PROC reqest(body,gad)
+ENDPROC  EasyRequestArgs(bfw_wnd,[20,0,&#x27;BFW requester&#x27;,body,gad],0,0)
+
+/*==========================================================================*/
+
+PROC p_HuntDrives()
+DEF dl=NIL:PTR TO doslist,dlist=NIL,srtBuff[50]:STRING,
+    fss:PTR TO filesysstartupmsg,dosenv:PTR TO dosenvec
+
+   dl:=(dlist:=LockDosList(LDF_DEVICES OR LDF_READ))
+    IF dlist=NIL THEN Raise (ERR_DEVLIST)
+     WHILE dl:=NextDosEntry(dl,LDF_DEVICES)
+      IF (dl.task&lt;&gt;0) AND (dl.startup&gt;0)
+        fss:=BADDR(dl.startup) ; dosenv:=BADDR(fss.environ)
+       IF ((dosenv.dostype=$444F5300)  OR (dosenv.dostype=$444F5301)) AND ((dosenv.blockspertrack=11) OR (dosenv.blockspertrack=63) OR (dosenv.blockspertrack=51))
+         StringF(srtBuff,&#x27;\s:&#x27;,BADDR(dl.name)+1)
+         p_AddToList(srtBuff)
+       ENDIF
+     ENDIF
+   ENDWHILE
+ UnLockDosList(LDF_DEVICES OR LDF_READ)
+ENDPROC
+
+PROC p_FileReqester()
+ IF (aslbase:=OpenLibrary(&#x27;asl.library&#x27;,37))=NIL
+     reqest(&#x27;Could not open &quot;asl.library&quot; v37+&#x27;,&#x27;OK&#x27;)
+     RETURN
+ ELSE
+
+  IF (fileReq:=AllocAslRequest(ASL_FILEREQUEST,[ASLFR_TITLETEXT,&#x27;BFormatWin&#x27;,ASLFR_WINDOW,bfw_wnd,ASLFR_SLEEPWINDOW,TAG_DONE]))=NIL
+      reqest(&#x27;Could not alloc requester&#x27;,&#x27;OK&#x27;)
+      JUMP closeLib
+  ENDIF
+
+ ENDIF
+
+  IF (AslRequest(fileReq,0))=NIL THEN JUMP nofile
+
+                        MOVE.L	fileReq,A0
+			MOVE.L	8(A0),A0
+			MOVE.L	pathValue,A1
+		cp0:	MOVE.B	(A0)+,(A1)+
+			BNE.S	cp0
+
+			AddPart(pathValue,fileReq.file,256)
+
+
+       Gt_SetGadgetAttrsA(g_bfname,bfw_wnd,NIL,[GTST_STRING,pathValue,NIL])
+nofile:
+       FreeAslRequest(fileReq)
+closeLib:
+       CloseLibrary(aslbase)
+ENDPROC
+
+/*==========================================================================*/
+
+PROC p_Format() HANDLE
+DEF bformat_exe[256]:STRING,fh=NIL,err,con[256]:STRING
+ IF pathValue[]=NIL THEN Raise(ERR_BFNAME)
+  IF nameValue[]=NIL THEN Raise(ERR_DISKNAME)
+
+ IF  (reqest(&#x27;You are sure ?!?&#x27;,&#x27;Yes|No!&#x27;))=FALSE THEN RETURN
+    StringF(bformat_exe,&#x27;&quot;\s&quot; DRIVE \s NAME &quot;\s&quot; \s \s \s&#x27;,pathValue,drive_info,nameValue,system_info,speed_info,quiet_info)
+    StringF(con,&#x27;CON:////BFW output window/CLOSE/SCREEN\s&#x27;,pubScrName)
+       IF (fh:=Open(con,NEWFILE))=NIL THEN Raise (&quot;OPEN&quot;)
+       IF (err:=SystemTagList(bformat_exe,[SYS_INPUT,fh,
+                                           SYS_OUTPUT,fh,
+                                           SYS_ASYNCH,FALSE,NIL]))&lt;&gt;NIL THEN Raise (ERR_FORMAT)
+
+ EXCEPT DO
+   IF fh ; Delay(50) ; Close(fh) ; ENDIF
+ IF exception
+   SELECT exception
+    CASE ERR_DISKNAME ;  reqest(&#x27;Disk name is bad!!!&#x27;,&#x27;OK&#x27;)
+    CASE ERR_BFNAME   ;  reqest(&#x27;BadFormat name is bad!!!&#x27;,&#x27;OK&#x27;)
+    CASE ERR_FORMAT   ;  reqest(&#x27;Format error!!!&#x27;,&#x27;OK&#x27;)
+    CASE &quot;OPEN&quot;       ;  reqest(&#x27;Could not open output window!!!&#x27;,&#x27;OK&#x27;)
+  ENDSELECT
+ ENDIF
+ENDPROC
+
+/*==========================================================================*/
+
+PROC p_AllocGetFileImage()
+IF  (CopyMem([$0000,$1000,$0000,$3000,$003C,$3000,$0042,$3000,
+              $0F81,$3000,$0FC1,$3000,$0C3F,$3000,$0C01,$3000,
+              $0C01,$3000,$0C01,$3000,$0FFF,$3000,$0000,$3000,
+              $0000,$3000,$7FFF,$F000,
+              $FFFF,$E000,$C000,$0000,$C000,$0000,$C000,$0000,
+              $C000,$0000,$C000,$0000,$C000,$0000,$C000,$0000,
+              $C000,$0000,$C000,$0000,$C000,$0000,$C000,$0000,
+              $C000,$0000,$8000,$0000]:INT,getfileimagedata:=NewM(112,2),112))=NIL THEN Raise(&quot;MEM&quot;)
+
+              getfileimagedata_g:=[ 0,0,20,14,2,getfileimagedata,$3,0,NIL]:image
+ENDPROC
+
+/*==========================================================================*/
+about_txt:
+           CHAR   &#x27;»This program is FREEWARE«\n\n&#x27;,
+                  &#x27;If you have any sugestions\n&#x27;,
+                  &#x27;write to:\n\n&#x27;,
+                  &#x27;    Martin Zawadowicz\n&#x27;,
+                  &#x27;       Lipowa 4/19\n&#x27;,
+                  &#x27;      76-200 Slupsk\n&#x27;,
+                  &#x27;         POLAND&#x27;,NIL
+/*==========================================================================*/
+
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

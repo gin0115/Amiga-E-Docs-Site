@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>RtRequest.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-ged-e2-0.html">GED-E2.0</a> &rsaquo; RtRequest.e</div><h1>File: <code>RtRequest.e</code></h1><p class="meta">97 lines · project <a href="../examples/pkg-ged-e2-0.html"><code>GED-E2.0</code></a></p><p class="pathctx">GED-E2.0/GED-E/RtRequest.e</p><p class="prose">Sauve les noms complets ainsi que le chemin des fichiers choisis</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/dos.html">dos/dos</a></li><li><a href="../modules/screens.html">intuition/screens</a></li><li><a href="../modules/reqtools.html">reqtools</a></li><li><a href="../modules/tagitem.html">utility/tagitem</a></li></ul></div><h2>Source</h2><pre class="code">/* Sauve les noms complets ainsi que le chemin des fichiers choisis   */
+/* par l&#x27;intermédaire du filerequester de la la reqtools.library dans */
+/* les variables spécifiées.                                          */
+
+    OPT OSVERSION=36
+
+    MODULE &#x27;dos/dos&#x27;
+    MODULE &#x27;reqtools&#x27;,&#x27;libraries/reqtools&#x27;
+    MODULE &#x27;utility/tagitem&#x27;
+    MODULE &#x27;intuition/screens&#x27;,&#x27;intuition/intuitionbase&#x27;
+
+    ENUM MEM_ERROR=21,IO_ERROR,FIND_ERROR
+
+    DEF file[108]:STRING,req:PTR TO rtfilerequester,efile[255]:STRING,
+        epath[108]:STRING,path,bpath,filelist:PTR TO rtfilelist,
+        fstruct:PTR TO rtfilelist,rdargs,cliarg:PTR TO LONG,fhandle,phandle,
+        lock,ib:PTR TO intuitionbase
+
+/*FOLDER &quot;main()&quot;*/
+PROC main()
+    cliarg:=[0,0,&#x27;Select files&#x27;,0]
+    IF (rdargs:=ReadArgs(&#x27;FILESVAR/A,PATHVAR,TITLE/K,EXIST/S&#x27;,cliarg,NIL))
+        IF (reqtoolsbase:=OpenLibrary(&#x27;reqtools.library&#x27;,37))
+            IF (req:=RtAllocRequestA(RT_FILEREQ,0))
+                IF cliarg[1]
+                    IF (phandle:=Open(cliarg[1],MODE_OLDFILE))
+                        IF ReadStr(phandle,epath)&lt;&gt;-1 THEN RtChangeReqAttrA(req,[RTFI_DIR,epath,TAG_END])
+                        Close(phandle) ; phandle:=0
+                    ENDIF
+                ENDIF
+                ib:=intuitionbase
+                IF (filelist:=RtFileRequestA(req,file,cliarg[2],[RTFI_FLAGS,FREQF_MULTISELECT,RT_SCREEN,ib.activescreen,TAG_DONE]))
+                    fstruct:=filelist
+                    path:=req.dir
+                    IF cliarg[1]
+                        IF (phandle:=Open(cliarg[1],MODE_NEWFILE))=0 THEN quit(IO_ERROR,cliarg[1])
+                        IF Fputs(phandle,path) THEN quit(IO_ERROR,cliarg[1])
+                    ENDIF
+                    IF StrLen(path)
+                        bpath:=TRUE
+                        StrCopy(epath,path,ALL)
+                        IF epath[EstrLen(epath)-1]&lt;&gt;$3A THEN StrAdd(epath,&#x27;/&#x27;,ALL)
+                    ENDIF
+                    IF bpath THEN StrCopy(efile,epath,ALL)
+                    StrAdd(efile,fstruct.name,ALL)
+                    IF cliarg[3]
+                        IF (lock:=Lock(efile,ACCESS_READ))=0
+                            UnLock(lock)
+                            quit(RETURN_WARN,NIL)
+                        ELSE ; UnLock(lock)
+                        ENDIF
+                    ENDIF
+                    WHILE (fstruct:=fstruct.next)&lt;&gt;0
+                        StrAdd(efile,&#x27; &#x27;,ALL)
+                        IF bpath THEN StrCopy(efile,epath,ALL)
+                        StrAdd(efile,fstruct.name,ALL)
+                    ENDWHILE
+                    IF (fhandle:=Open(cliarg[0],MODE_NEWFILE))
+                        IF Fputs(fhandle,efile) THEN quit(IO_ERROR,cliarg[0])
+                    ELSE ; quit(IO_ERROR,NIL)
+                    ENDIF
+                ELSE ; quit(RETURN_WARN,NIL)
+                ENDIF
+            ELSE ; quit(MEM_ERROR,&#x27;RtAllocRequest()&#x27;)
+            ENDIF
+        ELSE ; quit(FIND_ERROR,&#x27;reqtools.library!&#x27;)
+        ENDIF
+    ELSE ; quit(IO_ERROR,NIL)
+    ENDIF
+    quit(RETURN_OK,NIL)
+ENDPROC
+/*FEND*/
+CHAR &#x27;$VER: RtRequest 1.007 (26 Oct 1994) © BURGHARD Eric | WANABOSO/AGOA&#x27;
+
+/*FOLDER &quot;quit(err,obj)&quot;*/
+PROC quit(err,obj)
+    DEF flt=0
+
+    IF (err&lt;&gt;RETURN_OK) AND (err&lt;&gt;RETURN_WARN)
+        SELECT err
+            CASE IO_ERROR  ; flt:=IoErr()
+            CASE MEM_ERROR ; flt:=ERROR_NO_FREE_STORE
+            CASE FIND_ERROR; flt:=ERROR_OBJECT_NOT_FOUND
+        ENDSELECT
+        err:=RETURN_ERROR
+        PrintFault(flt,obj)
+    ENDIF
+    IF rdargs THEN FreeArgs(rdargs)
+    IF fhandle THEN Close(fhandle)
+    IF phandle THEN Close(phandle)
+    IF req THEN RtFreeRequest(req)
+    IF filelist THEN RtFreeFileList(filelist)
+    CleanUp(err)
+ENDPROC
+/*FEND*/
+
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

@@ -1,0 +1,151 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>qstringf20.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-aepd29.html">AEPD29</a> &rsaquo; qstringf20.e</div><h1>File: <code>qstringf20.e</code></h1><p class="meta">125 lines · project <a href="../examples/pkg-aepd29.html"><code>AEPD29</code></a></p><p class="pathctx">AEPD29/EPD29/Amiga_E-Programme/ModulesMC1/QstringF20/qstringf20.e</p><h2>Source</h2><pre class="code">OPT MODULE
+EXPORT PROC stringf(str,format,listptr=NIL:PTR TO LONG)
+   MOVEA.L str,A0
+   MOVE.L A0,A6
+   MOVEA.L format,A1
+   MOVEA.L listptr,A2
+nxt:
+   MOVE.B (A1)+,(A0)+
+   BEQ.S  done
+   CMPI.B  #&quot;%&quot;,-1(A0)
+   BNE.S nxt
+   MOVE.B (A1)+,(A0)+
+   CMPI.B  #&quot;l&quot;,-1(A1)
+   BEQ.S gotl
+   CMPI.B  #&quot;s&quot;,-1(A1)
+   BNE.S nxt
+   SUBQ.W #2,A0 	 /* eat the %s	*/
+   MOVEA.L (A2)+,A3     /* must be a string pointer  */
+dcopy:
+   MOVE.B  (A3)+,(A0)+    /* copy byte  */
+   BNE.S dcopy
+   SUBQ.W  #1,A0	  /* write over 0  */
+   BRA.S  nxt
+
+done:
+   SUBA.L A6,A0
+   SUBQ.L #1,A0 	/* length  */
+   EXG A6,A0		/* A0 points to str, A6 to length  */
+   CMPA.W -4(A0),A6      /* compare with maxlength  */
+   BHI.S toolong
+   MOVE.W A6,-2(A0)      /* equivalent to SetStr()  */
+toolong:
+   MOVE.L A6,D1
+   MOVE.L A0,D0
+   BRA endstringf
+
+gotl:
+   MOVE.B (A1)+,D0
+   MOVE.B D0,(A0)+
+   CMPI.B #&quot;d&quot;,D0
+   BEQ.S gotdec
+   CMPI.B #&quot;x&quot;,D0
+   BEQ gothex
+   CMPI.B #&quot;c&quot;,D0
+   BEQ.S gotchar
+   CMPI.B #&quot;b&quot;,D0
+   BNE.S nxt
+   SUBQ.W #3,A0    /* eat %lb  */ /* bin routine starts here  */
+   MOVE.L (A2)+,D0
+   BEQ.S binzero
+   MOVEQ #31,D1
+next0:
+   BTST  D1,D0
+   DBNE D1,next0
+nextbit:
+   BTST D1,D0
+   BEQ.S bit0
+   MOVE.B #&quot;1&quot;,(A0)+
+   BRA.S bit1
+bit0:
+   MOVE.B #&quot;0&quot;,(A0)+
+bit1:
+   DBRA D1,nextbit
+   BRA nxt
+
+binzero:
+   MOVE.B #&quot;0&quot;,(A0)+
+   BRA nxt
+
+gotchar:
+   SUBQ.W #3,A0
+   MOVE.L (A2)+,D0
+   MOVE.B D0,(A0)+
+   BRA nxt
+
+gotdec:
+   SUBQ.W #3,A0
+   MOVE.L (A2)+,D0
+   SUBA.W  #14,A7
+   MOVEA.L A7,A3
+   MOVE.L D0,D2
+   BGE.S repeat
+   NEG.L D0
+repeat:
+   MOVEQ  #0,D1
+   LONG $4C7C0401,$A   /* DIVU.L #10,D1:D0	*/
+   ADDI.B #&quot;0&quot;,D1
+   MOVE.B D1,(A3)+
+   TST.L D0
+   BGT.S repeat
+   TST.L D2
+   BGE.S notneg
+   MOVE.B #&quot;-&quot;,(A3)+
+notneg:
+   MOVE.B  -(A3),(A0)+
+   CMPA.L  A3,A7
+   BLT.S notneg
+   ADDA.W #14,A7
+   BRA nxt
+
+gothex:
+   MOVE.L (A2)+,D0
+   SUBQ.W #3,A0
+   MOVEA.L A7,A3
+   SUBA.W  #14,A3
+   MOVEQ #-1,D2
+nextltr:
+   MOVE.B D0,D1
+   ANDI.B #$0F,D1
+   ADDI.B #48,D1
+   CMPI.B #57,D1
+   BLE.S around
+   ADDQ.B #7,D1
+around:
+   MOVE.B D1,(A3)+
+   LSR.L #4,D0
+   DBEQ D2,nextltr
+   NOT.L D2
+loadstr:
+   MOVE.B -(A3),(A0)+    /* reverse buffer  */
+   DBF D2,loadstr
+   BRA nxt
+endstringf:
+ENDPROC D0
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

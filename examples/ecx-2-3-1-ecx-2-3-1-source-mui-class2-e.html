@@ -1,0 +1,378 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Class2.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-ecx-2-3-1.html">ECX_2.3.1</a> &rsaquo; Class2.e</div><h1>File: <code>Class2.e</code></h1><p class="meta">352 lines · project <a href="../examples/pkg-ecx-2-3-1.html"><code>ECX_2.3.1</code></a></p><p class="pathctx">ECX_2.3.1/ecx-2.3.1/source/MUI/Class2.e</p><p class="prose">** Demosource on how to use <a href="../modules/customclasses.html">customclasses</a> in E. ** Based on the C example &#x27;Class2.c&#x27; by Stafan Stuntz. ** Translated TO E by Sven Steiniger ** ** Sorry FOR some uppercase words in the comments. This IS because OF ** my AutoCase-<a href="../modules/dictionary.html">dictionary</a> ** ** MorphOS supoprt by LS 2004</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/muicustomclass.html">mui/muicustomclass</a></li><li><a href="../modules/muimaster.html">muimaster</a></li></ul></div><h2>Source</h2><pre class="code">/*
+** Demosource on how to use customclasses in E.
+** Based on the C example &#x27;Class2.c&#x27; by Stafan Stuntz.
+** Translated TO E by Sven Steiniger
+**
+** Sorry FOR some uppercase words in the comments. This IS because OF
+** my AutoCase-dictionary
+**
+** MorphOS supoprt by LS 2004
+*/
+
+OPT PREPROCESS
+
+MODULE &#x27;mui/muicustomclass&#x27;
+MODULE &#x27;muimaster&#x27;,&#x27;libraries/mui&#x27;,&#x27;libraries/muip&#x27;,
+       &#x27;intuition/classes&#x27;,&#x27;intuition/classusr&#x27;,&#x27;intuition/screens&#x27;,&#x27;intuition/intuition&#x27;,
+       &#x27;utility&#x27;,&#x27;utility/tagitem&#x27;,
+       &#x27;amigalib/boopsi&#x27;
+
+
+/***************************************************************************/
+/* Here is the beginning of our simple new class...                        */
+/***************************************************************************/
+
+/*
+** This class is the same as within Class1.c except that it features
+** a pen attribute.
+*/
+
+OBJECT mydata
+    penspec:mui_penspec
+    pen:LONG
+    penchange
+ENDOBJECT
+
+CONST MYATTR_PEN=$8022   /* tag value for the new attribute.            */
+
+
+PROC mNew(cl:PTR TO iclass,obj:PTR TO object,msg:PTR TO opset)
+DEF data:PTR TO mydata,
+    tags:PTR TO tagitem,
+    tag:PTR TO tagitem
+
+  IF (obj:=doSuperMethodA(cl,obj,msg))=NIL THEN RETURN 0
+
+  data:=INST_DATA(cl,obj)
+
+  /* parse initial taglist */
+  tags:=msg.attrlist
+  WHILE tag:=NextTagItem({tags})
+    IF tag.tag=MYATTR_PEN THEN
+      IF tag.data THEN CopyMem(tag.data,data.penspec,SIZEOF mui_penspec)
+  ENDWHILE
+
+ENDPROC obj
+
+
+/* OM_NEW didnt allocates something, just DO nothing here... */
+
+PROC mDispose(cl:PTR TO iclass,obj:PTR TO object,msg:PTR TO msg) IS
+  doSuperMethodA(cl,obj,msg)
+
+
+PROC mSet(cl:PTR TO iclass,obj:PTR TO object,msg:PTR TO opset)
+DEF data:PTR TO mydata,
+    tags:PTR TO tagitem,
+    tag:PTR TO tagitem
+
+  data:=INST_DATA(cl,obj)
+  tags:=msg.attrlist
+  WHILE tag:=NextTagItem({tags})
+    IF tag.tag=MYATTR_PEN
+      IF tag.data
+        CopyMem(tag.data,data.penspec,SIZEOF mui_penspec)
+        data.penchange:=TRUE
+        Mui_Redraw(obj,MADF_DRAWOBJECT)  /* redraw ourselves completely */
+      ENDIF
+    ENDIF
+  ENDWHILE
+
+ENDPROC doSuperMethodA(cl,obj,msg)
+
+
+/*
+** OM_GET method, see if someone wants to read the color.
+*/
+
+PROC mGet(cl:PTR TO iclass,obj:PTR TO object,msg:PTR TO opget)
+DEF data:PTR TO mydata,storage
+
+  IF msg.attrid=MYATTR_PEN
+    data:=INST_DATA(cl,obj)
+    storage:=msg.storage
+    PutLong(storage, data.penspec)
+    RETURN MUI_TRUE
+  ENDIF
+
+ENDPROC doSuperMethodA(cl,obj,msg)
+
+
+PROC mSetup(cl:PTR TO iclass,obj:PTR TO object,msg:PTR TO msg)
+DEF data:PTR TO mydata
+
+  IF doSuperMethodA(cl,obj,msg)=FALSE THEN RETURN FALSE
+  data:=INST_DATA(cl,obj)
+  data.pen:=Mui_ObtainPen(muiRenderInfo(obj),data.penspec,0)
+
+ENDPROC MUI_TRUE
+
+
+PROC mCleanup(cl:PTR TO iclass,obj:PTR TO object,msg:PTR TO msg)
+DEF data:PTR TO mydata
+
+  data:=INST_DATA(cl,obj)
+  Mui_ReleasePen(muiRenderInfo(obj),data.pen)
+
+ENDPROC doSuperMethodA(cl,obj,msg)
+
+
+/*
+** AskMinMax method will be called before the window is opened
+** and before layout takes place. We need to tell MUI the
+** minimum, maximum and default size of our object.
+*/
+
+PROC mAskMinMax(cl:PTR TO iclass,obj:PTR TO object,msg:PTR TO muip_askminmax)
+
+  /*
+  ** let our superclass first fill in what it thinks about sizes.
+  ** this will e.g. add the size OF frame and inner spacing.
+  */
+
+  doSuperMethodA(cl,obj,msg)
+
+  /*
+  ** now add the values specific TO our object. note that we
+  ** indeed need TO *add* these values, not just set them!
+  */
+
+  msg.minmaxinfo.minwidth := msg.minmaxinfo.minwidth + 100
+  msg.minmaxinfo.defwidth := msg.minmaxinfo.defwidth + 120
+  msg.minmaxinfo.maxwidth := msg.minmaxinfo.maxwidth + 500
+
+  msg.minmaxinfo.minheight := msg.minmaxinfo.minheight + 40
+  msg.minmaxinfo.defheight := msg.minmaxinfo.defheight + 90
+  msg.minmaxinfo.maxheight := msg.minmaxinfo.maxheight + 300
+
+ENDPROC 0
+
+
+/*
+** Draw method is called whenever MUI feels we should render
+** our object. This usually happens after layout is finished
+** or when we need to refresh in a simplerefresh window.
+** Note: You may only render within the rectangle
+**       _mleft(obj), _mtop(obj), _mwidth(obj), _mheight(obj).
+*/
+
+PROC mDraw(cl:PTR TO iclass,obj:PTR TO object,msg:PTR TO muip_draw)
+DEF data:PTR TO mydata,
+    i
+
+  data:=INST_DATA(cl,obj)
+
+  /*
+  ** let our superclass draw itself first, area class would
+  ** e.g. draw the frame and clear the whole region. What
+  ** it does exactly depends on msg.flags.
+  */
+
+  doSuperMethodA(cl,obj,msg)
+
+  /*
+  ** IF MADF_DRAWOBJECT isn&#x27;t set, we shouldn&#x27;t draw anything.
+  ** MUI just wanted TO update the frame OR something like that.
+  */
+
+  IF (msg.flags AND MADF_DRAWOBJECT)=0 THEN RETURN 0
+
+  /*
+  ** test IF someone changed our pen
+  */
+
+  IF data.penchange
+    data.penchange:=FALSE
+    Mui_ReleasePen(muiRenderInfo(obj),data.pen)
+    data.pen:=Mui_ObtainPen(muiRenderInfo(obj),data.penspec,0)
+  ENDIF
+
+
+  /*
+  ** ok, everything ready TO render...
+  ** Note that we *must* use the MUIPEN() macro before actually
+  ** using pens from MUI_ObtainPen() in rendering calls.
+  */
+
+  SetAPen(_rp(obj),MUIPEN(data.pen))
+
+  FOR i:=_mleft(obj) TO _mright(obj) STEP 5
+    Move(_rp(obj),_mleft(obj),_mbottom(obj))
+    Draw(_rp(obj),i,_mtop(obj))
+    Move(_rp(obj),_mright(obj),_mbottom(obj))
+    Draw(_rp(obj),i,_mtop(obj))
+  ENDFOR
+
+ENDPROC 0
+
+
+/*
+** Here comes the dispatcher FOR our custom class.
+** Unknown/unused methods are passed to the superclass immediately.
+*/
+
+PROC myDispatcher(cl:PTR TO iclass,obj:PTR TO object,msg:PTR TO msg)
+DEF methodID
+
+  methodID:=msg.methodid
+  SELECT methodID
+    CASE OM_NEW          ;  RETURN mNew      (cl,obj,msg)
+    CASE OM_DISPOSE      ;  RETURN mDispose  (cl,obj,msg)
+    CASE OM_SET          ;  RETURN mSet      (cl,obj,msg)
+    CASE OM_GET          ;  RETURN mGet      (cl,obj,msg)
+    CASE MUIM_AskMinMax  ;  RETURN mAskMinMax(cl,obj,msg)
+    CASE MUIM_Setup      ;  RETURN mSetup    (cl,obj,msg)
+    CASE MUIM_Cleanup    ;  RETURN mCleanup  (cl,obj,msg)
+    CASE MUIM_Draw       ;  RETURN mDraw     (cl,obj,msg)
+  ENDSELECT
+
+ENDPROC doSuperMethodA(cl,obj,msg)
+
+
+
+/***************************************************************************/
+/* Thats all there is about it. Now lets see how things are used...        */
+/***************************************************************************/
+
+PROC main() HANDLE
+DEF app=NIL,window,myobj,pen,
+    mcc=NIL:PTR TO mui_customclass,
+    startpen:PTR TO mui_penspec,
+    sigs=0
+
+  IF (muimasterbase:=OpenLibrary(MUIMASTER_NAME, MUIMASTER_VMIN))=NIL THEN
+     Raise(&#x27;Failed TO open muimaster.library&#x27;)
+
+  /*
+  ** open utility.library, because we need function NextTagItem()
+  */
+  IF (utilitybase:=OpenLibrary(&#x27;utility.library&#x27;,36))=NIL THEN
+     Raise(&#x27;Failed TO open utility.library&#x27;)
+
+  #ifdef __AMIGAOS4__
+   IF (muimasteriface := GetInterface(muimasterbase, &#x27;main&#x27;, 1, NIL)) = NIL THEN
+    Raise(&#x27;failed to open muimaster.interface&#x27;)
+  #endif
+
+
+  /* Create the NEW custom class with a call TO MUI_CreateCustomClass(). */
+  /* Caution: This function returns not a struct IClass, BUT a           */
+  /* struct MUI_CustomClass which contains a struct IClass TO be         */
+  /* used with NewObject() calls.                                        */
+  /* Note well: MUI creates the dispatcher hook FOR you, you may         */
+  /* *not* use its h_Data field! IF you need custom data, use the        */
+  /* cl_UserData OF the IClass structure!                                */
+
+  /* E-note: Create the NEW custom class with a call TO eMui_CreateCustomClass().*/
+  /* Big thanks TO Jan Hendrik Schulz FOR creating eMui_CreateCustomClass()      */
+
+  IF (mcc:=eMui_CreateCustomClass(NIL,MUIC_Area,NIL,SIZEOF mydata,{myDispatcher}))=NIL THEN
+      Raise(&#x27;Could not create custom class.&#x27;)
+
+  app:=ApplicationObject,
+      MUIA_Application_Title      , &#x27;Class2&#x27;,
+      MUIA_Application_Version    , &#x27;$VER: Class2 12.9 (21.11.95)&#x27;,
+      MUIA_Application_Copyright  , &#x27;©1995, Stefan Stuntz&#x27;,
+      MUIA_Application_Author     , &#x27;Stefan Stuntz&#x27;,
+      MUIA_Application_Description, &#x27;Demonstrate the use OF custom classes.&#x27;,
+      MUIA_Application_Base       , &#x27;CLASS2&#x27;,
+
+      SubWindow, window:=WindowObject,
+          MUIA_Window_Title, &#x27;Another Custom Class&#x27;,
+          MUIA_Window_ID   , &quot;CLS2&quot;,
+          WindowContents, VGroup,
+
+              Child, TextObject,
+                  TextFrame,
+                  MUIA_Background, MUII_TextBack,
+                  -&gt; E-note : center this text means inserting a &lt;ESC c&gt; which IS usually \ec
+                  MUIA_Text_Contents, &#x27;\ecThis IS a custom class with attributes.\nClick on the button at the bottom of\nthe window TO adjust the color.&#x27;,
+                 End,
+
+              Child, myobj:=NewObjectA(mcc.mcc_class,NIL,
+                                [TextFrame,
+                                 MUIA_Background, MUII_BACKGROUND,
+                                 TAG_DONE,0]),
+
+              Child, HGroup, MUIA_Weight, 10,
+                  Child, FreeLabel(&#x27;Custom Class Color:&#x27;),
+                  Child, pen:=PoppenObject,
+                      MUIA_CycleChain, 1,
+                      MUIA_Window_Title, &#x27;Custom Class Color&#x27;,
+                     End,
+              End,
+
+          End,
+
+      End,
+  End
+
+  IF app=NIL THEN Raise(&#x27;Failed to create Application.&#x27;)
+
+  doMethodA(window,[MUIM_Notify,MUIA_Window_CloseRequest,MUI_TRUE,
+            app,2,MUIM_Application_ReturnID,MUIV_Application_ReturnID_Quit])
+
+  doMethodA(pen,[MUIM_Notify,MUIA_Pendisplay_Spec,MUIV_EveryTime,
+            myobj,3,MUIM_Set,MYATTR_PEN,MUIV_TriggerValue])
+
+  get(pen,MUIA_Pendisplay_Spec,{startpen})
+  set(myobj,MYATTR_PEN,startpen)
+
+/*
+** This is the ideal input loop for an object oriented MUI application.
+** Everything is encapsulated in classes, no return ids need to be used,
+** we just check if the program shall terminate.
+** Note that MUIM_Application_NewInput expects sigs to contain the result
+** from Wait() (or 0). This makes the input loop significantly faster.
+*/
+
+    set(window,MUIA_Window_Open,MUI_TRUE)
+
+    WHILE Not(doMethodA(app,[MUIM_Application_NewInput,{sigs}]) = MUIV_Application_ReturnID_Quit)
+      IF sigs THEN sigs := Wait(sigs)
+    ENDWHILE
+
+    set(window,MUIA_Window_Open,FALSE)
+
+/*
+** Shut down...
+*/
+
+EXCEPT DO
+    IF app THEN Mui_DisposeObject(app)                /* dispose all objects. */
+    IF mcc THEN Mui_DeleteCustomClass(mcc)            /* delete the custom class. */
+    IF utilitybase THEN CloseLibrary(utilitybase)
+    #ifdef __AMIGAOS4__
+    DropInterface(muimasteriface)
+    #endif
+    IF muimasterbase THEN CloseLibrary(muimasterbase) /* close library */
+    IF exception THEN WriteF(&#x27;\s\n&#x27;,exception)
+ENDPROC
+
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

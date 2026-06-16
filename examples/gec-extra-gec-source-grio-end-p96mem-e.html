@@ -1,0 +1,327 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>P96Mem.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-gec-extra.html">GEC-extra</a> &rsaquo; P96Mem.e</div><h1>File: <code>P96Mem.e</code></h1><p class="meta">301 lines · project <a href="../examples/pkg-gec-extra.html"><code>GEC-extra</code></a></p><p class="pathctx">GEC-extra/GEC/source/Grio/End/P96Mem.e</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/dos.html">dos/dos</a></li><li><a href="../modules/var.html">dos/var</a></li><li><a href="../modules/icon.html">icon</a></li><li><a href="../modules/picasso96api.html">picasso96api</a></li><li><a href="../modules/tagitem.html">utility/tagitem</a></li></ul></div><h2>Source</h2><pre class="code">OPT PREPROCESS
+OPT 020,OSVERSION=39
+OPT REG=5
+
+#define STRDOT
+
+#define GEC
+
+
+#ifdef  GEC
+OPT STRMERGE
+#define mul(a,b) (a*b)
+#define div(a,b) (a/b)
+#endif
+#ifndef GEC
+#define mul Mul
+#define div Div
+#endif
+
+
+
+MODULE &#x27;Picasso96API&#x27;,&#x27;libraries/Picasso96&#x27;
+MODULE &#x27;utility/tagitem&#x27;,&#x27;exec/tasks&#x27;
+MODULE &#x27;dos/var&#x27;,&#x27;exec/nodes&#x27;,&#x27;exec/ports&#x27;
+MODULE &#x27;icon&#x27;,&#x27;workbench/workbench&#x27;
+MODULE &#x27;dos/dos&#x27;
+
+
+
+ENUM BOARDNAME,LARGEMEM,KBYTES,DELAY,FRAGMENT,DOTS,
+     VARNAME,FORMAT,INFO,QUIET,DONTWAIT,NUM_ARGS
+
+OBJECT mymn
+  mn:mn
+  task:LONG
+ENDOBJECT
+
+
+DEF args[NUM_ARGS]:ARRAY OF LONG,task:PTR TO tc
+DEF dob=NIL:PTR TO diskobject,mes:PTR TO mymn,rdargs
+
+
+PROC makePort()
+DEF port:PTR TO mp
+IF (port:=CreateMsgPort())
+    IF (mes:=New(SIZEOF mymn))
+        port::ln.name:={mpname}
+        port::ln.pri:=-20
+        AddPort(port)
+        mes.task:=task
+        PutMsg(port,mes)
+    ELSE
+       DeleteMsgPort(port)
+       port:=NIL
+    ENDIF
+ENDIF
+ENDPROC port
+
+PROC delPort(port)
+  RemPort(port)
+  DeleteMsgPort(port)
+ENDPROC
+
+
+CHAR &#x27;$VER: P96Mem 0.3 (13.02.2002) by Grio&#x27;,0
+
+
+PROC main()
+DEF num,board,buf[50]:STRING,mem,dots[30]:STRING
+DEF bytes,name=NIL,total,port=NIL,free,large,frag=1
+#ifndef GEC
+task:=FindTask(NIL)
+#endif
+#ifdef GEC
+task:=thistask
+#endif
+IF getargs()
+   IF args[INFO]=NIL
+      Forbid()
+      IF (port:=FindPort({mpname}))
+         mes:=GetMsg(port)
+         Signal(mes.task,SIGBREAKF_CTRL_C)
+      ENDIF
+      Permit()
+      stdout:=NIL
+   ELSE
+      args[QUIET]:=NIL
+   ENDIF
+   IF port=NIL
+      IF (p96base:=OpenLibrary(P96NAME,2))
+         IF Pi96GetRTGDataTagList([P96RD_NumberOfBoards,{num},TAG_END])=1
+            IF num=1
+               IF args[BOARDNAME]=NIL
+                  Pi96GetBoardDataTagList(board:=0,[P96BD_BoardName,{name},TAG_DONE])
+                  bytes:=TRUE
+               ENDIF
+            ENDIF
+            IF name=NIL
+               bytes:=NIL
+               IF args[BOARDNAME]
+                  DEC num
+                  FOR board:=0 TO num
+                      Pi96GetBoardDataTagList(board,[P96BD_BoardName,{name},TAG_DONE])
+                      EXIT (bytes:=StrCmp(name,args[BOARDNAME],ALL))
+                  ENDFOR
+               ELSE
+                  putstr(&#x27;There\as more boards installed,give me the BOARDNAME, please.\n&#x27;)
+               ENDIF
+            ENDIF
+            IF bytes
+               IF args[INFO]
+                  Pi96GetBoardDataTagList(board,[P96BD_TotalMemory,{total},
+                                                 P96BD_LargestFreeMemory ,{large},
+                                                 P96BD_FreeMemory,{free},
+                                                 P96BD_MemoryClock,{num},TAG_DONE])
+                  num:=div(num+50000,100000)
+                  bytes:=&#x27;Board \d:  \s\nTotalMem: \l\d[8]\nFreeMem:  \l\d[8]\n&#x27;+
+                         &#x27;LargeMem: \l\d[8]\nMemClock: \d.\d[1]MHz&#x27;
+                  IF wbmessage
+                     EasyRequestArgs(0,[20,0,&#x27;P96Mem Info&#x27;,bytes,&#x27;Ok&#x27;],0,
+                         [board,name,total,free,large,num/10,Mod(num,10)])
+                  ELSE
+                     PrintF(bytes,board,name,total,free,large,num/10,Mod(num,10))
+                     PrintF(&#x27;\n&#x27;)
+                  ENDIF
+               ELSE
+                  bytes:=IF args[KBYTES] THEN &#x27;KB&#x27; ELSE &#x27;B&#x27;
+                  IF (port:=makePort())
+                      putstr(&#x27;P96Mem installed\n&#x27;)
+                      WHILE CtrlC()=NIL
+                          Pi96GetBoardDataTagList(board,[P96BD_LargestFreeMemory ,{large},
+                                                         P96BD_FreeMemory,{free},TAG_DONE])
+                          mem:=IF args[LARGEMEM] THEN large ELSE free
+                          IF args[KBYTES] THEN mem:=div(mem,1024)
+                          IF args[FRAGMENT]
+                             IF large THEN frag:=div(free,large)
+                          ENDIF
+                          makeValStr(dots,mem)
+                          IF args[FORMAT]
+                             StringF(buf,args[FORMAT],dots,frag)
+                          ELSE
+                             StrAdd(dots,bytes,ALL)
+                             IF args[FRAGMENT]
+                                StringF(buf,&#x27;\s (\d%)&#x27;,dots,frag)
+                             ELSE
+                                StrCopy(buf,dots,ALL)
+                             ENDIF
+                          ENDIF
+                          FOR num:=0 TO 2
+                              EXIT SetVar(args[VARNAME],buf,EstrLen(buf),GVF_GLOBAL_ONLY)
+                              Delay(5)
+                          ENDFOR
+                          Delay(args[DELAY])
+                      ENDWHILE
+                      delPort(port)
+                      putstr(&#x27;P96Mem removed\n&#x27;)
+                  ELSE
+                      putstr(&#x27;Error in creating msgport\n&#x27;)
+                  ENDIF
+               ENDIF
+            ELSE
+               putstr(&#x27;You haven\at installed selected board\n&#x27;)
+            ENDIF
+         ENDIF
+         CloseLibrary(p96base)
+      ELSE
+          putstr(&#x27;Fail open Picasso96API.library\n&#x27;)
+      ENDIF
+   ENDIF
+   freeargs()
+ELSE
+   putstr(&#x27;Problems with arguments/icon\n&#x27;)
+ENDIF
+ENDPROC
+
+
+mpname:
+   CHAR  &#x27;P96Mem&#x27;,0
+
+
+
+PROC putstr(str)
+DEF x
+IF args[QUIET]=NIL
+   PrintF(str)
+   IF conout
+      IF args[DONTWAIT]
+         Delay(150)
+      ELSE
+         Read(conout,{x},0)
+      ENDIF
+      Close(conout)
+      stdout:=conout:=NIL
+   ENDIF
+ENDIF
+ENDPROC D0
+
+
+PROC getargs()
+DEF ret=FALSE,name[116]:STRING,i
+IF wbmessage
+   IF (iconbase:=OpenLibrary(&#x27;icon.library&#x27;,39))
+      StringF(name,&#x27;PROGDIR:\s&#x27;,task::ln.name)
+      IF (dob:=GetDiskObjectNew(name))
+         tooltypes([&#x27;BOARDNAME&#x27;,&#x27;LARGEMEM&#x27;,&#x27;KBYTES&#x27;,&#x27;DELAY&#x27;,
+         &#x27;FRAGMENT&#x27;,&#x27;DOTS&#x27;,&#x27;VARNAME&#x27;,&#x27;FORMAT&#x27;,&#x27;INFO&#x27;,&#x27;QUIET&#x27;,
+         &#x27;DONTWAIT&#x27;])
+         IF (i:=args[DELAY])
+            StrToLong(i,DELAY*4+args)
+         ENDIF
+         ret:=TRUE
+      ELSE
+         freeargs()
+      ENDIF
+   ENDIF
+ELSE
+   FOR i:=0 TO NUM_ARGS-1 DO args[i]:=NIL
+   IF (rdargs:=ReadArgs(&#x27;BOARDNAME,LARGEMEM/S,KBYTES/S,DELAY/K/N,&#x27;+
+             &#x27;FRAGMENT/S,DOTS/S,VARNAME/K,FORMAT/K,INFO/S,QUIET/S&#x27;+
+             &#x27;,DONTWAIT/S&#x27;,args,NIL))
+      IF args[DELAY] THEN args[DELAY]:=Long(args[DELAY])
+      ret:=TRUE
+   ENDIF
+ENDIF
+IF args[DELAY]=NIL THEN args[DELAY]:=50
+IF args[VARNAME]=NIL THEN args[VARNAME]:=&#x27;P96MemVar&#x27;
+ENDPROC ret
+
+PROC tooltypes(names:PTR TO LONG)
+DEF x
+FOR x:=0 TO NUM_ARGS-1
+  args[x]:=FindToolType(dob.tooltypes,names[x])
+ENDFOR
+ENDPROC D0
+
+
+PROC freeargs()
+IF wbmessage
+   IF dob THEN FreeDiskObject(dob)
+   CloseLibrary(iconbase)
+ELSE
+   IF rdargs THEN FreeArgs(rdargs)
+ENDIF
+ENDPROC D0
+
+
+
+
+#ifdef STRDOT
+PROC makeValStr(estr,num)
+DEF str[20]:STRING,len,x
+StringF(str,&#x27;\d&#x27;,num)
+IF args[DOTS]
+   IF (len:=EstrLen(str))&lt;=3
+      StrCopy(estr,str,ALL)
+   ELSEIF len&lt;=6
+      StrCopy(estr,str,x:=len-3)
+      addDot(estr,str+x,ALL)
+   ELSE
+      StrCopy(estr,str,x:=len-6)
+      addDot(estr,str+x,3)
+      addDot(estr,str+x+3,ALL)
+   ENDIF
+ELSE
+   StrCopy(estr,str,ALL)
+ENDIF
+ENDPROC D0
+
+PROC addDot(bf,cp,s)
+ StrAdd(bf,&#x27;.&#x27;,1)
+ StrAdd(bf,cp,s)
+ENDPROC D0
+#endif
+
+
+#ifndef STRDOT
+PROC makeValStr(estr,num)
+DEF dot1,dot2,dot3
+IF args[DOTS]
+   IF args[KBYTES]
+      dot1:=div(num,1000)
+      dot2:=num-mul(dot1,1000)
+   ELSE
+      dot1:=div(num,1000000)
+      dot3:=mul(dot1,1000000)
+      dot2:=div(num-dot3,1000)
+      dot3:=num-dot3-mul(dot2,1000)
+   ENDIF
+   StringF(estr,IF args[KBYTES] THEN &#x27;\r\d.\z\d[3]&#x27; ELSE
+               &#x27;\r\d.\z\d[3].\z\d[3]&#x27;,dot1,dot2,dot3)
+ELSE
+   StringF(estr,&#x27;\d&#x27;,num)
+ENDIF
+ENDPROC D0
+#endif
+
+
+
+
+
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

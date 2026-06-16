@@ -1,0 +1,402 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>catalogList.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-ooep.html">OOEP</a> &rsaquo; catalogList.e</div><h1>File: <code>catalogList.e</code></h1><p class="meta">376 lines · project <a href="../examples/pkg-ooep.html"><code>OOEP</code></a></p><p class="pathctx">OOEP/oomodules/library/locale/catalogList.e</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/string.html">oomodules/sort/string</a></li></ul></div><h2>Source</h2><pre class="code">OPT MODULE
+
+MODULE  &#x27;oomodules/sort/string&#x27;,
+        &#x27;oomodules/list/associativeArray&#x27;,
+        &#x27;oomodules/library/locale&#x27;
+
+OBJECT nuArray OF associativeArray
+/****** nuArray/nuArray ******************************
+
+    NAME
+        nuArray() of associativeArray
+
+    PURPOSE
+        Just to override the testKey() method. This array has strings as
+        keys. The strings are the names of the catalogs. When ENDing this
+        object the values (catalogs) are disposed (closed) automatically.
+
+    ATTRIBUTES
+        cl:PTR TO catalogList -- The catalogList I am in. Just for
+            convenience with disposeVal().
+
+    SEE ALSO
+        associativeArray
+
+********/
+  cl:PTR TO catalogList
+ENDOBJECT
+
+
+
+EXPORT OBJECT catalogList OF locale
+/****** catalogList/catalogList ******************************
+
+    NAME
+        catalogList of locale
+
+    PURPOSE
+        This object holds any number of catalogs at the same time. Use it
+        to make your application use more than one catalog.
+
+        catalogList is needed for the localization of the ooep: each object
+        has it&#x27;s own catalog. Therefore it is necessary to hold any number
+        of objects open simultaneously.
+
+    ATTRIBUTES
+        catalogArray:PTR TO nuArray -- a slightly modified associativeArray.
+            The keys aren&#x27;t numbers but the names of the catalogs.
+
+    SEE ALSO
+        associativeArray/associativeArray
+
+********/
+  catalogArray:PTR TO nuArray
+ENDOBJECT
+
+
+
+
+/******************
+
+ methods of nuArray
+
+******************/
+
+PROC testKey(string1, string2) OF nuArray IS OstrCmp(string1, string2)
+/****** nuArray/testKey ******************************
+
+    NAME
+        testKey() of nuArray -- Compare two keys.
+
+    SYNOPSIS
+        nuArray.testKey(LONG, LONG)
+
+        nuArray.testKey(string1, string2)
+
+    FUNCTION
+        Compares two keys. See associativeArray/testKey().
+        In this object the keys are strings. Comparing is done with E&#x27;s
+        builtin OstrCmp().
+
+    INPUTS
+        string1:LONG -- First string to compare.
+
+        string2:LONG -- Second string to compare.
+
+    RESULT
+        See E.doc/OstrCmp() for the return values.
+
+    SEE ALSO
+        nuArray
+
+********/
+
+PROC disposeVal(catalog) OF nuArray
+/****** nuArray/disposeVal ******************************
+
+    NAME
+        disposeVal() of nuArray -- Dispose the value.
+
+    SYNOPSIS
+        nuArray.disposeVal(LONG)
+
+        nuArray.disposeVal(catalog)
+
+    FUNCTION
+        Disposes the value stored in the nuArray. This is a catalog, the
+        disposing means that it&#x27;s closed.
+
+    INPUTS
+        catalog:LONG -- Catalog to be closed.
+
+    SEE ALSO
+        nuArray/nuArray, associativeArray/associativeArray
+
+********/
+DEF cl:PTR TO catalogList
+
+  cl := self.cl
+  cl.closeCatalog(catalog)
+
+ENDPROC
+
+
+
+/******************
+
+ methods of catalogList
+
+******************/
+
+
+
+PROC init() OF catalogList
+/****** catalogList/init ******************************
+
+    NAME
+        init() of catalogList -- Initialization of the object.
+
+    SYNOPSIS
+        catalogList.init()
+
+    FUNCTION
+        The nuArray is NEWed and SUPER init() is called.
+
+    SEE ALSO
+        catalogList/catalogList
+
+********/
+
+  NEW self.catalogArray.new()
+
+  self.catalogArray.cl := self
+
+  SUPER self.init() -&gt; locale.init()
+
+ENDPROC
+
+PROC setCurrentCatalog(locale, name:PTR TO CHAR, builtinLanguage=NIL:PTR TO CHAR) OF catalogList HANDLE
+/****** catalogList/setCurrentCatalog ******************************
+
+    NAME
+        setCurrentCatalog() of catalogList -- Set the catalog to work with
+
+    SYNOPSIS
+        catalogList.setCurrentCatalog(LONG, PTR TO CHAR, PTR TO CHAR=NIL)
+
+        catalogList.setCurrentCatalog(locale, name, builtinLanguage)
+
+    FUNCTION
+        Sets the &#x27;current&#x27; catalog, i.e. all procs that work with a catalog
+        will work with this one. If the catalog isn&#x27;t open it will be opened.
+
+    INPUTS
+        locale:LONG -- locale structure as needed by the locale.library.
+            Usually this can be left NIL.
+
+        name:PTR TO CHAR -- name of the catalog.
+
+        builtinLanguage=NIL:PTR TO CHAR -- the language the strings in the
+            source are written in. NIL means that English is builtin.
+
+    RESULT
+        the catalog
+
+    EXAMPLE
+        cl.setCurrentCatalog(NIL,&#x27;oomodules/object&#x27;)
+
+    SEE ALSO
+        catalogList
+
+********/
+DEF catalog
+
+-&gt;  WriteF(&#x27;Setting the new catalog .\s.\n&#x27;,name)
+
+  catalog := self.catalogArray.get(name)
+
+  self.catalog := catalog
+  RETURN catalog
+
+EXCEPT
+
+-&gt;  WriteF(&#x27;have to open it.\n\n&#x27;)
+
+  catalog := self.openCatalog(locale,name,builtinLanguage)
+
+  IF catalog
+
+    self.catalogArray.set(name, catalog)
+
+    self.catalog := catalog
+
+  ENDIF
+
+  RETURN catalog
+
+ENDPROC
+
+PROC removeCurrentCatalog() OF catalogList HANDLE
+/****** catalogList/removeCurrentCatalog ******************************
+
+    NAME
+        removeCurrentCatalog() of catalogList -- Remove catalog from list.
+
+    SYNOPSIS
+        catalogList.removeCurrentCatalog()
+
+    FUNCTION
+        Removes the current catalog from the internal list. It is *not*
+        closed, you have to do that.
+
+    RESULT
+        the current catalog
+
+    SEE ALSO
+        catalogList
+
+********/
+
+  IF self.catalog THEN self.catalogArray.remove(self.catalog)
+  RETURN self.catalog
+
+EXCEPT
+
+ENDPROC
+
+PROC end() OF catalogList
+/****** catalogList/end ******************************
+
+    NAME
+        end() of catalogList -- Global destructor.
+
+    SYNOPSIS
+        catalogList.end()
+
+    FUNCTION
+        ENDs the nuArray and calls SUPER end().
+
+    SEE ALSO
+        catalogList, locale/end()
+
+********/
+
+  END self.catalogArray
+
+  SUPER self.end()
+
+ENDPROC
+
+PROC select(optionlist, index) OF catalogList
+/****** catalogList/select ******************************
+
+    NAME
+        select() of catalogList -- Selection of action.
+
+    SYNOPSIS
+        catalogList.select(LONG, LONG)
+
+        catalogList.select(optionlist, index)
+
+    FUNCTION
+        Supports the following tags:
+
+            &quot;ctlg&quot; -- Name of catalog to open at once.
+
+            &quot;lang&quot; -- Bultin language to set. NIL means English. Set this
+                before you open any catalog.
+
+    INPUTS
+        optionlist:LONG -- elist of options
+
+        index:LONG -- index of option list
+
+    RESULT
+        index after processing one tag.
+
+    SEE ALSO
+        catalogList, object/select()
+
+********/
+DEF item
+
+  item:=ListItem(optionlist,index)
+
+  SELECT item
+
+    CASE &quot;ctlg&quot; -&gt; open catalog
+
+      INC index
+      self.setCurrentCatalog(NIL, ListItem(optionlist,index), self.builtinLanguage)
+
+    CASE &quot;lang&quot; -&gt; set builtin language
+
+      INC index
+      self.builtinLanguage := ListItem(optionlist,index)
+
+  ENDSELECT
+
+ENDPROC index
+
+
+
+PROC name() OF catalogList IS &#x27;CatalogList&#x27;
+/****** catalogList/name ******************************
+
+    NAME
+        name() of catalogList -- Return object&#x27;s name.
+
+    SYNOPSIS
+        catalogList.name()
+
+    FUNCTION
+        Returns the name of the object.
+
+    RESULT
+        &#x27;CatalogList&#x27;
+
+    SEE ALSO
+        catalogList
+
+********/
+
+PROC length() OF catalogList IS self.catalogArray.tail-1
+/****** catalogList/length ******************************
+
+    NAME
+        length() of catalogList -- Get number of catalogs open.
+
+    SYNOPSIS
+        catalogList.length()
+
+    FUNCTION
+        Gets you the number of catalogs open.
+
+    RESULT
+        LONG -- tail entry of nuArray minus 1.
+
+    SEE ALSO
+        catalogList, nuArray/nuArray
+
+********/
+
+/*
+PROC write(index) OF catalogList
+    WriteF(&#x27;key\d=\d val\d=$\h\n&#x27;, index, self.catalogArray.key[index], index, self.catalogArray.val[index])
+
+ENDPROC
+
+*/
+
+
+/*EE folds
+-1
+133 22 136 58 139 25 142 20 145 48 
+EE folds*/
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

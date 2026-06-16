@@ -1,0 +1,486 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Hubble.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-energy.html">energy</a> &rsaquo; Hubble.e</div><h1>File: <code>Hubble.e</code></h1><p class="meta">460 lines · project <a href="../examples/pkg-energy.html"><code>energy</code></a></p><p class="pathctx">energy/Energy/PD/Hubble.e</p><p class="prose">Hubble V1.1b - 1996 - © Marco Talamelli E-Mail: Marco_Talamelli@amp.flashnet.it Data:18 May 1996 A Simple lens</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/intuition.html">intuition/intuition</a></li></ul></div><h2>Source</h2><pre class="code">/* 	Hubble V1.1b - 1996 - © Marco Talamelli
+	E-Mail: Marco_Talamelli@amp.flashnet.it
+ 	Data:18 May 1996
+	A Simple lens
+*/
+
+OPT PREPROCESS
+OPT OSVERSION=39
+
+MODULE  &#x27;intuition/intuition&#x27;,		-&gt; window
+	&#x27;intuition/imageclass&#x27;,
+	&#x27;intuition/icclass&#x27;,
+	&#x27;intuition/screens&#x27;,		-&gt; screen
+	&#x27;intuition/gadgetclass&#x27;,
+	&#x27;intuition/classes&#x27;,		-&gt; object
+	&#x27;exec/ports&#x27;,			-&gt; MessagePort
+	&#x27;commodities&#x27;,
+	&#x27;libraries/commodities&#x27;,
+	&#x27;reqtools&#x27;,
+	&#x27;libraries/reqtools&#x27;,
+	&#x27;gadtools&#x27;,&#x27;iff&#x27;,
+	&#x27;libraries/gadtools&#x27;,
+	&#x27;graphics/view&#x27;,
+	&#x27;graphics/scale&#x27;,		-&gt; scale image
+	&#x27;graphics/gfx&#x27;,			-&gt; bitmap
+	&#x27;graphics/rastport&#x27;,
+       	&#x27;other/ecode&#x27;,
+	&#x27;devices/inputevent&#x27;		-&gt; for inputevent
+
+DEF 	innerwidth = 200,
+	innerheight = 100,
+	scalefac = 10,
+	cxsigflag, scrdepth,
+	waitmask,x,y,
+	ie:PTR TO inputevent,
+	leftoff, topoff, bottomoff,
+	sizeiw, sizeih, winleft=100, wintop=100,
+	signal=-1,visualinfo,
+	broker_mp=NIL:PTR TO mp,
+	broker=NIL,
+	userport:PTR TO mp,
+	cosignal=NIL,
+	mywin:PTR TO window,
+	hires,view,
+	filereq:PTR TO rtfilerequester,
+	filename[34]:STRING,
+	scr:PTR TO screen,tmpscr:PTR TO screen,
+	sizex, sizey,
+	menu:PTR TO menu,task,
+	item:PTR TO menuitem,
+	srcbm:PTR TO bitmap,
+	destbm:PTR TO bitmap,
+	scrbm:PTR TO bitmap,
+	jump = FALSE, mm = TRUE,
+	customcxobj,
+	propgadget:PTR TO object,
+	pubscreenname[MAXPUBSCREENNAME]:STRING
+
+PROC setupscreen()
+
+   IF scr
+ 	IF NextPubScreen(scr, pubscreenname)
+
+         tmpscr := LockPubScreen(pubscreenname)
+            FreeVisualInfo(visualinfo)
+            UnlockPubScreen(NIL, scr)
+            scr := tmpscr
+         ELSE
+	    RETURN FALSE
+        ENDIF
+   ELSE
+	scr:=LockPubScreen(NIL)
+   ENDIF
+   visualinfo := GetVisualInfoA(scr, NIL)
+ENDPROC TRUE
+
+PROC getoffsets()
+
+DEF 	drawinfo:PTR TO drawinfo,sizeobject
+
+   hires := scr.flags
+   IF hires THEN (sizeiw := 18) ELSE (sizeiw := 13)
+   IF drawinfo := GetScreenDrawInfo(scr)
+
+      IF sizeobject := NewObjectA(NIL, &#x27;sysiclass&#x27;,
+       			[SYSIA_WHICH, SIZEIMAGE,
+       			SYSIA_DRAWINFO, drawinfo,
+       			SYSIA_SIZE,(IF hires THEN SYSISIZE_HIRES ELSE SYSISIZE_MEDRES)])
+
+         GetAttr(IA_WIDTH, sizeobject, {sizeiw})
+           
+         GetAttr(IA_HEIGHT, sizeobject, {sizeih})
+ 
+         DisposeObject(sizeobject)
+      ENDIF
+      FreeScreenDrawInfo(scr, drawinfo)
+   ENDIF
+   topoff := scr.rastport.txheight + scr.wbortop + 1
+   leftoff := scr.wborleft
+   bottomoff := scr.wborbottom
+   scrbm := scr.bitmap
+   scrdepth := scr.bitmap.depth
+ENDPROC
+
+PROC allocbm()
+
+   IF destbm THEN FreeBitMap(destbm)
+   IF srcbm THEN FreeBitMap(srcbm)
+   innerwidth := mywin.width - (leftoff + sizeiw)
+   innerheight := mywin.height - (topoff + bottomoff)
+   sizex:=(innerwidth / scalefac)
+   sizey:=(innerheight / scalefac)
+
+   srcbm := AllocBitMap(sizex, sizey, scrdepth, BMF_CLEAR, scrbm)
+   destbm := AllocBitMap(innerwidth, innerheight, scrdepth, BMF_CLEAR, srcbm)
+
+ENDPROC TRUE
+
+PROC openwin()
+
+DEF resolution,bw,rh,wx,wy
+
+wx:=30 + topoff + bottomoff
+wy:=60 + leftoff + sizeiw
+
+  resolution:= IF scr.flags AND SCREENHIRES THEN SYSISIZE_HIRES ELSE SYSISIZE_LOWRES
+
+  bw:=IF resolution=SYSISIZE_LOWRES THEN 1 ELSE 2
+  rh:=IF resolution=SYSISIZE_HIRES THEN 2 ELSE 1
+
+   IF menu := CreateMenusA([NM_TITLE,0,&#x27;Project&#x27;,0,0,0,0,
+    NM_ITEM,0,&#x27;Jump&#x27;,&#x27;J&#x27;,0,0,0,
+    NM_ITEM,0,NM_BARLABEL,0,0,0,0,
+    NM_ITEM,0,&#x27;Save Screen&#x27;,&#x27;S&#x27;,0,0,0,
+    NM_ITEM,0,NM_BARLABEL,0,0,0,0,
+    NM_ITEM,0,&#x27;Info Screen&#x27;,&#x27;I&#x27;,0,0,0,
+    NM_ITEM,0,NM_BARLABEL,0,0,0,0,
+    NM_ITEM,0,&#x27;MouseMove&#x27;,&#x27;M&#x27;,(IF mm THEN CHECKED ELSE 0) OR CHECKIT,0,0,
+    NM_ITEM,0,NM_BARLABEL,0,0,0,0,
+    NM_ITEM,0,&#x27;About&#x27;,&#x27;A&#x27;,$0,0,0,
+    NM_ITEM,0,NM_BARLABEL,0,0,0,0,
+    NM_ITEM,0,&#x27;Quit&#x27;,&#x27;Q&#x27;,0,0,0,0]:newmenu,NIL)
+
+      IF LayoutMenusA(menu, visualinfo, [GTMN_NEWLOOKMENUS, TRUE, NIL])
+
+         IF propgadget := NewObjectA(NIL, &#x27;propgclass&#x27;,
+          [PGA_FREEDOM,    FREEVERT,
+          ICA_TARGET,      ICTARGET_IDCMP,
+          PGA_NEWLOOK,     TRUE,
+          PGA_BORDERLESS,  DRIF_NEWLOOK,
+          PGA_TOTAL,       20,
+          PGA_VISIBLE,     1,
+          PGA_TOP,         scalefac,
+          GA_RELVERIFY,    1,
+          GA_RELRIGHT,     bw - sizeiw + 3,
+          GA_TOP,          topoff + rh,
+          GA_WIDTH,        sizeiw - bw - bw - 4,
+          GA_RELHEIGHT,    -topoff - sizeih - rh - rh,
+          GA_RIGHTBORDER,  TRUE,NIL])
+
+            IF mywin := OpenWindowTagList(NIL,
+      				[WA_GADGETS,	propgadget,
+       				WA_MINWIDTH,	wy,
+       				WA_MINHEIGHT,	wx,
+       				WA_PUBSCREEN,	scr,
+            			WA_TITLE,	&#x27;Hubble v1.1b&#x27;,
+            		WA_FLAGS,	WFLG_CLOSEGADGET OR
+					WFLG_SIZEGADGET OR
+					WFLG_SIZEBRIGHT OR
+					WFLG_DRAGBAR OR
+					WFLG_DEPTHGADGET OR
+					WFLG_SIMPLE_REFRESH OR
+					WFLG_ACTIVATE OR
+					WFLG_NEWLOOKMENUS,
+            	WA_IDCMP,	IDCMP_CLOSEWINDOW OR
+				IDCMP_NEWSIZE OR
+				IDCMP_MENUPICK OR
+				IDCMP_REFRESHWINDOW OR
+				IDCMP_IDCMPUPDATE,
+            				WA_WIDTH,innerwidth + leftoff + sizeiw,
+            				WA_HEIGHT,innerheight + topoff + bottomoff,
+             				WA_LEFT,        winleft,
+             				WA_TOP,         wintop,
+            				WA_MAXWIDTH,	-1,
+            				WA_MAXHEIGHT,	-1,
+             				WA_AUTOADJUST,  TRUE,NIL])
+               SetMenuStrip(mywin, menu)
+               userport := mywin.userport
+               ScreenToFront(scr)
+               RETURN TRUE
+            ENDIF
+         ENDIF
+      ENDIF
+   ENDIF
+ENDPROC FALSE
+
+PROC closewin()
+
+   IF mywin
+	ClearMenuStrip(mywin)
+   	CloseWindow(mywin)
+   ENDIF
+   IF menu THEN FreeMenus(menu)
+   IF propgadget THEN DisposeObject(propgadget)
+   IF srcbm THEN FreeBitMap(srcbm)
+   IF destbm THEN FreeBitMap(destbm)
+   srcbm := NIL
+   destbm := NIL
+ENDPROC
+
+PROC refresh()
+x:= scr.mousex - (sizex / 2)
+y:= scr.mousey - (sizey / 2)
+
+   IF (x &lt; 0) THEN x := 0
+   IF (x &gt; (scr.width - sizex)) THEN x := (scr.width - sizex)
+   IF (y &lt; 0) THEN y := 0
+
+   IF (y &gt; (scr.height - sizey)) THEN y := (scr.height - sizey)
+
+   BltBitMap(scrbm, x, y, srcbm, 0, 0, sizex, sizey, $80 OR $40, -1, NIL)
+
+   WaitBlit()
+   scale()
+ENDPROC
+
+PROC scale()
+   IF scalefac &gt;1
+
+      BitMapScale([0,0,sizex,sizey,1,1,0,0,
+		innerwidth,innerheight,scalefac,scalefac,
+		srcbm,destbm,0,0,0,0,0]:bitscaleargs)
+      WaitBlit()
+      BltBitMapRastPort(destbm, 0, 0, mywin.rport, leftoff, topoff, innerwidth, innerheight, $80 OR $40)
+
+   ELSE
+	BltBitMapRastPort(srcbm, 0, 0, mywin.rport, leftoff, topoff, innerwidth, innerheight, $80 OR $40 )
+  ENDIF
+   WaitBlit()
+ENDPROC
+
+PROC processmsg()
+
+DEF 	intuimsg:PTR TO intuimessage, im,
+	msg,
+	done = FALSE,
+	msgtype, msgid,sigmask, itemNum,	
+	code
+REPEAT
+
+         sigmask := Wait(Shl(1,userport.sigbit) OR Shl(1,signal) OR cxsigflag)
+
+      IF (sigmask AND cxsigflag)
+         WHILE (msg := GetMsg(broker_mp))
+            msgid := CxMsgID(msg)
+            msgtype := CxMsgType(msg)
+            ReplyMsg(msg)
+
+            SELECT msgtype
+             CASE CXM_COMMAND
+               SELECT msgid
+                CASE CXCMD_DISABLE
+                  ActivateCxObj(broker, FALSE)
+                CASE CXCMD_ENABLE
+                  ActivateCxObj(broker, TRUE)
+                CASE CXCMD_KILL
+                  done := TRUE
+               ENDSELECT
+            ENDSELECT
+         ENDWHILE
+      ENDIF
+      IF sigmask AND (Shl(1, userport.sigbit))
+         jump := FALSE
+         WHILE intuimsg := GetMsg(userport)
+            ReplyMsg(intuimsg)
+		im:=intuimsg.class
+            SELECT im
+             CASE IDCMP_CLOSEWINDOW
+               done := TRUE
+             CASE IDCMP_NEWSIZE
+               allocbm()
+		refresh()
+             CASE IDCMP_IDCMPUPDATE
+               GetAttr(PGA_TOP, propgadget, {scalefac})
+                  INC scalefac
+                  allocbm()
+			refresh()
+             CASE IDCMP_MENUPICK
+      code:=intuimsg.code
+      WHILE (code&lt;&gt;MENUNULL) AND (jump=FALSE)
+        item:=ItemAddress(menu, code)
+
+        itemNum:=ITEMNUM(code)
+	SELECT itemNum
+	CASE 0
+	 jumpfunc()
+	CASE 2
+	IF filereq := RtAllocRequestA(RT_FILEREQ, NIL)
+		filename[0] := 0
+		IF RtFileRequestA(filereq, filename, &#x27;Save as...&#x27;,0)
+
+	view:=(IF scalefac&gt;1 THEN destbm ELSE srcbm)
+		IfFL_SaveClip(filename,view,scr.viewport.colormap.colortable,scr.flags,
+		0,0,mywin.width/8,mywin.height)
+
+		ELSE
+		RtEZRequestA(&#x27;No Save screen!&#x27;, &#x27;_Continue&#x27;, NIL, NIL,[RT_UNDERSCORE, &quot;_&quot;,NIL])
+		ENDIF
+	RtFreeRequest(filereq)
+	ELSE
+	RtEZRequestA(&#x27;No Memory!!&#x27;, &#x27;Aargh!&#x27;, NIL, NIL, NIL)
+	ENDIF
+
+	CASE 4
+		RtEZRequestA(&#x27;Title     : \s\n&#x27;+
+				&#x27;Width     : \d\n&#x27;+
+				&#x27;Height    : \d\n&#x27;+
+				&#x27;Flags     : $\h\n&#x27;+
+				&#x27;BitMap    : $\h\n&#x27;+
+				&#x27;Depth     : \d\n&#x27;,
+					&#x27;_Continue&#x27;,
+						NIL,
+					[scr.title,
+					scr.width,
+					scr.height,
+					scr.flags,
+					scr.bitmap,
+					scr.bitmap.depth],
+					[RT_UNDERSCORE, &quot;_&quot;,NIL])
+	CASE 6
+		IF ((mm = FALSE) AND item.flags)
+	  	  mm := TRUE
+   		ELSEIF ((mm=TRUE) AND item.flags)
+	  	  mm := FALSE
+		ENDIF
+	  	  ActivateCxObj(broker, mm)
+	CASE 8
+	RtEZRequestA(	&#x27;Hubble V1.1b ( 18 May 1996)\n\n&#x27;+
+   			&#x27;written by:\n  Marco Talamelli\n&#x27;+
+   			&#x27;  Via Massa di San Giuliano 440\n&#x27;+
+   			&#x27;  Roma\n  00010\n  ITALIA\n\n&#x27;+
+   			&#x27;EMail:\n  Marco_Talamelli@amp.flashnet.it\n\n&#x27;+
+   			&#x27;This program is CardWare!\n&#x27;+
+			&#x27;if you like it, send me a postcard of your city!\n&#x27;+
+			&#x27;see you soon!&#x27;,&#x27;_Continue&#x27;,NIL,NIL,[RT_UNDERSCORE, &quot;_&quot;,NIL])
+	scale()
+	CASE 10
+	 RETURN
+	CASE 7
+	 jump:=TRUE
+	ENDSELECT
+        code := (item.nextselect) AND ($FFFF)
+      ENDWHILE
+            ENDSELECT
+         ENDWHILE
+      ENDIF
+      IF sigmask  AND ((ie.class = IECLASS_RAWMOUSE) AND mm) THEN refresh()
+UNTIL done
+ENDPROC
+
+PROC set()
+
+      waitmask := waitmask AND (Shl(1,userport.sigbit)+1)
+      wintop := mywin.topedge
+      winleft := mywin.leftedge
+      getoffsets()
+ENDPROC
+
+PROC jumpfunc()
+
+DEF returnvalue
+
+   IF returnvalue := setupscreen()
+      closewin()
+       set()
+       WHILE openwin()=FALSE
+	 RtEZRequestA(&#x27;Unable to open \a\s\a Screen!&#x27;,&#x27;_Continue&#x27;,NIL,[pubscreenname],[RT_UNDERSCORE, &quot;_&quot;,NIL])
+	 setupscreen()
+	 set()
+	ENDWHILE
+      waitmask := waitmask OR Shl(1,userport.sigbit)
+       allocbm()
+	refresh()
+      jump := TRUE
+       IF (returnvalue = 1) THEN RETURN TRUE
+   ENDIF
+ENDPROC FALSE
+
+PROC cxfunction(cxm,co)
+
+   ie := CxMsgData(cxm)
+   IF ((ie.class = IECLASS_RAWMOUSE) AND mm) THEN DivertCxMsg(cxm, co, co)
+ENDPROC
+
+PROC initbroker()
+
+DEF cxfunc
+
+   IF broker_mp := CreateMsgPort()
+      cxsigflag := Shl(1, broker_mp.sigbit)
+
+           	signal:=AllocSignal(-1)
+  		cxsigflag:=Shl(1, signal)
+  		task:=FindTask(NIL)
+  		cosignal:=CxSignal(task, signal)
+
+      IF broker:=CxBroker(
+           [NB_VERSION, 0, &#x27;Hubble&#x27;,
+           &#x27;Hubble V1.1b&#x27;, &#x27;First E Lens!&#x27;,
+            NBU_UNIQUE OR NBU_NOTIFY, 0,
+            0,
+	    0, broker_mp, 0]:newbroker, NIL)
+
+         	cxfunc := eCodeCxCustom({cxfunction})
+ 		customcxobj:=CxCustom(cxfunc, 0)
+
+                 AttachCxObj(broker, customcxobj)
+  		AttachCxObj(customcxobj, cosignal)
+  		ActivateCxObj(broker, TRUE)
+      ENDIF
+   ENDIF
+ENDPROC
+
+VOID &#x27;$VER: Hubble 1.1b (18.05.96) by Marco Talamelli&#x27;
+
+PROC main()
+
+IF reqtoolsbase:=OpenLibrary(&#x27;reqtools.library&#x27;,37)
+ IF iffbase :=OpenLibrary (&#x27;iff.library&#x27;,21)
+   IF cxbase := OpenLibrary (&#x27;commodities.library&#x27;, 37)
+
+         IF gadtoolsbase := OpenLibrary (&#x27;gadtools.library&#x27;, 37)
+
+            IF setupscreen()
+
+               getoffsets()
+               wintop := topoff
+               IF (scr.height &gt; 300) THEN innerheight:= Shl(innerheight,1)
+               IF openwin()
+		    allocbm()
+			refresh()
+                      initbroker()
+                        processmsg()
+			 IF broker THEN DeleteCxObjAll(broker)
+   			 IF signal THEN FreeSignal(signal)
+		   	 IF visualinfo THEN FreeVisualInfo(visualinfo)
+		   	 IF scr THEN UnlockPubScreen(NIL, scr)
+                  closewin()
+               ENDIF
+            ENDIF
+            CloseLibrary(gadtoolsbase)
+      ENDIF
+      CloseLibrary(cxbase)
+   ENDIF
+  CloseLibrary(iffbase)
+ ENDIF
+ CloseLibrary(reqtoolsbase)
+ENDIF
+ENDPROC
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

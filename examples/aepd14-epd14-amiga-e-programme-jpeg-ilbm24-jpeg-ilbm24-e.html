@@ -1,0 +1,384 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Jpeg&amp;ilbm24.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-aepd14.html">AEPD14</a> &rsaquo; Jpeg&amp;ilbm24.e</div><h1>File: <code>Jpeg&amp;ilbm24.e</code></h1><p class="meta">358 lines · project <a href="../examples/pkg-aepd14.html"><code>AEPD14</code></a></p><p class="pathctx">AEPD14/EPD14/Amiga_E-Programme/Jpeg&amp;Ilbm24/Jpeg&amp;ilbm24.e</p><p class="prose">******************************************************************************* * &lt;&lt; EUTILS HEADER &gt;&gt; ******************************************************************************** ED &quot;EDG&quot; EC &quot;EC&quot; PREPRO &quot;EPP&quot; SOURCE &quot;Jpeg&amp;Ilbm24.e&quot; EPPDEST &quot;JPEG&amp;Ilbm24_Epp.e&quot; EXEC &quot;Jpeg&amp;Ilbm24&quot; ISOURCE &quot; &quot; HSOUR</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/lists.html">exec/lists</a></li><li><a href="../modules/gadtools.html">gadtools</a></li><li><a href="../modules/gadgetclass.html">intuition/gadgetclass</a></li><li><a href="../modules/intuition.html">intuition/intuition</a></li><li><a href="../modules/opal.html">opal</a></li><li><a href="../modules/reqtools.html">reqtools</a></li></ul></div><h2>Source</h2><pre class="code">/********************************************************************************
+ * &lt;&lt; EUTILS HEADER &gt;&gt;
+ ********************************************************************************
+ ED           &quot;EDG&quot;
+ EC           &quot;EC&quot;
+ PREPRO       &quot;EPP&quot;
+ SOURCE       &quot;Jpeg&amp;Ilbm24.e&quot;
+ EPPDEST      &quot;JPEG&amp;Ilbm24_Epp.e&quot;
+ EXEC         &quot;Jpeg&amp;Ilbm24&quot;
+ ISOURCE      &quot; &quot;
+ HSOURCE      &quot; &quot;
+ ERROREC      &quot; &quot;
+ ERROREPP     &quot; &quot;
+ VERSION      &quot;0&quot;
+ REVISION     &quot;1&quot;
+ NAMEPRG      &quot;Jpeg&amp;Ilbm24&quot;
+ NAMEAUTHOR   &quot;NasGûl&quot;
+ ********************************************************************************
+ * HISTORY :
+ *******************************************************************************/
+
+
+OPT OSVERSION=37
+
+CONST JPEGTOILBM24=0,
+      ILBM24TOJPEG=1,
+      ILBMTOILBM24=2
+
+ENUM ER_NONE,ER_INTUITIONLIB,ER_GADTOOLSLIB,ER_GFXLIB,ER_OPALLIB,ER_REQTOOLSLIB,
+     ER_WB,ER_VISUAL,ER_CONTEXT,ER_MENU,ER_GADGET,ER_WINDOW,
+     ER_OPENFILE,ER_NOTILBM,ER_BADIFF,ER_NOTIFF,ER_OUTOFMEM,ER_SAVEFILE,
+     ER_VIRTUALOPALSCREEN,ER_PRGSIG
+
+MODULE &#x27;intuition/intuition&#x27;
+MODULE &#x27;gadtools&#x27;,&#x27;libraries/gadtools&#x27;
+MODULE &#x27;intuition/gadgetclass&#x27;,&#x27;intuition/screens&#x27;,&#x27;graphics/text&#x27;
+MODULE &#x27;exec/lists&#x27;,&#x27;exec/nodes&#x27;,&#x27;utility/tagitem&#x27;,&#x27;exec/ports&#x27;
+MODULE &#x27;opal&#x27;,&#x27;libraries/opal&#x27;
+MODULE &#x27;reqtools&#x27;,&#x27;libraries/reqtools&#x27;
+
+/* DEFINITION GENERALES */
+DEF conv_screen:PTR TO screen,
+    conv_visual=NIL,
+    conv_window:PTR TO window,
+    conv_glist=NIL,
+    conv_type,conv_infos
+
+/** GADGETLABELS **/
+
+DEF g_convert,g_inout,g_opalchunk,g_fastformat,g_jpegcorrupt
+DEF tattr,opt_opalchunk,opt_fastformat,opt_convert,opt_quality,opt_patout:PTR TO LONG
+DEF fichier_s[256]:STRING,fichier_d[256]:STRING
+DEF opal_screen:PTR TO os
+DEF prg_sig=-1,window_sig,all_sig
+PROC main() HANDLE /*&quot;main()&quot;*/
+/********************************************************************************
+ * Para         : NONE
+ * Return       : NONE
+ * Description  : Main Proc.
+ *******************************************************************************/
+    DEF test_main
+    VOID {prg_banner}        /* For INCBIN */
+    tattr:=[&#x27;topaz.font&#x27;,8,0,0]:textattr
+    opt_quality:=75
+    opt_patout:=[&#x27;Ilbm24&#x27;,&#x27;Jpeg&#x27;,&#x27;Ilbm24&#x27;]
+    IF (prg_sig:=AllocSignal(prg_sig))=NIL THEN Raise(ER_PRGSIG)
+    IF (test_main:=open_lib())&lt;&gt;ER_NONE THEN Raise(test_main)
+    IF (test_main:=open_interface())&lt;&gt;ER_NONE THEN Raise(test_main)
+    all_sig:=Shl(1,prg_sig) OR window_sig
+    SetWindowTitles(conv_window,&#x27;Jpeg&amp;Ilbm24&#x27;,&#x27;Jpeg&amp;Ilbm24 v0.0a © 1994 NasGûl&#x27;)
+    REPEAT
+        wait4message()
+        IF conv_type=IDCMP_CLOSEWINDOW
+            IF (RtEZRequestA(&#x27;          &gt;&gt;  Jpeg&amp;Ilbm24  &lt;&lt;            \n&#x27;+
+                            &#x27;                                          \n&#x27;+
+                            &#x27; GadToolsBox  v37.273 © Jaba Development. \n&#x27;+
+                            &#x27; Gui2E        v0.0a   © NasGûl.           \n&#x27;+
+                            &#x27; Opal.Library v2.2    © Opal Technology.  \n&#x27;+
+                            &#x27; AmigaE       v2.1b   © W. Van Oortmersen.\n&#x27;+
+                            &#x27;                                          \n&#x27;+
+                            &#x27;          &gt;&gt; © 1994 NasGûl &lt;&lt;             \n&#x27;+
+                            &#x27;         Voulez-vous Quittez ?            &#x27;,&#x27;_Oui|_Non&#x27;,0,0,[RT_WINDOW,conv_window,RT_LOCKWINDOW,TRUE,RT_UNDERSCORE,&quot;_&quot;,TAG_DONE,0])) THEN conv_type:=IDCMP_CLOSEWINDOW ELSE conv_type:=0
+            ENDIF
+    UNTIL conv_type=IDCMP_CLOSEWINDOW
+    Raise(ER_NONE)
+EXCEPT
+    close_interface()
+    close_lib()
+    SELECT exception
+        CASE ER_INTUITIONLIB; WriteF(&#x27;Intuition.library ?\n&#x27;)
+        CASE ER_GADTOOLSLIB;  WriteF(&#x27;GadTools.library ?\n&#x27;)
+        CASE ER_GFXLIB;       WriteF(&#x27;Graphics.library ?\n&#x27;)
+        CASE ER_OPALLIB;      WriteF(&#x27;Opal.library ?\n&#x27;)
+        CASE ER_WB;           WriteF(&#x27;Lock WB ?\n&#x27;)
+        CASE ER_VISUAL;       WriteF(&#x27;Erreur Visual.\n&#x27;)
+        CASE ER_CONTEXT;      WriteF(&#x27;Erreur Context.\n&#x27;)
+        CASE ER_MENU;         WriteF(&#x27;Erreur Menu.\n&#x27;)
+        CASE ER_GADGET;       WriteF(&#x27;Erreur Gadget.\n&#x27;)
+        CASE ER_WINDOW;       WriteF(&#x27;Erreur Window.\n&#x27;)
+        CASE ER_PRGSIG;       WriteF(&#x27;Erreur d\aallocation du signal.\n&#x27;)
+        DEFAULT;              NOP
+    ENDSELECT
+ENDPROC
+PROC open_lib() HANDLE /*&quot;open_lib()&quot;*/
+/********************************************************************************
+ * Para         : NONE
+ * Return       : ER_NONE if ok,else the error
+ * Description  : Open Libraries.
+ *******************************************************************************/
+    IF (intuitionbase:=OpenLibrary(&#x27;intuition.library&#x27;,37))=NIL THEN Raise(ER_INTUITIONLIB)
+    IF (gadtoolsbase:=OpenLibrary(&#x27;gadtools.library&#x27;,37))=NIL THEN Raise(ER_GADTOOLSLIB)
+    IF (gfxbase:=OpenLibrary(&#x27;graphics.library&#x27;,37))=NIL THEN Raise(ER_GFXLIB)
+    IF (opalbase:=OpenLibrary(&#x27;opal.library&#x27;,2))=NIL THEN Raise(ER_OPALLIB)
+    IF (reqtoolsbase:=OpenLibrary(&#x27;reqtools.library&#x27;,38))=NIL THEN Raise(ER_OPALLIB)
+    Raise(ER_NONE)
+EXCEPT
+    RETURN exception
+ENDPROC
+PROC close_lib()  /*&quot;close_lib()&quot;*/
+/********************************************************************************
+ * Para         : NONE
+ * Return       : NONE
+ * Description  : Close Libraries.
+ *******************************************************************************/
+    IF reqtoolsbase THEN CloseLibrary(reqtoolsbase)
+    IF opalbase THEN CloseLibrary(opalbase)
+    IF gfxbase THEN CloseLibrary(gfxbase)
+    IF gadtoolsbase THEN CloseLibrary(gadtoolsbase)
+    IF intuitionbase THEN CloseLibrary(intuitionbase)
+ENDPROC
+PROC open_interface() HANDLE /*&quot;open_interface()&quot;*/
+/********************************************************************************
+ * Para         : NONE
+ * Return       : ER_NONE if of ,else the error.
+ * Description  : Init and open the window.
+ *******************************************************************************/
+    DEF windowport:PTR TO mp
+    IF (conv_screen:=LockPubScreen(&#x27;Workbench&#x27;))=NIL THEN Raise(ER_WB)
+    IF (conv_visual:=GetVisualInfoA(conv_screen,NIL))=NIL THEN Raise(ER_VISUAL)
+    IF (conv_glist:=CreateContext({conv_glist}))=NIL THEN Raise(ER_CONTEXT)
+    IF (g_convert:=CreateGadgetA(BUTTON_KIND,conv_glist,[4,12,169,14,&#x27;Convert&#x27;,tattr,0,16,conv_visual,0]:newgadget,[GA_RELVERIFY,TRUE,GA_DISABLED,FALSE,GT_UNDERSCORE,&quot;_&quot;,TAG_DONE,0]))=NIL THEN Raise(ER_GADGET)
+    IF (g_inout:=CreateGadgetA(CYCLE_KIND,g_convert,[4,26,169,14,&#x27;&#x27;,tattr,1,0,conv_visual,0]:newgadget,[GA_RELVERIFY,TRUE,GTCY_LABELS,[&#x27;Jpeg-&gt;Ilbm24&#x27;,&#x27;Ilbm24-&gt;Jpeg&#x27;,&#x27;Ilbm-&gt;Ilbm24&#x27;,0],GT_UNDERSCORE,&quot;_&quot;,TAG_DONE,0]))=NIL THEN Raise(ER_GADGET)
+    IF (g_opalchunk:=CreateGadgetA(CHECKBOX_KIND,g_inout,[4,40,26,11,&#x27;Opal Chunk&#x27;,tattr,2,2,conv_visual,0]:newgadget,[GA_RELVERIFY,TRUE,GTCB_CHECKED,FALSE,GT_UNDERSCORE,&quot;_&quot;, TAG_DONE,0]))=NIL THEN Raise(ER_GADGET)
+    IF (g_fastformat:=CreateGadgetA(CHECKBOX_KIND,g_opalchunk,[4,51,26,11,&#x27;Fast Format&#x27;,tattr,3,2,conv_visual,0]:newgadget,[GA_RELVERIFY,TRUE,GTCB_CHECKED,FALSE,GT_UNDERSCORE,&quot;_&quot;, TAG_DONE,0]))=NIL THEN Raise(ER_GADGET)
+    IF (g_jpegcorrupt:=CreateGadgetA(INTEGER_KIND,g_fastformat,[4,62,40,13,&#x27;Perte Jpeg&#x27;,tattr,4,2,conv_visual,0]:newgadget,[GA_RELVERIFY,TRUE,GTIN_NUMBER,opt_quality,GTIN_MAXCHARS,3,GT_UNDERSCORE,&quot;_&quot;,TAG_DONE,0]))=NIL THEN Raise(ER_GADGET)
+    IF (conv_window:=OpenW(4,12,177,77,$240,$E,&#x27;Jpeg&amp;Ilbm24&#x27;,NIL,1,conv_glist))=NIL THEN Raise(ER_WINDOW)
+    Gt_RefreshWindow(conv_window,NIL)
+    Gt_SetGadgetAttrsA(g_jpegcorrupt,conv_window,NIL,[GA_DISABLED,TRUE,TAG_DONE,0])
+    windowport:=conv_window.userport
+    window_sig:=Shl(1,windowport.sigbit)
+    Raise(ER_NONE)
+EXCEPT
+    RETURN exception
+ENDPROC
+PROC close_interface() /*&quot;close_interface()&quot;*/
+/********************************************************************************
+ * Para         : NONE
+ * Return       : NONE
+ * Description  : Free all and close the window.
+ *******************************************************************************/
+    IF prg_sig THEN FreeSignal(prg_sig)
+    IF conv_visual THEN FreeVisualInfo(conv_visual)
+    IF conv_window THEN CloseWindow(conv_window)
+    IF conv_glist THEN FreeGadgets(conv_glist)
+    IF conv_screen THEN UnlockPubScreen(conv_screen,NIL)
+ENDPROC
+PROC wait4message() /*&quot;wait4message()&quot;*/
+/********************************************************************************
+ * Para         : NONE
+ * Return       : NONE
+ * Description  : Wait Message on window.
+ *******************************************************************************/
+    DEF conv_mes:PTR TO intuimessage
+    DEF conv_g:PTR TO gadget
+    DEF conv_gstr:PTR TO stringinfo
+    DEF num,return_sig=NIL
+    REPEAT
+        conv_type:=0
+        IF conv_mes:=Gt_GetIMsg(conv_window.userport)
+            conv_type:=conv_mes.class
+            IF conv_type=IDCMP_MENUPICK
+                conv_infos:=conv_mes.code
+                SELECT conv_infos
+                    CASE $F800
+                ENDSELECT
+            ELSEIF (conv_type=IDCMP_GADGETDOWN) OR (conv_type=IDCMP_GADGETUP)
+                conv_g:=conv_mes.iaddress
+                conv_infos:=conv_g.gadgetid
+                SELECT conv_infos
+                    num:=conv_mes.code
+                    CASE 0 /* CONVERT */
+                        do_conversion()
+                    CASE 1 /* CYCLE KIND */
+                        SELECT num
+                            CASE 0  /* JPEG-&gt;ILBM24 */
+                                Gt_SetGadgetAttrsA(g_jpegcorrupt,conv_window,NIL,[GA_DISABLED,TRUE,TAG_DONE,0])
+                                Gt_SetGadgetAttrsA(g_opalchunk,conv_window,NIL,[GA_DISABLED,FALSE,TAG_DONE,0])
+                                Gt_SetGadgetAttrsA(g_fastformat,conv_window,NIL,[GA_DISABLED,FALSE,TAG_DONE,0])
+                                opt_convert:=JPEGTOILBM24
+                            CASE 1  /* ILBM24-&gt;JPEG */
+                                Gt_SetGadgetAttrsA(g_jpegcorrupt,conv_window,NIL,[GA_DISABLED,FALSE,TAG_DONE,0])
+                                Gt_SetGadgetAttrsA(g_opalchunk,conv_window,NIL,[GA_DISABLED,TRUE,TAG_DONE,0])
+                                Gt_SetGadgetAttrsA(g_fastformat,conv_window,NIL,[GA_DISABLED,TRUE,TAG_DONE,0])
+                                opt_convert:=ILBM24TOJPEG
+                            CASE 2  /* ILBM-&gt;ILBM24 */
+                                Gt_SetGadgetAttrsA(g_jpegcorrupt,conv_window,NIL,[GA_DISABLED,TRUE,TAG_DONE,0])
+                                Gt_SetGadgetAttrsA(g_opalchunk,conv_window,NIL,[GA_DISABLED,FALSE,TAG_DONE,0])
+                                Gt_SetGadgetAttrsA(g_fastformat,conv_window,NIL,[GA_DISABLED,FALSE,TAG_DONE,0])
+                                opt_convert:=ILBMTOILBM24
+                        ENDSELECT
+                    CASE 2 /* OPAL CHUNK */
+                        opt_opalchunk:=num
+                    CASE 3 /* FASTFORMAT */
+                        opt_fastformat:=num
+                    CASE 4 /* QUALITY JPEG */
+                        conv_gstr:=conv_g.specialinfo
+                        opt_quality:=Val(conv_gstr.buffer,NIL)
+                        IF (opt_quality&lt;0) OR (opt_quality&gt;100)
+                            opt_quality:=75
+                            RtEZRequestA(&#x27;Cette valeur doit être comprise\nentre 0 et 100.&#x27;,&#x27;_Ok&#x27;,0,0,[RT_WINDOW,conv_window,RT_LOCKWINDOW,TRUE,RT_UNDERSCORE,&quot;_&quot;,TAG_DONE,0])
+                            Gt_SetGadgetAttrsA(g_jpegcorrupt,conv_window,NIL,[GTIN_NUMBER,opt_quality,GTIN_MAXCHARS,3,TAG_DONE,0])
+                        ENDIF
+                ENDSELECT
+            ELSEIF conv_type&lt;&gt;IDCMP_CLOSEWINDOW
+                conv_type:=0
+            ENDIF
+            Gt_ReplyIMsg(conv_mes)
+        ELSE
+            return_sig:=Wait(all_sig)
+        ENDIF
+    UNTIL conv_type
+ENDPROC
+PROC do_conversion() /*&quot;do_conversion()&quot;*/
+/********************************************************************************
+ * Para         : NONE
+ * Return       : NONE
+ * Description  : Popup a MultiFilerequester to choose the sources file.
+ *                PopUp a DirFileRequester to choose the Dir out.
+ *                Call convert().
+ *******************************************************************************/
+    DEF buffer[108]:STRING,add_liste
+    DEF liste:PTR TO rtfilelist
+    DEF reqfile:PTR TO rtfilerequester
+    DEF dossier_source[256]:STRING,dossier_destin[256]:STRING
+    DEF fichier_source[256]:STRING,fichier_destin[256]:STRING
+    DEF piv1[256]:STRING,c=1,pos
+    DEF max_fich
+    DEF source_f[256]:ARRAY OF LONG
+    DEF destin_f[256]:ARRAY OF LONG
+    DEF titre_req[256]:STRING
+    IF reqfile:=RtAllocRequestA(RT_FILEREQ,NIL)
+        buffer[0]:=0
+        add_liste:=RtFileRequestA(reqfile,buffer,&#x27;Jpeg&amp;Ilbm24 Source(s).&#x27;,[RT_WINDOW,conv_window,RT_LOCKWINDOW,TRUE,RTFI_FLAGS,
+                                                                      FREQF_MULTISELECT,
+                                                                      FREQF_PATGAD,TRUE,
+                                                                      TAG_DONE])
+        liste:=add_liste
+        IF buffer[0]&lt;&gt;0
+            WHILE liste
+                IF liste
+                    AddPart(reqfile.dir,&#x27;&#x27;,ALL)
+                    StringF(dossier_source,&#x27;\s&#x27;,reqfile.dir)
+                    IF pos:=InStr(liste.name,&#x27;.&#x27;,0)
+                        MidStr(piv1,liste.name,0,pos)
+                    ELSE
+                        StrCopy(piv1,liste.name,ALL)
+                    ENDIF
+                    StringF(fichier_source,&#x27;\s\s&#x27;,reqfile.dir,liste.name)
+                    StringF(fichier_destin,&#x27;\s.\s&#x27;,piv1,opt_patout[opt_convert])
+                    source_f[c]:=String(EstrLen(fichier_source))
+                    StrCopy(source_f[c],fichier_source,ALL)
+                    destin_f[c]:=String(EstrLen(fichier_destin))
+                    StrCopy(destin_f[c],fichier_destin,ALL)
+                    c:=c+1
+                ENDIF
+                liste:=liste.next
+            ENDWHILE
+            max_fich:=c-1
+        ELSE
+            RtFreeFileList(add_liste)
+            RtFreeRequest(reqfile)
+            JUMP fini
+        ENDIF
+        RtFreeFileList(add_liste)
+        RtFreeRequest(reqfile)
+    ELSE
+    ENDIF
+    IF reqfile:=RtAllocRequestA(RT_FILEREQ,NIL)
+        add_liste:=RtFileRequestA(reqfile,buffer,&#x27;Jpeg&amp;Ilbm24 Destination.&#x27;,[RT_WINDOW,conv_window,RT_LOCKWINDOW,TRUE,RTFI_FLAGS,
+                                                                      FREQF_NOFILES,
+                                                                      TAG_DONE,0])
+
+                    AddPart(reqfile.dir,&#x27;&#x27;,ALL)
+                    StringF(dossier_destin,&#x27;\s&#x27;,reqfile.dir)
+                    RtFreeRequest(reqfile)
+    ELSE
+    ENDIF
+    Gt_SetGadgetAttrsA(g_convert,conv_window,NIL,[GA_DISABLED,TRUE,TAG_DONE,0])
+    FOR c:=1 TO max_fich
+        StringF(fichier_s,&#x27;\s&#x27;,source_f[c])
+        StringF(piv1,&#x27;\d/\d&#x27;,c,max_fich)
+        StrCopy(titre_req,piv1,ALL)
+        SetWindowTitles(conv_window,titre_req,fichier_s)
+        StringF(fichier_d,&#x27;\s\s&#x27;,dossier_destin,destin_f[c])
+        convert()
+        IF source_f[c] THEN Dispose(source_f[c])
+        IF destin_f[c] THEN Dispose(destin_f[c])
+        DisplayBeep(0)
+    ENDFOR
+    fini:
+    Gt_SetGadgetAttrsA(g_convert,conv_window,NIL,[GA_DISABLED,FALSE,TAG_DONE,0])
+    SetWindowTitles(conv_window,&#x27;Jpeg&amp;Ilbm24&#x27;,&#x27;Jpeg&amp;Ilbm24 v0.0a © 1994 NasGûl&#x27;)
+ENDPROC
+PROC convert() HANDLE /*&quot;convert()&quot;*/
+/********************************************************************************
+ * Para         : NONE
+ * Return       : ER_NONE if ok,else the error.
+ * Description  : Open a VirtualOpalScreen and make convertion.
+ *******************************************************************************/
+    DEF err,flags=NIL,error
+    opal_screen:=NIL
+    err:=LoadIFF24(opal_screen,fichier_s,VIRTUALSCREEN24+FORCE24)
+    IF err&lt;OL_ERR_MAXERR
+        IF err=OL_ERR_OPENFILE THEN Raise(ER_OPENFILE)
+        IF err=OL_ERR_NOTILBM THEN Raise(ER_NOTILBM)
+        IF err=OL_ERR_BADIFF THEN Raise(ER_BADIFF)
+        IF err=OL_ERR_NOTIFF THEN Raise(ER_NOTIFF)
+        IF err=OL_ERR_OUTOFMEM THEN Raise(ER_OUTOFMEM)
+    ELSE
+        error:=FALSE
+        opal_screen:=err
+        IF opt_convert=ILBM24TOJPEG
+            IF (SaveJPEG24(opal_screen,fichier_d,NIL,opt_quality)) THEN error:=TRUE
+        ELSEIF (opt_convert=JPEGTOILBM24) OR (opt_convert=ILBMTOILBM24)
+            IF Not(opt_opalchunk) THEN flags:=flags+NOTHUMBNAIL
+            IF opt_fastformat THEN flags:=flags+OVFASTFORMAT
+            IF (SaveIFF24(opal_screen,fichier_d,NIL,flags)) THEN error:=TRUE
+        ENDIF
+        IF error THEN Raise(ER_SAVEFILE)
+    ENDIF
+    Raise(ER_NONE)
+EXCEPT
+    IF opal_screen THEN FreeScreen24(opal_screen)
+    SELECT exception
+        CASE ER_SAVEFILE;                RtEZRequestA(&#x27;Erreur durant la sauvegarde de \s&#x27;,&#x27;_Ok&#x27;,0,[fichier_d],[RT_WINDOW,conv_window,RT_LOCKWINDOW,TRUE,RT_UNDERSCORE,&quot;_&quot;,TAG_DONE,0])
+        CASE ER_VIRTUALOPALSCREEN;       RtEZRequestA(&#x27;Allocation de l\aécran Virtuel Opal impossible.&#x27;,&#x27;_Ok&#x27;,0,0,[RT_WINDOW,conv_window,RT_LOCKWINDOW,TRUE,RT_UNDERSCORE,&quot;_&quot;,TAG_DONE,0])
+        CASE ER_OPENFILE;                RtEZRequestA(&#x27;Impossible d\aouvrir le fichier source.&#x27;,&#x27;_Ok&#x27;,0,0,[RT_WINDOW,conv_window,RT_LOCKWINDOW,TRUE,RT_UNDERSCORE,&quot;_&quot;,TAG_DONE,0])
+        CASE ER_NOTILBM;                 RtEZRequestA(&#x27;le fichier source n\aest pas un fichier ILBM.&#x27;,&#x27;_Ok&#x27;,0,0,[RT_WINDOW,conv_window,RT_LOCKWINDOW,TRUE,RT_UNDERSCORE,&quot;_&quot;,TAG_DONE,0])
+        CASE ER_NOTIFF;                  RtEZRequestA(&#x27;le fichier source n\aest pas un fichier IFF.&#x27;,&#x27;_Ok&#x27;,0,0,[RT_WINDOW,conv_window,RT_LOCKWINDOW,TRUE,RT_UNDERSCORE,&quot;_&quot;,TAG_DONE,0])
+        CASE ER_BADIFF;                  RtEZRequestA(&#x27;le fichier source est incomplet.&#x27;,&#x27;_Ok&#x27;,0,0,[RT_WINDOW,conv_window,RT_LOCKWINDOW,TRUE,RT_UNDERSCORE,&quot;_&quot;,TAG_DONE,0])
+        CASE ER_OUTOFMEM;                RtEZRequestA(&#x27;Pas assez de mémoire.&#x27;,&#x27;_Ok&#x27;,0,0,[RT_WINDOW,conv_window,RT_LOCKWINDOW,TRUE,RT_UNDERSCORE,&quot;_&quot;,TAG_DONE,0])
+    ENDSELECT
+    RETURN exception
+ENDPROC
+prg_banner:
+INCBIN &#x27;Jpeg&amp;Ilbm24.header&#x27;
+
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

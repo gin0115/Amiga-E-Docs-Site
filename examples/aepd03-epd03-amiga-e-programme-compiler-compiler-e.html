@@ -1,0 +1,364 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Compiler.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-aepd03.html">AEPD03</a> &rsaquo; Compiler.e</div><h1>File: <code>Compiler.e</code></h1><p class="meta">338 lines · project <a href="../examples/pkg-aepd03.html"><code>AEPD03</code></a></p><p class="pathctx">AEPD03/EPD03/Amiga_E-Programme/compiler/Compiler.e</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/dos.html">dos/dos</a></li></ul></div><h2>Source</h2><pre class="code">
+
+
+
+DEF labels=0
+
+
+
+
+
+
+
+/*  Der Mini-Compiler.
+    Umgesetzt aus dem Sonderheft Amiga-Plus 1/93 in AMIGA_E.
+*/
+
+/* Symbole */
+ENUM CPROGRAM=0, CVAR, CBEGIN, CEND, CWHILE, CDO, CPRINT, CCOMMA, CEQUAL,
+     CPLUS, CMINUS, CIDENT, CCONST, CEOF
+
+CONST MAXIDLEN = 79
+
+
+DEF source,    /* Quelltextdatei                         */
+    char=32,      /* zuletzt gelesenes Zeichen (0X bei EOF) */
+    sym        /* das letzte Symbol (program, var, etc.) */
+DEF identifier[MAXIDLEN]: STRING,  /* der Bezeichner bei sym=ident */
+    constant   /* die Konstante bei sym=const            */
+
+
+
+
+MODULE &#x27;dos/dos&#x27;
+
+OPT OSVERSION=37
+
+DEF code
+
+
+PROC chk(symb, msg)
+     IF symb=sym THEN getSym() ELSE error(msg)
+ENDPROC
+
+PROC varDeclaration()
+/* VarDeclaration -&gt; VAR Identifier {&quot;,&quot; Identifier} . */
+
+  REPEAT
+    getSym()
+    IF sym&lt;&gt;CIDENT THEN error(&#x27;Bezeichner in erwartet!&#x27;)
+    codeDCL(identifier)
+    getSym()
+  UNTIL sym &lt;&gt;CCOMMA
+
+ENDPROC /* VarDeclaration */
+
+PROC factor()
+/* factor         -&gt; Identifier | Constant . */
+
+  SELECT sym
+
+  CASE CIDENT
+       codeMOVEvarD0 (identifier)
+       getSym()
+
+  CASE CCONST
+       codeMOVEconstD0(constant)
+       getSym()
+
+  DEFAULT
+       error(&#x27;Faktor erwartet&#x27;)
+  ENDSELECT
+ENDPROC /* factor */
+
+PROC expression()
+/* expression     -&gt; [ &quot;+&quot; | &quot;-&quot; ] factor { ( &quot;+&quot; | &quot;-&quot; ) factor } . */
+DEF neg = FALSE   /* muß D0 negiert werden? */
+
+  IF (sym = CPLUS) OR (sym = CMINUS)
+     IF sym = CMINUS THEN neg := TRUE ELSE neg := FALSE
+     getSym()
+  ENDIF
+  factor()
+  IF neg THEN codeNEGD0()
+  WHILE (sym = CPLUS) OR (sym = CMINUS)
+     IF sym = CMINUS THEN neg := TRUE ELSE neg := FALSE
+     getSym()
+     codeMOVED0D1()
+     factor()
+     IF neg THEN codeNEGD0()
+     codeADDD1D0()
+  ENDWHILE
+ENDPROC /* expression */
+
+PROC statement()
+/* statement      -&gt; Assignment | While | Print .            */
+/* Assignment     -&gt; Identifer &quot;=&quot; expression .              */
+/* While          -&gt; WHILE expression DO { statement } END . */
+/* Print          -&gt; PRINT expression                        */
+
+DEF varname[MAXIDLEN]:STRING             /* Ziel einer Zuweisung */
+DEF start,end                            /* Labels bei einer Schleife */
+
+  SELECT sym
+  CASE CIDENT
+       StrCopy(varname,identifier,ALL); getSym()  /* Zuweisung */
+       chk(CEQUAL,&#x27; &quot;=&quot; erwartet!&#x27;)
+       expression()
+       codeMOVED0var(varname)
+  CASE CWHILE
+       getSym()                                    /* Schleife */
+       start := codeGetLabel(); end := codeGetLabel()
+       codeLabel(start)
+       expression()
+       chk(CDO,&#x27;DO erwartet!&#x27;)
+       codeTSTD0(); codeBLE(end)
+       WHILE sym &lt;&gt; CEND DO statement()
+       chk(CEND,&#x27;END erwartet!&#x27;)
+       codeBRA(start); codeLabel(end);
+  CASE CPRINT
+       getSym(); expression(); codeprintD0()           /* Ausgabe */
+  DEFAULT
+       error(&#x27;statement erwartet!&#x27;)
+  ENDSELECT
+ENDPROC /* statement */
+
+PROC program()
+/* Program -&gt; PROGRAM [ VarDeclaration ] BEGIN { statement } END. */
+DEF start
+
+  getSym(); chk(CPROGRAM,&#x27;PROGRAM erwartet!&#x27;)
+  start := codeGetLabel(); codeBRA(start)
+  IF sym=CVAR THEN varDeclaration()
+  chk(CBEGIN,&#x27;BEGIN erwartet!&#x27;)
+  codeStartUp(start)
+  WHILE sym&lt;&gt;CEND DO statement()
+  codeCleanUp()
+  chk(CEND,&#x27;END erwartet!&#x27;)
+ENDPROC /* Program */
+PROC codeW (s)
+     writeString(s)
+ENDPROC /* codeW */
+
+PROC codeWL(s)
+     codeW(s); writeLn()
+ENDPROC /* codeWL */
+
+PROC codeDCL(var)   /* Speicher für var reservieren */
+     codeW(var); codeWL(&#x27;: DC.L 0&#x27;)
+ENDPROC /* codeDCL */
+
+PROC codeMOVEvarD0(var)     /* var nach D0 kopieren */
+     codeW(&#x27;    MOVE.L  &#x27;); codeW(var); codeWL(&#x27;,D0&#x27;)
+ENDPROC /* codeMOVEvarD0 */
+
+PROC codeMOVEconstD0(c)      /* Konstante c nach D0 laden */
+     codeW(&#x27;    MOVE.L  #&#x27;); writeInt(c); codeWL(&#x27;,D0&#x27;)
+ENDPROC /* codeMOVEconstD0 */
+
+PROC codeMOVED0var(name)       /* D0 in D0 kopieren */
+     codeW(&#x27;    MOVE.L  D0,&#x27;); codeWL(name)
+ENDPROC /* codeMOVED0var */
+
+PROC codeMOVED0D1()
+     codeWL(&#x27;    MOVE.L  D0,D1&#x27;)
+ENDPROC /* codeMOVED0D1 */
+
+PROC codeADDD1D0()
+     codeWL(&#x27;    ADD.L   D1,D0&#x27;)
+ENDPROC /* ADDD1D0 */
+
+PROC codeNEGD0()
+     codeWL(&#x27;    NEG.L   D0&#x27;   )
+ENDPROC /* codeNEGD0 */
+
+PROC codeTSTD0()
+     codeWL(&#x27;    TST.L   D0&#x27;   )
+ENDPROC /* codeTSTD0 */
+
+PROC codeGetLabel() RETURN (labels++)        /* neues Label anfordern */
+
+PROC codeLabel(l)                   /* Label &lt;l&gt; ausgeben */
+     codeW(&#x27;L&#x27;); writeHex(l); codeWL(&#x27;:&#x27;)
+ENDPROC /* Label */
+
+PROC codeBLE(l)                       /* BLE &lt;l&gt; erzeugen */
+     codeW(&#x27;    BLE     L&#x27;); writeHex(l); codeWL(&#x27; &#x27;)
+ENDPROC /* codeBLE */
+
+PROC codeBRA(l)                       /* BRA &lt;l&gt; erzeugen */
+     codeW(&#x27;    BRA     L&#x27;); writeHex(l); codeWL(&#x27; &#x27;)
+ENDPROC /*  BRA */
+
+PROC codeprintD0()                           /* Wert von D0 ausgeben */
+
+  codeWL(&#x27;    LEA     _format,A0&#x27;)
+  codeWL(&#x27;    MOVE.L  A0,D1     &#x27;)
+  codeWL(&#x27;    LEA     _print,A0 &#x27;)
+  codeWL(&#x27;    MOVE.L  A0,D2     &#x27;)
+  codeWL(&#x27;    MOVE.L  D0,(A0)   &#x27;)
+  codeWL(&#x27;    MOVE.L  _dos,A6   &#x27;)
+  codeWL(&#x27;    JSR     -954(A6)  &#x27;)
+ENDPROC /* PrintD0 */
+
+PROC codeStartUp(start)       /* Dos-Library öffnen, etc. */
+
+  codeWL(&#x27;_dos:      DC.L    0              &#x27;)
+  codeWL(&#x27;_dosname:  DC.B    &quot;dos.library&quot;,0&#x27;)
+  codeWL(&#x27;_format:   DC.B    &quot;%ld&quot;,10,0     &#x27;)
+  codeWL(&#x27;           DS.L    0              &#x27;)
+  codeWL(&#x27;_print:    DC.L    0              &#x27;)
+  codeLabel(start)
+  codeWL(&#x27;    LEA     _dosname,A1           &#x27;);
+  codeWL(&#x27;    MOVE.L  #37,D0                &#x27;);
+  codeWL(&#x27;    MOVE.L  $4,A6                 &#x27;);
+  codeWL(&#x27;    JSR     -552(A6)              &#x27;);
+  codeWL(&#x27;    TST.L   D0                    &#x27;);
+  codeWL(&#x27;    BNE.S   _ok                   &#x27;);
+  codeWL(&#x27;    RTS                           &#x27;);
+  codeWL(&#x27;_ok:                              &#x27;);
+  codeWL(&#x27;    MOVE.L  D0,_dos               &#x27;);
+ENDPROC /* StartUp */
+
+PROC codeCleanUp()                    /* Dos-Library schließen, etc. */
+
+  codeWL(&#x27;    MOVE.L  _dos,A1  &#x27;);
+  codeWL(&#x27;    MOVE.L  $4,A6    &#x27;);
+  codeWL(&#x27;    JSR     -414(A6) &#x27;);
+  codeWL(&#x27;    MOVE.L  #0,D0    &#x27;);
+  codeWL(&#x27;    RTS              &#x27;);
+  codeWL(&#x27;    END              &#x27;);
+ENDPROC /* CleanUp */
+PROC writeString(s)
+     Fputs(code,s)
+ENDPROC
+
+PROC writeLn()
+     FputC(code,10)
+ENDPROC
+
+PROC writeInt(c)
+DEF s[10]:STRING
+     StringF(s,&#x27;\d&#x27;,c)
+     writeString(s)
+ENDPROC
+
+PROC writeHex(c)
+DEF s[10]:STRING
+    StringF(s,&#x27;\h&#x27;,c)
+    writeString(s)
+ENDPROC
+
+
+PROC getchar()
+     char := FgetC(source)
+     IF char = -1 THEN char := 0
+ENDPROC
+
+PROC getSym()
+DEF i=0
+
+  WHILE (char&gt;0) AND (char&lt;=&quot; &quot;) DO getchar()     /* Space, LF, etc. */
+  IF (char &gt; 96) AND (char &lt; 123) THEN char := char - 32
+
+  IF (char &gt; 64) AND (char &lt; 91)                 /* Bezeichner oder Schlüsselwort */
+     REPEAT
+        identifier[i] := char
+        i++
+        getchar()
+        IF (char &gt; 96) AND (char &lt; 123) THEN char := char - 32
+     UNTIL (i=MAXIDLEN) OR (char&lt;&quot;A&quot;) OR (char&gt;&quot;Z&quot;)
+     identifier[i] := 0
+     IF     StrCmp(identifier,&#x27;PROGRAM&#x27;,ALL)
+            sym := CPROGRAM
+     ELSEIF StrCmp(identifier,&#x27;VAR&#x27;    ,ALL)
+            sym := CVAR
+     ELSEIF StrCmp(identifier,&#x27;BEGIN&#x27;  ,ALL)
+            sym := CBEGIN
+     ELSEIF StrCmp(identifier,&#x27;END&#x27;    ,ALL)
+            sym := CEND
+     ELSEIF StrCmp(identifier,&#x27;WHILE&#x27;  ,ALL)
+            sym := CWHILE
+     ELSEIF StrCmp(identifier,&#x27;DO&#x27;     ,ALL)
+            sym := CDO
+     ELSEIF StrCmp(identifier,&#x27;PRINT&#x27;  ,ALL)
+            sym := CPRINT
+     ELSE
+        sym := CIDENT          /* Kein Schlüsselwort, also Bezeichner */
+     ENDIF
+
+  ELSEIF (char &gt;= &quot;0&quot;) AND (char &lt;= &quot;9&quot;)
+      constant := 0;
+      REPEAT
+        constant := 10*constant + (char-&quot;0&quot;); getchar()
+      UNTIL (char&lt;&quot;0&quot;) OR (char&gt;&quot;9&quot;)
+      sym := CCONST
+
+  ELSE      /* Sonderzeichen */
+    SELECT char
+    CASE &quot;=&quot;
+        sym := CEQUAL
+        getchar()
+    CASE &quot;,&quot;
+        sym := CCOMMA
+        getchar()
+    CASE &quot;+&quot;
+        sym := CPLUS
+        getchar()
+    CASE &quot;-&quot;
+        sym := CMINUS
+        getchar()
+    CASE 0
+        sym := CEOF
+    DEFAULT
+        error(&#x27;Unerwartetes Zeichen!&#x27;)
+    ENDSELECT
+  ENDIF
+ENDPROC /* GetSym */
+PROC main()
+DEF myargs:PTR TO LONG,rdargs
+
+    myargs:=[0,0]
+    IF rdargs:=ReadArgs(&#x27;SOURCE/A,DESTINATION/A&#x27;,myargs,NIL)
+       IF (source := Open(myargs[0], OLDFILE)) = 0 THEN error(&#x27;Source nicht gefunden! &#x27;)
+       IF (code   := Open(myargs[1], NEWFILE)) = 0 THEN error(&#x27;Ausgabedatei nicht zu öffnen!&#x27;)
+       program()
+    ELSE
+       error(&#x27;Aufruf: Mini &lt;Quelltext&gt; &lt;AssemblerFile&gt;&#x27;)
+    ENDIF
+    error(&#x27;Alles O.K !!!&#x27;)
+ENDPROC /* main */
+
+PROC error(s)
+    WriteF(&#x27;\s\n&#x27;,s)
+    IF source THEN Close(source)
+    IF code   THEN Close(code)
+    CleanUp(10)
+ENDPROC
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

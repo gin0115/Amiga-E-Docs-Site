@@ -1,0 +1,445 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>xpkrev.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-aepd39.html">AEPD39</a> &rsaquo; xpkrev.e</div><h1>File: <code>xpkrev.e</code></h1><p class="meta">419 lines · project <a href="../examples/pkg-aepd39.html"><code>AEPD39</code></a></p><p class="pathctx">AEPD39/EPD39/Programme/xpk25Edev/source/xpkrev.e</p><p class="prose">preprocess (and use) the version <a href="../modules/macros.html">macros</a> (VERSION_INFO and VERSION_STRING) however, these are not used here, so it&#x27;s left commented OPT PREPROCESS</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/dos.html">dos/dos</a></li></ul></div><h2>Source</h2><pre class="code">-&gt; preprocess (and use) the version macros (VERSION_INFO and VERSION_STRING)
+-&gt; however, these are not used here, so it&#x27;s left commented
+-&gt; OPT PREPROCESS
+
+-&gt; implements a full Commodore-Amiga compliant versionstring.
+
+/*
+**
+** name          : xpkrev.e
+**
+** original name : Bumpee.e (included in Bumpee archive)
+**
+** Bumpee 1.44 © 1995 by Leon Woestenberg (leon@stack.urc.tue.nl)
+** (found in aminet:dev/e/ directory or in this package.)
+**
+** xpkrev is a modified Bumpee to use with xpk sublibraries
+** for easier version/revision-control. No major change though.
+**
+** Feel free to alter this source to suit your needs under the
+** conditions in Bumpee.doc
+**
+** The changes are:
+**
+** - will for example crete LIB_NAME &#x27;xpkNONE.library&#x27;
+**   from source name &#x27;none.e&#x27;. &#x27;none&#x27; converted to upper case.
+** - some defines to build other define strings
+**   (define&#x27;s are ugly aren&#x27;t they. I sould want string constants instead.
+** - modes, info - versions (BUMPINFO=INFO/S,BUMPMODES=MODES/S)
+** - new datestring inspired by Commodore libraries versionstrings
+**   (old one still in  &#x27;datestring&#x27;, new in &#x27;datestr&#x27;)
+** - changed filename extension to avoid confusion (_xpkrev.e)
+** - moved errors to exception handler instead of IF,ELSE,ENDIF
+** - some error messages slightly changed
+** - added a few error messages (ERR_BUMP_DELETE, ERR_OPEN_BUMP_WRITE)
+** - added comments, som initialisation values, type LONG in DEF
+**
+**
+** Read the documentation for Bumpee for usage, etc, etc.
+**
+**
+** Thanks to Leon for releasing this program with it&#x27;s source!
+**
+**
+** /Torgil Svensson (snorq@lysator.liu.se) 
+**
+** (orig. bumpee used to bump this program)
+** 
+*/
+
+MODULE &#x27;*xpkrev_rev&#x27;
+
+MODULE &#x27;dos/dos&#x27;,&#x27;dos/rdargs&#x27;,&#x27;dos/datetime&#x27;,&#x27;intuition/intuition&#x27;
+
+
+ENUM ERR_NONE=0,
+     ERR_ARGS,
+     ERR_NO_SOURCE,
+     ERR_LAST_COMPILED,
+     ERR_NO_BUMPFILE,
+     ERR_BUMP_DELETE,
+     ERR_OPEN_BUMP_WRITE
+
+
+RAISE ERR_ARGS IF ReadArgs() = NIL
+
+
+PROC main() HANDLE
+
+  -&gt; args
+  DEF readargs:PTR TO rdargs,
+      args          =NIL   :PTR TO LONG,
+      exefile[256]         :STRING,      -&gt; NAME
+      forcebump     =FALSE :LONG,        -&gt; CREATE=FORCE
+      bumpversion   =FALSE :LONG,        -&gt; BUMPVERSION=VERSION
+      donotcompile  =FALSE :LONG,        -&gt; DONOTCOMPILE
+      ecpath[256]          :STRING,      -&gt; ECFILEPATH
+      bumpinfo      =FALSE :LONG,        -&gt; BUMPINFO=INFO
+      bumpmodes     =FALSE :LONG         -&gt; BUMPMODES=MODES
+
+
+  -&gt; file stuff
+  DEF sourcefile[256]      :STRING,      -&gt; NAME.e
+      modfile[256]         :STRING,      -&gt; NAME.m
+      bumpfile[256]        :STRING,      -&gt; NAME_xpkrev.e
+      bumpfh          =NIL :LONG,        -&gt; bump filehandle
+      exefh           =NIL :LONG,        -&gt; used to compare dates
+
+      bumpfib = NIL :PTR TO fileinfoblock, -&gt; used to compare dates
+      exefib  = NIL :PTR TO fileinfoblock, -&gt; used to compare dates
+
+      bumpcontents[1024] :STRING   -&gt; r/w-buffer for bumpfile (Fputs/Fgets)
+
+
+  -&gt; dos date vars
+  DEF datetime:datetime,
+      datestring[LEN_DATSTRING]:STRING
+
+
+  -&gt; values changed each bump
+  DEF name[256]     :STRING,
+      day       =0  :LONG,
+      month     =0  :LONG,
+      year      =0  :LONG,
+      version   =1  :LONG,
+      revision  =0  :LONG,
+
+      info_version  =0      :LONG,  -&gt; added for xpkrev
+      modes_version =0      :LONG,  -&gt; added for xpkrev
+      datestr[LEN_DATSTRING]:STRING -&gt; added for xpkrev
+
+
+  -&gt; misc
+  DEF bumpflag=FALSE      :LONG,  -&gt; ...
+      commandstring[256]  :STRING -&gt; cmd-string for execute (compile)
+
+
+
+
+/*---------------------------  read args  ---------------------------*/
+
+
+  GetProgramName(exefile,256)
+  readargs:=ReadArgs(&#x27;NAME/A,&#x27;                 +
+                     &#x27;CREATE=FORCE/S,&#x27;         +
+                     &#x27;BUMPVERSION=VERSION/S,&#x27;  +
+                     &#x27;DONOTCOMPILE/S,&#x27;         +
+                     &#x27;ECFILEPATH/K,&#x27;           +
+                     &#x27;BUMPINFO=INFO/S,&#x27;        +
+                     &#x27;BUMPMODES=MODES/S&#x27;     ,
+       args:=[NIL,FALSE,FALSE,FALSE,&#x27;EC&#x27;,FALSE,FALSE],NIL)
+  StrCopy(exefile,args[0])
+  forcebump:=args[1]
+  bumpversion:=args[2]
+  donotcompile:=args[3]
+  StrCopy(ecpath,args[4])
+  bumpinfo:=args[5]
+  bumpmodes:=args[6]
+  FreeArgs(readargs)
+
+
+
+
+/*---------------------  file names (copyright) ---------------------*/
+
+
+  IF StrCmp(exefile+EstrLen(exefile)-2,&#x27;.e&#x27;,2)
+    MidStr(exefile,exefile,0,EstrLen(exefile)-2)
+  ENDIF
+  StrCopy(sourcefile,exefile)
+  StrAdd(sourcefile,&#x27;.e&#x27;)
+  StrCopy(modfile,exefile)
+  StrAdd(modfile,&#x27;.m&#x27;)
+  StrCopy(bumpfile,exefile)
+  StrAdd(bumpfile,&#x27;_xpkrev.e&#x27;)
+
+  -&gt; print out a copyright notice with actual version information
+  PrintF(&#x27;xpkrev \d.\d Changed for use with xpk sublibraries by Torgil Svensson.\n\n&#x27;+
+         &#x27;Original program: Bumpee 1.44 (6.1.95) © 1995 by Leon Woestenberg\n\n&#x27;,
+         VERSION,REVISION)
+
+  -&gt; look for source
+  IF FileLength(sourcefile) = 0 THEN Raise(ERR_NO_SOURCE)
+
+
+
+
+/*--------------------------  datestring  ---------------------------*/
+
+
+  -&gt; create dos datestring
+  datetime.format:=FORMAT_CDN
+  datetime.flags:=0
+  datetime.strday:=NIL
+  datetime.strdate:=datestring
+  datetime.strtime:=NIL
+  DateStamp(datetime)
+  DateToStr(datetime)
+  day:=Val(datestring)
+  month:=Val(datestring+3)
+  year:=Val(datestring+6)
+
+  -&gt; create new datestr.
+  IF year &lt; 78 THEN StrCopy(datestr,&#x27;20&#x27;,2) ELSE StrCopy(datestr,&#x27;19&#x27;,2)
+  StrAdd(datestr,datestring+6,2)  -&gt; year
+  StrAdd(datestr,datestring+2,4)  -&gt; -month-
+  StrAdd(datestr,datestring,2)    -&gt; day
+
+
+
+
+/*------------------------  bump versions  --------------------------*/
+
+
+  IF bumpfh:=Open(bumpfile,MODE_OLDFILE)
+
+
+/*
+** set bumpflag if exefile newer than bumpfile (dates)
+** else raise exception
+*/
+
+    IF forcebump
+      bumpflag:=TRUE
+    ELSE
+      IF bumpfib:=AllocDosObject(DOS_FIB,0)
+        IF ExamineFH(bumpfh,bumpfib)
+          IF exefh:=Open(exefile,MODE_OLDFILE)
+            IF exefib:=AllocDosObject(DOS_FIB,0)
+              IF ExamineFH(exefh,exefib)
+                bumpflag:=(CompareDates(bumpfib+132,exefib+132)&gt;0)
+              ENDIF
+              FreeDosObject(DOS_FIB,exefib)
+            ENDIF
+            Close(exefh)
+          ENDIF
+        ENDIF
+        FreeDosObject(DOS_FIB,bumpfib)
+      ENDIF
+    ENDIF
+
+
+    IF bumpflag = FALSE THEN Raise(ERR_LAST_COMPILED)
+
+
+/*
+**  read the versions from the BUMP structure
+**  note that MODES/INFO_VERSION must be tested before VERSION
+*/
+
+    WHILE Fgets(bumpfh,bumpcontents,1023)
+      IF InStr(bumpcontents,&#x27;BUMP&#x27;)&lt;&gt;-1
+        WHILE Fgets(bumpfh,bumpcontents,1023)
+           EXIT InStr(bumpcontents,&#x27;ENDBUMP&#x27;)&lt;&gt;-1
+           IF InStr(bumpcontents,&#x27;NAME=&#x27;)&lt;&gt;-1
+             MidStr(name,bumpcontents,InStr(bumpcontents,&#x27;=&#x27;)+1)
+             SetStr(name,StrLen(name)-1)
+           ELSEIF InStr(bumpcontents,&#x27;INFO_VERSION=&#x27;)&lt;&gt;-1
+             info_version:=Val(bumpcontents+InStr(bumpcontents,&#x27;=&#x27;)+1)
+           ELSEIF InStr(bumpcontents,&#x27;MODES_VERSION=&#x27;)&lt;&gt;-1
+             modes_version:=Val(bumpcontents+InStr(bumpcontents,&#x27;=&#x27;)+1)
+           ELSEIF InStr(bumpcontents,&#x27; VERSION=&#x27;)&lt;&gt;-1
+             version:=Val(bumpcontents+InStr(bumpcontents,&#x27;=&#x27;)+1)
+           ELSEIF InStr(bumpcontents,&#x27; REVISION=&#x27;)&lt;&gt;-1
+             revision:=Val(bumpcontents+InStr(bumpcontents,&#x27;=&#x27;)+1)
+           ENDIF
+        ENDWHILE
+      ENDIF
+      EXIT StrCmp(bumpcontents,&#x27;ENDBUMP&#x27;)
+    ENDWHILE
+
+
+/*
+**  Bump version-numbers
+*/
+
+    IF bumpinfo
+      info_version  := info_version  + 1
+      PrintF(&#x27;Bumping xpkInfo structure verision to \d\n&#x27;,info_version)
+    ENDIF
+    IF bumpmodes
+      modes_version  := modes_version  + 1
+      PrintF(&#x27;Bumping xpk mode descriptors verision to \d\n&#x27;,modes_version)
+    ENDIF
+    IF bumpversion
+      version:=version+1
+      revision:=0
+      PrintF(&#x27;Bumping version to \d.\d...&#x27;,version,revision)
+    ELSE
+      revision:=revision+1
+      PrintF(&#x27;Bumping revision to \d.\d...&#x27;,version,revision)
+    ENDIF
+    Close(bumpfh)
+
+  ELSE  -&gt;  if Open(bumpfile,...) failed
+
+
+/*
+** Bumpfile does not exist
+** Create new bumpfile if CREATE (forcebump) option is set.
+*/
+
+    IF forcebump = FALSE THEN Raise(ERR_NO_BUMPFILE)
+    StrCopy(name,FilePart(exefile))
+    UpperStr(name)
+    bumpflag:=TRUE
+    PrintF(&#x27;Creating bump module...&#x27;)
+
+  ENDIF
+
+
+
+
+/*-------------------  save/compile new bumpfile  -------------------*/
+
+
+  IF bumpflag
+
+
+/*
+** (Re)write Bumpfile with new values
+*/
+
+    DeleteFile(bumpfile)
+    IF FileLength(bumpfile)&lt;&gt;-1 THEN Raise(ERR_BUMP_DELETE)
+    bumpfh:=Open(bumpfile,MODE_NEWFILE)
+    IF bumpfh = NIL THEN Raise(ERR_OPEN_BUMP_WRITE)
+
+    StringF(bumpcontents,&#x27;-&gt; xpkrev module. Do not alter this file manually.\n\n&#x27;+
+                         &#x27;OPT MODULE\n&#x27;+
+                         &#x27;OPT EXPORT\n&#x27;+
+                         &#x27;OPT PREPROCESS\n&#x27;+
+                         &#x27;\n&#x27;+
+                         &#x27;/*\n&#x27;+
+                         &#x27;BUMP\n&#x27;+
+                         &#x27;  NAME=\s\n&#x27;+
+                         &#x27;  VERSION=\d\n&#x27;+
+                         &#x27;  REVISION=\d\n&#x27;+
+                         &#x27;  INFO_VERSION=\d\n&#x27;+
+                         &#x27;  MODES_VERSION=\d\n&#x27;+
+                         &#x27;ENDBUMP\n&#x27;+
+                         &#x27;*/\n&#x27;+
+                         &#x27;\n&#x27;+
+                         &#x27;CONST VERSION=\d\n&#x27;+
+                         &#x27;CONST REVISION=\d\n&#x27;+
+                         &#x27;CONST INFO_VERSION=\d\n&#x27;+
+                         &#x27;CONST MODES_VERSION=\d\n&#x27;+
+                         &#x27;\n&#x27;+
+                         &#x27;CONST VERSION_DAY=\d\n&#x27;+
+                         &#x27;CONST VERSION_MONTH=\d\n&#x27;+
+                         &#x27;CONST VERSION_YEAR=\d\n&#x27;+
+                         &#x27;\n&#x27;+
+                         &#x27;CONST LIB_ID=&quot;\s&quot;\n&#x27;+
+                         &#x27;\n&#x27;+
+                         &#x27;#define LIB_VERSION \a\d\a\n&#x27;+
+                         &#x27;#define LIB_REVISION \a\d\a\n&#x27;+
+                         &#x27;\n&#x27;+
+                         &#x27;#define LIB_NAME \a\s\a\n&#x27;+
+                         &#x27;#define LIB_FULL_NAME \axpk\s.library\a\n&#x27;+
+                         &#x27;#define LIB_DATE \a\s\a\n&#x27;+
+                         &#x27;#define LIB_VERSTR &#x27;+
+                         &#x27;\a$VER: xpk\s.library \d.\d (\s)\a\n&#x27;+
+                         &#x27;\n&#x27;+
+                         &#x27;#define VERSION_STRING {version_string}\n&#x27;+
+                         &#x27;#define VERSION_INFO {version_info}\n&#x27;+
+                         &#x27;\n&#x27;+
+                         &#x27;PROC dummy() IS NIL\n&#x27;+
+                         &#x27;\n&#x27;+
+                         &#x27;version_string:\n&#x27;+
+                         &#x27;CHAR \a$VER: \a\n&#x27;+
+                         &#x27;version_info:\n&#x27;+
+                         &#x27;CHAR \axpk\s.library \d.\d (\s)\a,0\n&#x27;,
+                         name,
+                         version,
+                         revision,
+                         info_version,
+                         modes_version,
+                         version,
+                         revision,
+                         info_version,
+                         modes_version,
+                         day,
+                         month,
+                         year,
+                         name,      -&gt; LIB_ID
+                         version,   -&gt; LIB_VERSION
+                         revision,  -&gt; LIB_REVISION
+                         name,      -&gt; LIB_NAME
+                         name,      -&gt; LIB_FULL_NAME
+                         datestr,   -&gt; LIB_DATE
+                         name, version, revision, datestr,
+                         name, version, revision, datestr)
+    Fputs(bumpfh,bumpcontents)
+    Close(bumpfh)
+    PrintF(&#x27;Done.\n&#x27;)
+
+
+/*
+** Compile bumpfile
+*/
+
+    IF donotcompile
+    ELSE
+      StringF(commandstring,&#x27;\s \s&#x27;,ecpath,bumpfile)
+      Execute(commandstring,NIL,NIL)
+    ENDIF
+  ENDIF
+
+
+
+
+/*--------------------------  exceptions  ---------------------------*/
+
+
+EXCEPT
+  SELECT exception
+
+    CASE ERR_ARGS
+      PrintFault(IoErr(),exefile)
+
+    CASE ERR_NO_SOURCE
+      PrintF(&#x27;Sourcefile \a\s\a not found...xpkrev did nothing.\n&#x27;,sourcefile)
+
+    CASE ERR_LAST_COMPILED
+      PrintF(&#x27;Last revision still uncompiled...No need to bump.\n&#x27;)
+
+    CASE ERR_NO_BUMPFILE
+      PrintF(&#x27;No bumpfile (_xpkrev.e) exists for \a\s\a...xpkrev did nothing.\n&#x27;+
+             &#x27;Set CREATE switch to create a bumpfile.\n&#x27;,exefile)
+
+    CASE ERR_BUMP_DELETE
+      PrintF(&#x27;\nCouldn\at rewrite (delete) bumpfile. Remove delete protection.\n&#x27;)
+
+    CASE ERR_OPEN_BUMP_WRITE
+      PrintF(&#x27;\n&#x27;)
+      PrintFault(IoErr(),bumpfile)
+
+  ENDSELECT
+ENDPROC
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

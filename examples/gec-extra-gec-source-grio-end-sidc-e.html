@@ -1,0 +1,307 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>SidC.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-gec-extra.html">GEC-extra</a> &rsaquo; SidC.e</div><h1>File: <code>SidC.e</code></h1><p class="meta">281 lines · project <a href="../examples/pkg-gec-extra.html"><code>GEC-extra</code></a></p><p class="pathctx">GEC-extra/GEC/source/Grio/End/SidC.e</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/reqtools.html">grio/reqtools</a></li><li><a href="../modules/gadtools.html">libraries/gadtools</a></li><li><a href="../modules/playsidbase.html">libraries/playsidbase</a></li><li><a href="../modules/easygui-os12.html">tools/easygui_os12</a></li></ul></div><h2>Source</h2><pre class="code">
+OPT STRMERGE
+OPT REG=5
+OPT RUNBG
+
+
+MODULE &#x27;libraries/playsidbase&#x27;
+MODULE &#x27;tools/EasyGui_os12&#x27;
+MODULE &#x27;libraries/gadtools&#x27;
+
+DEF fh,st[120]:STRING,status[256]:STRING,argst[512]:STRING
+DEF gui=FALSE,txtg,gh=0:PTR TO guihandle,strg
+DEF sour[200]:STRING,des[200]:STRING
+
+PROC main()
+IF arg[]=&quot;?&quot;
+   writef(&#x27;USAGE: &lt;sidplay name&gt;\n&#x27;)
+ELSEIF arg[]=NIL
+   makeGUI()
+ELSE
+   StrCopy(argst,arg,ALL)
+   conv()
+ENDIF
+ENDPROC
+
+
+PROC writef(fmt,args=NIL)
+DEF fh,buf[258]:ARRAY,fhout,len
+ fhout:=stdout
+ IF args
+    RawDoFmt(fmt,buf,{putch},args)
+ ELSE
+    AstrCopy(buf,fmt)
+ ENDIF
+ IF (fh:=Open(&#x27;*&#x27;,NEWFILE)) THEN fhout:=fh
+ len:=StrLen(buf)
+ Write(fhout,buf,len)
+ IF fh THEN Close(fh)
+ENDPROC len
+putch:
+MOVE.B D0,(A3)+
+RTS
+
+CHAR &#x27;$VER: SidConvert 1.2 (14.08.2001) by Grio!&#x27;,0
+
+
+PROC makeGUI() HANDLE
+  DEF res=-1
+  StrCopy(sour,&#x27;RAM:&#x27;,ALL)
+  StrCopy(des,&#x27;RAM:&#x27;,ALL)
+  StrCopy(status,&#x27;Idle&#x27;,ALL)
+  gh:=guiinitA(&#x27;Sid Convert 1.2&#x27;,
+    [ROWS,
+      [EQCOLS,
+        [SBUTTON,{open}, &#x27;Source&#x27;],
+        [SBUTTON,{conv}, &#x27;Convert&#x27;]
+       ],
+       [EQCOLS,
+        [BUTTON,{dest}, &#x27;Dest path&#x27;],
+        strg:=[STR,   {dest},NIL,  des,   120,15]
+      ],
+      [EQROWS,
+        txtg:=[TEXT,status,  &#x27;Status :&#x27;,TRUE,0]
+      ]
+    ],
+      [EG_MENU,
+       [NM_TITLE,0,&#x27;Project&#x27;,0,0,0,0,
+        NM_ITEM,0,&#x27;Source&#x27;,  &#x27;s&#x27;,0,0,{open},
+        NM_ITEM,0,&#x27;Dest path&#x27;,&#x27;d&#x27;,0,0,{dest},
+        NM_ITEM,0,NM_BARLABEL,0,0,0,0,
+        NM_ITEM,0,&#x27;Convert&#x27;,&#x27;c&#x27;,0,0,{conv},
+        NM_ITEM,0,NM_BARLABEL,0,0,0,0,
+        NM_ITEM,0,&#x27;About&#x27;,&#x27;c&#x27;,0,0,{about},
+        NM_ITEM,0,NM_BARLABEL,0,0,0,0,
+        NM_ITEM,0,&#x27;Quit&#x27;,&#x27;q&#x27;,0,0,`gui:=FALSE,
+        0,0, 0,0,0,0,0
+       ]:newmenu
+      ]
+    )
+    SetWindowTitles(gh.wnd,-1,&#x27;Sid Convert 1.2&#x27;)
+    gui:=TRUE
+    WHILE res&lt;0
+         Wait(gh.sig)
+         res:=guimessage(gh)
+         EXIT gui=FALSE
+    ENDWHILE
+EXCEPT DO
+   cleangui(gh)
+  -&gt;ReThrow()
+ENDPROC
+
+MODULE &#x27;grio/reqtools&#x27;,&#x27;libraries/reqtools&#x27;,
+       &#x27;utility/tagitem&#x27;,&#x27;dos/dos&#x27;
+
+
+PROC open() HANDLE
+  DEF req:PTR TO reqtools
+  NEW req.new(RT_FILEREQ)
+  IF req.file(&#x27;Select PC SID&#x27;,sour)
+     StrCopy(argst,req.dirbuf,ALL)
+     AddPart(argst,req.filebuf,-1)
+     SetStr(argst,StrLen(argst))
+     StringF(status,&#x27;sid: \s&#x27;,req.filebuf)
+     showMess()
+     StrCopy(sour,req.dirbuf,ALL)
+  ENDIF
+EXCEPT DO
+  END req
+ENDPROC
+
+
+PROC dest() HANDLE
+  DEF req:PTR TO reqtools
+  NEW req.new(RT_FILEREQ)
+  IF req.file(&#x27;Select Dest Path&#x27;,des,200,TRUE,
+              [RTFI_FLAGS,FREQF_NOFILES,TAG_DONE])
+     StrCopy(des,req.dirbuf,ALL)
+     setstr(gh,strg,des)
+  ENDIF
+EXCEPT DO
+  END req
+ENDPROC
+
+PROC conv() HANDLE
+DEF sh:PTR TO sidheader,s2[120]:STRING,pr,x,lock=-1,buf=0
+RightStr(s2,argst,4)
+LowerStr(s2)
+IF (StrCmp(s2,&#x27;.sid&#x27;,ALL)=TRUE) OR (StrCmp(s2,&#x27;.dat&#x27;,ALL)=TRUE)
+   SetStr(argst,EstrLen(argst)-4)
+ENDIF
+StringF(s2,&#x27;\s.sid&#x27;,argst)
+IF (fh:=Open(s2,OLDFILE))
+   parsefirst()
+   IF (sh:=New(SIZEOF sidheader))
+      sh.id:=&quot;PSID&quot;
+      sh.version:=2
+      sh.length:=SIZEOF sidheader
+      pcReadStr(st)
+      IF InStr(st,&#x27;ADDRESS=&#x27;)=0
+         pr:=`StringF(s2,&#x27;$\s&#x27;,st+x) BUT Val(s2)
+         x:=8
+         sh.start:=Eval(pr)
+         IF (x:=InStr(st,&#x27;,&#x27;))&lt;=0 THEN badinfo()
+         INC x
+         sh.init:=Eval(pr)
+         IF (x:=InStr(st,&#x27;,&#x27;,x))&lt;=0 THEN badinfo()
+         INC x
+         sh.main:=Eval(pr)
+      ELSE
+         badinfo()
+      ENDIF
+      parse(&#x27;SONGS=&#x27;)
+      sh.number:=Val(st+STRLEN)
+      IF (x:=InStr(st,&#x27;,&#x27;))&gt;0
+         sh.defsong:=Val(st+x+1)
+      ELSE
+         sh.defsong:=1
+      ENDIF
+      parse(&#x27;SPEED=&#x27;)
+      sh.speed:=Val(st+STRLEN)
+      parse(&#x27;NAME=&#x27;)
+      AstrCopy(sh.name,st+STRLEN,32)
+      parse(&#x27;AUTHOR=&#x27;)
+      AstrCopy(sh.author,st+STRLEN,32)
+      parse(&#x27;COPYRIGHT=&#x27;)
+      AstrCopy(sh.copyright,st+STRLEN,32)
+      closefh()
+      StringF(st,&#x27;\s.dat&#x27;,argst)
+      IF (x:=FileLength(st))&gt;0
+         IF (buf:=New(x))=NIL
+            Raise(&#x27;no mem&#x27;)
+         ENDIF
+         IF (fh:=Open(st,OLDFILE))
+            Read(fh,buf,x)
+            closefh()
+         ELSE
+            nodat()
+         ENDIF
+      ELSE
+         nodat()
+      ENDIF
+      IF lock:=Lock(des,SHARED_LOCK)
+         CurrentDir(lock)
+      ELSE
+         lock:=-1
+      ENDIF
+      StringF(s2,&#x27;SiD.\s&#x27;,sh.name)
+      IF (fh:=Open(s2,NEWFILE))
+         Write(fh,sh,SIZEOF sidheader)
+         Write(fh,buf,x)
+         Throw(&#x27;file &quot;\s&quot; saved&#x27;,s2)
+      ELSE
+         Raise(&#x27;error open output file&#x27;)
+      ENDIF
+  ELSE
+      Raise(&#x27;no mem&#x27;)
+   ENDIF
+   Close(fh)
+ELSE
+   Throw(&#x27;no \s file&#x27;,s2)
+ENDIF
+EXCEPT DO
+IF exception
+   StringF(status,exception,exceptioninfo)
+   showMess()
+ENDIF
+IF lock&lt;&gt;-1
+   UnLock(CurrentDir(lock))
+ENDIF
+closefh()
+Dispose(buf)
+ENDPROC
+
+
+PROC badinfo() IS Raise(&#x27;bad sidinfo&#x27;)
+
+PROC nodat() IS Throw(&#x27;no &quot;\s&quot; file&#x27;,st)
+
+
+PROC parse(stri)
+    pcReadStr(st)
+    IF StrCmp(stri,st,StrLen(stri))=FALSE
+       badinfo()
+    ENDIF
+ENDPROC
+
+
+PROC parsefirst()
+    pcReadStr(st)
+    IF StrCmp(&#x27;PSID&#x27;,st,STRLEN)
+       Raise(&#x27;this file is PSID&#x27;)
+    ELSE
+       IF StrCmp(&#x27;SIDPLAY INFOFILE&#x27;,st,STRLEN)=FALSE THEN badinfo()
+    ENDIF
+ENDPROC
+
+
+PROC pcReadStr(str)
+    DEF x,y
+    y:=ReadStr(fh,str)
+    IF (x:=InStr(str,{dd}))&gt;0
+       str[x]:=0
+    ENDIF
+ENDPROC y
+
+
+dd:
+   CHAR $d,$0
+
+
+
+
+PROC closefh()
+ IF fh THEN Close(fh)
+ fh:=0
+ENDPROC
+
+
+PROC showMess()
+  IF gui=FALSE
+     writef(&#x27;\s\n&#x27;,[status])
+  ELSE
+     settext(gh,txtg,status)
+  ENDIF
+ENDPROC
+
+
+
+PROC about() HANDLE
+ DEF req:PTR TO reqtools
+ NEW req.new(RT_REQINFO)
+ req.ez(&#x27;Sid Convert About&#x27;,&#x27;Sid Convert 1.2 -&gt; 99-01\nCopyright by Grio\n&#x27;+
+         &#x27;This proggy is small converter\nfor PC headers SID files\n&#x27;+
+         &#x27;to Amiga PSID files...&#x27;,NIL,NIL,
+         [RTEZ_FLAGS,EZREQF_CENTERTEXT,TAG_END])
+EXCEPT DO
+ END req
+ENDPROC
+
+
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

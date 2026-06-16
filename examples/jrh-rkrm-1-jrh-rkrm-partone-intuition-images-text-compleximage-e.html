@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>compleximage.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-jrh-rkrm-1.html">JRH-RKRM-1</a> &rsaquo; compleximage.e</div><h1>File: <code>compleximage.e</code></h1><p class="meta">84 lines · project <a href="../examples/pkg-jrh-rkrm-1.html"><code>JRH-RKRM-1</code></a></p><p class="pathctx">JRH-RKRM-1/JRH-RKRM-PartOne/Intuition/Images_Text/compleximage.e</p><p class="prose">compleximage.e - Program to show the use of a <a href="../modules/complex.html">complex</a> <a href="../modules/intuition.html#fn-intuition">Intuition</a> Image.</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/memory.html">exec/memory</a></li></ul></div><h2>Source</h2><pre class="code">-&gt; compleximage.e - Program to show the use of a complex Intuition Image.
+
+OPT OSVERSION=37  -&gt; E-Note: silently require V37
+
+MODULE &#x27;exec/memory&#x27;,
+       &#x27;intuition/intuition&#x27;,
+       &#x27;intuition/screens&#x27;
+
+ENUM ERR_NONE, ERR_SCRN, ERR_WIN
+
+RAISE ERR_SCRN IF OpenScreenTagList()=NIL,
+      ERR_WIN  IF OpenWindowTagList()=NIL
+
+CONST MYIMAGE_LEFT=0, MYIMAGE_TOP=0,
+      MYIMAGE_WIDTH=24, MYIMAGE_HEIGHT=10,
+      MYIMAGE_DEPTH=2
+
+-&gt; E-Note: get some Chip memory and copy list (quick, since LONG aligned)
+PROC copyListToChip(data)
+  DEF size, mem
+  size:=ListLen(data)*SIZEOF LONG
+  mem:=NewM(size, MEMF_CHIP)
+  CopyMemQuick(data, mem, size)
+ENDPROC mem
+
+-&gt; Main routine. Open required window and draw the images.  This routine opens
+-&gt; a very simple window with no IDCMP.  See the chapters on &quot;Windows&quot; and
+-&gt; &quot;Input and Output Methods&quot; for more info.  Free all resources when done.
+PROC main() HANDLE
+  DEF scr=NIL, win=NIL:PTR TO window, myImage:image
+  scr:=OpenScreenTagList(NIL, [SA_DEPTH, 4, SA_PENS, [-1]:INT, NIL])
+  win:=OpenWindowTagList(NIL, [WA_RMBTRAP, TRUE, WA_CUSTOMSCREEN, scr, NIL])
+
+  -&gt; This contains the image data.  It is a two bit-plane open rectangle which
+  -&gt; is 24 pixels wide and 10 high.  Make sure it&#x27;s in CHIP memory by allocating
+  -&gt; a block of chip memory with a call like this: NewM(data_size,MEMF_CHIP),
+  -&gt; and then copy the data to that block.
+  myImage:=[MYIMAGE_LEFT, MYIMAGE_TOP, MYIMAGE_WIDTH,
+            MYIMAGE_HEIGHT, MYIMAGE_DEPTH,
+            copyListToChip([ -&gt; First bit-plane of data, open rectangle
+                            $FFFFFF00, $C0000300, $C0000300, $C0000300,
+                            $C0000300, $C0000300, $C0000300, $C0000300,
+                            $C0000300, $FFFFFF00,
+                             -&gt; Second bit-plane of data, filled rectangle
+                            $00000000, $00000000, $00000000, $00FF0000,
+                            $00FF0000, $00FF0000, $00FF0000, $00000000,
+                            $00000000, $00000000]),
+            3, 0, NIL]:image  -&gt; Use first two bit-planes, clear unused planes
+
+  -&gt; Draw the 1 bit-plane image into the first two bit-planes
+  DrawImage(win.rport, myImage, 10, 10)
+
+  -&gt; Draw the same image at a new location
+  DrawImage(win.rport, myImage, 100, 10)
+
+  -&gt; Change the image to use the second and fourth bitplanes, PlanePick is 1010
+  -&gt; binary or $0A, and draw it again at a different location
+  myImage.planepick:=$0A
+  DrawImage(win.rport, myImage, 10, 50)
+
+  -&gt; Now set all the bits in the first bitplane with PlaneOnOff.  This will
+  -&gt; make all the bits set in the second bitplane appear as color 3 (0011
+  -&gt; binary), all the bits set in the fourth bitplane appear as color 9 (1001
+  -&gt; binary) and all other pixels will be color 1 (0001 binary.  If there were
+  -&gt; any points in the image where both bits were set, they would appear as
+  -&gt; color 11 (1011 binary).  Draw the image at a different location.
+  myImage.planeonoff:=$01
+  DrawImage(win.rport, myImage, 100, 50)
+
+  -&gt; Wait a bit, then quit.
+  -&gt; In a real application, this would be an event loop, like the one described
+  -&gt; in the Intuition Input and Output Methods chapter.
+  Delay(200)
+
+EXCEPT DO
+  IF win THEN CloseWindow(win)
+  IF scr THEN CloseScreen(scr)
+  SELECT exception
+  CASE ERR_SCRN; WriteF(&#x27;Error: Failed to open custom screen.\n&#x27;)
+  CASE ERR_WIN;  WriteF(&#x27;Error: Failed to open window.\n&#x27;)
+  CASE &quot;MEM&quot;;    WriteF(&#x27;Error: Ran out of (chip) memory.\n&#x27;)
+  ENDSELECT
+ENDPROC
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

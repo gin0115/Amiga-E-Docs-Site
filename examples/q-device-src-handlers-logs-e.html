@@ -1,0 +1,313 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>logs.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-q-device-src.html">q-device_src</a> &rsaquo; logs.e</div><h1>File: <code>logs.e</code></h1><p class="meta">287 lines · project <a href="../examples/pkg-q-device-src.html"><code>q-device_src</code></a></p><p class="pathctx">q-device_src/handlers/logs.e</p><h2>Source</h2><pre class="code">OPT MODULE
+OPT EXPORT
+
+MODULE &#x27;*/listview/outlist&#x27;,
+       &#x27;*/scsi/headers&#x27;
+
+/*
+** Handler for processing buffer logs
+** Page Code: $1
+*/
+PROC process_log_buffer(reply:PTR TO l_sense) -&gt;DONE
+DEF param:PTR TO log_param_type_1,
+    str[70]:STRING
+
+    outlist_i(&#x27;\ebLog Size:\en&#x27;, reply.len, &#x27; bytes&#x27;)
+    param:=reply + SIZEOF l_sense
+        
+    WHILE (param &lt; (reply + reply.len + SIZEOF l_sense))
+    
+        IF (param.pcode2 AND %00000001) = 0
+            StrCopy(str, &#x27;Buffer Under-Runs&#x27;, ALL)
+        ELSE
+            StrCopy(str, &#x27;Buffer Over-Runs&#x27;, ALL)
+        ENDIF
+
+        IF (param.pcode2 AND %00011110) = 0
+            StrAdd(str, &#x27; (Cause: Not Defined&#x27;)
+        ELSEIF (param.pcode2 AND %00011110) = 2
+            StrAdd(str, &#x27; (Cause: Bus Busy&#x27;)
+        ELSEIF (param.pcode2 AND %00011110) = 4
+            StrAdd(str, &#x27; (Cause: Transfer Rate Too Slow&#x27;)
+        ELSE
+            StrAdd(str, &#x27; (Cause: Reserved&#x27;)
+        ENDIF
+
+        IF (param.pcode2 AND %11100000) = 0
+            StrAdd(str, &#x27;, Basis: Not Defined)&#x27;)
+        ELSEIF (param.pcode2 AND %11100000) = 32
+            StrAdd(str, &#x27;, Basis: Per Command)&#x27;)
+        ELSEIF (param.pcode2 AND %11100000) = 64
+            StrAdd(str, &#x27;, Basis: Per Failed Reconnect)&#x27;)
+        ELSEIF (param.pcode2 AND %11100000) = 96
+            StrAdd(str, &#x27;, Basis: Per Unit of Time)&#x27;)
+        ELSE
+            StrAdd(str, &#x27;, Reserved)&#x27;)
+        ENDIF
+        
+        outlist(&#x27;\ebCounter Type:\en&#x27;, str)
+        outlist_i(&#x27;\ebCounter Total:\en&#x27;, Int(param + SIZEOF log_param_type_1), NIL)
+                
+        param:= param + SIZEOF log_param_type_1 + param.len
+    ENDWHILE
+        
+ENDPROC       
+       
+       
+/*
+** Handler for processing various error logs. -&gt;DONE
+** Page Codes: $2, $3, $4, $5
+*/
+PROC process_log_errors(reply:PTR TO l_sense)
+DEF param:PTR TO log_param_type_2,
+    str[55]:STRING,
+    vstr[10]:STRING
+    
+    outlist_i(&#x27;\ebLog Size:\en&#x27;, reply.len, &#x27; bytes&#x27;)
+    param:=reply + SIZEOF l_sense
+
+    WHILE param &lt; (reply + reply.len + SIZEOF l_sense)
+    
+        IF param.pcode = $0
+            StrCopy(str, &#x27;\ebErrors Corrected w/o Delay:\en&#x27;)
+        ELSEIF param.pcode = $1
+            StrCopy(str, &#x27;\ebErrors Corrected w/ Delay:\en&#x27;)
+        ELSEIF param.pcode = $2
+            StrCopy(str, &#x27;\ebTotal Re-writes or Re-reads:\en&#x27;)
+        ELSEIF param.pcode = $3
+            StrCopy(str, &#x27;\ebTotal Errors Corrected:\en&#x27;)
+        ELSEIF param.pcode = $4
+            StrCopy(str, &#x27;\ebTimes Correction Algorithm Used:\en&#x27;)
+        ELSEIF param.pcode = $5
+            StrCopy(str, &#x27;\ebTotal Bytes Processed:\en&#x27;)
+        ELSEIF param.pcode = $6
+            StrCopy(str, &#x27;\ebUncorrected Errors:\en&#x27;)
+        ELSE
+            StrCopy(str, &#x27;\ebVendor Parameter\en:&#x27;)
+        ENDIF
+        
+        IF param.len = 1
+            outlist_i(str, Char(param + SIZEOF log_param_type_2), NIL)
+        ELSEIF param.len = 2
+            outlist_i(str, Int(param + SIZEOF log_param_type_2), NIL)
+        ELSEIF param.len = 4
+            outlist_i(str, Long(param + SIZEOF log_param_type_2), NIL)
+        ELSEIF param.len = 8
+            StringF(vstr, &#x27;$\h\h&#x27;, Long(param + SIZEOF log_param_type_2), Long(param + SIZEOF log_param_type_2 + 4))
+            outlist(str, vstr)
+        ELSE
+            outlist(str, &#x27;Cannot Decode&#x27;)
+        ENDIF
+
+        param:= param + SIZEOF log_param_type_2 + param.len
+    ENDWHILE
+
+ENDPROC
+
+
+/*
+** Handler for processing non medium error logs -&gt;DONE
+** Page Code: $6
+*/
+PROC process_log_nmerrors(reply:PTR TO l_sense)
+DEF param:PTR TO log_param_type_2,
+    str[55]:STRING,
+    vstr[10]:STRING
+
+    outlist_i(&#x27;\ebLog Size:\en&#x27;, reply.len, &#x27; bytes&#x27;)
+    param:=reply + SIZEOF l_sense
+
+    WHILE param &lt; (reply + reply.len + SIZEOF l_sense)
+
+        IF param.pcode = $0 THEN StrCopy(str, &#x27;\ebNon-Medium Error Count:\en&#x27;) ELSE  StrCopy(str, &#x27;\ebVendor Parameter:\en&#x27;)
+
+        IF param.len = 1
+            outlist_i(str, Char(param + SIZEOF log_param_type_2), NIL)
+        ELSEIF param.len = 2
+            outlist_i(str, Int(param + SIZEOF log_param_type_2), NIL)
+        ELSEIF param.len = 4
+            outlist_i(str, Long(param + SIZEOF log_param_type_2), NIL)
+        ELSEIF param.len = 8
+            StringF(vstr, &#x27;$\h\h&#x27;, Long(param + SIZEOF log_param_type_2), Long(param + SIZEOF log_param_type_2 + 4))
+            outlist(str, vstr)
+        ELSE
+            outlist(str, &#x27;Cannot Decode&#x27;)
+        ENDIF
+
+        
+        param:= param + SIZEOF log_param_type_2 + param.len
+    ENDWHILE
+
+ENDPROC
+
+
+/*
+** Handler for processing temperature logs
+** Page Code: $D
+*/
+PROC process_log_temperature(reply:PTR TO l_sense)
+    outlist_i(&#x27;\ebLog Size:\en&#x27;, reply.len, &#x27; bytes&#x27;)
+    outlist_i(&#x27;\ebCurrent Temperature:\en&#x27;, Char(reply+9),&#x27; degrees celsius&#x27;)
+    IF (reply.len &gt; 15) THEN outlist_i(&#x27;\ebReference Temperature:\en&#x27;, Char(reply+15), &#x27; degrees celsius&#x27;)
+ENDPROC
+
+
+/*
+** Handler for processing information exception logs
+** Page Code: $2F
+*/
+PROC process_log_ie(reply:PTR TO l_sense) -&gt; DONE
+DEF param:PTR TO log_param_type_2
+    
+    outlist_i(&#x27;\ebLog Size:\en&#x27;, reply.len, &#x27; bytes&#x27;)
+    param:=reply + SIZEOF l_sense
+    
+    WHILE param &lt; (reply + reply.len + SIZEOF l_sense)
+
+        outlist_i(&#x27;\ebParameter Code:\en&#x27;, param.pcode, NIL)
+        outlist_i(&#x27;\ebParameter Size:\en&#x27;, param.len, &#x27; bytes&#x27;)
+        outlist_h(&#x27;\ebSMART Sense Code:\en&#x27;, Char(param + SIZEOF log_param_type_2), NIL)
+        outlist_h(&#x27;\ebSMART Sense Qualifier:\en&#x27;, Char(param + SIZEOF log_param_type_2 + 1), NIL)
+        param:= param + SIZEOF log_param_type_2 + param.len
+    ENDWHILE
+
+ENDPROC
+
+
+/*
+** Handler for processing information exception logs
+** Page Code: $30
+*/
+PROC process_log_smartsense(reply:PTR TO l_sense) -&gt; DONE
+DEF param:PTR TO log_param_type_2,
+    str[100]:STRING,
+    vstr[20]:STRING
+    
+    outlist_i(&#x27;\ebLog Size:\en&#x27;, reply.len, &#x27; bytes&#x27;)
+    param:=reply + SIZEOF l_sense
+    
+    WHILE param &lt; (reply + reply.len + SIZEOF l_sense)
+
+        outlist_h(&#x27;\ebParameter Code:\en&#x27;, param.pcode, NIL)
+        -&gt;outlist_h(&#x27;\ebParameter Size:\en&#x27;, param.len, NIL)
+        
+        IF param.len = 1
+            outlist_i(&#x27;\ebParameter Value:\en&#x27;, Char(param + SIZEOF log_param_type_2), NIL)
+        ELSEIF param.len = 2
+            outlist_i(&#x27;\ebParameter Value:\en&#x27;, Int(param + SIZEOF log_param_type_2), NIL)
+        ELSE
+            StringF(str, &#x27;Normalised: \d, Worst Ever: \d, Warranty Failure Threshold: \d&#x27;, Char(param + SIZEOF log_param_type_2), Char(param + SIZEOF log_param_type_2 + 1), Char(param + SIZEOF log_param_type_2 + 2 ))
+            outlist(&#x27;\ebParameter Value:\en&#x27;, str) 
+        ENDIF
+        
+        param:= param + SIZEOF log_param_type_2 + param.len
+    ENDWHILE
+
+ENDPROC
+
+
+/*
+** Handler for processing performance logs
+** NOTE: This page may be vendor/device dependant
+** Page Code: $30
+*/
+PROC process_log_performance(reply:PTR TO l_sense)
+
+    outlist_i(&#x27;\ebLog Size:\en&#x27;, reply.len, &#x27; bytes&#x27;)
+
+    outlist_i(&#x27;\ebZero Seeks:\en&#x27;, Int(reply+8), NIL)
+    outlist_i(&#x27;\ebSeeks (&gt;=2/3) of disk:\en&#x27;, Int(reply+10), NIL)
+    outlist_i(&#x27;\ebSeeks (&gt;=1/3 AND &lt;2/3) of disk:\en&#x27;, Int(reply+12), NIL)
+    outlist_i(&#x27;\ebSeeks (&gt;=1/6 AND &lt;1/3) of disk:\en&#x27;, Int(reply+14), NIL)
+    outlist_i(&#x27;\ebSeeks (&gt;=1/12 AMD &lt;1/6) of disk:\en&#x27;, Int(reply+16), NIL)
+    outlist_i(&#x27;\ebSeeks (&gt;0 and &lt;1/12) of disk:\en&#x27;, Int(reply+18), NIL)
+    outlist_i(&#x27;\ebOverrun Counter:\en&#x27;, Int(reply+24), NIL)
+    outlist_i(&#x27;\ebUnderrun Counter:\en&#x27;, Int(reply+26), NIL)
+    outlist_i(&#x27;\ebDevice Cache Full Read Hits:\en&#x27;, Long(reply+28), NIL)
+    outlist_i(&#x27;\ebDevice Cache Partial Read Hits:\en&#x27;, Long(reply+32), NIL)
+    outlist_i(&#x27;\ebDevice Cache Write Hits:\en&#x27;, Long(reply+36), NIL)
+    outlist_i(&#x27;\ebDevice Cache Fast Writes:\en&#x27;, Long(reply+40), NIL)
+
+ENDPROC
+
+/*
+** Handler for processing physical error sites
+** NOTE: This page may be vendor/device dependant
+** Page Code: $32
+*/
+PROC process_log_physical(reply:PTR TO l_sense)
+
+    outlist_i(&#x27;\ebLog Size:\en&#x27;, reply.len, &#x27; bytes&#x27;)
+    outlist(&#x27;\ebNote:\en&#x27;, &#x27;Further decoding of this page is not yet supported&#x27;)
+    
+ENDPROC    
+
+
+/*
+** Handler for processing LBA Error Sites
+** NOTE: This page may be vendor/device dependant
+** Page Code: $33
+*/
+PROC process_log_lba(reply:PTR TO l_sense)
+
+    outlist_i(&#x27;\ebLog Size:\en&#x27;, reply.len, &#x27; bytes&#x27;)
+    outlist(&#x27;\ebNote:\en&#x27;, &#x27;Further decoding of this page is not yet supported&#x27;)
+    
+ENDPROC 
+
+
+/*
+** Handler for processing Cache Utilisation
+** NOTE: This page may be vendor/device dependant
+** Page Code: $35
+*/
+PROC process_log_cache(reply:PTR TO l_sense)
+
+    outlist_i(&#x27;\ebLog Size:\en&#x27;, reply.len, &#x27; bytes&#x27;)
+    
+    outlist_i(&#x27;\ebCumulative Cache Full Hits on Reads:\en&#x27;, Long(reply+8), NIL)
+    outlist_i(&#x27;\ebCumulative Cache Partial Hits on Reads:\en&#x27;, Long(reply+12), NIL)
+    outlist_i(&#x27;\ebCumulative Cache Misses on Reads:\en&#x27;, Long(reply+16), NIL)
+ENDPROC
+
+
+/*
+** Handler for processing temperature
+** NOTE: This page may be vendor/device dependant
+** Page Code: $36
+*/
+PROC process_log_ibmtemp(reply:PTR TO l_sense)
+
+    outlist_i(&#x27;\ebLog Size:\en&#x27;, reply.len, &#x27; bytes&#x27;)    
+    outlist_i(&#x27;\ebCurrent Temperature:\en&#x27;, Char(reply+9),&#x27; degrees celsius&#x27;)
+    
+ENDPROC
+
+
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

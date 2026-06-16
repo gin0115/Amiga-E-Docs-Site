@@ -1,0 +1,142 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>safeWritePixelArray8.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-svensmodules.html">SvensModules</a> &rsaquo; safeWritePixelArray8.e</div><h1>File: <code>safeWritePixelArray8.e</code></h1><p class="meta">116 lines · project <a href="../examples/pkg-svensmodules.html"><code>SvensModules</code></a></p><p class="pathctx">SvensModules/emodules/sven/safeWritePixelArray8.e</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/rastport.html">graphics/rastport</a></li><li><a href="../modules/getconfigsoftware.html">sven/getconfigsoftware</a></li></ul></div><h2>Source</h2><pre class="code">OPT MODULE
+OPT PREPROCESS
+
+MODULE &#x27;graphics/rastport&#x27;,&#x27;graphics/gfx&#x27;
+MODULE &#x27;sven/getConfigSoftware&#x27;,
+       &#x27;sven/safeGetBitMapAttr&#x27;,
+       &#x27;sven/bitmap&#x27;,
+       &#x27;sven/support/bitmap&#x27;
+
+/* Writes an pixelarray (1Byte=1Pixel) into an rastport.
+** Should work on any system, uses advantages of certain versions of graphics.library
+** and falls back to easiest mode in low-memory situations.
+**
+**  src    - the pixel array
+**  srcx   - x-offset within src
+**  srcy   - y-offest within src
+**  srcmod - bytes per row in the source array (at least &#x27;width&#x27;)
+**  rp     - the destination bitmap
+**  dstx   - x-offset into rastport
+**  dsty   - y-offset into rastport
+**  width  - width of the rectangle
+**  height - height of the rectangle
+*/
+EXPORT PROC safeWritePixelArray8(src:PTR TO CHAR,srcx,srcy,srcmod,
+                                 rp:PTR TO rastport,dstx,dsty,
+                                 width,height)
+DEF bm:PTR TO bitmap,
+    rph:rastport
+
+  /* clipping
+  ** help saving memory and cpu-time
+  */
+  IF srcx&lt;0
+    dstx:=dstx-srcx
+    width:=width+srcx
+    srcx:=0
+  ENDIF
+  IF dstx&lt;0
+    srcx:=srcx-dstx
+    width:=width+dstx
+    dstx:=0
+  ENDIF
+  IF srcy&lt;0
+    dsty:=dsty-srcy
+    height:=height+srcy
+    srcy:=0
+  ENDIF
+  IF dsty&lt;0
+    srcy:=srcy-dsty
+    height:=height+dsty
+    dsty:=0
+  ENDIF
+
+  width:=Min(width,safeGetBitMapAttr(rp.bitmap,BMA_WIDTH)-dstx)
+  height:=Min(height,safeGetBitMapAttr(rp.bitmap,BMA_HEIGHT)-dsty)
+
+  IF (width&lt;=0) OR (height&lt;=0) THEN RETURN
+
+  /* calc startpixel of source buffer
+  */
+  src:=src+Mul(srcy,srcmod)+srcx
+
+
+  IF getGfxVersion()&gt;=40
+    /* the easy way
+    */
+    WriteChunkyPixels(rp,
+                      dstx,dsty,dstx+width-1,dsty+height-1,
+                      src,srcmod)
+    RETURN
+
+  ELSEIF getGfxVersion()&gt;=36
+    /* a bit more complicated but still fast
+    **
+    ** We need an temporary rastport, so allocate an bitmap and initialize
+    ** the rastport.
+    ** Note: We only allocate an bitmap that is 1 pixel height because
+    **       it safes a lot of memory.
+    */
+    IF bm:=allocBitMap(MakeEvenInt(width),1,safeGetBitMapAttr(rp.bitmap,BMA_DEPTH),0,rp.bitmap)
+      InitRastPort(rph)
+      rph.bitmap:=bm
+
+      /* now draw that thingy line by line.
+      */
+      FOR srcy:=0 TO height-1
+        WritePixelLine8(rp,dstx,dsty+srcy,
+                        width,
+                        src,
+                        rph)
+        /* calc next line
+        */
+        src:=src+srcmod
+      ENDFOR
+      freeBitMap(bm)
+      RETURN
+    ENDIF
+
+  ENDIF
+
+  /* uhhh. Pixel by pixel.
+  ** Either we are on a pre v36 system or in a low memory situation.
+  */
+  FOR srcy:=0 TO height-1
+    FOR srcx:=0 TO width-1
+      SetAPen(rp,src[]++)
+      WritePixel(rp,dstx+srcx,dsty+srcy)
+    ENDFOR
+    /* calc next line
+    */
+    src:=src+srcmod-width
+  ENDFOR
+
+ENDPROC
+
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

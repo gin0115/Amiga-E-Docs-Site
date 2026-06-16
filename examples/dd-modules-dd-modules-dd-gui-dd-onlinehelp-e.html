@@ -1,0 +1,174 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>dd_onlinehelp.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-dd-modules.html">dd_Modules</a> &rsaquo; dd_onlinehelp.e</div><h1>File: <code>dd_onlinehelp.e</code></h1><p class="meta">148 lines · project <a href="../examples/pkg-dd-modules.html"><code>dd_Modules</code></a></p><p class="pathctx">dd_Modules/dd_Modules/dd_gui/dd_onlinehelp.e</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/amigaguide.html">amigaguide</a></li><li><a href="../modules/amigaguide.html">libraries/amigaguide</a></li><li><a href="../modules/tagitem.html">utility/tagitem</a></li></ul></div><h2>Source</h2><pre class="code">OPT MODULE
+
+MODULE &#x27;amigaguide&#x27;
+MODULE &#x27;libraries/amigaguide&#x27;
+MODULE &#x27;utility/tagitem&#x27;
+
+ENUM OLH_NO_ERROR,OLH_CANNOT_OPEN
+
+DEF amigaguidebase
+
+EXPORT OBJECT onlinehelp
+PRIVATE
+  -&gt; amigaguide database information
+  guide:newamigaguide
+  -&gt; handle for amigaguide
+  handle
+  -&gt; current context index number
+  context
+PUBLIC
+  -&gt; signal mask indicates amigaguide messages
+  signalmask:LONG
+ENDOBJECT
+
+EXPORT PROC new(guidefile,arexxname,basename,contextlist) OF onlinehelp
+  self.guide.name:=guidefile
+  self.guide.clientport:=arexxname
+  self.guide.basename:=basename
+  self.guide.flags:=HTF_CACHE_NODE
+  self.guide.context:=contextlist
+ENDPROC TRUE
+
+EXPORT PROC end() OF onlinehelp
+  self.close()
+  self.context:=0
+  self.signalmask:=0
+ENDPROC
+
+PROC close() OF onlinehelp
+  -&gt; amigaguide.library open?
+  IF amigaguidebase
+    -&gt; amigaguide opened?
+    IF self.handle
+      -&gt; close the amigaguide
+      CloseAmigaGuide(self.handle)
+      self.handle:=NIL
+    ENDIF
+    -&gt; close the amigaguide.library
+    CloseLibrary(amigaguidebase)
+    amigaguidebase:=NIL
+  ENDIF
+ENDPROC
+
+EXPORT PROC help() OF onlinehelp
+
+  -&gt; amigaguide.library not opened?
+  IF amigaguidebase=NIL
+    -&gt; try to open amigaguide.library
+    amigaguidebase:=OpenLibrary(&#x27;amigaguide.library&#x27;,34)
+  ENDIF
+
+  -&gt; amigaguide.library open?
+  IF amigaguidebase
+    -&gt; guide already open?
+    IF self.handle
+      -&gt; is set context valid?
+      IF SetAmigaGuideContextA(self.handle,self.context,NIL)
+        -&gt; send valid context to be displayed
+        SendAmigaGuideContextA(self.handle,NIL)
+      ENDIF
+    -&gt; guide is not open yet
+    ELSE
+      -&gt; open the guide. note that we will be notified by a message
+      -&gt; later when the guide is actually displayed
+      self.handle:=OpenAmigaGuideAsyncA(self.guide,TAG_DONE)
+      -&gt; amigaguide opened?
+      IF self.handle
+        -&gt; get the signalmask for this amigaguide
+        self.signalmask:=AmigaGuideSignal(self.handle)
+      ELSE
+        -&gt; handle errors here
+        PrintF(&#x27;Could not show the online help guide.\n&#x27;)
+      ENDIF
+    ENDIF
+  ELSE
+    PrintF(&#x27;The amigaguide.library version 34 is not available.\n&#x27;,)
+  ENDIF
+ENDPROC
+
+EXPORT PROC setcontext(contextindex) OF onlinehelp
+  -&gt; just store new context
+  self.context:=contextindex
+ENDPROC
+
+EXPORT PROC signalmask() OF onlinehelp IS self.signalmask
+
+EXPORT PROC handle() OF onlinehelp
+  DEF message=NIL:PTR TO amigaguidemsg
+  DEF error=OLH_NO_ERROR
+  -&gt; check if there is something to handle
+  IF (amigaguidebase&lt;&gt;NIL) AND (self.handle&lt;&gt;NIL)
+    -&gt; get the next amigaguide message, if any
+    WHILE message:=GetAmigaGuideMsg(self.handle)
+      -&gt; guide has become active?
+      IF (message.type=ACTIVETOOLID)
+        -&gt; help must have been wanted before, so call it again
+        self.help()
+      -&gt; other messages
+      ELSEIF (message.type=TOOLSTATUSID) OR
+             (message.type=TOOLCMDREPLYID) OR
+             (message.type=SHUTDOWNMSGID)
+        PrintF(&#x27;message.type=\d\n&#x27;,message.type)
+        -&gt; primary return value indicates error?
+        IF message.pri_ret
+          -&gt; you could instruct the user here
+          IF message.sec_ret=HTERR_CANT_OPEN_DATABASE
+            -&gt; set the error to be acted upon later
+            PrintF(&#x27;setting error.\n&#x27;)
+            error:=OLH_CANNOT_OPEN
+          -&gt; other errors, probably just show them
+          ELSE
+            PrintF(&#x27;AmigaGuide Error:\n\s\n&#x27;,GetAmigaGuideString(message.sec_ret))
+          ENDIF
+        ENDIF
+      ENDIF
+      -&gt; we are finished with this message, let&#x27;s reply it
+      ReplyAmigaGuideMsg(message)
+    ENDWHILE
+    -&gt; did an error occur?
+    IF error=OLH_CANNOT_OPEN
+      PrintF(&#x27;acting on error.\n&#x27;)
+      self.retry()
+    ENDIF
+  ENDIF
+ENDPROC
+
+PROC retry() OF onlinehelp
+  -&gt; close down the faulty amigaguide
+  self.close()
+  -&gt; ask for the correct filename
+  self.guide.name:=&#x27;dd_onlinehelptest3.guide&#x27;
+  -&gt; if give, try again
+  self.help()
+ENDPROC
+
+
+
+
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

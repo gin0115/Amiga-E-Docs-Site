@@ -1,0 +1,261 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>GDU.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-amigae30a-fr.html">amigae30a_fr</a> &rsaquo; GDU.e</div><h1>File: <code>GDU.e</code></h1><p class="meta">235 lines · project <a href="../examples/pkg-amigae30a-fr.html"><code>amigae30a_fr</code></a></p><p class="pathctx">amigae30a_fr/AmigaE30f/Sources/Utils/GDU.e</p><p class="prose">Graphical Disk Usage (GDU), basé sur D.e affiche toutes les partitions du disque dur et du même style sur l&#x27;écran et est capable de zoomer dedans, d&#x27;afficher les infos etc. [voir requester]</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/stack.html">class/stack</a></li></ul></div><h2>Source</h2><pre class="code">/* Graphical Disk Usage (GDU), basé sur D.e
+
+   affiche toutes les partitions du disque dur et du même style sur l&#x27;écran
+   et est capable de zoomer dedans, d&#x27;afficher les infos etc. [voir requester]
+
+*/
+
+OPT OSVERSION=37
+
+MODULE &#x27;class/stack&#x27;, &#x27;tools/clonescreen&#x27;,
+       &#x27;dos/dosasl&#x27;, &#x27;dos/dos&#x27;, &#x27;utility&#x27;, &#x27;intuition/intuition&#x27;
+
+CONST MAXPATH=250
+
+ENUM ER_NONE,ER_BADARGS,ER_MEM,ER_UTIL,ER_COML
+ENUM ARG_DIR,NUMARGS
+
+RAISE ER_MEM IF New()=NIL, ERROR_BREAK IF CtrlC()=TRUE, ER_MEM IF String()=NIL
+
+OBJECT dir
+  name,size,sub,x,y,xs,ys
+ENDOBJECT
+
+DEF dir,dirw[100]:STRING,rdargs=NIL,dirno=0,s[200]:STRING,b:PTR TO dir,
+    screen=NIL,font=NIL,win=NIL,xsize,ysize,depth,st:PTR TO stack
+
+PROC consdir(name,size,sub) IS NEW [StrCopy(String(StrLen(name)),name),size,sub]:dir
+
+PROC main() HANDLE
+  DEF args[NUMARGS]:LIST,templ,x,lock,fib:fileinfoblock,do=TRUE,code,qual,mx,my
+  IF EasyRequestArgs(win,[20,0,&#x27;Welcome to GraphicDiskUsage&#x27;,
+      &#x27;cli usage = GDU &lt;volume&gt;\nbouton gauche = affiche info\nbouton droit = quit\nshift + bouton gauche = zoom interieur\nshift + bouton droit = zoom dehors\nctrl c = quitte [pendant la lecture du disque]\n&#x27;,
+      &#x27;On y va|Cancel&#x27;],0,NIL)=1
+    NEW st.stack()
+    IF (utilitybase:=OpenLibrary(&#x27;utility.library&#x27;,37))=NIL THEN Raise(ER_UTIL)
+    FOR x:=0 TO NUMARGS-1 DO args[x]:=0
+    templ:=&#x27;DIR&#x27;
+    rdargs:=ReadArgs(templ,args,NIL)
+    IF rdargs=NIL THEN Raise(ER_BADARGS)
+    dir:=args[ARG_DIR]
+    IF dir THEN StrCopy(dirw,dir,ALL)
+    lock:=Lock(dirw,-2)
+    IF lock                  /* Si oui, le rép prob. dir, sinon car. génériques */
+      IF Examine(lock,fib) AND (fib.direntrytype&gt;0)
+        AddPart(dirw,&#x27;#?&#x27;,100)
+      ENDIF
+      UnLock(lock)
+    ENDIF
+    screen,font:=openclonescreen(&#x27;Workbench&#x27;,&#x27;Graphic Disk Usage ($%#!)&#x27;)
+    win:=backdropwindow(screen,$8,$10000)
+    depth,xsize,ysize:=getcloneinfo(screen)
+    WriteF(&#x27;Scanning...\n&#x27;)
+    b:=recdir(dirw)
+    SetTopaz(8)
+    refresh()
+    WHILE do
+      WaitIMessage(win)
+      code:=MsgCode()
+      qual:=MsgQualifier()
+      mx:=MouseX(win); my:=MouseY(win)
+      IF code=MENUDOWN
+        IF qual AND 1
+          zoomout()
+        ELSE
+          IF EasyRequestArgs(win,[20,0,&#x27;Quitter?&#x27;,&#x27;T&#x27;es sûr, mec?&#x27;,&#x27;Voui|Meuh nooon!&#x27;],0,NIL)=1 THEN do:=FALSE
+        ENDIF
+      ELSEIF code=SELECTDOWN
+        IF qual AND 1
+          zoomin(mx,my)
+        ELSE
+          findxy(b,mx,my)
+        ENDIF
+      ENDIF
+    ENDWHILE
+  ENDIF
+EXCEPT DO
+  closeclonescreen(screen,font,win)
+  IF rdargs THEN FreeArgs(rdargs)
+  IF utilitybase THEN CloseLibrary(utilitybase)
+  SELECT exception
+    CASE &quot;SCR&quot;;                 WriteF(&#x27;Pas d&#x27;écran!\n&#x27;)
+    CASE &quot;WIN&quot;;                 WriteF(&#x27;Pas de fenêtre!\n&#x27;)
+    CASE ER_BADARGS;            WriteF(&#x27;Mauvais arguments pour GDU!\n&#x27;)
+    CASE ER_MEM;                WriteF(&#x27;Pas de mémoire!\n&#x27;)
+    CASE ER_COML;               WriteF(&#x27;Pas de ligne de commande spécifié\n&#x27;)
+    CASE ER_UTIL;               WriteF(&#x27;Nepeut pas ouvrir l&#x27;&#x27;&quot;utility.library&quot; v37\n&#x27;)
+    CASE ERROR_BREAK;           WriteF(&#x27;Arrêt de GDU par l&#x27;&#x27;utilisateur\n&#x27;)
+    CASE ERROR_BUFFER_OVERFLOW; WriteF(&#x27;Erreur interne\n&#x27;)
+    DEFAULT;                    PrintFault(exception,&#x27;Dos Error&#x27;)
+  ENDSELECT
+ENDPROC
+
+PROC refresh()
+  SetRast(stdrast,0)
+  dogfx(b,5,20,xsize-10,ysize-30,TRUE)
+ENDPROC
+
+PROC recdir(dirr) HANDLE
+  DEF er,i:PTR TO fileinfoblock,size=0,anchor=NIL:PTR TO anchorpath,
+      fullpath,x,num=0,l=NIL,rl:PTR TO dir
+  CtrlC()
+  anchor:=New(SIZEOF anchorpath+MAXPATH)
+  anchor.breakbits:=4096
+  anchor.strlen:=MAXPATH-1
+  er:=MatchFirst(dirr,anchor)               /* collecte toutes les chaines */
+  WHILE er=0
+    fullpath:=anchor+SIZEOF anchorpath
+    i:=anchor.info
+    IF i.direntrytype&lt;0
+      size:=size+Shr(i.size+1023,9)
+      num++
+    ELSE
+      x:=StrLen(fullpath)
+      IF x+5&lt;MAXPATH THEN CopyMem(&#x27;/#?&#x27;,fullpath+x,4)
+      rl:=recdir(fullpath)
+      size:=size+rl.size
+      fullpath[x]:=0
+      -&gt;l:=NEW [l,rl]
+      l:=addsorted(l,rl)
+    ENDIF
+    er:=MatchNext(anchor)
+  ENDWHILE
+  IF er&lt;&gt;ERROR_NO_MORE_ENTRIES THEN Raise(er)
+  MatchEnd(anchor)
+  Dispose(anchor)
+  anchor:=NIL
+  INC dirno
+EXCEPT
+  IF anchor THEN MatchEnd(anchor)
+  Raise(exception)
+ENDPROC consdir(dirr,IF size THEN size ELSE 1,l)
+
+PROC addsorted(l:PTR TO LONG,d:PTR TO dir)
+  DEF d2:PTR TO dir,p:PTR TO LONG,c:PTR TO LONG
+  IF l=NIL
+    RETURN NEW [NIL,d]
+  ELSE
+    d2:=l[1]
+    IF d.size&gt;d2.size
+      RETURN NEW [l,d]
+    ELSE
+      c:=l
+      REPEAT
+        p:=c; c:=c[]
+      UNTIL IF c THEN (d2:=c[1]) BUT d.size&gt;d2.size ELSE TRUE
+      p[]:=NEW [c,d]
+    ENDIF
+  ENDIF
+ENDPROC l
+
+PROC dogfx(b:PTR TO dir,x,y,xs,ys,isx)
+  DEF l:PTR TO LONG,cs=0,sb:PTR TO dir,mc,last
+  b.x:=x; b.y:=y; b.xs:=xs; b.ys:=ys
+  IF (xs&gt;2) AND (ys&gt;2)
+    Line(x,y,x+xs,y)
+    Line(x,y,x,y+ys)
+    Line(x+xs,y,x+xs,y+ys)
+    Line(x,y+ys,x+xs,y+ys)
+    l:=b.sub
+    WHILE l
+      l &lt;=&gt; [l,sb]
+      dogfx(sb,IF isx THEN Div(Mul(cs,xs),b.size)+x ELSE x,
+               IF isx THEN y ELSE Div(Mul(cs,ys),b.size)+y,
+               IF isx THEN Div(Mul(sb.size,xs),b.size) ELSE xs,
+               IF isx THEN ys ELSE Div(Mul(sb.size,ys),b.size),
+               Not(isx))
+      cs:=cs+sb.size
+    ENDWHILE
+    IF isx
+      x:=x+xs; xs:=xs-Div(Mul(cs,xs),b.size); x:=x-xs
+    ELSE
+      y:=y+ys; ys:=ys-Div(Mul(cs,ys),b.size); y:=y-ys
+    ENDIF
+    IF ys&gt;10
+      IF xs&gt;20
+        mc:=xs-4/8
+        last:=b.name+EstrLen(b.name)
+        WHILE (last&gt;b.name) AND (last[]&lt;&gt;&quot;/&quot;) AND (last[]&lt;&gt;&quot;:&quot;) DO last--
+        mc:=last-mc
+        IF mc&lt;b.name THEN mc:=b.name
+        IF mc=last THEN StrCopy(s,&#x27;#?&#x27;) ELSE StrCopy(s,mc,last-mc)
+        TextF(xs/2+x-(EstrLen(s)*4),ys/2+y+3,s)
+      ENDIF
+    ENDIF
+  ENDIF
+ENDPROC
+
+PROC zoomin(x,y)
+  DEF l:PTR TO LONG,b2:PTR TO dir
+  l:=b.sub
+  WHILE l
+    b2:=l[1]
+    IF x&gt;=b2.x
+      IF y&gt;=b2.y
+        IF x&lt;(b2.x+b2.xs)
+          IF y&lt;(b2.y+b2.ys) THEN st.push(b) BUT (b:=b2) BUT refresh()
+        ENDIF
+      ENDIF
+    ENDIF
+    l:=l[]
+  ENDWHILE
+ENDPROC
+
+PROC zoomout()
+  IF st.is_empty()
+    DisplayBeep(screen)
+  ELSE
+    b:=st.pop()
+    refresh()
+  ENDIF
+ENDPROC
+
+PROC findxy(b:PTR TO dir,x,y)
+  DEF f=FALSE,l:PTR TO LONG,numsub=0
+  IF x&gt;=b.x
+    IF y&gt;=b.y
+      IF x&lt;(b.x+b.xs)
+        IF y&lt;(b.y+b.ys)
+          l:=b.sub
+          WHILE l
+            f:=f OR findxy(l[1],x,y)
+            l:=l[]
+            numsub++
+          ENDWHILE
+          IF f=FALSE
+            f:=TRUE
+            StringF(s,IF numsub THEN &#x27;\s, \d octets [incluant \d sous répertoire(s)].&#x27; ELSE &#x27;\s, \d octets.&#x27;,b.name,Shl(b.size,9),numsub)
+            SetWindowTitles(win,s,s)
+          ENDIF
+        ENDIF
+      ENDIF
+    ENDIF
+  ENDIF
+ENDPROC f
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

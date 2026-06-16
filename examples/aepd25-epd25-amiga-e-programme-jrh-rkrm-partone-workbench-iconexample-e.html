@@ -1,0 +1,140 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>iconexample.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-aepd25.html">AEPD25</a> &rsaquo; iconexample.e</div><h1>File: <code>iconexample.e</code></h1><p class="meta">114 lines · project <a href="../examples/pkg-aepd25.html"><code>AEPD25</code></a></p><p class="pathctx">AEPD25/EPD25/Amiga_E-Programme/JRH-RKRM-PartOne/Workbench/iconexample.e</p><h2>Source</h2><pre class="code">  ‹53 bytes of embedded binary/non-text data elided›
+  ‹45 bytes of embedded binary/non-text data elided›
+  ‹31 bytes of embedded binary/non-text data elided›
+  ‹21 bytes of embedded binary/non-text data elided›
+  ‹21 bytes of embedded binary/non-text data elided›
+  ‹9 bytes of embedded binary/non-text data elided›
+  ‹75 bytes of embedded binary/non-text data elided›
+prev2downqual
+  ‹57 bytes of embedded binary/non-text data elided›
+  ‹85 bytes of embedded binary/non-text data elided›
+  ‹207 bytes of embedded binary/non-text data elided›
+  ‹19 bytes of embedded binary/non-text data elided›
+  ‹57 bytes of embedded binary/non-text data elided›
+  ‹17 bytes of embedded binary/non-text data elided›
+  ‹669 bytes of embedded binary/non-text data elided›
+  ‹269 bytes of embedded binary/non-text data elided›
+  ‹265 bytes of embedded binary/non-text data elided›
+  ‹451 bytes of embedded binary/non-text data elided›
+  ‹1684 bytes of embedded binary/non-text data elided›
+ëEs$%Û[{Kcwiæ®ÊüWþ@`0F(&#x27;Then copy this example (iconexample) to RAM:\n&#x27;)
+    WriteF(&#x27;and double-click the \s project icon\n&#x27;, projname)
+  ELSE -&gt; Else we are from WB - ie. we were either started by a tool icon,
+       -&gt; or as in this case, by being the default tool of a project icon.
+    -&gt; E-Note: WriteF opens its own window if necessary
+    wbenchMsg:=wbmessage
+
+    -&gt; First arg is our executable (tool).  Any additional args are projects
+    -&gt; or icons passed to us via either extend select or default tool method.
+    wbarg:=wbenchMsg.arglist
+    FOR i:=0 TO wbenchMsg.numargs-1
+      -&gt; If there&#x27;s a directory lock for this wbarg, CD there
+      olddir:=-1
+      IF wbarg.lock AND (wbarg.name[]&lt;&gt;0) THEN olddir:=CurrentDir(wbarg.lock)
+
+      showToolTypes(wbarg)
+
+      IF (i&gt;0) AND (wbarg.name[]&lt;&gt;0)
+        WriteF(&#x27;In Main. We could open the \s file here\n&#x27;, wbarg.name)
+      ENDIF
+      IF olddir&lt;&gt;-1 THEN CurrentDir(olddir)  -&gt; CD back where we were
+      wbarg++
+    ENDFOR
+    Delay(500)
+    WriteF(&#x27;\nPress RETURN to close window\n&#x27;)
+  ENDIF
+EXCEPT DO
+  IF file THEN Close(file)
+  SELECT exception
+  CASE ERR_LIB;   WriteF(&#x27;Can&#x27;&#x27;t open icon.library\n&#x27;)
+  CASE ERR_OPEN;  WriteF(&#x27;Can&#x27;&#x27;t open file &quot;\s&quot;\n&#x27;, projname)
+  CASE ERR_WRITE; WriteF(&#x27;Error writing data file\n&#x27;)
+  CASE ERR_MAKE;  WriteF(&#x27;Error writing icon\n&#x27;)
+  ENDSELECT
+  RETURN IF exception=ERR_NONE THEN RETURN_OK ELSE RETURN_FAIL
+ENDPROC
+
+PROC makeIcon(name, newtooltypes, newdeftool)
+  DEF dobj:PTR TO diskobject, oldtooltypes, olddeftool, success=FALSE
+  IF dobj:=GetDiskObject(name)
+    -&gt; If file already has an icon, we will save off any fields we need to
+    -&gt; update, update those fields, put the object, restore the old field
+    -&gt; pointers and then free the object.  This will preserve any custom
+    -&gt; imagery the user has, and the user&#x27;s current placement of the icon.
+    -&gt; If your application does not know where the user currently keeps your
+    -&gt; application, you should not update his dobj.defaulttool.
+    oldtooltypes:=dobj.tooltypes
+    olddeftool:=dobj.defaulttool
+
+    dobj.tooltypes:=newtooltypes
+    dobj.defaulttool:=newdeftool
+
+    success:=PutDiskObject(name, dobj)
+
+    -&gt; We must restore the original pointers before freeing
+    dobj.tooltypes:=oldtooltypes
+    dobj.defaulttool:=olddeftool
+    FreeDiskObject(dobj)
+  ENDIF
+  -&gt; Else, put our default icon
+  IF success=FALSE THEN success:=PutDiskObject(name, projIcon)
+  IF success=FALSE THEN Raise(ERR_MAKE)
+ENDPROC
+
+PROC showToolTypes(wbarg:PTR TO wbarg)
+  DEF dobj:PTR TO diskobject, toolarray, s, success=FALSE
+  WriteF(&#x27;\nWBArg Lock=$\h, Name=\s ($\h)\n&#x27;,
+         wbarg.lock, wbarg.name, wbarg.name[])
+
+  IF (wbarg.name[]&lt;&gt;0) AND (dobj:=GetDiskObject(wbarg.name))
+    WriteF(&#x27;  We have read the DiskObject (icon) for this arg\n&#x27;)
+    toolarray:=dobj.tooltypes
+
+    IF s:=FindToolType(toolarray, &#x27;FILETYPE&#x27;)
+      WriteF(&#x27;    Found tooltype FILETYPE with value \s\n&#x27;, s)
+    ENDIF
+    IF s:=FindToolType(toolarray, &#x27;FLAGS&#x27;)
+      WriteF(&#x27;    Found tooltype FLAGS with value \s\n&#x27;, s)
+      IF MatchToolValue(s, &#x27;BOLD&#x27;)
+        WriteF(&#x27;      BOLD flag requested\n&#x27;)
+      ENDIF
+      IF MatchToolValue(s, &#x27;ITALICS&#x27;)
+        WriteF(&#x27;      ITALICS flag requested\n&#x27;)
+      ENDIF
+    ENDIF
+    -&gt; Free the diskobject we got
+    FreeDiskObject(dobj)
+    success:=TRUE
+  ELSEIF wbarg.name[]=0
+    WriteF(&#x27;  Must be a disk or drawer icon\n&#x27;)
+  ELSE
+    WriteF(&#x27;  Can&#x27;&#x27;t find any DiskObject (icon) for this WBArg\n&#x27;)
+  ENDIF
+ENDPROC success
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

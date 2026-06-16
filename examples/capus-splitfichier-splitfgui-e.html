@@ -1,0 +1,443 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>splitfgui.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-capus.html">capus</a> &rsaquo; splitfgui.e</div><h1>File: <code>splitfgui.e</code></h1><p class="meta">417 lines · project <a href="../examples/pkg-capus.html"><code>capus</code></a></p><p class="pathctx">capus/SplitFichier/splitfgui.e</p><p class="prose">*****************************************************************************************</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/asl.html">asl</a></li><li><a href="../modules/intuition.html">intuition/intuition</a></li></ul></div><h2>Source</h2><pre class="code">/*******************************************************************************************/
+/* Source code generate by Gui2E v0.1 © 1994 NasGûl                                        */
+/*******************************************************************************************/
+/********************************************************************************
+ * &lt;&lt; EUTILS HEADER &gt;&gt;
+ ********************************************************************************
+ ED        &quot;EDG&quot;
+ EC        &quot;EC -e&quot;
+ PREPRO    &quot;EPP -t -c&quot;
+ SOURCE    &quot;SplitFGui.e&quot;
+ EPPDEST   &quot;SP_EPP.e&quot;
+ EXEC      &quot;SplitFGui&quot;
+ ISOURCE   &quot;&quot;
+ HSOURCE   &quot;&quot;
+ ERROREC   &quot;&quot;
+ ERROREPP  &quot;&quot;
+ VERSION   &quot;0&quot;
+ REVISION  &quot;1&quot;
+ NAMEPRG   &quot;SpliFGui&quot;
+ NAMEAUTHOR &quot;NasGûl&quot;
+ ********************************************************************************
+ * HISTORY :
+ *******************************************************************************/
+
+OPT OSVERSION=37
+
+CONST F_LOAD=0,
+      F_SAVE=1
+
+MODULE &#x27;intuition/intuition&#x27;,&#x27;gadtools&#x27;,&#x27;libraries/gadtools&#x27;,&#x27;intuition/gadgetclass&#x27;,&#x27;intuition/screens&#x27;,
+       &#x27;graphics/text&#x27;,&#x27;exec/lists&#x27;,&#x27;exec/nodes&#x27;,&#x27;exec/ports&#x27;,&#x27;eropenlib&#x27;,&#x27;utility/tagitem&#x27;
+MODULE &#x27;asl&#x27;,&#x27;libraries/asl&#x27;,&#x27;mathtrans&#x27;
+ENUM ER_NONE,ER_LOCKSCREEN,ER_VISUAL,ER_CONTEXT,ER_MENUS,ER_GADGET,ER_WINDOW,ER_MEM
+
+RAISE ER_MEM IF New()=NIL,
+      ER_MEM IF String()=NIL
+
+DEF screen:PTR TO screen,
+    visual=NIL,
+    tattr:PTR TO textattr,
+    reelquit=FALSE,
+    offy
+/****************************************
+ * sp Definitions
+ ****************************************/
+DEF sp_window=NIL:PTR TO window
+DEF sp_glist=NIL
+/* Gadgets */
+ENUM GA_GSOURCE,GA_GDESTIN,GA_GCAP,GA_GBUF,GA_GLOAD,GA_GSPLIT,GA_GINFO
+/* Gadgets labels of sp */
+DEF gsource,gdestin,gcap,gbuf,gload,gsplit,ginfo
+/* Application def */
+DEF dosfich_source[256]:STRING
+DEF dos_destin[256]:STRING
+DEF fich_destin[256]:STRING
+DEF infotexte[80]:STRING
+DEF nbrsfichier,reellong,
+    capacite=12,startcap=12,restelastfichier,
+    reel_buff=65535,valbuf=1,conv=FALSE
+/*********************************/
+/* OpenCloseLibraries            */
+/*********************************/
+PROC p_OpenLibraries() HANDLE /*&quot;p_OpenLibraries()&quot;*/
+/********************************************************************************
+ * Para     : NONE
+ * Return   : ER_NONE if ok,else the error.
+ * Description  : Open libraires.
+ *******************************************************************************/
+    IF (intuitionbase:=OpenLibrary(&#x27;intuition.library&#x27;,37))=NIL THEN Raise(ER_INTUITIONLIB)
+    IF (gadtoolsbase:=OpenLibrary(&#x27;gadtools.library&#x27;,37))=NIL THEN Raise(ER_GADTOOLSLIB)
+    IF (gfxbase:=OpenLibrary(&#x27;graphics.library&#x27;,37))=NIL THEN Raise(ER_GRAPHICSLIB)
+    IF (aslbase:=OpenLibrary(&#x27;asl.library&#x27;,37))=NIL THEN Raise(ER_ASLLIB)
+    IF (mathtransbase:=OpenLibrary(&#x27;mathtrans.library&#x27;,37))=NIL THEN Raise(ER_MATHTRANSLIB)
+    Raise(ER_NONE)
+EXCEPT
+    RETURN exception
+ENDPROC
+PROC p_CloseLibraries()  /*&quot;p_CloseLibraries()&quot;*/
+/********************************************************************************
+ * Para     : NONE
+ * Return   : NONE
+ * Description  : CLose Libraries.
+ *******************************************************************************/
+    IF mathtransbase THEN CloseLibrary(mathtransbase)
+    IF aslbase THEN CloseLibrary(aslbase)
+    IF gfxbase THEN CloseLibrary(gfxbase)
+    IF gadtoolsbase THEN CloseLibrary(gadtoolsbase)
+    IF intuitionbase THEN CloseLibrary(intuitionbase)
+ENDPROC
+/*********************************/
+/* ScreenWindow Proc             */
+/*********************************/
+PROC p_SetUpScreen() HANDLE /*&quot;p_SetUpScreen()&quot;*/
+/********************************************************************************
+ * Para     : NONE
+ * Return   : ER_NONE if ok,else the error.
+ * Description  : Lock Pubscreen workbench.
+ *******************************************************************************/
+    IF (screen:=LockPubScreen(&#x27;Workbench&#x27;))=NIL THEN Raise(ER_LOCKSCREEN)
+    IF (visual:=GetVisualInfoA(screen,NIL))=NIL THEN Raise(ER_VISUAL)
+    offy:=screen.wbortop+Int(screen.rastport+58)+1
+    Raise(ER_NONE)
+EXCEPT
+    RETURN exception
+ENDPROC
+PROC p_SetDownScreen() /*&quot;p_SetDownScreen()&quot;*/
+/********************************************************************************
+ * Para     : NONE
+ * Return   : NONE
+ * Description  : Unlock pubscreen workbench.
+ *******************************************************************************/
+    IF visual THEN FreeVisualInfo(visual)
+    IF screen THEN UnlockPubScreen(NIL,screen)
+ENDPROC
+PROC p_InitspWindow() HANDLE /*&quot;p_InitspWindow()&quot;*/
+/********************************************************************************
+ * Para     : NONE
+ * Return   : ER_NONE if ok,else the error.
+ * Description  : Init Window.
+ *******************************************************************************/
+    IF (sp_glist:=CreateContext({sp_glist}))=NIL THEN Raise(ER_CONTEXT)
+    IF (gsource:=CreateGadgetA(TEXT_KIND,sp_glist,[177,17,201,12,&#x27;Fichier Source&#x27;,tattr,0,1,visual,0]:newgadget,[GTTX_BORDER,TRUE,GTTX_TEXT,&#x27;None.&#x27;,GTTX_COPYTEXT,FALSE,GT_UNDERSCORE,&quot;_&quot;,TAG_DONE,0]))=NIL THEN Raise(ER_GADGET)
+    IF (gdestin:=CreateGadgetA(TEXT_KIND,gsource,[177,31,201,12,&#x27;Dossier Destination&#x27;,tattr,1,1,visual,0]:newgadget,[GTTX_BORDER,TRUE,GTTX_TEXT,&#x27;None.&#x27;,GTTX_COPYTEXT,FALSE,GT_UNDERSCORE,&quot;_&quot;,TAG_DONE,0]))=NIL THEN Raise(ER_GADGET)
+    IF (gcap:=CreateGadgetA(MX_KIND,gdestin,[28,47,17,9,&#x27;&#x27;,tattr,2,2,visual,0]:newgadget,[GA_RELVERIFY,TRUE,GTMX_LABELS,[&#x27;880 Ko.&#x27;,&#x27;1600 Ko.&#x27;,0],GT_UNDERSCORE,&quot;_&quot;,TAG_DONE,0]))=NIL THEN Raise(ER_GADGET)
+    IF (gbuf:=CreateGadgetA(MX_KIND,gcap,[269,47,17,9,&#x27;&#x27;,tattr,3,2,visual,0]:newgadget,[GA_RELVERIFY,TRUE,GTMX_LABELS,[&#x27;65535 Ko.&#x27;,&#x27;131070 Ko.&#x27;,&#x27;262140 Ko.&#x27;,0],GT_UNDERSCORE,&quot;_&quot;,TAG_DONE,0]))=NIL THEN Raise(ER_GADGET)
+    IF (gload:=CreateGadgetA(BUTTON_KIND,gbuf,[138,48,101,12,&#x27;Load&#x27;,tattr,4,16,visual,0]:newgadget,[GA_IMMEDIATE,TRUE,GA_DISABLED,FALSE,GT_UNDERSCORE,&quot;_&quot;,TAG_DONE,0]))=NIL THEN Raise(ER_GADGET)
+    IF (gsplit:=CreateGadgetA(BUTTON_KIND,gload,[138,61,101,12,&#x27;Split&#x27;,tattr,5,16,visual,0]:newgadget,[GA_IMMEDIATE,TRUE,GA_DISABLED,FALSE,GT_UNDERSCORE,&quot;_&quot;,TAG_DONE,0]))=NIL THEN Raise(ER_GADGET)
+    IF (ginfo:=CreateGadgetA(TEXT_KIND,gsplit,[9,76,373,12,&#x27;&#x27;,tattr,6,0,visual,0]:newgadget,[GTTX_BORDER,TRUE,GTTX_TEXT,&#x27;None.&#x27;,GTTX_COPYTEXT,FALSE,GT_UNDERSCORE,&quot;_&quot;,TAG_DONE,0]))=NIL THEN Raise(ER_GADGET)
+    Raise(ER_NONE)
+EXCEPT
+    RETURN exception
+ENDPROC
+PROC p_RenderspWindow(texte) /*&quot;p_RenderspWindow(texte)&quot;*/
+/********************************************************************************
+ * Para     : texte (STRING).
+ * Return   : NONE
+ * Description  : Rebuild graphical interface.
+ *******************************************************************************/
+   StrCopy(infotexte,texte,ALL)
+   IF conv=FALSE
+       Gt_SetGadgetAttrsA(gsource,sp_window,NIL,[GTTX_BORDER,TRUE,GTTX_TEXT,&#x27;None.&#x27;,GTTX_COPYTEXT,FALSE,GT_UNDERSCORE,&quot;_&quot;,TAG_DONE,0])
+       Gt_SetGadgetAttrsA(gdestin,sp_window,NIL,[GTTX_BORDER,TRUE,GTTX_TEXT,&#x27;None.&#x27;,GTTX_COPYTEXT,FALSE,GT_UNDERSCORE,&quot;_&quot;,TAG_DONE,0])
+       Gt_SetGadgetAttrsA(ginfo,sp_window,NIL,[GTTX_BORDER,TRUE,GTTX_TEXT,texte,GTTX_COPYTEXT,FALSE,GT_UNDERSCORE,&quot;_&quot;,TAG_DONE,0])
+       Gt_SetGadgetAttrsA(gsplit,sp_window,NIL,[GA_DISABLED,TRUE,GT_UNDERSCORE,&quot;_&quot;,TAG_DONE,0])
+   ELSE
+       Gt_SetGadgetAttrsA(gsource,sp_window,NIL,[GTTX_BORDER,TRUE,GTTX_TEXT,dosfich_source,GTTX_COPYTEXT,FALSE,GT_UNDERSCORE,&quot;_&quot;,TAG_DONE,0])
+       Gt_SetGadgetAttrsA(gdestin,sp_window,NIL,[GTTX_BORDER,TRUE,GTTX_TEXT,dos_destin,GTTX_COPYTEXT,FALSE,GT_UNDERSCORE,&quot;_&quot;,TAG_DONE,0])
+       Gt_SetGadgetAttrsA(ginfo,sp_window,NIL,[GTTX_BORDER,TRUE,GTTX_TEXT,texte,GTTX_COPYTEXT,FALSE,GT_UNDERSCORE,&quot;_&quot;,TAG_DONE,0])
+       Gt_SetGadgetAttrsA(gsplit,sp_window,NIL,[GA_DISABLED,FALSE,GT_UNDERSCORE,&quot;_&quot;,TAG_DONE,0])
+   ENDIF
+   DrawBevelBoxA(sp_window.rport,9,46,111,29,[GA_BORDER,TRUE,GT_VISUALINFO,visual,TAG_DONE,0])
+   DrawBevelBoxA(sp_window.rport,125,46,126,29,[GTBB_RECESSED,1,GT_VISUALINFO,visual,TAG_DONE,0])
+   DrawBevelBoxA(sp_window.rport,257,46,127,29,[GT_VISUALINFO,visual,TAG_DONE,0])
+   DrawBevelBoxA(sp_window.rport,9,13,376,32,[GA_BORDER,TRUE,GT_VISUALINFO,visual,TAG_DONE,0])
+   RefreshGList(gsource,sp_window,NIL,-1)
+   Gt_RefreshWindow(sp_window,NIL)
+ENDPROC
+PROC p_OpenspWindow() HANDLE /*&quot;p_OpenspWindow()&quot;*/
+/********************************************************************************
+ * Para     : NONE
+ * Return   : ER_NONE if ok,else the error.
+ * Description  : Open the window.
+ *******************************************************************************/
+    IF (sp_window:=OpenWindowTagList(NIL,
+                      [WA_LEFT,10,
+                       WA_TOP,10,
+                       WA_WIDTH,388,
+                       WA_HEIGHT,90,
+                       WA_IDCMP,IDCMP_CLOSEWINDOW+IDCMP_REFRESHWINDOW+IDCMP_GADGETDOWN,
+                       WA_FLAGS,$102E+WFLG_HASZOOM,
+                       WA_GADGETS,sp_glist,
+                       WA_TITLE,&#x27;SplitF v0.1 © 1994 NasGûl&#x27;,
+                       WA_ZOOM,[10,10,388,11]:INT,
+                       WA_SCREENTITLE,&#x27;Made With GadToolsBox v2.0 © 1991-1993&#x27;,
+                       TAG_DONE]))=NIL THEN Raise(ER_WINDOW)
+    p_RenderspWindow(&#x27;None.&#x27;)
+    Raise(ER_NONE)
+EXCEPT
+    RETURN exception
+ENDPROC
+PROC p_RemspWindow() /*&quot;p_RemspWindow()&quot;*/
+/********************************************************************************
+ * Para     : NONE
+ * Return   : NONE
+ * Description  : Remove the window.
+ *******************************************************************************/
+    IF sp_window THEN CloseWindow(sp_window)
+    IF sp_glist THEN FreeGadgets(sp_glist)
+ENDPROC
+/*********************************/
+/* Message proc                  */
+/*********************************/
+PROC p_LookAllMessage() /*&quot;p_LookAllMessage()&quot;*/
+/********************************************************************************
+ * Para     : NONE
+ * Return   : NONE
+ * Description  : Look All Message (window and CtrlC()).
+ *******************************************************************************/
+    DEF sigreturn
+    DEF spport:PTR TO mp
+    IF sp_window THEN spport:=sp_window.userport ELSE spport:=NIL
+    sigreturn:=Wait(Shl(1,spport.sigbit) OR
+                    $F000)
+    IF (sigreturn AND Shl(1,spport.sigbit))
+        p_LookspMessage()
+    ENDIF
+    IF (sigreturn AND $F000)
+        reelquit:=TRUE
+    ENDIF
+ENDPROC
+PROC p_LookspMessage() /*&quot;p_LookspMessage()&quot;*/
+/********************************************************************************
+ * Para     : NONE
+ * Return   : NONE
+ * Description  : Look window mesaage.
+ *******************************************************************************/
+   DEF mes:PTR TO intuimessage
+   DEF g:PTR TO gadget
+   DEF selec
+   DEF type=0,infos=NIL
+   DEF long=NIL
+   IF mes:=Gt_GetIMsg(sp_window.userport)
+      type:=mes.class
+      SELECT type
+         CASE IDCMP_MENUPICK
+            infos:=mes.code
+            SELECT infos
+            ENDSELECT
+         CASE IDCMP_REFRESHWINDOW
+            p_RenderspWindow(infotexte)
+         CASE IDCMP_GADGETDOWN
+            g:=mes.iaddress
+            infos:=g.gadgetid
+            SELECT infos
+               CASE GA_GSOURCE
+               CASE GA_GDESTIN
+               CASE GA_GCAP
+                  selec:=mes.code
+                  SELECT selec
+                     CASE 0;  startcap:=12
+                     CASE 1;  startcap:=24
+                  ENDSELECT
+               CASE GA_GBUF
+                  selec:=mes.code
+                  SELECT selec
+                     CASE 0;   valbuf:=1
+                     CASE 1;   valbuf:=2
+                     CASE 2;   valbuf:=4
+                  ENDSELECT
+               CASE GA_GLOAD
+                  IF p_FileRequester(F_LOAD,&#x27;charger un fichier&#x27;)
+                     IF (long:=FileLength(dosfich_source))&gt;800000
+                        IF p_FileRequester(F_SAVE,&#x27;Choississez un dossier&#x27;)
+                           conv:=TRUE
+                           reellong:=long
+                           StringF(infotexte,&#x27;Longueur :\d Octets.&#x27;,long)
+                           p_RenderspWindow(infotexte)
+                        ELSE
+                           conv:=FALSE
+                           StrCopy(dosfich_source,&#x27;&#x27;,ALL)
+                           p_RenderspWindow(&#x27;None.&#x27;)
+                        ENDIF
+                     ELSE
+                        conv:=FALSE
+                        StrCopy(dosfich_source,&#x27;&#x27;,ALL)
+                        p_RenderspWindow(&#x27;Ce fichier tient sur 1 disk.&#x27;)
+                     ENDIF
+                  ELSE
+                     conv:=FALSE
+                     StrCopy(dosfich_source,&#x27;&#x27;,ALL)
+                     p_RenderspWindow(&#x27;None.&#x27;)
+                  ENDIF
+               CASE GA_GSPLIT
+                  IF p_DoSplitFichier(dosfich_source,fich_destin,dos_destin,reellong)=ER_NONE THEN p_RenderspWindow(&#x27;Split Ok.&#x27;)
+               CASE GA_GINFO
+            ENDSELECT
+         CASE IDCMP_CLOSEWINDOW
+            reelquit:=TRUE
+      ENDSELECT
+      Gt_ReplyIMsg(mes)
+   ENDIF
+   reel_buff:=Mul(65535,valbuf)
+   capacite:=Div(startcap,valbuf)
+ENDPROC
+/*********************************/
+/* Application Proc              */
+/*********************************/
+PROC p_FileRequester(func,titre) /*&quot;p_FileRequester(func,titre)&quot;*/
+/********************************************************************************
+ * Para     : function (F_LOAD ou F_SAVE),titre (STRING).
+ * Return   : TRURE if ok,else FASLE.
+ * Description  : PopUp a AslFileRequester.
+ *******************************************************************************/
+    DEF req:PTR TO filerequestr
+    DEF ret=FALSE
+    DEF tag
+    DEF doit
+    IF func=F_LOAD
+        tag:=[ASL_FUNCFLAGS,FILF_PATGAD,ASL_HAIL,titre,0]
+    ELSE
+        tag:=[ASL_FUNCFLAGS,FILF_SAVE,ASL_EXTFLAGS1,FIL1F_NOFILES,ASL_HAIL,titre,0]
+    ENDIF
+    IF req:=AllocAslRequest(ASL_FILEREQUEST,tag)
+        IF doit:=RequestFile(req)
+            SELECT func
+               CASE F_LOAD
+                    StringF(fich_destin,&#x27;\s&#x27;,req.file)
+                    AddPart(req.dir,&#x27;&#x27;,256)
+                    StringF(dosfich_source,&#x27;\s\s&#x27;,req.dir,req.file)
+               CASE F_SAVE
+                    StringF(dos_destin,&#x27;\s&#x27;,req.dir)
+            ENDSELECT
+        ENDIF
+        FreeAslRequest(req)
+    ENDIF
+    IF doit
+      RETURN TRUE
+    ENDIF
+    RETURN ret
+ENDPROC
+PROC p_DoSplitFichier(dfs,fichier_source,dossier_destin,longueur) HANDLE /*&quot;p_DoSplitFichier(dfs,fichier_source,dossier_destin,longueur)&quot;*/
+/********************************************************************************
+ * Para     : dossier/fichier source,fichier destination,dossier destination,longueur.
+ * Return   : ER_NONE if ok,else the error.
+ * Description  : Split the file.
+ *******************************************************************************/
+    DEF h_s=NIL,h_d=NIL
+    DEF b,j
+    DEF fichier_destin[256]:STRING
+    DEF data=NIL,resteboucle=NIL,reste=NIL
+    AddPart(dossier_destin,&#x27;&#x27;,256)
+    nbrsfichier:=SpFix(SpDiv(SpMul(SpFlt(capacite),SpFlt(reel_buff)),SpFlt(longueur)))
+    restelastfichier:=longueur-Mul(nbrsfichier,Mul(capacite,reel_buff))
+    StringF(infotexte,&#x27;Nbrs de fichiers:\d (\d Octets.)&#x27;,nbrsfichier,Mul(capacite,reel_buff))
+    p_RenderspWindow(infotexte)
+    Delay(50)
+    StringF(infotexte,&#x27;Longueur du dernier fichier:\d Octets.&#x27;,restelastfichier)
+    p_RenderspWindow(infotexte)
+    Delay(50)
+    IF h_s:=Open(dfs,1005)
+        FOR b:=1 TO nbrsfichier
+            StringF(fichier_destin,&#x27;\s\s.Part\d&#x27;,dossier_destin,fichier_source,b)
+            StringF(infotexte,&#x27;\s&#x27;,fichier_destin)
+            p_RenderspWindow(infotexte)
+            Delay(10)
+            IF h_d:=Open(fichier_destin,1006)
+                FOR j:=1 TO capacite
+                    data:=New(reel_buff)
+                    Read(h_s,data,reel_buff)
+                    Write(h_d,data,reel_buff)
+                    Dispose(data)
+                    CtrlC()
+                ENDFOR
+                IF h_d THEN Close(h_d)
+            ENDIF
+            CtrlC()
+        ENDFOR
+        StringF(fichier_destin,&#x27;\s\s.Part\d&#x27;,dossier_destin,fichier_source,b)
+        StringF(infotexte,&#x27;Dernier Fichier :\s&#x27;,fichier_destin)
+        p_RenderspWindow(infotexte)
+        Delay(10)
+        IF h_d:=Open(fichier_destin,1006)
+            resteboucle:=SpFix(SpDiv(SpFlt(reel_buff),SpFlt(restelastfichier)))
+            FOR b:=1 TO resteboucle
+                data:=New(reel_buff)
+                Read(h_s,data,reel_buff)
+                Write(h_d,data,reel_buff)
+                Dispose(data)
+                CtrlC()
+            ENDFOR
+            reste:=restelastfichier-Mul(resteboucle,reel_buff)
+            data:=New(reste)
+            Read(h_s,data,reste)
+            Write(h_d,data,reste)
+            Dispose(data)
+        ENDIF
+    ENDIF
+    Raise(ER_NONE)
+EXCEPT
+    IF h_d THEN Close(h_d)
+    IF h_s THEN Close(h_s)
+    IF data THEN Dispose(data)
+    RETURN exception
+ENDPROC
+/*********************************/
+/* Main Proc                     */
+/*********************************/
+PROC main() HANDLE /*&quot;main()&quot;*/
+/********************************************************************************
+ * Para     : NONE
+ * Return   : ER_NONE if ok,else the error.
+ * Description  : Main Procedure.
+ *******************************************************************************/
+    DEF testmain
+    tattr:=[&#x27;topaz.font&#x27;,8,0,0]:textattr
+    IF (testmain:=p_OpenLibraries())&lt;&gt;ER_NONE THEN Raise(testmain)
+    IF (testmain:=p_SetUpScreen())&lt;&gt;ER_NONE THEN Raise(testmain)
+    IF (testmain:=p_InitspWindow())&lt;&gt;ER_NONE THEN Raise(testmain)
+    IF (testmain:=p_OpenspWindow())&lt;&gt;ER_NONE THEN Raise(testmain)
+    REPEAT
+        p_LookAllMessage()
+    UNTIL reelquit=TRUE
+    Raise(ER_NONE)
+EXCEPT
+    p_RemspWindow()
+    p_SetDownScreen()
+    p_CloseLibraries()
+    SELECT exception
+        CASE ER_LOCKSCREEN; WriteF(&#x27;Lock Screen Failed.\n&#x27;)
+        CASE ER_VISUAL;     WriteF(&#x27;Error Visual.\n&#x27;)
+        CASE ER_CONTEXT;    WriteF(&#x27;Error Context.\n&#x27;)
+        CASE ER_MENUS;      WriteF(&#x27;Error Menus.\n&#x27;)
+        CASE ER_GADGET;     WriteF(&#x27;Error Gadget.\n&#x27;)
+        CASE ER_WINDOW;     WriteF(&#x27;Error Window.\n&#x27;)
+    ENDSELECT
+ENDPROC
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

@@ -1,0 +1,155 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>FileReq.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-gec-extra.html">GEC-extra</a> &rsaquo; FileReq.e</div><h1>File: <code>FileReq.e</code></h1><p class="meta">129 lines · project <a href="../examples/pkg-gec-extra.html"><code>GEC-extra</code></a></p><p class="pathctx">GEC-extra/GEC/source/Grio/End/FileReq.e</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/reqtools.html">reqtools</a></li></ul></div><h2>Source</h2><pre class="code">
+
+
+ENUM OK,ER_KICK,ER_RT,ER_ARGS,ER_ALLOC,ER_VAR
+
+MODULE &#x27;reqtools&#x27;,&#x27;libraries/reqtools&#x27;,&#x27;dos/var&#x27;,&#x27;utility/tagitem&#x27;
+
+ENUM FILE,TIT,OKT,VOL,MLTI,SAVE,NOF,PAT,VAR,GLOB,COM,PUB,NUMARGS
+
+
+RAISE ER_KICK IF KickVersion()=NIL,
+      ER_RT IF OpenLibrary()=NIL,
+      ER_ARGS IF ReadArgs()=NIL,
+      ER_ALLOC IF RtAllocRequestA()=NIL,
+      ER_VAR IF SetVar()=NIL,
+      OK IF RtFileRequestA()=NIL
+
+CONST STRSIZE=256
+
+
+DEF args[NUMARGS]:ARRAY OF LONG,readargs=NIL,x,
+    freq:PTR TO rtfilerequester,
+    flist:PTR TO rtfilelist,dir[90]:STRING,
+    name[34]:STRING,str[STRSIZE]:STRING,
+    flstore,tags,stag,buf[110]:STRING,
+    patt:PTR TO CHAR , tmp:PTR TO CHAR
+
+
+PROC main() HANDLE
+
+
+   VOID &#x27;$VER: FileReq 1.22 (03.01.97) by Grio&#x27;
+
+
+   FOR x:=0 TO NUMARGS-1 DO args[x]:=NIL
+
+   KickVersion(36)
+
+   reqtoolsbase:=OpenLibrary(&#x27;reqtools.library&#x27;,38)
+
+   tmp:=&#x27;File,Title,OkTxt/K,Volume/S,Multi/S,Save/S,NoFiles/S,&#x27;+
+        &#x27;Pattern/K,Var/K,Global/S,Comma/S,PubScreen/K&#x27;
+
+   readargs:=ReadArgs(tmp,args,NIL)
+
+   freq:=RtAllocRequestA(RT_FILEREQ,NIL)
+
+
+   IF args[TIT]=NIL THEN args[TIT]:=&#x27;Select something&#x27;
+
+   IF args[VAR]=NIL THEN args[VAR]:=&#x27;FileReqResult&#x27;
+
+   IF args[GLOB] THEN
+      args[GLOB]:=GVF_GLOBAL_ONLY ELSE args[GLOB]:=GVF_LOCAL_ONLY
+
+   tags:=NIL
+
+   IF args[VOL]
+      stag:=RTFI_VOLUMEREQUEST
+   ELSE
+      stag:=RTFI_FLAGS
+      IF args[FILE]
+         x:=FilePart(args[FILE])
+         StrCopy(dir,args[FILE],x-args[FILE])
+         StrCopy(name,x,ALL)
+      ENDIF
+      IF args[PAT] THEN patt:=args[PAT] ELSE patt:=&#x27;#?&#x27;
+      RtChangeReqAttrA(freq,[RTFI_MATCHPAT,patt,RTFI_DIR,dir,TAG_DONE])
+      IF args[MLTI] THEN tags:=FREQF_MULTISELECT
+      IF args[PAT]  THEN tags:=tags+FREQF_PATGAD
+      IF args[NOF]  THEN tags:=tags+FREQF_NOFILES
+      IF args[SAVE] THEN tags:=tags+FREQF_SAVE
+   ENDIF
+
+   flist:=RtFileRequestA(freq,name,args[TIT],[
+   RT_PUBSCRNAME,args[PUB],RT_REQPOS,REQPOS_POINTER,
+   RT_UNDERSCORE,&quot;_&quot;,RTFI_OKTEXT,args[OKT],
+   stag,tags,TAG_DONE])
+
+   StrCopy(dir,freq.dir,ALL)
+
+   AddPart(dir,&#x27;&#x27;,90)
+
+
+   flstore:=flist
+
+   IF args[COM] THEN tmp:=&#x27;&quot;\s\s&quot;&#x27; ELSE tmp:=&#x27;\s\s&#x27;
+
+   IF args[MLTI]
+      StrCopy(str,&#x27;&#x27;)
+      REPEAT
+        StringF(buf,tmp,dir,flist.name)
+        IF EstrLen(str)+EstrLen(buf) &gt; STRSIZE THEN JUMP setstr
+        StrAdd(str,buf,ALL)
+        StrAdd(str,&#x27; &#x27;,1)
+        flist:=flist.next
+      UNTIL flist=NIL
+   ELSE
+      StringF(str,tmp,dir,name)
+      flstore:=0
+   ENDIF
+
+setstr:
+
+   SetVar(args[VAR],str,StrLen(str),args[GLOB])
+
+EXCEPT DO
+   IF readargs THEN FreeArgs(readargs)
+   IF flstore THEN RtFreeFileList(flstore)
+   IF freq THEN RtFreeRequest(freq)
+   IF reqtoolsbase THEN CloseLibrary(reqtoolsbase)
+   IF exception
+      SELECT exception
+         CASE ER_KICK
+              Write(stdout,&#x27;os 2.0+ required\n&#x27;,17)
+         CASE ER_RT
+              PrintF(&#x27;could not open reqtools.library v38\n&#x27;)
+         CASE ER_ARGS
+              PrintFault(IoErr(),NIL)
+         CASE ER_ALLOC
+              PrintF(&#x27;can\at allocate requester\n&#x27;)
+         CASE ER_VAR
+              PrintF(&#x27;unable to set variable\n&#x27;)
+      ENDSELECT
+   ENDIF
+   CleanUp(0)
+ENDPROC
+
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

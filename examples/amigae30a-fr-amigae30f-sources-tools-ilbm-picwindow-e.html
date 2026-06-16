@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>picwindow.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-amigae30a-fr.html">amigae30a_fr</a> &rsaquo; picwindow.e</div><h1>File: <code>picwindow.e</code></h1><p class="meta">93 lines · project <a href="../examples/pkg-amigae30a-fr.html"><code>amigae30a_fr</code></a></p><p class="pathctx">amigae30a_fr/AmigaE30f/Sources/Tools/ILBM/picwindow.e</p><p class="prose">picwindow.e Michael Zucchi 1994 Charge une <a href="../modules/image.html">image</a> dans une fenêtre sur le WorkBench (sans couleurs...) Démontre l&#x27;utilisation du module ILBM - le chargement dans les bitmaps, et comment obtenir les informations sur l&#x27;<a href="../modules/image.html">image</a>. Il montre aussi le requête de fichier asl. Ce programme peut être librement d</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/ilbm.html">tools/ilbm</a></li></ul></div><h2>Source</h2><pre class="code">/*
+
+        picwindow.e                          Michael Zucchi 1994
+
+        Charge une image dans une fenêtre sur le WorkBench (sans couleurs...)
+        Démontre l&#x27;utilisation du module ILBM - le chargement dans les bitmaps,
+        et comment obtenir les informations sur l&#x27;image. Il montre aussi le
+        requête de fichier asl.
+
+        Ce programme peut être librement distribué au sein des propriétaires
+        enregitrés de l&#x27;AmigaE.
+ */
+
+
+MODULE &#x27;tools/ilbm&#x27;, &#x27;tools/ilbmdefs&#x27;,
+        &#x27;intuition/intuition&#x27;,
+        &#x27;asl&#x27;, &#x27;libraries/ASL&#x27;
+
+DEF bm,win:PTR TO window,
+        buffer[256]:ARRAY
+
+PROC main()
+DEF ilbm,filename,width,height,bmh:PTR TO bmhd,pi:PTR TO picinfo
+
+IF filename:=requestfile(&#x27;Select picture&#x27;)
+        IF ilbm:=ilbm_New(filename,0)
+                ilbm_LoadPicture(ilbm,[ILBML_GETBITMAP,{bm},0])
+
+                -&gt; prend un pointeur SUR les infos des images, on sort
+                -&gt;l&#x27;entête bitmap, et lit la taille de l&#x27;image.
+                pi:=ilbm_PictureInfo(ilbm)
+                bmh:=pi.bmhd;
+                width:=bmh.w;
+                height:=bmh.h;
+
+                -&gt; le gestionnaire ilbm n&#x27;est plus nécessaire, on peut le libérer
+                ilbm_Dispose(ilbm)
+
+                -&gt; si un bitmap est actuellement ouvert, ouvre une fenêtre, et le &#x27;blit&#x27;
+                IF bm
+                        IF win:=OpenWindowTagList(0,[WA_INNERWIDTH,width,WA_INNERHEIGHT,height,
+                                WA_AUTOADJUST,-1,
+                                WA_IDCMP,IDCMP_CLOSEWINDOW,
+                                WA_FLAGS,WFLG_CLOSEGADGET+WFLG_DRAGBAR+WFLG_DEPTHGADGET,
+                                WA_TITLE,filename,
+                                WA_SCREENTITLE,&#x27;Pic-Window 0.1 1994 Michael Zucchi&#x27;,0])
+
+                                -&gt; bit dans les dimensions actuelles que l&#x27;OS pourrait nous donner (La fenêtre peut ne pas être aussi grande que l&#x27;image)
+                                BltBitMapRastPort(bm,0,0,win.rport,
+                                        win.borderleft,win.bordertop,
+                                        win.width-win.borderright-win.borderleft,
+                                        win.height-win.borderbottom-win.bordertop,$c0);
+
+                                WaitPort(win.userport)
+                                CloseWindow(win)
+
+                        ENDIF
+                        ilbm_FreeBitMap(bm)
+                ENDIF
+        ENDIF
+ENDIF
+
+ENDPROC
+
+/*
+        Affiche une requête de fichier asl. Si l&#x27;utilisateur choisit un fichier,
+        son nom est étendu à son chemin entier.
+ */
+PROC requestfile(title)
+DEF name=0,fr:PTR TO filerequester
+
+IF aslbase:=OpenLibrary(&#x27;asl.library&#x27;,36)
+        IF fr:=AllocAslRequest(ASL_FILEREQUEST,[ASLFR_TITLETEXT,title,0])
+                IF AslRequest(fr,0)
+
+                        -&gt; désolé, un peu d&#x27;asm ici. Ben ... Sinon comment?
+                        -&gt; ça fait une copie de chaine (strcpy()) ...
+                        MOVE.L  fr,A0
+                        MOVE.L  8(A0),A0        -&gt; pointeur de répertoire de la requête
+                        MOVE.L  buffer,A1
+                cp:     MOVE.B  (A0)+,(A1)+
+                        BNE.S   cp
+
+                        AddPart(buffer,fr.file,256)
+                        name:=buffer
+                ENDIF
+                FreeAslRequest(fr)
+        ENDIF
+        CloseLibrary(aslbase)
+ENDIF
+
+ENDPROC name
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

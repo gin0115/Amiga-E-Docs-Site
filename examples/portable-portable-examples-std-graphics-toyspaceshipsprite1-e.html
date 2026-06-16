@@ -1,0 +1,144 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ToySpaceshipSprite1.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-portable.html">PortablE</a> &rsaquo; ToySpaceshipSprite1.e</div><h1>File: <code>ToySpaceshipSprite1.e</code></h1><p class="meta">118 lines · project <a href="../examples/pkg-portable.html"><code>PortablE</code></a></p><p class="pathctx">PortablE/PortablE/Examples/std/Graphics/ToySpaceshipSprite1.e</p><p class="prose">ToySpaceshipSprite.e 07-04-2012 by Chris Handley A fairly simple example of how the user can smoothly move a <a href="../modules/sprite.html">sprite</a> around the screen.</p><h2>Source</h2><pre class="code">/* ToySpaceshipSprite.e 07-04-2012 by Chris Handley
+	A fairly simple example of how the user can smoothly move a sprite around the screen.
+*/
+MODULE &#x27;std/cGfxSpritesSimple&#x27;
+
+PROC main()
+	DEF backgroundSize, graphics:PTR TO cGfxBitmap
+	DEF xDirection, yDirection, speed
+	DEF quit:BOOL, type, subType, value, value2
+	
+	-&gt;open window
+	IsDesktopApp()
+	OpenWindow(800, 600)
+	
+	SetAutoUpdate(FALSE)
+	-&gt;SetFrameSkipping(TRUE)
+	
+	-&gt;extract player bitmap from picture
+	graphics := LoadPicture(&#x27;gfx/tyrian.shp.007D3C.ilbm&#x27;, &#x27;&#x27;)
+	extractBitmaps(&#x27;player&#x27;, graphics, FALSE, 5)
+	DestroyBitmap(graphics)
+	
+	-&gt;create player sprite (in middle of screen) using the bitmap
+	createSprite(&#x27;player&#x27;, InfoWidth()/2, InfoHeight()/2)
+	LastSprite().setFrame(2)	-&gt;use the middle frame (bitmap)
+	
+	StoreSprite(&#x27;player&#x27;, 0, LastSprite())
+	
+	-&gt;create &amp; display the fractal background
+	backgroundSize := 512
+	SetBackgroundDrawable(MakeFractalBitmap(backgroundSize, $300030, $000000))			-&gt;&#x27;purple space mist&#x27;!
+	-&gt;SetBackgroundDrawable(MakeFractalBitmap(backgroundSize, $006000, $004000, 8))		-&gt;grass
+	-&gt;SetBackgroundDrawable(MakeFractalBitmap(backgroundSize, $FF0000, $FF6000))		-&gt;lava
+	
+	-&gt;event loop
+	speed := 3
+	xDirection := 0
+	yDirection := 0
+	quit  := FALSE
+	REPEAT
+		-&gt;handle any user input
+		WHILE CheckForGfxWindowEvent()
+			type, subType, value, value2 := GetLastEvent()
+			
+			SELECT type
+			CASE EVENT_WINDOW
+				IF subType = EVENT_WINDOW_CLOSE THEN quit := TRUE
+				
+			CASE EVENT_KEY
+				IF subType = EVENT_KEY_SPECIAL
+					-&gt;(a key was pressed) so change movement direction &amp; update player sprite as required
+					SELECT value
+					CASE EVENT_KEY_SPECIAL_UP    ; yDirection := -1
+					CASE EVENT_KEY_SPECIAL_DOWN  ; yDirection :=  1
+					CASE EVENT_KEY_SPECIAL_LEFT  ; xDirection := -1 ; UseSprite(&#x27;player&#x27;, 0).setFrame(0)
+					CASE EVENT_KEY_SPECIAL_RIGHT ; xDirection :=  1 ; UseSprite(&#x27;player&#x27;, 0).setFrame(4)
+					ENDSELECT
+					
+				ELSE IF subType = EVENT_KEY_SPECIALUP
+					-&gt;(a key was released) so stop movement &amp; update player sprite as required
+					SELECT value
+					CASE EVENT_KEY_SPECIAL_UP    ; yDirection := 0
+					CASE EVENT_KEY_SPECIAL_DOWN  ; yDirection := 0
+					CASE EVENT_KEY_SPECIAL_LEFT  ; xDirection := 0 ; UseSprite(&#x27;player&#x27;, 0).setFrame(2)
+					CASE EVENT_KEY_SPECIAL_RIGHT ; xDirection := 0 ; UseSprite(&#x27;player&#x27;, 0).setFrame(2)
+					ENDSELECT
+				ENDIF
+			ENDSELECT
+		ENDWHILE
+		
+		-&gt;move player according to the keys currently pressed
+		UseSprite(&#x27;player&#x27;, 0).move(xDirection * speed, yDirection * speed)
+		
+		-&gt;scroll background in same direction as player, but slower
+		gfxStack.infoBottomLayer().scrollLayer(xDirection * 1, yDirection * 1)
+		
+		-&gt;update screen with changes &amp; wait for it to refresh
+		UpdateAndWaitForScreenRefresh()
+	UNTIL quit
+	
+	CloseWindow()
+FINALLY
+	PrintException()
+ENDPROC
+
+/*****************************/
+
+-&gt;Extracts several bitmaps in a row (or column) from the given bitmap, and stores them using the given name.
+-&gt;NOTE: Use a negative xCount to indicate that bitmaps are stored vertically (downward).
+PROC extractBitmaps(name:ARRAY OF CHAR, graphic:PTR TO cGfxBitmap, flip:BOOL, yIndex, xIndex=0, xCount=5, xSize=24, ySize=28, scaleBy=2) RETURNS lastNumber
+	DEF i
+	
+	FOR i := 0 TO Abs(xCount)-1
+		IF xCount &gt; 0
+			StoreBitmap(name, i, graphic.extract(xSize*(xIndex+i), ySize*yIndex, xSize, ySize))
+		ELSE
+			StoreBitmap(name, i, graphic.extract(xSize*xIndex, ySize*(yIndex+i), xSize, ySize))
+		ENDIF
+		lastNumber := i
+		
+		LastBitmap().scaleBy(scaleBy, 1)		-&gt;make bitmap larger
+		
+		IF flip THEN LastBitmap().flip(FALSE, TRUE)		-&gt;make enemy sprites face downwards
+	ENDFOR
+ENDPROC
+
+-&gt;Creates an (animated) sprite using the named bitmaps.
+PROC createSprite(bitmapName:ARRAY OF CHAR, x=0, y=-1) RETURNS sprite:PTR TO cGfxSprite
+	DEF i, xCount
+	
+	i := 0
+	IF y = -1 THEN y := -UseBitmap(bitmapName, i).infoHeight()
+	sprite := CreateSprite(x, y, UseBitmap(bitmapName, i))
+	
+	WHILE UseBitmap(bitmapName, ++i, TRUE) DO sprite.setDrawable(LastBitmap(), i)
+	xCount := i
+ENDPROC
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

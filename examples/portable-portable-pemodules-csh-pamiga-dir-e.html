@@ -1,0 +1,243 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>pAmiga_dir.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-portable.html">PortablE</a> &rsaquo; pAmiga_dir.e</div><h1>File: <code>pAmiga_dir.e</code></h1><p class="meta">217 lines · project <a href="../examples/pkg-portable.html"><code>PortablE</code></a></p><p class="pathctx">PortablE/PortablE/PEmodules/CSH/pAmiga_dir.e</p><p class="prose">pAmiga_dir.e 08-08-2013 A collection of useful directory procedures, which mirrors some suppled by cPath. Copyright (c) 2011,2013 Christopher Steven Handley ( http://cshandley.co.uk/email )</p><h2>Source</h2><pre class="code">/* pAmiga_dir.e 08-08-2013
+	A collection of useful directory procedures, which mirrors some suppled by cPath.
+	Copyright (c) 2011,2013 Christopher Steven Handley ( http://cshandley.co.uk/email )
+*/
+OPT INLINE
+MODULE &#x27;CSH/pAmigaDos&#x27;, &#x27;CSH/cMegaList_STRING&#x27;
+
+/*****************************/
+
+-&gt;returns an (optionally sorted) list of directory entry names, or NIL if there was an error
+-&gt;NOTE: In the event of an error, ioErr *may* be non-zero.
+-&gt;NOTE: Directory names end in a slash.
+-&gt;NOTE: Supply NIL to compareFunction if you don&#x27;t want the scanned directory to be in any order.
+-&gt;NOTE: Or supply fCompareMegaNodes_STRING_NoCase to compareFunction if you want the scanned directory to sorted normally.
+-&gt;# This should be optimised to use ExAll().
+PROC scanDir(dir:ARRAY OF CHAR, compareFunction:NULL PTR TO fCompareMegaNodes, returnIoErr=NILA:ARRAY OF VALUE) RETURNS list:OWNS PTR TO cMegaList_STRING, ioErr
+	DEF lock:BPTR, fib:PTR TO fileinfoblock
+	DEF cursor:OWNS PTR TO cMegaCursor_STRING, name:OWNS STRING
+	DEF origDirEntryType, filePath:OWNS STRING
+	
+	ioErr := 0
+	SetIoErr(0)
+	
+	IF lock := Lock(dir, SHARED_LOCK)
+		IF fib := AllocDosObject(DOS_FIB, NILA)
+			IF Examine(lock, fib)
+				NEW list.new()
+				cursor := list.infoStart().clone()
+				
+				WHILE ExNext(lock, fib)
+					origDirEntryType := fib.direntrytype
+					IF fib.direntrytype = ST_SOFTLINK
+						filePath := strJoinPart(dir, fib.filename)
+						fib.direntrytype := IF dirEntryTypeIsFile(fib.direntrytype, filePath) THEN ST_FILE ELSE ST_USERDIR
+						END filePath
+					ENDIF
+					
+					IF fib.direntrytype &gt; 0
+						-&gt;(directory)
+						name := StrJoin(fib.filename, &#x27;/_&#x27;)
+					ELSE
+						-&gt;(file)
+						name := StrJoin(fib.filename, &#x27;_&#x27;)
+					ENDIF
+					
+					SetStr(name, EstrLen(name)-1)	-&gt;strip trailing _
+					name[EstrLen(name)+1] := UnsignedToChar(128 + origDirEntryType)	-&gt;store direntrytype where the zero terminator used to be (after where the _ was)
+					
+					IF compareFunction
+						cursor.sortedInsert(list.makeNode(PASS name), compareFunction)
+					ELSE
+						cursor.beforeInsert(list.makeNode(PASS name))
+					ENDIF
+				ENDWHILE
+				
+				ioErr := IoErr()
+				IF ioErr = ERROR_NO_MORE_ENTRIES
+					ioErr := 0
+				ELSE
+					END list
+				ENDIF
+			ELSE
+				ioErr := IoErr()
+			ENDIF
+		ELSE
+			ioErr := IoErr()
+		ENDIF
+	ELSE
+		ioErr := IoErr()
+	ENDIF
+FINALLY
+	IF lock THEN UnLock(lock)
+	IF fib THEN FreeDosObject(DOS_FIB, fib)
+	
+	IF exception THEN END list
+	END cursor
+	END filePath
+	
+	IF returnIoErr THEN returnIoErr[0] := ioErr
+ENDPROC
+
+/*****************************/
+
+PROC fastIsFile(path:STRING) RETURNS isFile:BOOL IS path[EstrLen(path)-1] &lt;&gt; &quot;/&quot;
+
+PROC fastIsDir( path:STRING) RETURNS isFile:BOOL IS path[EstrLen(path)-1]  = &quot;/&quot;
+
+PROC fastIsLink(path:STRING) RETURNS isLink:BOOL IS dirEntryTypeIsLink(fastFileDirType(path))
+
+PROC fastFileDirType(path:STRING) RETURNS dirEntryType IS CharToUnsigned(path[EstrLen(path)+1]) - 128
+
+-&gt;this clones a path, preserving it&#x27;s hidden dirEntryType information (which is needed by fastIsLink() &amp; fastFileDirType())
+PROC fastCopyPath(path:STRING) RETURNS copy:OWNS STRING
+	DEF len
+	len := EstrLen(path)
+	NEW copy[len+1]
+	StrCopy(copy, path)
+	copy[len+1] := path[len+1]	-&gt;copy the encoded dirEntryType into the new string
+ENDPROC
+
+-&gt;this logically appends a path to an e-string, and copies the path&#x27;s hidden dirEntryType information (which is needed by fastIsLink() &amp; fastFileDirType())
+-&gt;NOTE: Returns success=FALSE if there was not enough space to store the dirEntryType (needs 1 extra character).
+PROC fastStrAddPart(eString:STRING, path:STRING) RETURNS success:BOOL
+	DEF len, size
+	IF strAddPart(eString, path) = FALSE THEN RETURN FALSE
+	len := EstrLen(eString)
+	size := StrMax(eString)
+	IF success := len &lt; size THEN eString[len+1] := path[EstrLen(path)+1]	-&gt;copy the encoded dirEntryType into the new string
+ENDPROC
+
+/*****************************/
+
+-&gt;NOTE: These functions may use fastIsFile/Dir() on the supplied path.
+FUNC funcRecurseFile(filePath:STRING) IS EMPTY
+FUNC funcRecurseDir(dirPath:STRING) OF funcRecurseFile RETURNS scanDir:BOOL IS EMPTY
+FUNC funcRecurseDirFailure(dirPath:STRING, ioErr=0) OF funcRecurseDir RETURNS continueScan:BOOL IS EMPTY
+FUNC funcRecurseDirAbort(nextDirPath:STRING) IS EMPTY
+
+-&gt;recurse directory, passing each file to the supplied function
+-&gt;NOTE: Supply NIL to compareFunction if you don&#x27;t want each scanned directory to be in any order.
+-&gt;NOTE: Or supply fCompareMegaNodes_STRING_NoCase to compareFunction if you want each scanned directory to sorted normally.
+-&gt;NOTE: It is very similar to cPath&#x27;s RecurseDir().
+PROC recurseDir(startDirPath:ARRAY OF CHAR, compareFunction:NULL PTR TO fCompareMegaNodes, funcFile:PTR TO funcRecurseFile, funcDir=NIL:PTR TO funcRecurseDir, funcDirFailure=NIL:PTR TO funcRecurseDirFailure, funcDirAbort=NIL:PTR TO funcRecurseDirAbort)
+	DEF scanList:OWNS PTR TO cMegaList_STRING, dirList:OWNS PTR TO cMegaList_STRING
+	DEF ioErr, dirPath:STRING, name:STRING, path:OWNS STRING
+	
+	-&gt;set-up
+	NEW scanList.new()
+	scanList.infoPastEnd().beforeInsert(scanList.makeNode(StrJoin(startDirPath)))		-&gt;do not expand this path!
+	
+	-&gt;breadth-first recursive scan
+	WHILE scanList.infoIsEmpty() = FALSE
+		dirPath := scanList.infoStart().read()
+		
+		-&gt;scan folder
+		dirList, ioErr := scanDir(dirPath, compareFunction)
+		IF dirList
+			WHILE dirList.infoIsEmpty() = FALSE
+				name := dirList.infoStart().read()
+				
+				-&gt;was: path := strJoinPart(dirPath, name)
+				NEW path[EstrLen(dirPath) + 2 + EstrLen(name) + 1]	-&gt;this is 1 larger than strJoinPart() would do
+				StrCopy(path, dirPath)
+				IF fastStrAddPart(path, name) = FALSE THEN Throw(&quot;BUG&quot;, &#x27;recurseDir(); the allocated string was too small&#x27;)
+				
+				-&gt;skipDirLink := IF followDirLinks THEN FALSE ELSE fastIsLink(name)
+				
+				IF fastIsDir(name) -&gt;AND NOT skipDirLink
+					-&gt;(entry is a folder) so add it to tail of scan list
+					IF funcDir THEN IF funcDir(path) = FALSE THEN END path
+					IF path
+						scanList.infoPastEnd().beforeInsert(scanList.makeNode(PASS path))
+					ENDIF
+				ELSE
+					-&gt;(entry is file) so pass it to function
+					funcFile(path)
+					END path
+				ENDIF
+				
+				dirList.infoStart().destroy()
+			ENDWHILE
+			END dirList
+		ELSE
+			IF funcDirFailure
+				IF funcDirFailure(dirPath, ioErr) = FALSE THEN RETURN
+			ENDIF
+		ENDIF
+		
+		scanList.infoStart().destroy()
+	ENDWHILE IF CtrlC()
+	
+	IF scanList.infoIsEmpty() = FALSE
+		dirPath := scanList.infoStart().read()
+		IF funcDirAbort THEN funcDirAbort(dirPath) ELSE Raise(&quot;BRK&quot;)
+	ENDIF
+FINALLY
+	END scanList, dirList
+	END path
+ENDPROC
+
+/*****************************/
+
+-&gt;delete dir &amp; everything it contains, including sub-directories
+PROC deleteDirTree(dirPath:ARRAY OF CHAR, force=FALSE:BOOL) RETURNS success:BOOL
+	DEF dirList:OWNS PTR TO cMegaList_STRING, path:OWNS STRING, name:STRING
+	
+	success := TRUE
+	
+	IF force THEN SetProtection(dirPath, 0)		-&gt;do this before attempting to scan or modify dir&#x27;s contents
+	
+	IF dirList := scanDir(dirPath, NIL)
+		WHILE dirList.infoIsEmpty() = FALSE
+			name := dirList.infoStart().read()
+			path := strJoinPart(dirPath, name)
+			
+			IF fastIsFile(name)
+				IF force THEN SetProtection(path, 0)
+				IF DeleteFile(path) = FALSE THEN success := FALSE
+				
+			ELSE IF fastIsLink(name) = 0
+				IF deleteDirTree(path, force) = FALSE THEN success := FALSE
+			ELSE
+				SetStr(path, EstrLen(path)-1)	-&gt;strip trailing /
+				IF force THEN SetProtection(path, 0)
+				IF DeleteFile(path) = FALSE THEN success := FALSE
+			ENDIF
+			
+			END path
+			dirList.infoStart().destroy()
+		ENDWHILE
+	ENDIF
+	
+	IF DeleteFile(dirPath) = FALSE THEN success := FALSE
+FINALLY
+	END dirList, path
+ENDPROC
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

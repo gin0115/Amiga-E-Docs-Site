@@ -1,0 +1,173 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>AHI_PlayTest.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-portable.html">PortablE</a> &rsaquo; AHI_PlayTest.e</div><h1>File: <code>AHI_PlayTest.e</code></h1><p class="meta">147 lines · project <a href="../examples/pkg-portable.html"><code>PortablE</code></a></p><p class="pathctx">PortablE/PortablE/Examples/Amiga/AHI_PlayTest.e</p><p class="prose">A C example converted to PortablE. From http://aminet.net/driver/<a href="../modules/audio.html">audio</a>/m68k-amigaos-ahidev.lha/Developer/Examples/Device/PlayTest/PlayTest.c</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/ahi.html">devices/ahi</a></li><li><a href="../modules/dos.html">dos</a></li></ul></div><h2>Source</h2><pre class="code">/* A C example converted to PortablE.
+   From http://aminet.net/driver/audio/m68k-amigaos-ahidev.lha/Developer/Examples/Device/PlayTest/PlayTest.c */
+/*
+** This program uses the device interface to play a sampled sound.
+** The input is read from THE DEFAULT INPUT, make sure you
+** start it with &quot;PlayTest pri &lt; mysample.raw&quot; !
+** Where pri is a number from -128 to +127 (may be omitted)
+** The sample should be 8 bit signed, mono (see TYPE).
+**
+** PLEASE NOTE that earlier versions of this example contained a bug
+** that sometimes DeleteIORequest&#x27;ed a pointer that was AllocMem&#x27;ed!
+*/
+
+OPT POINTER
+MODULE &#x27;dos&#x27;, &#x27;exec&#x27;
+MODULE &#x27;devices/ahi&#x27;
+MODULE &#x27;std/pShell&#x27;
+
+CONST FREQUENCY  = 8000
+CONST TYPE       = AHIST_M8S
+CONST BUFFERSIZE = 20000
+
+DEF ahiMP:PTR TO mp
+DEF ahiIOs[2]:ARRAY OF PTR TO ahirequest
+DEF ahiIO    :PTR TO ahirequest
+DEF ahiIOcopy:PTR TO ahirequest
+DEF ahiDevice=-1
+
+DEF buffer1[BUFFERSIZE]:ARRAY OF BYTE
+DEF buffer2[BUFFERSIZE]:ARRAY OF BYTE
+
+PROC main()
+	DEF p1:ARRAY OF BYTE, p2:ARRAY OF BYTE
+	DEF tmp:ARRAY
+	DEF signals, length
+	DEF link:PTR TO ahirequest, reply:PTR TO ahirequest
+	DEF pri:BYTE
+	
+	ahiIOs[0] := ahiIOs[1] := NIL
+	p1 := buffer1 ; p2 := buffer2
+	
+	pri := Val(ShellArgs()) !!BYTE		-&gt;defaults to 0
+	Print(&#x27;Sound priority: \d\n&#x27;, pri)
+	
+	IF ahiMP := CreateMsgPort()
+		IF ahiIO := CreateIORequest(ahiMP, SIZEOF ahirequest)
+			ahiIO.version := 4
+			ahiDevice := OpenDevice(ahiname, 0, ahiIO !!PTR!!PTR TO io, NIL)
+		ENDIF
+	ENDIF
+	
+	IF ahiDevice
+		Print(&#x27;Unable to open \s/0 version 4\n&#x27;, ahiname)
+		cleanup(RETURN_FAIL)
+	ENDIF
+	
+	-&gt;Make a copy of the request (for double buffering)
+	NEW ahiIOcopy
+	MemCopy(ahiIOcopy, ahiIO, SIZEOF ahirequest)
+	ahiIOs[0] := ahiIO
+	ahiIOs[1] := ahiIOcopy
+	
+	SetIoErr(0)
+	LOOP
+		-&gt;Fill buffer
+		length := Read(Input(), p1, BUFFERSIZE)
+		
+		-&gt;Play buffer
+		ahiIOs[0].iostd.mn.ln.pri := pri
+		ahiIOs[0].iostd.command   := CMD_WRITE
+		ahiIOs[0].iostd.data      := p1
+		ahiIOs[0].iostd.length    := length
+		ahiIOs[0].iostd.offset    := 0
+		ahiIOs[0].frequency     := FREQUENCY
+		ahiIOs[0].type          := TYPE
+		ahiIOs[0].volume        := $10000          -&gt;Full volume
+		ahiIOs[0].position      := $8000           -&gt;Centered
+		ahiIOs[0].link          := link
+		SendIO(ahiIOs[0] !!PTR!!PTR TO io)
+		
+		IF link
+			-&gt;Wait until the last buffer is finished (== the new buffer is started)
+			signals := Wait(1 SHL ahiMP.sigbit OR SIGBREAKF_CTRL_C)
+			
+			-&gt;Check for Ctrl-C and abort if pressed
+			IF signals AND SIGBREAKF_CTRL_C
+				SetIoErr(ERROR_BREAK)
+				Raise(&quot;BRK&quot;)
+			ENDIF
+			
+			-&gt;Remove the reply and abort on error
+			WHILE reply := GetMsg(ahiMP) !!PTR!!PTR TO ahirequest
+				IF reply.iostd.error
+					SetIoErr(ERROR_WRITE_PROTECTED)
+					Raise(&quot;ERR&quot;)
+				ENDIF
+			ENDWHILE
+		ENDIF
+		
+		-&gt;Check for end-of-sound, and wait until it is finished before aborting
+		IF length &lt;&gt; BUFFERSIZE
+			WaitIO(ahiIOs[0] !!PTR!!PTR TO io)
+			Raise(0)
+		ENDIF
+		
+		link := ahiIOs[0]
+		
+		-&gt;Swap buffer and request pointers, and restart
+		tmp    := p1
+		p1     := p2
+		p2     := tmp
+		
+		tmp    := ahiIOs[0]
+		ahiIOs[0] := ahiIOs[1]
+		ahiIOs[1] := tmp
+	ENDLOOP
+FINALLY
+	IF ahiDevice = 0
+		-&gt;Abort any pending iorequests
+		AbortIO(ahiIOs[0] !!PTR!!PTR TO io)
+		WaitIO( ahiIOs[0] !!PTR!!PTR TO io)
+		
+		IF link
+			-&gt;Only if the second request was started
+			AbortIO(ahiIOs[1] !!PTR!!PTR TO io)
+			WaitIO( ahiIOs[1] !!PTR!!PTR TO io)
+		ENDIF
+	ENDIF
+	
+	IF IoErr()
+		PrintFault(IoErr(), ProgramName())
+		cleanup(RETURN_ERROR)
+	ENDIF
+	
+	cleanup(RETURN_OK)
+ENDPROC
+
+PROC cleanup(rc)
+	IF ahiDevice = 0
+		CloseDevice(    ahiIO !!PTR!!PTR TO io)
+		DeleteIORequest(ahiIO !!PTR!!PTR TO io)
+		END ahiIOcopy
+		DeleteMsgPort(ahiMP)
+		CleanUp(rc)
+	ENDIF
+ENDPROC
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

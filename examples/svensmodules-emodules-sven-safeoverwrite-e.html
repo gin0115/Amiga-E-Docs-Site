@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>safeOverwrite.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-svensmodules.html">SvensModules</a> &rsaquo; safeOverwrite.e</div><h1>File: <code>safeOverwrite.e</code></h1><p class="meta">102 lines · project <a href="../examples/pkg-svensmodules.html"><code>SvensModules</code></a></p><p class="pathctx">SvensModules/emodules/sven/safeOverwrite.e</p><p class="prose">enables save overwriting of files by creating an backup (*.bak). ** ** Usage: ** ** IF initSafeOverwrite(filename) ** ** error:=safeMyNewFile(filename) ** ** endSafeOverwrite(filename,error=NO_ERROR) ** ** ELSEIF request(&#x27;Could not make backup. Proceed anyway?&#x27;,&#x27;Yes|No&#x27;) ** ** IF smartDeleteFile(fil</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/dos.html">dos/dos</a></li><li><a href="../modules/existsfile.html">sven/existsfile</a></li></ul></div><h2>Source</h2><pre class="code">/* enables save overwriting of files by creating an backup (*.bak).
+**
+** Usage:
+**
+**   IF initSafeOverwrite(filename)
+**
+**     error:=safeMyNewFile(filename)
+**
+**     endSafeOverwrite(filename,error=NO_ERROR)
+**
+**   ELSEIF request(&#x27;Could not make backup. Proceed anyway?&#x27;,&#x27;Yes|No&#x27;)
+**
+**     IF smartDeleteFile(filename)
+**
+**       error:=safeMyNewFile(filename)
+**
+**     ELSE
+**       error:=ERROR_Delete
+**     ENDIF
+**
+**   ENDIF
+**   report_error(error)
+*/
+
+OPT MODULE
+
+MODULE &#x27;dos/dos&#x27;
+MODULE &#x27;sven/existsFile&#x27;,
+       &#x27;sven/smartDeleteFile&#x27;
+
+
+/* call this proc to rename an existing file.
+** returns TRUE on sucess.
+**
+** Note: An already existing backup-file is deleted (even if it is
+**       delete protected)!!
+*/
+EXPORT PROC initSafeOverwrite(name:PTR TO CHAR)
+DEF newname[256]:STRING
+
+  /* check if there is already an file named &#x27;name&#x27;
+  */
+  IF existsFile(name)
+
+    /* add the backup extension to the file name
+    */
+    addBackupExt(newname,name)
+
+    /* delete the old backup file (if there is any).
+    */
+    IF smartDeleteFile(newname,TRUE)=FALSE THEN RETURN FALSE
+
+    /* rename the file
+    */
+    IF Rename(name,newname)=DOSFALSE THEN RETURN FALSE
+
+  ENDIF
+
+ENDPROC TRUE
+
+
+/* call this proc to end an safe overwriting.
+** Depending on &#x27;success&#x27; the backup-file is deleted (TRUE)
+** or the old file is restored (FALSE).
+** returns TRUE on sucess.
+**
+** Note: An already existing file/backup-file is deleted (even if it is
+**       delete protected)!!
+*/
+EXPORT PROC endSafeOverwrite(name:PTR TO CHAR,success=TRUE)
+DEF newname[256]:STRING
+
+  addBackupExt(newname,name)
+
+  IF success
+
+    /* everythink went ok. So check if an backup file exists
+    ** and try to delete it.
+    */
+    IF smartDeleteFile(newname,TRUE)=FALSE THEN RETURN FALSE
+
+  ELSE
+
+    /* an error occured. So delete the file and rename the
+    ** backup file. If there is no backup file, do nothing.
+    */
+    IF existsFile(newname)
+
+      IF smartDeleteFile(name,TRUE)=FALSE THEN RETURN FALSE
+
+      IF Rename(newname,name)=DOSFALSE THEN RETURN FALSE
+
+    ENDIF
+
+  ENDIF
+
+ENDPROC TRUE
+
+
+PROC addBackupExt(newstr,name) IS StrAdd(StrCopy(newstr,name),&#x27;.bak&#x27;)
+
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

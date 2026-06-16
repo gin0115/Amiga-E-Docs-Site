@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>clonescreen.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-amigae30a-fr.html">amigae30a_fr</a> &rsaquo; clonescreen.e</div><h1>File: <code>clonescreen.e</code></h1><p class="meta">76 lines · project <a href="../examples/pkg-amigae30a-fr.html"><code>amigae30a_fr</code></a></p><p class="pathctx">amigae30a_fr/AmigaE30f/Sources/Tools/CloneScreen/clonescreen.e</p><p class="prose"><a href="../modules/clonescreen.html">clonescreen</a>.c, des libs RKRM.</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/intuition.html">intuition/intuition</a></li></ul></div><h2>Source</h2><pre class="code">-&gt; clonescreen.c, des libs RKRM.
+
+OPT MODULE, OSVERSION=37
+
+MODULE &#x27;intuition/intuition&#x27;, &#x27;intuition/screens&#x27;,
+       &#x27;graphics/text&#x27;, &#x27;graphics/modeid&#x27;
+
+EXPORT PROC openclonescreen(pub_screen_name,clone_title,depth=0,clone_pub_name=NIL)
+  DEF my_screen=NIL:PTR TO screen, screen_modeID, pub_scr_font_name,
+      font_name, font_name_size, pub_screen_font:PTR TO textattr,
+      opened_font=NIL:PTR TO textfont, pub_screen:PTR TO screen,
+      screen_drawinfo=NIL:PTR TO drawinfo, di_font:PTR TO textfont
+
+  IF pub_screen:=LockPubScreen(pub_screen_name)
+    IF screen_drawinfo:=GetScreenDrawInfo(pub_screen)
+      di_font:=screen_drawinfo.font
+      IF (screen_modeID:=GetVPModeID(pub_screen.viewport))&lt;&gt;INVALID_ID
+        pub_scr_font_name:=Long(di_font+10)  -&gt; node.name
+        font_name_size:=1+StrLen(pub_scr_font_name)
+        IF font_name:=String(font_name_size)
+          StrCopy(font_name,pub_scr_font_name)
+          pub_screen_font:=[font_name,di_font.ysize,di_font.style,di_font.flags]:textattr
+          IF opened_font:=OpenFont(pub_screen_font)
+            IF my_screen:=OpenScreenTagList(NIL,
+              [SA_WIDTH,      pub_screen.width,
+               SA_HEIGHT,     pub_screen.height,
+               SA_DEPTH,      IF depth THEN depth ELSE screen_drawinfo.depth,
+               SA_OVERSCAN,   OSCAN_TEXT,
+               SA_AUTOSCROLL, TRUE,
+               SA_FONT,       pub_screen_font,
+               SA_PENS,       screen_drawinfo.pens,
+               SA_DISPLAYID,  screen_modeID,
+               SA_TITLE,      clone_title,
+               SA_PUBNAME,    clone_pub_name,
+               NIL])
+            ENDIF
+          ENDIF
+        ENDIF
+      ENDIF
+      FreeScreenDrawInfo(pub_screen,screen_drawinfo)
+    ENDIF
+    UnlockPubScreen(pub_screen_name,pub_screen)
+  ENDIF
+  IF my_screen=NIL THEN Raise(&quot;SCR&quot;)
+ENDPROC my_screen,opened_font
+
+EXPORT PROC closeclonescreen(screen,font,window=NIL)
+  DEF r
+  IF window THEN CloseWindow(window)
+  IF screen THEN r:=CloseScreen(screen)
+  IF font THEN CloseFont(font)
+ENDPROC r
+
+EXPORT PROC getcloneinfo(screen:PTR TO screen)
+  DEF di:PTR TO drawinfo, depth=0
+  IF di:=GetScreenDrawInfo(screen)
+    depth:=di.depth
+    FreeScreenDrawInfo(screen,di)
+  ENDIF
+ENDPROC depth,screen.width,screen.height
+
+EXPORT PROC backdropwindow(screen:PTR TO screen,idcmp=0,flags=0)
+  DEF wnd=NIL:PTR TO window
+  IF (wnd:=OpenWindowTagList(NIL,
+    [WA_LEFT,0,
+     WA_TOP,0,
+     WA_WIDTH,screen.width,
+     WA_HEIGHT,screen.height,
+     WA_IDCMP,idcmp,
+     WA_FLAGS,flags OR $1900,
+     WA_TITLE,&#x27;&#x27;,
+     WA_CUSTOMSCREEN,screen,
+     NIL]))=NIL THEN Raise(&quot;WIN&quot;)
+  stdrast:=wnd.rport
+ENDPROC wnd
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

@@ -1,0 +1,159 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>dosasl.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-portable.html">PortablE</a> &rsaquo; dosasl.e</div><h1>File: <code>dosasl.e</code></h1><p class="meta">133 lines · project <a href="../examples/pkg-portable.html"><code>PortablE</code></a></p><p class="pathctx">PortablE/PortablE/PEmodules/target/CPP_AmigaOS3/dos/dosasl.e</p><p class="prose">$VER: <a href="../modules/dosasl.html">dosasl</a>.h 36.16 (2.5.1991)</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/libraries.html">target/exec/libraries</a></li><li><a href="../modules/types.html">target/exec/types</a></li></ul></div><h2>Source</h2><pre class="code">/* $VER: dosasl.h 36.16 (2.5.1991) */
+OPT NATIVE
+MODULE &#x27;target/exec/libraries&#x27;, &#x27;target/exec/lists&#x27;, &#x27;target/dos/dos_shared&#x27;
+MODULE &#x27;target/exec/types&#x27;, &#x27;target/dos/dos&#x27;
+{#include &lt;dos/dosasl.h&gt;}
+NATIVE {DOS_DOSASL_H} CONST
+
+/***********************************************************************
+************************ PATTERN MATCHING ******************************
+************************************************************************
+
+* structure expected by MatchFirst, MatchNext.
+* Allocate this structure and initialize it as follows:
+*
+* Set ap_BreakBits to the signal bits (CDEF) that you want to take a
+* break on, or NULL, if you don&#x27;t want to convenience the user.
+*
+* If you want to have the FULL PATH NAME of the files you found,
+* allocate a buffer at the END of this structure, and put the size of
+* it into ap_Strlen.  If you don&#x27;t want the full path name, make sure
+* you set ap_Strlen to zero.  In this case, the name of the file, and stats
+* are available in the ap_Info, as per usual.
+*
+* Then call MatchFirst() and then afterwards, MatchNext() with this structure.
+* You should check the return value each time (see below) and take the
+* appropriate action, ultimately calling MatchEnd() when there are
+* no more files and you are done.  You can tell when you are done by
+* checking for the normal AmigaDOS return code ERROR_NO_MORE_ENTRIES.
+*
+*/
+
+NATIVE {ap_First} DEF
+NATIVE {ap_Current} DEF
+NATIVE {ap_Length} DEF
+
+NATIVE {AnchorPath} OBJECT anchorpath
+	{ap_Base}		base		:PTR TO achain	/* pointer to first anchor */
+	{ap_Last}		last		:PTR TO achain	/* pointer to last anchor */
+	{ap_BreakBits}	breakbits	:VALUE	/* Bits we want to break on */
+	{ap_FoundBreak}	foundbreak	:VALUE	/* Bits we broke on. Also returns ERROR_BREAK */
+	{ap_Flags}		flags		:BYTE	/* New use for extra word. */
+	{ap_Reserved}	reserved	:BYTE
+	{ap_Strlen}		strlen		:INT	/* This is what ap_Length used to be */
+	{ap_Info}		info		:fileinfoblock
+	{ap_Buf}		buf			:ARRAY OF UBYTE	/* Buffer for path name, allocated by user */
+	/* FIX! */
+ENDOBJECT
+
+
+NATIVE {APB_DOWILD}	CONST APB_DOWILD	= 0	/* User option ALL */
+NATIVE {APF_DOWILD}	CONST APF_DOWILD	= 1
+
+NATIVE {APB_ITSWILD}	CONST APB_ITSWILD	= 1	/* Set by MatchFirst, used by MatchNext	 */
+NATIVE {APF_ITSWILD}	CONST APF_ITSWILD	= 2	/* Application can test APB_ITSWILD, too */
+				/* (means that there&#x27;s a wildcard	 */
+				/* in the pattern after calling		 */
+				/* MatchFirst).				 */
+
+NATIVE {APB_DODIR}	CONST APB_DODIR	= 2	/* Bit is SET if a DIR node should be */
+NATIVE {APF_DODIR}	CONST APF_DODIR	= 4	/* entered. Application can RESET this */
+				/* bit after MatchFirst/MatchNext to AVOID */
+				/* entering a dir. */
+
+NATIVE {APB_DIDDIR}	CONST APB_DIDDIR	= 3	/* Bit is SET for an &quot;expired&quot; dir node. */
+NATIVE {APF_DIDDIR}	CONST APF_DIDDIR	= 8
+
+NATIVE {APB_NOMEMERR}	CONST APB_NOMEMERR	= 4	/* Set on memory error */
+NATIVE {APF_NOMEMERR}	CONST APF_NOMEMERR	= 16
+
+NATIVE {APB_DODOT}	CONST APB_DODOT	= 5	/* If set, allow conversion of &#x27;.&#x27; to */
+NATIVE {APF_DODOT}	CONST APF_DODOT	= 32	/* CurrentDir */
+
+NATIVE {APB_DirChanged}	CONST APB_DIRCHANGED	= 6	/* ap_Current-&gt;an_Lock changed */
+NATIVE {APF_DirChanged}	CONST APF_DIRCHANGED	= 64	/* since last MatchNext call */
+
+NATIVE {APB_FollowHLinks} CONST APB_FOLLOWHLINKS = 7	/* follow hardlinks on DODIR - defaults   */
+NATIVE {APF_FollowHLinks} CONST APF_FOLLOWHLINKS = 128	/* to not following hardlinks on a DODIR. */
+
+
+NATIVE {AChain} OBJECT achain
+	{an_Child}	child	:PTR TO achain
+	{an_Parent}	parent	:PTR TO achain
+	{an_Lock}	lock	:BPTR
+	{an_Info}	info	:fileinfoblock
+	{an_Flags}	flags	:BYTE
+	{an_String}	string	:ARRAY OF UBYTE	/* FIX!! */
+ENDOBJECT
+
+NATIVE {DDB_PatternBit}	CONST DDB_PATTERNBIT	= 0
+NATIVE {DDF_PatternBit}	CONST DDF_PATTERNBIT	= 1
+NATIVE {DDB_ExaminedBit}	CONST DDB_EXAMINEDBIT	= 1
+NATIVE {DDF_ExaminedBit}	CONST DDF_EXAMINEDBIT	= 2
+NATIVE {DDB_Completed}	CONST DDB_COMPLETED	= 2
+NATIVE {DDF_Completed}	CONST DDF_COMPLETED	= 4
+NATIVE {DDB_AllBit}	CONST DDB_ALLBIT	= 3
+NATIVE {DDF_AllBit}	CONST DDF_ALLBIT	= 8
+NATIVE {DDB_Single}	CONST DDB_SINGLE	= 4
+NATIVE {DDF_Single}	CONST DDF_SINGLE	= 16
+
+/*
+ * Constants used by wildcard routines, these are the pre-parsed tokens
+ * referred to by pattern match.  It is not necessary for you to do
+ * anything about these, MatchFirst() MatchNext() handle all these for you.
+ */
+
+NATIVE {P_ANY}		CONST P_ANY		= $80	/* Token for &#x27;*&#x27; or &#x27;#?  */
+NATIVE {P_SINGLE}	CONST P_SINGLE	= $81	/* Token for &#x27;?&#x27; */
+NATIVE {P_ORSTART}	CONST P_ORSTART	= $82	/* Token for &#x27;(&#x27; */
+NATIVE {P_ORNEXT}	CONST P_ORNEXT	= $83	/* Token for &#x27;|&#x27; */
+NATIVE {P_OREND}	CONST P_OREND	= $84	/* Token for &#x27;)&#x27; */
+NATIVE {P_NOT}		CONST P_NOT		= $85	/* Token for &#x27;~&#x27; */
+NATIVE {P_NOTEND}	CONST P_NOTEND	= $86	/* Token for */
+NATIVE {P_NOTCLASS}	CONST P_NOTCLASS	= $87	/* Token for &#x27;^&#x27; */
+NATIVE {P_CLASS}	CONST P_CLASS	= $88	/* Token for &#x27;[]&#x27; */
+NATIVE {P_REPBEG}	CONST P_REPBEG	= $89	/* Token for &#x27;[&#x27; */
+NATIVE {P_REPEND}	CONST P_REPEND	= $8A	/* Token for &#x27;]&#x27; */
+NATIVE {P_STOP}		CONST P_STOP		= $8B	/* token to force end of evaluation */
+
+/* Values for an_Status, NOTE: These are the actual bit numbers */
+
+NATIVE {COMPLEX_BIT}	CONST COMPLEX_BIT	= 1	/* Parsing complex pattern */
+NATIVE {EXAMINE_BIT}	CONST EXAMINE_BIT	= 2	/* Searching directory */
+
+/*
+ * Returns from MatchFirst(), MatchNext()
+ * You can also get dos error returns, such as ERROR_NO_MORE_ENTRIES,
+ * these are in the dos.h file.
+ */
+
+NATIVE {ERROR_BUFFER_OVERFLOW}	CONST ERROR_BUFFER_OVERFLOW	= 303	/* User or internal buffer overflow */
+NATIVE {ERROR_BREAK}			CONST ERROR_BREAK			= 304	/* A break character was received */
+NATIVE {ERROR_NOT_EXECUTABLE}	CONST ERROR_NOT_EXECUTABLE	= 305	/* A file has E bit cleared */
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

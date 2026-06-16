@@ -1,0 +1,174 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>mem.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-e-mem.html">e_mem</a> &rsaquo; mem.e</div><h1>File: <code>mem.e</code></h1><p class="meta">148 lines · project <a href="../examples/pkg-e-mem.html"><code>e_mem</code></a></p><p class="pathctx">e_mem/e_mem/mem.e</p><p class="prose">Extended Memory functions for E (C) 2015 Lorence Lombardo. Date commenced:- 25-Oct-2015 Last modified:- 28-Oct-2015 Functions List:- schar sint uint slng24 flong fint <a href="../modules/memset.html">memset</a> flng24 putlng24 ulng24 ufint uflng24 NB: sint and uint will give you the same results on AmigaE &amp; ECX</p><h2>Source</h2><pre class="code">/* 
+
+ Extended Memory functions for E
+ (C) 2015  Lorence Lombardo.
+
+ Date commenced:-   25-Oct-2015
+ Last modified:-    28-Oct-2015
+
+ Functions List:-
+
+ schar
+ sint
+ uint
+ slng24
+ flong
+ fint
+ memset
+ flng24
+ putlng24
+ ulng24
+ ufint
+ uflng24
+
+ NB:  sint and uint will give you the same results on AmigaE &amp; ECX
+   
+
+*/
+
+
+-&gt; Signed byte peek
+
+PROC schar(ad)
+   DEF ret
+   ret:=Char(ad)
+   IF ret&gt;127 THEN ret:=ret-256
+ENDPROC ret
+
+
+-&gt; Signed word peek for AmigaE mostly
+
+PROC sint(ad)
+   DEF ret
+   ret:=Int(ad)
+   IF ret&gt;32767 THEN ret:=ret-65536
+ENDPROC ret
+
+
+-&gt; unsigned word peek for ECX mostly
+
+PROC uint(ad) IS Int(ad) AND $FFFF
+
+
+-&gt; signed 24bit peek
+
+PROC slng24(ad) IS Shl(sint(ad), 8) + Char(ad+2)
+
+
+-&gt; unsigned 24bit peek
+
+PROC ulng24(ad) IS Shl(uint(ad), 8) + Char(ad+2) 
+
+
+-&gt; peek a long with an endian flip
+
+PROC flong(ad) IS Shl(Char(ad+3),24)+Shl(Char(ad+2),16)+Shl(Char(ad+1),8)+Char(ad)
+
+
+-&gt; peek a signed word with an endian flip
+
+PROC fint(ad) IS Shl(schar(ad+1),8) + Char(ad)
+
+
+-&gt; sets memory with a specified byte  -&gt; similar to the C version
+
+PROC memset(ad, chr, sz)
+   DEF x
+   FOR x:=0 TO sz-1
+      PutChar(ad+x, chr)
+   ENDFOR
+ENDPROC 
+
+
+-&gt; signed 24bit peek with an endian flip
+
+PROC flng24(ad) IS Shl(schar(ad+2),16) + Shl(Char(ad+1),8) + Char(ad)
+
+
+-&gt; 24bit poke
+
+PROC putlng24(ad, num) IS CopyMem({num}+1, ad, 3)
+ 
+
+-&gt; Unsigned word peek with an endian flip
+
+PROC ufint(ad) IS Shl(Char(ad+1),8) + Char(ad)
+
+
+-&gt; unsigned 24bit peek with an endian flip
+
+PROC uflng24(ad) IS Shl(Char(ad+2),16) + Shl(Char(ad+1),8) + Char(ad)
+
+
+PROC main()
+   DEF num, buf[256]:STRING
+   buf[0]:=255 ; buf[1]:=255 ; buf[2]:=255
+   num:=Char(buf)
+   WriteF(&#x27;\d\n&#x27;,num)
+   num:=schar(buf)
+   WriteF(&#x27;\d\n&#x27;,num)
+   num:=uint(buf)
+   WriteF(&#x27;\d\n&#x27;,num)
+   num:=sint(buf)
+   WriteF(&#x27;\d\n&#x27;,num)
+   num:=ulng24(buf)
+   WriteF(&#x27;\d\n&#x27;,num)
+   num:=slng24(buf)
+   WriteF(&#x27;\d\n&#x27;,num)
+   StrCopy(buf,&#x27;ABCD&#x27;)
+   WriteF(&#x27;\s\n&#x27;,buf)
+   num:=flong(buf)
+   PutLong(buf,num)
+   WriteF(&#x27;\s\n&#x27;,buf)
+   num:=fint(buf)
+   PutInt(buf,num)
+   WriteF(&#x27;\s\n&#x27;,buf)
+   StrCopy(buf,&#x27;123456789012&#x27;)
+   memset(buf, Char(&#x27;I&#x27;), StrLen(buf) )
+   WriteF(&#x27;\s\n&#x27;,buf)
+   StrCopy(buf,&#x27;123&#x27;)
+   num:=flng24(buf)
+   CopyMem({num}+1, buf, 3)
+   WriteF(&#x27;\s\n&#x27;,buf)
+   putlng24(buf, 16777215)
+   WriteF(&#x27;\s\n&#x27;,buf)
+   num:=40000                      -&gt; that would be too much for a signed word
+   WriteF(&#x27;\d\n&#x27;, sint({num}+2) )  -&gt; +2 coz we r in a 32 bit long
+   num:=fint({num}+2)              -&gt; here make it intel
+   WriteF(&#x27;\d\n&#x27;, ufint({num}+2) ) -&gt; here we retrieve it as a motorola unsigned word 
+   -&gt;
+   num:=9388607                      -&gt; that would be too much for a signed 24 bit
+   WriteF(&#x27;\d\n&#x27;, slng24({num}+1) )  -&gt; +1 coz we r in a 32 bit long
+   num:=flng24({num}+1)              -&gt; here make it intel
+   WriteF(&#x27;\d\n&#x27;, uflng24({num}+1) ) -&gt; here we retrieve it as a motorola unsigned 24 bit
+ENDPROC
+
+
+
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

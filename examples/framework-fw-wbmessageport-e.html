@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>wbMessagePort.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-framework.html">framework</a> &rsaquo; wbMessagePort.e</div><h1>File: <code>wbMessagePort.e</code></h1><p class="meta">62 lines · project <a href="../examples/pkg-framework.html"><code>framework</code></a></p><p class="pathctx">framework/fw/wbMessagePort.e</p><p class="prose"><a href="../modules/wbappicon.html#obj-wbmessageport">wbMessagePort</a> is an abstraction of <a href="../modules/exec.html">exec</a> <a href="../modules/message.html">message</a> <a href="../modules/ports.html">ports</a>.</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/ports.html">exec/ports</a></li><li><a href="../modules/wbobject.html">fw/wbobject</a></li></ul></div><h2>Source</h2><pre class="code">
+-&gt; wbMessagePort is an abstraction of exec message ports.
+
+-&gt; Copyright © Guichard Damien 01/04/1996
+
+OPT MODULE
+OPT EXPORT
+
+MODULE &#x27;exec/ports&#x27;
+MODULE &#x27;fw/wbObject&#x27;
+
+OBJECT wbMessagePort OF wbObject
+  port:PTR TO mp
+ENDOBJECT
+
+-&gt; Exec signal associated with this WB object.
+PROC signal() OF wbMessagePort
+ENDPROC IF self.port THEN self.port.sigbit ELSE -1
+
+-&gt; Perform the appropriate action when a message is received.
+PROC handleActivation() OF wbMessagePort
+  DEF result=PASS,msg
+  WHILE msg:=GetMsg(self.port)
+    result:=self.handleMessage(msg)
+    IF result=PASS THEN ReplyMsg(msg)
+    EXIT result&gt;CONTINUE
+  ENDWHILE
+ENDPROC result
+
+-&gt; Handle the receipt of a message at the object&#x27;s MsgPort.
+PROC handleMessage(msg) OF wbMessagePort IS STOPALL
+
+-&gt; Creates a MsgPort and attaches it to the object.
+-&gt; Return FALSE if failed.
+PROC makePort() OF wbMessagePort
+  self.port:=CreateMsgPort()
+ENDPROC self.port&lt;&gt;NIL
+
+-&gt; Flush all pending messages at the object&#x27;s MsgPort.
+PROC flushPort() OF wbMessagePort
+  DEF msg
+  Forbid()
+  WHILE msg:=GetMsg(self.port)
+    ReplyMsg(msg)
+  ENDWHILE
+  Permit()
+ENDPROC
+
+-&gt; Deletes the MsgPort attached to the object.
+PROC deletePort() OF wbMessagePort
+  DEF msg
+  Forbid()
+  self.flushPort()
+  DeleteMsgPort(self.port)
+  Permit()
+  self.port:=NIL
+ENDPROC
+
+-&gt; Remove the port.
+PROC remove() OF wbMessagePort IS self.deletePort()
+
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

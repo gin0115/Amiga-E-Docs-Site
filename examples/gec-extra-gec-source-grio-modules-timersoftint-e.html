@@ -1,0 +1,169 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>timersoftint.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-gec-extra.html">GEC-extra</a> &rsaquo; timersoftint.e</div><h1>File: <code>timersoftint.e</code></h1><p class="meta">143 lines · project <a href="../examples/pkg-gec-extra.html"><code>GEC-extra</code></a></p><p class="pathctx">GEC-extra/GEC/source/Grio/modules/timersoftint.e</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/ports.html">exec/ports</a></li><li><a href="../modules/io.html">grio/io</a></li></ul></div><h2>Source</h2><pre class="code">OPT MODULE
+OPT REG=5
+
+
+MODULE &#x27;exec/ports&#x27;,&#x27;exec/nodes&#x27;,&#x27;exec/interrupts&#x27;,
+       &#x27;exec/memory&#x27;,&#x27;exec/io&#x27;,&#x27;devices/timer&#x27;
+
+
+MODULE &#x27;grio/io&#x27;,&#x27;amigalib/lists&#x27;,&#x27;grio/taskname&#x27;
+
+
+
+EXPORT OBJECT timersoftint
+  intserv:PTR TO is
+  iotime:PTR TO timerequest
+  port:PTR TO mp
+  PRIVATE
+  secs,mics,devopen
+  procedure,argdata
+ENDOBJECT
+
+
+
+PROC init(procedure,unit=UNIT_MICROHZ,pri=0) OF timersoftint
+ DEF port:PTR TO mp,io:PTR TO timerequest,is:PTR TO is,name:PTR TO CHAR
+ port:=io:=is:=NIL
+ self.procedure:=procedure
+ LEA    a4base(PC),A0
+ MOVE.L A4,(A0)
+ IF is:=AllocMem(SIZEOF is,MEMF_CLEAR OR MEMF_PUBLIC)
+    self.intserv:=is
+    is.code:={softintcode}
+    is.data:=self
+    is.ln.pri:=pri
+    port:=taskName()
+    IF name:=String(StrLen(port)+2)
+       is.ln.name:=name
+       StrCopy(name,port)
+       IF port:=AllocMem(SIZEOF mp,MEMF_CLEAR OR MEMF_PUBLIC)
+          self.port:=port
+          newList(port.msglist)
+          port.ln.type:=NT_MSGPORT
+          port.flags:=PA_SOFTINT
+          port.sigtask:=is    -&gt; signal softinterrupt
+          IF io:=createExtIO(port,SIZEOF timerequest)
+             self.iotime:=io
+             IF OpenDevice(&#x27;timer.device&#x27;,unit,io,NIL)=NIL
+                self.devopen:=TRUE
+                RETURN D0
+             ENDIF
+          ENDIF
+       ENDIF
+    ENDIF
+ ENDIF
+ self.end()
+ENDPROC FALSE
+
+a4base:
+   LONG   0
+
+PROC SAFE softintcode()
+  DEF tsi:PTR TO timersoftint
+  -&gt;MOVEM.L  D2-D7/A2-A4/A6,-(A7)
+  MOVE.L   A1,tsi   -&gt;   A1 = is.data
+  MOVEA.L  a4base(PC),A4
+  IF GetMsg(tsi.port)
+     IF tsi.secs=NIL
+        VOID tsi.mics
+        BEQ  skipproc
+     ENDIF
+     tsi.iotime::timerequest.time.secs:=tsi.secs
+     tsi.iotime::timerequest.time.micro:=tsi.mics
+     tsi.iotime::io.command:=TR_ADDREQUEST
+     beginIO  (tsi.iotime)
+     VOID     tsi.argdata
+     MOVE.L   D0,-(A7)
+     VOID     tsi.procedure
+     MOVEA.L  D0,A0
+     JSR      (A0)
+     ADDQ.W   #4,A7
+     skipproc:
+  ENDIF
+  -&gt;MOVEM.L  (A7)+,D2-D7/A2-A4/A6
+ENDPROC D0
+
+
+PROC setinterval(micro,secs) OF timersoftint
+  self.secs:=secs
+  self.mics:=micro
+ENDPROC D0
+
+
+PROC start(data=0) OF timersoftint
+  IF self.devopen
+     IF self.mics=0
+        IF self.secs=0 THEN RETURN FALSE
+     ENDIF
+     self.iotime::io.command:=TR_ADDREQUEST
+     self.iotime::timerequest.time.secs:=self.secs
+     self.iotime::timerequest.time.micro:=self.mics
+     self.argdata:=data
+     beginIO(self.iotime)
+  ENDIF
+ENDPROC TRUE
+
+
+PROC stop() OF timersoftint
+  IF self.devopen
+     self.setinterval(0,0)
+     IF CheckIO(self.iotime)=NIL
+        AbortIO(self.iotime)
+        WaitIO(self.iotime)
+     ENDIF
+  ENDIF
+ENDPROC D0
+
+
+PROC end() OF timersoftint
+  IF self.devopen
+     self.stop()
+     CloseDevice(self.iotime)
+     self.devopen:=FALSE
+  ENDIF
+  IF self.iotime
+     deleteExtIO(self.iotime)
+     self.iotime:=NIL
+  ENDIF
+  IF self.port
+     FreeMem(self.port,SIZEOF mp)
+     self.port:=NIL
+  ENDIF
+  IF self.intserv
+     DisposeLink(self.intserv::ln.name)
+     self.intserv::ln.name:=NIL
+     FreeMem(self.intserv,SIZEOF is)
+     self.intserv:=NIL
+  ENDIF
+ENDPROC D0
+
+
+
+
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

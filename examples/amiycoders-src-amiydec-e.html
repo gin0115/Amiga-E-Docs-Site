@@ -1,0 +1,645 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>amiydec.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-amiycoders-src.html">amiycoders_src</a> &rsaquo; amiydec.e</div><h1>File: <code>amiydec.e</code></h1><p class="meta">619 lines · project <a href="../examples/pkg-amiycoders-src.html"><code>amiycoders_src</code></a></p><p class="pathctx">amiycoders_src/amiydec.e</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/dos.html">dos/dos</a></li></ul></div><h2>Source</h2><pre class="code">OPT OSVERSION=37
+
+/*
+
+    Program: AmiyDec
+    Version: V0.6
+    Author : Ian Chapman
+
+    Description: Decoder for single-part and multi-part yEnc encoded files.
+
+    LICENSE: Permission is granted to use this source code in whole or in part,
+             providing that the author (Ian Chapman) is credited in your project
+             in either the documentation, or the program itself. This applies to
+             both free and commercial software. In the case of commercial
+             software (including ShareWare), I am entitled to a free, fully
+             functional copy of the software.
+
+             NO WARRANTY EITHER EXPRESSED OR IMPLIED AS TO THE FITNESS OF THIS
+             CODE FOR ANY PURPOSE. ALL USE IS ENTIRELY AND WHOLLY AT YOUR OWN
+             RISK
+
+*/
+
+MODULE  &#x27;dos/dos&#x27;,
+        &#x27;exec/memory&#x27;,
+        &#x27;*crctable&#x27;
+
+ENUM NORMAL, ERR_NOLINE, ERR_NOSIZE, ERR_NOFILENAME, ERR_NOINFILE,
+     ERR_NOMEM, ERR_NOREAD, ERR_NOOUTFILE, ERR_NOTRAILER, ERR_BADARGS,
+     ERR_OUTOFORDER, ERR_FILEEXISTS
+
+RAISE ERR_NOMEM IF NewM()=NIL
+
+OBJECT yencoding
+headstart                                                                      -&gt;Header offset
+headlen                                                                        -&gt;Header length
+line                                                                           -&gt;Line parameter value
+size                                                                           -&gt;Size parameter value
+encstart                                                                       -&gt;Encoding Offset
+trailstart                                                                     -&gt;Trailer offset
+traillen                                                                       -&gt;Trailer length
+crc                                                                            -&gt;CRC parameter value
+crcavail                                                                       -&gt;Is CRC available
+crccalc                                                                        -&gt;Calculated CRC value
+multipart                                                                      -&gt;Is it a multipart encoding
+ENDOBJECT
+
+OBJECT yencpart
+ypartstart                                                                     -&gt;Ypart header offset
+ypartlen                                                                       -&gt;Ypart header length
+total                                                                          -&gt;Total number of parts
+currentpart                                                                    -&gt;Current part being worked on
+crc                                                                            -&gt;CRC parameter value
+crcavail                                                                       -&gt;Is CRC available
+crccalc                                                                        -&gt;Calculated CRC value
+ENDOBJECT
+
+
+DEF header[400]:STRING,
+    trailer[100]:STRING,
+    filename[255]:STRING,
+    yenc:PTR TO yencoding,
+    ypart:PTR TO yencpart,
+    partsdecoded=0,
+    totalparts=0,
+    decoded=0,
+    myargs:PTR TO LONG,
+    files[200]:ARRAY OF LONG,
+    rdargs,
+    prevpart=0,
+    outputdir[500]:STRING,
+    inputfile[500]:STRING,
+    force=FALSE,
+    debug=FALSE,
+    exception2=0
+
+DEF crctable:PTR TO LONG
+
+
+PROC main() HANDLE
+DEF filequeue=0,
+    result=NIL
+
+    myargs:=[NIL,NIL,NIL,NIL,NIL]
+
+    IF rdargs:=ReadArgs(&#x27;INPUTFILES/A/M,DEST/K,DEBUG/S,FORCE/S&#x27;,myargs,NIL)            -&gt;Command line parameters
+        files:=myargs[0]
+        StrCopy(inputfile, files[0])
+
+        IF myargs[1] = 0
+            StrCopy(outputdir, &#x27;&#x27;)
+        ELSE
+            StrCopy(outputdir, myargs[1])
+        ENDIF
+
+        debug:=myargs[2]
+        force:=myargs[3]
+    ELSE
+        Raise(ERR_BADARGS)
+    ENDIF
+
+    WHILE files[filequeue]&lt;&gt;0                                                  -&gt;Process each file in the queue
+        StrCopy(inputfile, files[filequeue])
+        result:=process()
+        EXIT result=ERR_FILEEXISTS                                             -&gt;Aborts processing of further files if the output file
+        filequeue++                                                            -&gt;already exists. Necessary for multi-part as it uses MODE_READWRITE
+    ENDWHILE                                                               
+
+    FreeArgs(rdargs)
+
+    EXCEPT DO
+        SELECT exception
+            CASE NORMAL
+                IF (decoded=0) AND (result=0)
+                    PrintF(&#x27;WARNING: File did not contain a valid yEnc encoding\n&#x27;)
+                    exception2:=104
+                ELSE
+                    IF (partsdecoded &lt;&gt; totalparts)
+                        PrintF(&#x27;ERROR: \d parts are missing from multi-part encoding.\n&#x27;, totalparts-partsdecoded)
+                        exception2:=102
+                    ENDIF
+                    PrintF(&#x27;Files and parts decoded: \d\n&#x27;, decoded)
+                ENDIF
+            CASE ERR_BADARGS
+                PrintF(&#x27;yEnc Decoder by Ian Chapman v0.6\n\n&#x27;)
+                PrintF(&#x27;Parameters: INPUTFILES/A/M,DEST/K,DEBUG/S,FORCE/S\n&#x27;)
+                PrintF(&#x27;Example: amiydec encoded.ync DEST=RAM:\n&#x27;)
+                exception2:=ERR_BADARGS
+            DEFAULT
+                PrintF(&#x27;ERROR: Unknown exception (\d). Please report to author.\n&#x27;,exception)
+        ENDSELECT
+
+ENDPROC exception2
+
+
+/*** Procedure to decode all encodings in a file ***/
+PROC process() HANDLE
+DEF p:PTR TO CHAR,
+    ifh=NIL,
+    ofh=NIL,
+    mem=NIL,
+    filelen=-1,
+    outputpath[500]:STRING
+
+    IF (filelen:=FileLength(inputfile))&lt;30 THEN Raise(ERR_NOINFILE)            -&gt;Get input filelength
+    IF (ifh:=Open(inputfile, MODE_OLDFILE))=NIL THEN Raise(ERR_NOINFILE)       -&gt;Open input file
+    mem:=NewM(filelen, MEMF_PUBLIC OR MEMF_CLEAR)                              -&gt;Reserve buffer to size of file
+    IF (Read(ifh, mem, filelen)&lt;&gt;filelen) THEN Raise(ERR_NOREAD)               -&gt;Read file into buffer
+    p:=mem
+
+    WHILE (p&lt;(mem+filelen))                                                    -&gt;Continually checks for yencodings till EOF
+        StrCopy(outputpath, outputdir)
+        init_crctable_and_object()                                             -&gt;Initialise CRC32 table
+        p:=loc_hdr_start(p, filelen, mem)                                      -&gt;Locate Header
+        IF yenc.headstart=-1 THEN Raise(NORMAL)                                -&gt;Raise if no header found.
+        p:=loc_hdr_end(p, filelen, mem)                                        -&gt;Locate end of header
+        IF yenc.headlen=-1 THEN Raise(NORMAL)                                  -&gt;Raise if no header end found.
+        find_line()                                                            -&gt;Find line parameter
+        find_size()                                                            -&gt;Find size parameter
+        find_name()                                                            -&gt;Find name parameter
+        find_part()                                                            -&gt;Find if multi or single
+
+        IF yenc.multipart = TRUE
+            find_total()                                                       -&gt;Find total parameter
+            p:=loc_ypart_start(p, filelen, mem)                                -&gt;Locate ypart header
+            IF ypart.ypartstart=-1 THEN Raise(NORMAL)                          -&gt;Raise if not found
+            p:=loc_ypart_end(p, filelen, mem)                                  -&gt;Locate end of ypart header
+            IF ypart.ypartlen=-1 THEN Raise(NORMAL)                            -&gt;Raise if not found
+            IF (ypart.currentpart-1) &lt;&gt; prevpart THEN Raise(ERR_OUTOFORDER)    -&gt;Check we get parts in order
+            prevpart:=ypart.currentpart
+        ENDIF
+
+        IF volume_or_dir(outputdir) = 0 THEN StrAdd(outputpath, &#x27;/&#x27;)           -&gt;Check if we need / on filepath
+        StrAdd(outputpath, filename)
+
+        IF  ypart.currentpart &gt; 1
+            IF (ofh:=Open(outputpath, MODE_READWRITE)) = NIL THEN Raise(ERR_NOOUTFILE)
+            Seek(ofh, NIL, OFFSET_END)
+        ELSE
+            IF (force=FALSE) AND (FileLength(outputpath) &gt; -1)
+                Raise(ERR_FILEEXISTS)
+            ELSE
+                IF (ofh:=Open(outputpath, MODE_NEWFILE))=NIL THEN Raise(ERR_NOOUTFILE)
+            ENDIF
+        ENDIF
+
+        p:=decode(p, filelen, mem, ofh)                                        -&gt;Run decode routine
+        IF (yenc.trailstart=-1) THEN Raise(ERR_NOTRAILER)                      -&gt;Raise if trailer not found
+        p:=loc_trail_end(p, filelen, mem)                                      -&gt;Locate end of trailer
+        find_crc()                                                             -&gt;Find CRC32 parameter in trailer
+
+        IF (debug=TRUE)                                                        -&gt;Debugging information if DEBUG used
+            PrintF(&#x27;\nHdr Offset:     \d\n&#x27;, yenc.headstart)
+            PrintF(&#x27;Hdr Length:     \d\n&#x27;, yenc.headlen)
+            PrintF(&#x27;Hdr Contents:   \s\n&#x27;, header)
+            PrintF(&#x27;Hdr Line Size:  \d\n&#x27;, yenc.line)
+            PrintF(&#x27;Hdr File Size:  \d\n&#x27;, yenc.size)
+            PrintF(&#x27;Hdr Filename:   \s\n&#x27;, filename)
+            PrintF(&#x27;Enc Offset:     \d\n&#x27;, yenc.encstart)
+            PrintF(&#x27;Tlr Offset:     \d\n&#x27;, yenc.trailstart)
+            PrintF(&#x27;Tlr Length:     \d\n&#x27;, yenc.traillen)
+            PrintF(&#x27;Tlr Contents:   \s\n&#x27;, trailer)
+            PrintF(&#x27;Tlr CRC32:      \h\n&#x27;, yenc.crc)
+            PrintF(&#x27;Calc CRC32:     \h\n\n&#x27;, yenc.crccalc)
+            IF (yenc.multipart=TRUE)
+                PrintF(&#x27;Ypart Offset:   \d\n&#x27;, ypart.ypartstart)
+                PrintF(&#x27;Ypart Length:   \d\n&#x27;, ypart.ypartlen)
+                PrintF(&#x27;Total Parts:    \d\n&#x27;, ypart.total)
+                PrintF(&#x27;Current Part:   \d\n&#x27;, ypart.currentpart)
+                PrintF(&#x27;Ypart Tlr CRC:  \h\n&#x27;, ypart.crc)
+                PrintF(&#x27;Ypart Calc CRC: \h\n\n&#x27;, ypart.crccalc)
+            ENDIF
+        ENDIF
+
+        Close(ofh)
+        ofh:=NIL
+
+        IF yenc.multipart = TRUE
+            PrintF(&#x27;=&gt; \s [\d] (Part=\d)\n&#x27;, outputpath, FileLength(outputpath), ypart.currentpart)
+        ELSE
+            PrintF(&#x27;=&gt; \s [\d]\n&#x27;, outputpath, FileLength(outputpath))
+        ENDIF
+
+        IF ypart.crcavail=1
+            IF (ypart.crc &lt;&gt; ypart.crccalc)
+                PrintF(&#x27;ERROR: CRC32 mismatch, part \d is corrupt.\n&#x27;, ypart.currentpart)
+                exception2:=100
+            ENDIF
+        ENDIF
+
+        IF (ypart.total = ypart.currentpart)                                   -&gt;Works also for single parts as they will both be 0
+            IF FileLength(outputpath)&lt;&gt;yenc.size
+                PrintF(&#x27;ERROR: File size mismatch between header and decoded file.\n&#x27;)
+                exception2:=101
+            ENDIF
+
+            IF (yenc.crcavail=1) AND (yenc.multipart=FALSE)
+                IF (yenc.crc &lt;&gt; yenc.crccalc)
+                    PrintF(&#x27;ERROR: CRC32 mismatch, file is corrupt.\n&#x27;)
+                    exception2:=100
+                ENDIF
+            ENDIF
+        ENDIF
+
+        decoded++                                                              -&gt;Increment files/parts decoded
+        IF (yenc.multipart = TRUE) THEN partsdecoded++                         -&gt;Keeps track of part order
+        totalparts:=ypart.total                                                -&gt;This is needed as ypart gets freed, but we this this value afterwards
+        IF (yenc) THEN Dispose(yenc)                                           -&gt;Free allocated mem for yenc
+        IF (ypart) THEN Dispose(ypart)                                         -&gt;Free allocated mem from ypart
+    ENDWHILE
+
+    EXCEPT DO
+        IF (ofh&lt;&gt;0) THEN Close(ofh)
+        IF (mem) THEN Dispose(mem)
+        IF (ifh) THEN Close(ifh)
+        SELECT exception
+            CASE NORMAL
+                -&gt; Normal Exception
+            CASE ERR_NOFILENAME
+                PrintF(&#x27;ERROR: Missing filename parameter from header.\n&#x27;)
+                exception2:=ERR_NOFILENAME
+            CASE ERR_NOINFILE
+                PrintF(&#x27;ERROR: Unable to open input file (\s) or file too small.\n&#x27;, inputfile)
+                exception2:=ERR_NOINFILE
+            CASE ERR_NOOUTFILE
+                PrintF(&#x27;ERROR: Unable to open output file.\n&#x27;)
+                exception2:=ERR_NOOUTFILE
+            CASE ERR_NOMEM
+                PrintF(&#x27;ERROR: Unable to allocate enough memory for buffer.\n&#x27;)
+                exception2:=ERR_NOMEM
+            CASE ERR_NOREAD
+                PrintF(&#x27;ERROR: Unable to read all of the input file.\n&#x27;)
+                exception2:=ERR_NOREAD
+            CASE ERR_NOTRAILER
+                PrintF(&#x27;ERROR: Premature end of encoding, file may be corrupt.\n&#x27;)
+                exception2:=ERR_NOTRAILER
+            CASE ERR_OUTOFORDER
+                PrintF(&#x27;ERROR: Multi-part encoding, out of order. Need part \d, got part \d.\n&#x27;, prevpart+1, ypart.currentpart)
+                exception2:=ERR_OUTOFORDER
+            CASE ERR_FILEEXISTS
+                PrintF(&#x27;WARNING: Destination file already exists\n&#x27;)
+                exception2:=ERR_FILEEXISTS
+            DEFAULT
+                PrintF(&#x27;ERROR: Unknown exception (\d). Please report to author.\n&#x27;,exception)
+        ENDSELECT
+
+ENDPROC exception
+
+
+/*** Procedure to find the line parameter in the header ***/
+PROC find_line() HANDLE
+DEF strstart=0,
+    space=0,
+    linesize[8]:STRING
+
+    IF (strstart:=InStr(header, &#x27;line=&#x27;, 0))&gt;-1
+        space:=InStr(header, &#x27; &#x27;, strstart)
+        MidStr(linesize, header, strstart+5, space-(strstart+5))
+        yenc.line:=Val(linesize)
+    ELSE
+        Raise(ERR_NOLINE)
+    ENDIF
+
+    EXCEPT DO
+        SELECT exception
+            CASE ERR_NOLINE
+                PrintF(&#x27;ERROR: Missing line parameter. Attempting to decode anyway.\n&#x27;)
+                exception2:=ERR_NOLINE
+        ENDSELECT
+ENDPROC
+
+
+/*** Procedure to find the size parameter in the header ***/
+PROC find_size() HANDLE
+DEF strstart=0,
+    space=0,
+    size[8]:STRING
+
+    IF (strstart:=InStr(header, &#x27;size=&#x27;, 0))&gt;-1
+        space:=InStr(header, &#x27; &#x27;, strstart)
+        MidStr(size, header, strstart+5, space-(strstart+5))
+        yenc.size:=Val(size)
+    ELSE
+        Raise(ERR_NOSIZE)
+    ENDIF
+
+    EXCEPT DO
+        SELECT exception
+            CASE ERR_NOSIZE
+                PrintF(&#x27;ERROR: Missing size parameter. Attempting to decode anyway.\n&#x27;)
+                exception2:=ERR_NOSIZE
+        ENDSELECT
+ENDPROC
+
+
+/*** Procedure to find the name parameter in the header ***/
+PROC find_name()
+DEF strstart=0,
+    name[255]:STRING
+
+    IF (strstart:=InStr(header, &#x27;name=&#x27;, 0))&gt;-1
+        MidStr(name, header, strstart+5, ALL)
+        StrCopy(filename,name)
+    ELSE
+        Raise(ERR_NOFILENAME)
+    ENDIF
+
+    IF EstrLen(filename) &gt; 102 THEN SetStr(filename, 102)                      -&gt; AmigaDOS allows max of 102 chars for filename so truncate if necessary
+    WHILE (filename[EstrLen(filename)-1] = $20) DO SetStr(filename, EstrLen(filename)-1) -&gt; Remove trailing spaces
+    IF (filename[0] = $22) AND (filename[EstrLen(filename)-1] = $22) THEN MidStr(filename, filename, 1, EstrLen(filename)-2) -&gt;Remove &quot; delimeters if necessary
+    WHILE (InStr(filename, &#x27;:&#x27;, 0)&gt;-1) DO filename[InStr(filename,&#x27;:&#x27;,0)]:=$5F -&gt;&#x27;:&#x27; is illegal in Amiga filenames, so replace it.
+    WHILE (InStr(filename, &#x27;/&#x27;, 0)&gt;-1) DO filename[InStr(filename,&#x27;/&#x27;,0)]:=$5F -&gt;&#x27;/&#x27; is illegal in Amiga filenames, so replace it.
+                                                                               
+    WHILE (InStr(filename, &#x27;;&#x27;, 0)&gt;-1) DO filename[InStr(filename,&#x27;;&#x27;,0)]:=$5F -&gt; These are technically legal in filenames
+    WHILE (InStr(filename, &#x27;%&#x27;, 0)&gt;-1) DO filename[InStr(filename,&#x27;%&#x27;,0)]:=$5F -&gt; but are problematic as they may get
+    WHILE (InStr(filename, &#x27;#&#x27;, 0)&gt;-1) DO filename[InStr(filename,&#x27;#&#x27;,0)]:=$5F -&gt; interpreted as wildcards
+    WHILE (InStr(filename, &#x27;?&#x27;, 0)&gt;-1) DO filename[InStr(filename,&#x27;?&#x27;,0)]:=$5F
+    WHILE (InStr(filename, &#x27;{&#x27;, 0)&gt;-1) DO filename[InStr(filename,&#x27;{&#x27;,0)]:=$5F
+    WHILE (InStr(filename, &#x27;}&#x27;, 0)&gt;-1) DO filename[InStr(filename,&#x27;}&#x27;,0)]:=$5F
+ENDPROC
+
+
+/*** Procedure to check for the part parameter in the header ***/
+PROC find_part()
+DEF strstart=0,
+    part[10]:STRING,
+    space=0
+
+    IF (strstart:=InStr(header,&#x27;part=&#x27;, 0))&gt;-1
+        space:=InStr(header, &#x27; &#x27;, strstart)
+        MidStr(part, header, strstart+5, space-(strstart+5))
+        ypart.currentpart:=Val(part)
+        yenc.multipart:=TRUE
+    ELSE
+        ypart.currentpart:=0
+        yenc.multipart:=FALSE
+    ENDIF
+
+ENDPROC
+
+/*** Procedure to check for the total parameter in the header ***/
+PROC find_total()
+DEF strstart=0,
+    total[10]:STRING,
+    space=0
+
+    IF (strstart:=InStr(header,&#x27;total=&#x27;, 0))&gt;-1
+        space:=InStr(header, &#x27; &#x27;, strstart)
+        MidStr(total, header, strstart+6, space-(strstart+6))
+        ypart.total:=Val(total)
+    ELSE
+        PrintF(&#x27;WARNING: Total parameter missing. Assuming only 1 part.\n&#x27;)
+        exception2:=103
+        ypart.total:=1
+    ENDIF
+
+ENDPROC
+
+/*** Procedure to find the CRC32 in the trailer ***/
+PROC find_crc()
+DEF strstart=0,
+    crc[10]:STRING,
+    space=0
+
+    yenc.crcavail:=-1
+    ypart.crcavail:=-1
+
+    IF (strstart:=InStr(trailer, &#x27; crc32=&#x27;, 0))&gt;-1
+        space:=InStr(trailer, &#x27; &#x27;, strstart)
+        MidStr(crc, trailer, strstart+7, space-(strstart+7))
+        StringF(crc, &#x27;$\s&#x27;, crc)
+        yenc.crcavail:=1
+        yenc.crc:=Val(crc)
+    ENDIF
+
+    IF (strstart:=InStr(trailer, &#x27;pcrc32=&#x27;, 0))&gt;-1
+        space:=InStr(trailer, &#x27; &#x27;, strstart)
+        MidStr(crc, trailer, strstart+7, space-(strstart+7))
+        StringF(crc, &#x27;$\s&#x27;, crc)
+        ypart.crcavail:=1
+        ypart.crc:=Val(crc)
+    ENDIF
+
+ENDPROC
+
+
+/*** Procedure to initialise objects and CRC table ***/
+PROC init_crctable_and_object()
+    yenc:=New(SIZEOF yencoding)
+    ypart:=New(SIZEOF yencpart)
+    yenc.headstart:=-1                                                          -&gt; Initialise these to -1 to be able to detect a failure
+    yenc.headlen:=-1                                                            -&gt; as 0 is considered a non-failure.
+    yenc.trailstart:=-1
+    yenc.crcavail:=-1
+    yenc.multipart:=FALSE
+    ypart.total:=0
+    ypart.ypartstart:=-1
+    ypart.ypartlen:=-1
+    ypart.currentpart:=0
+    ypart.crcavail:=-1
+    crctable:=get_crctable()                                                   -&gt;Initialise the CRC32 lookup table.
+ENDPROC
+
+
+/*** Procedure to locate the start of a header ***/
+PROC loc_hdr_start(ptr:PTR TO CHAR, flen, memloc)
+DEF stop=FALSE,
+    temp[8]:STRING
+
+    WHILE stop=FALSE                                                           -&gt;Search the buffer for start of header
+        IF (Char(ptr) = &quot;=&quot;)
+            StrCopy(temp, ptr, 8)
+            IF (StrCmp(temp, &#x27;=ybegin &#x27;) = TRUE)
+                yenc.headstart:=(ptr-memloc)
+                stop:=TRUE
+            ENDIF
+        ENDIF
+        ptr++
+        IF (ptr&gt;(memloc+flen)) THEN stop:=TRUE                                 -&gt;Failsafe for loop in case header not found.
+    ENDWHILE
+ENDPROC ptr
+
+
+/*** Procedure to locate the ypart header ***/
+PROC loc_ypart_start(ptr:PTR TO CHAR, flen, memloc)
+DEF stop=FALSE,
+    temp[7]:STRING
+
+    WHILE stop=FALSE                                                           -&gt;Search the buffer for start of ypart header
+        IF (Char(ptr) = &quot;=&quot;)
+            StrCopy(temp, ptr, 7)
+            IF (StrCmp(temp, &#x27;=ypart &#x27;) = TRUE)
+                ypart.ypartstart:=(ptr-memloc)
+                stop:=TRUE
+            ENDIF
+        ENDIF
+        ptr++
+        IF (ptr&gt;(memloc+flen)) THEN stop:=TRUE                                 -&gt;Failsafe for loop in case header not found.
+    ENDWHILE
+ENDPROC ptr
+
+
+/*** Procedure to locate the end of a header ***/
+PROC loc_hdr_end(ptr:PTR TO CHAR, flen, memloc)
+DEF stop=FALSE
+
+    WHILE stop=FALSE                                                           -&gt;Search for the end of the header
+        IF (Char(ptr) = $0A)
+            yenc.encstart:=(ptr-memloc)+1
+            IF (Char(ptr-1) &lt;&gt; $0D)                                            -&gt;For broken encoders only using LF instead of CRLF
+                yenc.headlen:=(ptr-memloc)-yenc.headstart
+            ELSE
+                yenc.headlen:=(ptr-memloc)-yenc.headstart-1
+            ENDIF
+            StrCopy(header, memloc+yenc.headstart, yenc.headlen)
+            stop:=TRUE                                                
+        ENDIF
+
+
+        ptr++
+        IF (ptr&gt;(memloc+flen)) THEN stop:=TRUE                                 -&gt;Failsafe for loop in case end not found
+    ENDWHILE
+ENDPROC ptr
+
+
+/*** Procedure to locate the end of a ypart header ***/
+PROC loc_ypart_end(ptr:PTR TO CHAR, flen, memloc)
+DEF stop=FALSE
+
+    WHILE stop=FALSE                                                           -&gt;Search for the end of ypart header
+        IF (Char(ptr) = $0A)
+            yenc.encstart:=(ptr-memloc)+1
+            IF (Char(ptr-1) &lt;&gt; $0D)                                            -&gt;For broken encoders only using LF instead of CRLF
+                ypart.ypartlen:=(ptr-memloc)-ypart.ypartstart
+            ELSE
+                ypart.ypartlen:=(ptr-memloc)-ypart.ypartstart-1
+            ENDIF
+            stop:=TRUE
+        ENDIF
+        ptr++
+        IF (ptr&gt;(memloc+flen)) THEN stop:=TRUE                                 -&gt;Failsafe for loop in case end not found
+    ENDWHILE
+ENDPROC ptr
+
+
+/*** Procedure to peform decoding ***/
+PROC decode(ptr:PTR TO CHAR, flen, memloc, output)
+DEF stop=FALSE,
+    temp[8]:STRING,
+    count=0,
+    crcvalue=-1
+
+    WHILE stop=FALSE
+                                                                  -&gt;Decode the yEnc encoded section
+        IF (Char(ptr) = $0D)
+            Write(output, ptr-count, count)
+            ptr++
+            count:=0
+        ENDIF
+
+        IF (Char(ptr) = $0A)
+            Write(output, ptr-count, count)
+            ptr++
+            count:=0
+        ENDIF
+
+        IF (Char(ptr) = $3D)
+            StrCopy(temp, ptr, 6)
+            IF (StrCmp(temp, &#x27;=yend &#x27;) = TRUE)
+                yenc.trailstart:=(ptr-memloc)
+                stop:=TRUE
+            ELSE
+                Write(output, ptr-count, count)
+                ptr++
+                count:=0
+                PutChar(ptr, Char(ptr)-64)
+            ENDIF
+        ENDIF
+
+        IF stop=FALSE
+            PutChar(ptr, Char(ptr)-42)
+            crcvalue:=Eor(crctable[And(Eor(crcvalue, Char(ptr)), $FF)], And(Shr(crcvalue,8), $FFFFFF))
+            ptr++
+            count++
+        ENDIF
+
+        IF (ptr&gt;(memloc+flen)) THEN stop:=TRUE                                 -&gt;Failsafe for loop in case premature end
+    ENDWHILE
+    Write(output, ptr-count, count)                                            -&gt;Write any remaining buffers.
+
+    IF yenc.multipart=TRUE
+        ypart.crccalc:=Eor(crcvalue, $FFFFFFFF)
+    ELSE
+        yenc.crccalc:=Eor(crcvalue, $FFFFFFFF)                                 -&gt;Calculate final CRC
+    ENDIF
+ENDPROC ptr
+
+
+/*** Procedure to locate the end of the trailer ***/
+PROC loc_trail_end(ptr:PTR TO CHAR, flen, memloc)
+DEF stop=FALSE
+
+    WHILE stop=FALSE                                                           -&gt;Search for end of trailer
+        IF (Char(ptr)=$0A)
+            IF (Char(ptr-1) &lt;&gt; $0D)                                            -&gt;For broken encoders only using LF instead of CRLF
+                StrCopy(trailer, yenc.trailstart+memloc, ptr-(yenc.trailstart+memloc))
+                yenc.traillen:=ptr-(yenc.trailstart+memloc)
+            ELSE
+                StrCopy(trailer, yenc.trailstart+memloc, (ptr-(yenc.trailstart+memloc))-1)
+                yenc.traillen:=ptr-((yenc.trailstart+memloc))-1
+            ENDIF
+            stop:=TRUE
+        ELSE
+            ptr++
+        ENDIF
+        IF (ptr&gt;(memloc+flen)) THEN stop:=TRUE                                 -&gt; Failsafe for loop
+    ENDWHILE
+ENDPROC ptr
+
+
+/*** Procedure to check if output is a volume or directory ***/
+PROC volume_or_dir(path)
+DEF type=0,
+    temp[500]:STRING
+
+    StrCopy(temp, path)
+    IF (temp[(EstrLen(temp)-1)] = &quot;/&quot;)                                         -&gt;Check if output is a dir or volume
+        type:=1
+    ELSEIF (temp[(EstrLen(temp)-1)] = &quot;:&quot;)
+        type:=1
+    ELSEIF (temp[(EstrLen(temp)-1)] = &quot;&quot;)
+        type:=1
+    ENDIF
+ENDPROC type
+
+version:
+CHAR &#x27;$VER: yEnc Decoder by Ian Chapman v0.6&#x27;,0
+
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

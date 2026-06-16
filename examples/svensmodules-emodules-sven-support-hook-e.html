@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>hook.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-svensmodules.html">SvensModules</a> &rsaquo; hook.e</div><h1>File: <code>hook.e</code></h1><p class="meta">90 lines · project <a href="../examples/pkg-svensmodules.html"><code>SvensModules</code></a></p><p class="pathctx">SvensModules/emodules/sven/Support/hook.e</p><p class="prose">This one is responsible for all Hooks used in a program. ** As you can in MODULs only declare simple <a href="../modules/types.html">types</a> (no OBJECTs) and ** therefore the Main-PROC have to initalize all Hooks this ** Modul was written. ** It also does not use the &#x27;h_data&#x27;-field of the <a href="../modules/hook.html">hook</a>. ** ** Usage: ** .... ** DEF thisismyho</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/hooks.html">utility/hooks</a></li></ul></div><h2>Source</h2><pre class="code">/* This one is responsible for all Hooks used in a program.
+** As you can in MODULs only declare simple types (no OBJECTs) and
+** therefore the Main-PROC have to initalize all Hooks this
+** Modul was written.
+** It also does not use the &#x27;h_data&#x27;-field of the hook.
+**
+** Usage:
+**   ....
+**   DEF thisismyhookptr:PTR TO ehook   -&gt; is initialized to NIL by E
+**   ...
+**   PROC myconstructhook(pool,constructdata) IS ...
+**   ...
+**      MUIA_List_ConstructHook, gethook({thisismyhookptr},{myconstructfunc}),
+**   ...
+*/
+
+OPT MODULE
+OPT REG=5
+
+MODULE &#x27;utility/hooks&#x27;
+
+EXPORT OBJECT ehook OF hook
+  ptrA4:LONG
+ENDOBJECT
+
+/* Call this PROC whenever you need a hook. If it is called the first
+** time for a hook it creates a new hook-structure and initialize it.
+** (Note: the memeory for the ehook-structure is freed by E when the program
+**        quits. To free the memory manually do &#x27;END thisismyhookptr&#x27; which
+**        also does &#x27;thisismyhookptr:=NIL&#x27;)
+** Your Hook-function gets A0, as first parameter, A2 as sceond and A1 as third.
+** You can also acces global variables as A4 is set correctly.
+**
+**   hookref     - pointer to your hook-var (usally {var})
+**   hookfuncref - pointer to your hook-function (usally {proc})
+**
+** Note: As the hook-structure is created dynamical you may get an
+**       &quot;MEM&quot;-exception.
+*/
+EXPORT PROC gethook(hookref,hookfuncref)
+DEF hookp:PTR TO ehook
+
+  IF (hookp:=^hookref)=NIL
+    NEW hookp
+    installhook(hookp,hookfuncref)
+    ^hookref:=hookp
+  ENDIF
+
+ENDPROC hookp
+
+EXPORT PROC ungetHook(hookref)
+DEF hookp:PTR TO ehook
+
+  IF hookp:=^hookref
+    END hookp
+    ^hookref:=NIL
+  ENDIF
+
+ENDPROC
+
+/*
+** installhook (written by Wouter van Oortmerssen)
+*/
+
+PROC installhook(hook,func)
+    MOVE.L hook,A0
+    MOVE.L func,12(A0)
+    LEA hookentry(PC),A1
+    MOVE.L A1,8(A0)     -&gt; entry
+    MOVE.L A4,20(A0)    -&gt; ptrA4
+ENDPROC
+
+hookentry:
+   MOVEM.L D2-D7/A2-A6,-(A7)
+   MOVE.L 20(A0),A4
+   MOVE.L A0,-(A7)
+   MOVE.L A2,-(A7)
+   MOVE.L A1,-(A7)
+   MOVE.L 12(A0),A0
+   JSR (A0)
+   LEA 12(A7),A7
+
+   MOVEM.L (A7)+,D2-D7/A2-A6
+RTS
+
+/*
+** End Of File
+*/
+ 
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

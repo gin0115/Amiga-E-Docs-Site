@@ -1,0 +1,144 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>AudioDT.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-dtaudio-e.html">dtaudio_e</a> &rsaquo; AudioDT.e</div><h1>File: <code>AudioDT.e</code></h1><p class="meta">118 lines · project <a href="../examples/pkg-dtaudio-e.html"><code>dtaudio_e</code></a></p><p class="pathctx">dtaudio_e/AudioDT/AudioDT.e</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/boopsi.html">amigalib/boopsi</a></li><li><a href="../modules/datatypes.html">datatypes</a></li><li><a href="../modules/datatypesclass.html">datatypes/datatypesclass</a></li><li><a href="../modules/soundclass.html">datatypes/soundclass</a></li><li><a href="../modules/classes.html">intuition/classes</a></li></ul></div><h2>Source</h2><pre class="code">OPT MODULE
+OPT EXPORT
+
+/*
+ * This module is for hear files (VOC,WAV,IFF etc.)
+ * by means of datatypes.library
+ *
+ * AudioDT v1.0 - written by Krzysztof Cmok
+ * module is written in day 11-May-99
+ *
+ */
+
+MODULE	&#x27;datatypes/datatypesclass&#x27;	-&gt; definicje...
+MODULE	&#x27;datatypes/soundclass&#x27;		-&gt; object &#x27;voiceheader&#x27;
+MODULE	&#x27;intuition/classes&#x27;		-&gt; object struct ;)
+MODULE	&#x27;amigalib/boopsi&#x27;		-&gt; dla domethod
+MODULE	&#x27;datatypes&#x27;			-&gt; wiadomo co
+
+OBJECT audiodt
+    obj:PTR TO object			-&gt; objekt
+    cycles:PTR TO LONG			-&gt; sample cycles
+    period:PTR TO LONG		        -&gt; sample period
+    volume:PTR TO LONG		        -&gt; sample volume
+    buf:PTR TO LONG			-&gt; sample data
+    buflen:PTR TO LONG			-&gt; sample length
+ENDOBJECT
+
+-&gt;- procedure for open file...
+PROC load(filename) OF audiodt
+DEF buf,buflen
+
+	IF (datatypesbase:=OpenLibrary(&#x27;datatypes.library&#x27;,0))=0 THEN RETURN 0
+	
+	self.obj:=NewDTObjectA(filename,
+				[DTA_SOURCETYPE, DTST_FILE,
+				 DTA_GROUPID,	 $736F756E,		-&gt; ID: pict
+				 SDTA_CONTINUOUS,	TRUE,
+				 SDTA_VOLUME,		self.volume,
+				 SDTA_CYCLES,		self.cycles,0])
+	IF self.obj=0 THEN RETURN 0
+
+	GetDTAttrsA(self.obj,[SDTA_SAMPLE,{buf},0])
+	GetDTAttrsA(self.obj,[SDTA_SAMPLELENGTH,{buflen},0])
+
+	self.buf:=buf;
+	self.buflen:=buflen;
+	IF buflen=0 THEN RETURN 0
+ENDPROC -1
+
+-&gt;- play
+PROC play() OF audiodt
+DEF dtt:PTR TO dttrigger
+
+	IF self.obj=0 THEN RETURN 0
+		NEW dtt
+		dtt.methodid := DTM_TRIGGER;
+		dtt.function := STM_PLAY;
+		doMethodA(self.obj,dtt);
+		END dtt
+
+ENDPROC -1
+
+-&gt;- set volume
+PROC setvolume(vol) OF audiodt
+
+	IF self.obj=0 THEN RETURN 0
+		SetDTAttrsA(self.obj,0,0,[SDTA_VOLUME,vol,0]);
+		self.volume:=vol;
+ENDPROC -1
+
+-&gt;- set period
+PROC setperiod(per) OF audiodt
+
+	IF self.obj=0 THEN RETURN 0
+		SetDTAttrsA(self.obj,0,0,[SDTA_PERIOD,per,0]);
+		self.period:=per;
+ENDPROC -1
+
+-&gt;- set cycles
+PROC setcycles(cyc) OF audiodt
+
+	IF self.obj=0 THEN RETURN 0
+		SetDTAttrsA(self.obj,0,0,[SDTA_CYCLES,cyc,0]);
+		self.cycles:=cyc
+ENDPROC -1
+
+
+-&gt;- dispose
+PROC dispose() OF audiodt
+	DisposeDTObject(self.obj)
+	Dispose(self.obj)
+	CloseLibrary(datatypesbase);
+	self.obj:=0;
+ENDPROC -1
+
+/* SIMPLE EXAMPLE
+ *****************
+
+PROC main()
+DEF a:PTR TO audiodt
+
+NEW a
+
+IF (a.load(&#x27;meanswar.wav&#x27;))=0 THEN CleanUp()
+
+a.setvolume(64);
+a.setperiod(330);
+a.setcycles(1);
+a.play()
+Delay(100);
+a.dispose()
+
+END a
+
+ENDPROC
+
+*/
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

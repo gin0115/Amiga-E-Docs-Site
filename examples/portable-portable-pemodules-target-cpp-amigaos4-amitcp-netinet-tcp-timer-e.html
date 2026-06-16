@@ -1,0 +1,159 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>tcp_timer.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-portable.html">PortablE</a> &rsaquo; tcp_timer.e</div><h1>File: <code>tcp_timer.e</code></h1><p class="meta">133 lines · project <a href="../examples/pkg-portable.html"><code>PortablE</code></a></p><p class="pathctx">PortablE/PortablE/PEmodules/target/CPP_AmigaOS4/amitcp/netinet/tcp_timer.e</p><h2>Source</h2><pre class="code">OPT NATIVE, PREPROCESS
+{#include &lt;netinet/tcp_timer.h&gt;}
+/*
+ * $Id: tcp_timer.h,v 1.6 2007-08-26 12:30:25 obarthel Exp $
+ *
+ * :ts=8
+ *
+ * &#x27;Roadshow&#x27; -- Amiga TCP/IP stack
+ * Copyright © 2001-2007 by Olaf Barthel.
+ * All Rights Reserved.
+ *
+ * Amiga specific TCP/IP &#x27;C&#x27; header files;
+ * Freely Distributable
+ */
+
+/*
+ * Copyright (c) 1982, 1986, 1993
+ *	The Regents of the University of California.  All rights reserved.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions
+ * are met:
+ * 1. Redistributions of source code must retain the above copyright
+ *    notice, this list of conditions and the following disclaimer.
+ * 2. Redistributions in binary form must reproduce the above copyright
+ *    notice, this list of conditions and the following disclaimer in the
+ *    documentation and/or other materials provided with the distribution.
+ * 3. All advertising materials mentioning features or use of this software
+ *    must display the following acknowledgement:
+ *	This product includes software developed by the University of
+ *	California, Berkeley and its contributors.
+ * 4. Neither the name of the University nor the names of its contributors
+ *    may be used to endorse or promote products derived from this software
+ *    without specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE REGENTS AND CONTRIBUTORS ``AS IS&#x27;&#x27; AND
+ * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+ * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+ * ARE DISCLAIMED.  IN NO EVENT SHALL THE REGENTS OR CONTRIBUTORS BE LIABLE
+ * FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+ * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS
+ * OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
+ * HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
+ * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
+ * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
+ * SUCH DAMAGE.
+ *
+ *	@(#)tcp_timer.h	8.1 (Berkeley) 6/10/93
+ */
+
+NATIVE {_NETINET_TCP_TIMER_H} DEF
+
+/****************************************************************************/
+
+/*
+ * Definitions of the TCP timers.  These timers are counted
+ * down PR_SLOWHZ times a second.
+ */
+NATIVE {TCPT_NTIMERS}	CONST TCPT_NTIMERS	= 4
+
+NATIVE {TCPT_REXMT}	CONST TCPT_REXMT	= 0		/* retransmit */
+NATIVE {TCPT_PERSIST}	CONST TCPT_PERSIST	= 1		/* retransmit persistance */
+NATIVE {TCPT_KEEP}	CONST TCPT_KEEP	= 2		/* keep alive */
+NATIVE {TCPT_2MSL}	CONST TCPT_2MSL	= 3		/* 2*msl quiet time timer */
+
+/*
+ * The TCPT_REXMT timer is used to force retransmissions.
+ * The TCP has the TCPT_REXMT timer set whenever segments
+ * have been sent for which ACKs are expected but not yet
+ * received.  If an ACK is received which advances tp-&gt;snd_una,
+ * then the retransmit timer is cleared (if there are no more
+ * outstanding segments) or reset to the base value (if there
+ * are more ACKs expected).  Whenever the retransmit timer goes off,
+ * we retransmit one unacknowledged segment, and do a backoff
+ * on the retransmit timer.
+ *
+ * The TCPT_PERSIST timer is used to keep window size information
+ * flowing even if the window goes shut.  If all previous transmissions
+ * have been acknowledged (so that there are no retransmissions in progress),
+ * and the window is too small to bother sending anything, then we start
+ * the TCPT_PERSIST timer.  When it expires, if the window is nonzero,
+ * we go to transmit state.  Otherwise, at intervals send a single byte
+ * into the peer&#x27;s window to force him to update our window information.
+ * We do this at most as often as TCPT_PERSMIN time intervals,
+ * but no more frequently than the current estimate of round-trip
+ * packet time.  The TCPT_PERSIST timer is cleared whenever we receive
+ * a window update from the peer.
+ *
+ * The TCPT_KEEP timer is used to keep connections alive.  If an
+ * connection is idle (no segments received) for TCPTV_KEEP_INIT amount of time,
+ * but not yet established, then we drop the connection.  Once the connection
+ * is established, if the connection is idle for TCPTV_KEEP_IDLE time
+ * (and keepalives have been enabled on the socket), we begin to probe
+ * the connection.  We force the peer to send us a segment by sending:
+ *	&lt;SEQ=SND.UNA-1&gt;&lt;ACK=RCV.NXT&gt;&lt;CTL=ACK&gt;
+ * This segment is (deliberately) outside the window, and should elicit
+ * an ack segment in response from the peer.  If, despite the TCPT_KEEP
+ * initiated segments we cannot elicit a response from a peer in TCPT_MAXIDLE
+ * amount of time probing, then we drop the connection.
+ */
+
+/*
+ * Time constants.
+ */
+NATIVE {PR_SLOWHZ} CONST PR_SLOWHZ = 2
+
+NATIVE {TCPTV_MSL}	CONST TCPTV_MSL	= ( 30*PR_SLOWHZ)		/* max seg lifetime (hah!) */
+NATIVE {TCPTV_SRTTBASE}	CONST TCPTV_SRTTBASE	= 0			/* base roundtrip time;
+						   if 0, no idea yet */
+NATIVE {TCPTV_SRTTDFLT}	CONST TCPTV_SRTTDFLT	= (  3*PR_SLOWHZ)		/* assumed RTT if no info */
+
+NATIVE {TCPTV_PERSMIN}	CONST TCPTV_PERSMIN	= (  5*PR_SLOWHZ)		/* retransmit persistance */
+NATIVE {TCPTV_PERSMAX}	CONST TCPTV_PERSMAX	= ( 60*PR_SLOWHZ)		/* maximum persist interval */
+
+NATIVE {TCPTV_KEEP_INIT}	CONST TCPTV_KEEP_INIT	= ( 75*PR_SLOWHZ)		/* initial connect keep alive */
+NATIVE {TCPTV_KEEP_IDLE}	CONST TCPTV_KEEP_IDLE	= (120*60*PR_SLOWHZ)	/* dflt time before probing */
+NATIVE {TCPTV_KEEPINTVL}	CONST TCPTV_KEEPINTVL	= ( 75*PR_SLOWHZ)		/* default probe interval */
+NATIVE {TCPTV_KEEPCNT}	CONST TCPTV_KEEPCNT	= 8			/* max probes before drop */
+
+NATIVE {TCPTV_MIN}	CONST TCPTV_MIN	= (  1*PR_SLOWHZ)		/* minimum allowable value */
+NATIVE {TCPTV_REXMTMAX}	CONST TCPTV_REXMTMAX	= ( 64*PR_SLOWHZ)		/* max allowable REXMT value */
+
+NATIVE {TCP_LINGERTIME}	CONST TCP_LINGERTIME	= 120			/* linger at most 2 minutes */
+
+NATIVE {TCP_MAXRXTSHIFT}	CONST TCP_MAXRXTSHIFT	= 12			/* maximum retransmits */
+
+/*
+ * Force a time value to be in a certain range.
+ */
+NATIVE {TCPT_RANGESET} CONST
+-&gt;this won&#x27;t compile for some reason: PROC tcpt_rangeset(tv, value, tvmin, tvmax) IS NATIVE {TCPT_RANGESET(} tv {,} value {,} tvmin {,} tvmax {)} ENDNATIVE !!VALUE
+-&gt;-&gt;#define TCPT_RANGESET(tv, value, tvmin, tvmax) tcpt_rangeset(tv, value, tvmin, tvmax)
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

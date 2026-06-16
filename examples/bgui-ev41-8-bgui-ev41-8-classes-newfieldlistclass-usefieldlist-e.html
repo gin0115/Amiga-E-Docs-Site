@@ -1,0 +1,340 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>UseFieldList.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-bgui-ev41-8.html">BGUI_Ev41_8</a> &rsaquo; UseFieldList.e</div><h1>File: <code>UseFieldList.e</code></h1><p class="meta">314 lines · project <a href="../examples/pkg-bgui-ev41-8.html"><code>BGUI_Ev41_8</code></a></p><p class="pathctx">BGUI_Ev41_8/bgui_ev41_8/classes/newfieldlistclass/UseFieldList.e</p><p class="prose">-- --------------------------------------------------------------- -- * * -- Programname.......: UseNewFieldList.e -- * * -- Description.......: Simple demo-program for the <a href="../modules/boopsi.html">boopsi</a>-<a href="../modules/classes.html">classes</a> -- * * -- &quot;<a href="../modules/newfieldlistclass.html">NewFieldListClass</a>&quot; and &quot;<a href="../modules/newstrclass.html">NewStrClass</a>&quot; -- * * -- -- * * -- Author............: Daniel Kasmeroglu (alias</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/classusr.html">intuition/classusr</a></li><li><a href="../modules/utility.html">utility</a></li></ul></div><h2>Source</h2><pre class="code">/* -- --------------------------------------------------------------- -- *
+ * -- Programname.......: UseNewFieldList.e                           -- *
+ * -- Description.......: Simple demo-program for the boopsi-classes  -- *
+ * --                     &quot;NewFieldListClass&quot; and &quot;NewStrClass&quot;       -- *
+ * --                                                                 -- *
+ * -- Author............: Daniel Kasmeroglu (alias Deekah)            -- *
+ * -- E-Mail............: raptor@cs.tu-berlin.de                      -- *
+ * -- Version...........: 0.1     (10.03.1997)                        -- *
+ * -- --------------------------------------------------------------- -- */
+
+     /* -- ------------------------------------------------- -- *
+      * --                   Compiler-Option&#x27;s               -- *
+      * -- ------------------------------------------------- -- */
+
+OPT REG = 5          -&gt; register-optimisation activated
+OPT PREPROCESS       -&gt; enable preprocessor
+
+
+     /* -- ------------------------------------------------- -- *
+      * --                       E-Module                    -- *
+      * -- ------------------------------------------------- -- */
+
+MODULE &#x27;intuition/classusr&#x27;,
+       &#x27;intuition/classes&#x27;,
+       &#x27;intuition/intuition&#x27;,
+       &#x27;intuition/gadgetclass&#x27;,
+       &#x27;utility/tagitem&#x27;,
+       &#x27;libraries/bguim&#x27;,
+       &#x27;libraries/bgui&#x27;,
+       &#x27;graphics/gfxbase&#x27;,
+       &#x27;graphics/text&#x27;,
+       &#x27;exec/nodes&#x27;,
+       &#x27;tools/boopsi&#x27;
+
+MODULE &#x27;utility&#x27;, 
+       &#x27;bgui&#x27;
+
+MODULE &#x27;*newfieldlistclass&#x27;,
+       &#x27;*newstrclass&#x27;
+
+
+     /* -- ------------------------------------------------- -- *
+      * --                       Constant&#x27;s                  -- *
+      * -- ------------------------------------------------- -- */
+
+ENUM GID_SOURCELIST = 1,    -&gt; list on the left side
+     GID_DESTLIST,          -&gt; list on the right side
+     GID_TEXTFIELD,         -&gt; textfield below
+     GID_INFORMATION,       -&gt; an user-information at the top
+     GID_QUIT               -&gt; leave the program
+
+
+     /* -- ------------------------------------------------- -- *
+      * --                      Structure&#x27;s                  -- *
+      * -- ------------------------------------------------- -- */
+
+OBJECT fieldlistgui
+  owindow      : PTR TO object   -&gt; pointer to the window-object
+  window       : PTR TO window   -&gt; pointer to the intuition-window
+  gadgets[ 5 ] : ARRAY OF LONG   -&gt; object-addresses
+  entries      : PTR TO LONG     -&gt; list of entrys
+ENDOBJECT
+
+
+     /* -- ------------------------------------------------- -- *
+      * --                   Global Declaration&#x27;s            -- *
+      * -- ------------------------------------------------- -- */
+
+DEF glo_flclass : PTR TO iclass   -&gt; NewFieldListClass
+DEF glo_nsclass : PTR TO iclass   -&gt; NewStrClass
+
+
+     /* -- ------------------------------------------------- -- *
+      * --                        Method&#x27;s                   -- *
+      * -- ------------------------------------------------- -- */
+
+PROC fie_Constructor() OF fieldlistgui
+DEF con_tags : PTR TO LONG
+
+  self.entries := [ &#x27;CallAddr\t%c&#x27;,
+                        &#x27;Date\t%d&#x27;,
+                        &#x27;Hunk:Offset\t%h&#x27;,
+                        &#x27;Task ID\t%i&#x27;,
+                        &#x27;Segment Name\t%s&#x27;,
+                        &#x27;Time\t%t&#x27;,
+                        &#x27;Count\t%u&#x27;,
+                        &#x27;Process Name\t%p&#x27;,
+                        &#x27;Action\t%a&#x27;,
+                        &#x27;Target Name\t%n&#x27;,
+                        &#x27;Options\t%o&#x27;,
+                        &#x27;Res.\t%r&#x27;,
+                        NIL ]
+
+  con_tags := [ LISTV_ColumnWeights,           {lab_Weights},
+                LISTV_SortEntryArray,          TRUE,
+                LISTV_Columns,                 2,
+                FL_SortDrops,                  TRUE,
+                PGA_NEWLOOK,                   TRUE,
+                BT_DragObject,                 TRUE,
+                BT_DropObject,                 TRUE,
+                LAB_Place,                     PLACE_ABOVE,
+                TAG_END ]
+
+  self.gadgets[ GID_SOURCELIST - 1 ] := NewObjectA( glo_flclass, NIL,
+  [ LAB_Label,                     &#x27;Sourcelist&#x27;,
+    GA_ID,                         GID_SOURCELIST,
+    LISTV_EntryArray,              self.entries,
+    TAG_MORE,                      con_tags,
+    TAG_END ] )
+
+
+  self.gadgets[ GID_DESTLIST   - 1 ] := NewObjectA( glo_flclass, NIL,
+  [ LAB_Label,                     &#x27;Destinationlist&#x27;,
+    GA_ID,                         GID_DESTLIST,
+    TAG_MORE,                      con_tags,
+    TAG_END ] )
+
+
+  self.gadgets[ GID_TEXTFIELD  - 1 ] := NewObjectA( glo_nsclass, NIL,
+  [ LAB_Label,                     &#x27;Eingabe...:&#x27;,
+    STRINGA_MAXCHARS,              255,
+    STRINGA_JUSTIFICATION,         GACT_STRINGCENTER,
+    STRINGA_MinCharsVisible,       20,
+    GA_ID,                         GID_TEXTFIELD,
+    BT_DropObject,                 TRUE,
+    TAG_END ] )
+
+  self.gadgets[ GID_INFORMATION - 1 ] := InfoObject,
+                                           ButtonFrame,
+                                           ShineRaster,
+                                           FRM_Flags,          FRF_RECESSED,
+                                           INFO_TextFormat,    {lab_Text},
+                                           INFO_MinLines,      6,
+                                         EndObject
+  
+  self.gadgets[ GID_QUIT       - 1 ] := Button( &#x27;_Quit&#x27;, GID_QUIT )
+
+  self.owindow := WindowObject,
+                    WINDOW_Title,          &#x27;Listview Drag-n-Drop&#x27;,
+                    WINDOW_ScreenTitle,    &#x27;Programmed by Daniel Kasmeroglu (10.03.1997)&#x27;,
+                    WINDOW_ScaleWidth,     25,
+                    WINDOW_ScaleHeight,    15,
+                    WINDOW_RMBTrap,        TRUE,
+                    WINDOW_AutoAspect,     TRUE,
+                    WINDOW_AutoKeyLabel,   TRUE,
+                    WINDOW_CloseOnEsc,     TRUE,
+                    WINDOW_MasterGroup,
+                      VGroupObject,
+                        FRM_Type,          FRTYPE_NONE,
+                        HOffset(6),
+                        VOffset(6),
+                        Spacing(6),
+                        FillRaster,
+                        StartMember,
+                          self.gadgets[ GID_INFORMATION - 1 ],
+                          FixMinHeight,
+                        EndMember,
+                        StartMember,
+                          HGroupObject,
+                            Spacing(6),
+                            StartMember,
+                              self.gadgets[ GID_SOURCELIST - 1 ],
+                            EndMember,
+                            StartMember,
+                              self.gadgets[ GID_DESTLIST - 1 ],
+                            EndMember,
+                          EndObject,
+                        EndMember,
+                        StartMember,
+                          self.gadgets[ GID_TEXTFIELD - 1 ],
+                          FixMinHeight,
+                        EndMember,
+                        StartMember,
+                          HGroupObject,
+                            VarSpace( DEFAULT_WEIGHT ),
+                            StartMember,
+                              self.gadgets[ GID_QUIT - 1 ],
+                            EndMember,
+                            VarSpace( DEFAULT_WEIGHT ),
+                          EndObject,
+                          FixMinHeight,
+                        EndMember,
+                      EndObject,
+                  EndObject
+
+  IF self.owindow &lt;&gt; NIL
+
+    SetAttrsA( self.gadgets[ GID_SOURCELIST - 1 ],
+    [ FL_AcceptLV,    [ self.gadgets[ GID_DESTLIST  - 1 ],  NIL ], 
+      TAG_END ] )
+
+    SetAttrsA( self.gadgets[ GID_DESTLIST - 1 ],
+    [ FL_AcceptLV,    [ self.gadgets[ GID_SOURCELIST - 1 ], NIL ], 
+      TAG_END ] )
+
+    SetAttrsA( self.gadgets[ GID_TEXTFIELD - 1 ],
+    [ FL_AcceptLV,    [ self.gadgets[ GID_SOURCELIST - 1 ], self.gadgets[ GID_DESTLIST - 1 ], NIL ],
+    TAG_END ] )
+
+  ENDIF
+
+ENDPROC
+
+PROC fie_StartInterface() OF fieldlistgui
+DEF sta_rc,sta_running,sta_signal
+
+  IF self.owindow &lt;&gt; NIL
+
+    self.window := WindowOpen( self.owindow )
+    IF self.window &lt;&gt; NIL
+
+      GetAttr( WINDOW_SigMask, self.owindow, {sta_signal} )
+
+      sta_running := TRUE
+      WHILE sta_running = TRUE
+ 
+        Wait( sta_signal ) 
+ 
+        WHILE (sta_rc := HandleEvent( self.owindow )) &lt;&gt; WMHI_NOMORE
+
+          SELECT sta_rc
+          CASE WMHI_CLOSEWINDOW ; sta_running := FALSE
+          CASE GID_QUIT         ; sta_running := FALSE
+          ENDSELECT
+
+        ENDWHILE
+
+      ENDWHILE
+
+      WindowClose( self.owindow )
+
+    ENDIF
+
+  ENDIF
+
+ENDPROC
+
+PROC end() OF fieldlistgui
+DEF end_run
+
+  IF self.owindow &lt;&gt; NIL
+    DisposeObject( self.owindow )
+  ELSE
+
+    FOR end_run := 0 TO GID_QUIT - 1
+      IF self.gadgets[ end_run ] &lt;&gt; NIL 
+        DisposeObject( self.gadgets[ end_run ] )
+      ENDIF
+    ENDFOR
+
+  ENDIF
+
+ENDPROC
+
+
+     /* -- ------------------------------------------------- -- *
+      * --                          Main                     -- *
+      * -- ------------------------------------------------- -- */
+
+PROC main() HANDLE
+DEF ma_object : PTR TO fieldlistgui
+ 
+  ma_object := NIL
+ 
+
+  bguibase  := OpenLibrary( &#x27;bgui.library&#x27;, 41 )
+  IF bguibase &lt;&gt; NIL
+
+    utilitybase := OpenLibrary( &#x27;utility.library&#x27;, 37 )
+    IF utilitybase &lt;&gt; NIL
+
+      glo_flclass := fil_InitFLClass()
+      IF glo_flclass &lt;&gt; NIL
+
+        glo_nsclass := new_InitNewStrClass()
+        IF glo_nsclass &lt;&gt; NIL
+
+          NEW ma_object.fie_Constructor()
+          ma_object.fie_StartInterface()
+ 
+        ENDIF
+
+      ENDIF
+
+    ENDIF
+
+  ENDIF
+
+EXCEPT DO
+
+  IF ma_object   &lt;&gt; NIL THEN END ma_object
+  IF glo_nsclass &lt;&gt; NIL THEN new_FreeNewStrClass( glo_nsclass )
+  IF glo_flclass &lt;&gt; NIL THEN fil_FreeFLClass( glo_flclass )
+  IF utilitybase &lt;&gt; NIL THEN CloseLibrary( utilitybase )
+  IF bguibase    &lt;&gt; NIL THEN CloseLibrary( bguibase    )
+
+ENDPROC
+
+
+     /* -- ------------------------------------------------- -- *
+      * --                       Daten                       -- *
+      * -- ------------------------------------------------- -- */
+
+lab_Weights:
+LONG 30, 5
+
+lab_Text:
+CHAR &#x27;\ecYou can move an entry from the sourcelist\n&#x27;,
+     &#x27;to the destinationlist and reverse. Also\n&#x27;,
+     &#x27;you\ave got the possibility to move an entry\n&#x27;,
+     &#x27;into the textfield-gadget.\n&#x27;,
+     &#x27;The base version was programmed by:\n&#x27;,
+     &#x27;Jan van den Baard\n&#x27;,0
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

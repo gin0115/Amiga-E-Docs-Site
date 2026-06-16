@@ -1,0 +1,159 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>World.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-progsuite.html">ProgSuite</a> &rsaquo; World.e</div><h1>File: <code>World.e</code></h1><p class="meta">133 lines · project <a href="../examples/pkg-progsuite.html"><code>ProgSuite</code></a></p><p class="pathctx">ProgSuite/ProgSuite/World.e</p><p class="prose">World - ProgSuite V1.0 World program</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/ports.html">amigalib/ports</a></li><li><a href="../modules/memory.html">exec/memory</a></li><li><a href="../modules/intuition.html">intuition/intuition</a></li></ul></div><h2>Source</h2><pre class="code">/* World - ProgSuite V1.0 World program */
+
+MODULE &#x27;intuition/intuition&#x27;, &#x27;intuition/screens&#x27;, &#x27;graphics/view&#x27;
+MODULE &#x27;amigalib/ports&#x27;, &#x27;dos/dos&#x27;
+MODULE &#x27;exec/memory&#x27;, &#x27;exec/nodes&#x27;, &#x27;exec/ports&#x27;
+
+MODULE &#x27;*Defs&#x27;
+
+/* Screen size */
+CONST SIZEX = 640, SIZEY = 480
+
+/* Variable to hold our own name (should be a constant...) */
+DEF progname: PTR TO CHAR
+
+/* Communications variables */
+DEF worldport = NIL: PTR TO mp,
+    wakemsg = NIL: PTR TO portMessage, finishmsg = NIL: PTR TO portMessage,
+    recvmsg: PTR TO portMessage
+
+/* Screen and window pointers */
+DEF progsuitescreen: PTR TO screen, viewwin: PTR TO window
+
+/* The main procedure */
+
+PROC main () HANDLE
+  progname := &#x27;World&#x27;
+  progsuitescreen := NIL ; viewwin := NIL
+  worldport := portCreate (&#x27;WorldPort&#x27;, progname)
+  wakemsg := messageCreate (worldport, progname)
+  wakemsg.msn := WAKEMSG  -&gt; Our WakeUp message
+  finishmsg := messageCreate (worldport, progname)
+  finishmsg.msn := FINISHMSG  -&gt; Our Finish message
+
+  -&gt; Open the out-the-cabin view window
+  initView ()
+
+  -&gt; World will wait for a QUIT message and reply it,
+  -&gt; and then exit
+
+  -&gt; Report our readyness to the master
+  WriteF (&#x27;\s: Sending WakeUp message (\d) to Master...\n&#x27;, progname, wakemsg.msn)
+  IF FALSE = messageSend (wakemsg, &#x27;MasterPort&#x27;) THEN Raise (ERR_FINDPORT)
+
+  -&gt; Wait for messages, and take appropriate actions
+  worldLoop ()
+
+  -&gt; Finish off
+  finishView ()
+
+  Raise (ERR_NONE)
+EXCEPT DO
+  IF worldport THEN portRemove (worldport)
+  IF wakemsg THEN Dispose (wakemsg)
+  IF finishmsg THEN Dispose (finishmsg)
+  IF (viewwin) THEN finishView ()
+  SELECT exception
+  CASE ERR_FINDSCREEN
+    WriteF (&#x27;\s: Can&#x27;&#x27;t find ProgSuite Screen: This program should be started from Master!\n&#x27;, progname)
+  CASE &quot;WIN&quot;
+    UnlockPubScreen (NIL, progsuitescreen)
+    WriteF (&#x27;\s: Can&#x27;&#x27;t open window!\n&#x27;, progname)
+  CASE &quot;PORT&quot;
+    WriteF (&#x27;\s: Can&#x27;&#x27;t create messageport &quot;WorldPort&quot;!\n&#x27;, progname)
+  CASE ERR_FINDPORT
+    WriteF (&#x27;\s: Can&#x27;&#x27;t find messageport &quot;MasterPort&quot;!\n&#x27;, progname)
+  CASE &quot;MEM&quot;
+    WriteF (&#x27;\s: Can&#x27;&#x27;t get memory!\n&#x27;, progname)
+  ENDSELECT
+ENDPROC
+
+/* procedure to display the outside world view */
+
+PROC initView ()
+DEF width = 480, height = 200
+
+  -&gt; Open our window on the common screen (horizontally centered, and as high as possible)
+  progsuitescreen := LockPubScreen (&#x27;ProgSuiteScreen&#x27;)
+  viewwin := OpenW ((SIZEX - width) / 2, 0, width, height,
+-&gt;                    IDCMP_MOUSEBUTTONS OR IDCMP_CLOSEWINDOW OR IDCMP_INTUITICKS,
+                    IDCMP_MOUSEBUTTONS OR IDCMP_CLOSEWINDOW,
+                    WFLG_CLOSEGADGET OR WFLG_BORDERLESS, 
+                    &#x27;World window - Hit close box to finish demo&#x27;, NIL, NIL, NIL,
+                    [WA_PUBSCREEN, progsuitescreen, 0])
+  UnlockPubScreen (NIL, progsuitescreen)
+
+ENDPROC
+
+/* Procedure to close the view window */
+
+PROC finishView ()
+  CloseW (viewwin) ; viewwin := NIL
+ENDPROC
+
+/* The main message loop */
+
+PROC worldLoop ()
+DEF portsig, winsig, signal, finish = FALSE
+  portsig := Shl (1, worldport.sigbit)
+  winsig := Shl (1, viewwin.userport.sigbit)
+  REPEAT
+    signal := Wait (portsig OR winsig)
+    IF signal AND winsig THEN handleWindowMessages ()
+    IF signal AND portsig THEN finish := handlePortMessages ()
+  UNTIL finish
+ENDPROC
+
+/* Procedure to handle incoming Exec messages */
+
+PROC handlePortMessages ()
+DEF finish = FALSE
+  WHILE recvmsg := GetMsg (worldport)
+    messageCheckOwn (recvmsg, worldport, progname)
+    IF recvmsg.msn = QUITWORLDMSG THEN finish := TRUE
+    messageReply (recvmsg, worldport)
+  ENDWHILE
+ENDPROC finish
+
+/* Procedure to handle Intuition messages */
+
+PROC handleWindowMessages ()
+DEF recvimsg: PTR TO intuimessage, class, code
+  WHILE recvimsg := GetMsg (viewwin.userport)
+    class := recvimsg.class ; code := recvimsg.code
+    WriteF (&#x27;\s: IDCMP received: \d \d\n&#x27;, progname, class, code)
+    SELECT class
+      CASE IDCMP_CLOSEWINDOW
+        WriteF (&#x27;\s: Sending Finish message (\d) to Master...\n&#x27;, progname, finishmsg.msn)
+        messageSend (finishmsg, &#x27;MasterPort&#x27;)
+    ENDSELECT
+    messageReply (recvimsg, worldport)
+  ENDWHILE
+ENDPROC
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

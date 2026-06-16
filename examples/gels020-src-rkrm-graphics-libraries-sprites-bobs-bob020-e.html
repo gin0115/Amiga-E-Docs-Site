@@ -1,0 +1,151 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>bob020.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-gels020.html">Gels020</a> &rsaquo; bob020.e</div><h1>File: <code>bob020.e</code></h1><p class="meta">125 lines · project <a href="../examples/pkg-gels020.html"><code>Gels020</code></a></p><p class="pathctx">Gels020/src/Rkrm/Graphics_Libraries/Sprites_Bobs/bob020.e</p><p class="prose">bob.e - Simple Bob example</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/dos.html">dos/dos</a></li></ul></div><h2>Source</h2><pre class="code">-&gt; bob.e - Simple Bob example
+
+-&gt;&gt;&gt; Header (globals)
+OPT PREPROCESS
+
+MODULE &#x27;dos/dos&#x27;,
+       &#x27;exec/memory&#x27;,
+       &#x27;exec/ports&#x27;,
+       &#x27;graphics/gels&#x27;,
+       &#x27;intuition/intuition&#x27;,
+       &#x27;intuition/screens&#x27;,
+       &#x27;*animtools020&#x27;
+
+ENUM ERR_NONE, ERR_KICK, ERR_WIN
+
+RAISE ERR_KICK IF KickVersion()=FALSE,
+      ERR_WIN  IF OpenWindow()=NIL
+
+CONST GEL_SIZE=4
+
+DEF bob_data1, bob_data2, myNewBob:PTR TO newBob
+-&gt;&gt;&gt;
+
+-&gt;&gt;&gt; PROC bobDrawGList(rport, vport)
+-&gt; Draw the Bobs into the RastPort.
+PROC bobDrawGList(rport, vport)
+  SortGList(rport)
+  DrawGList(rport, vport)
+  -&gt; If the GelsList includes true VSprites, MrgCop() and LoadView() here
+  WaitTOF()
+ENDPROC
+-&gt;&gt;&gt; 
+
+-&gt;&gt;&gt; PROC process_window(win:PTR TO window, myBob:PTR TO bob)
+-&gt; Process window and dynamically change bob:  Get messages.  Go away on
+-&gt; IDCMP_CLOSEWINDOW.  Update and redisplay bob on IDCMP_INTUITICKS.  Wait for
+-&gt; more messages.
+PROC process_window(win:PTR TO window, myBob:PTR TO bob)
+  DEF msg:PTR TO intuimessage
+  LOOP
+    Wait(Shl(1, win.userport.sigbit))
+    WHILE msg:=GetMsg(win.userport)
+      -&gt; Only IDCMP_CLOSEWINDOW AND IDCMP_INTUITICKS are active
+      IF msg.class=IDCMP_CLOSEWINDOW
+        ReplyMsg(msg)
+        RETURN
+      ENDIF
+      -&gt; Must be IDCMP_INTUITICKS: change x and y values on the fly.  Note: do
+      -&gt; not have to add window offset, Bob is relative to the window (sprite
+      -&gt; relative to screen).
+      myBob.bobvsprite.x:=msg.mousex+20
+      myBob.bobvsprite.y:=msg.mousey+1
+      ReplyMsg(msg)
+    ENDWHILE
+    -&gt; After getting a message, change image data on the fly
+    myBob.bobvsprite.imagedata:=IF myBob.bobvsprite.imagedata=bob_data1 THEN
+                                  bob_data2 ELSE bob_data1
+    InitMasks(myBob.bobvsprite)  -&gt; Set up masks for new image
+    bobDrawGList(win.rport, ViewPortAddress(win))
+  ENDLOOP
+ENDPROC
+-&gt;&gt;&gt;
+
+-&gt;&gt;&gt; PROC do_Bob(win:PTR TO window)
+-&gt; Working with the Bob: setup the GEL system, and get a new Bob (makeBob()). 
+-&gt; Add the bob to the system and display.  Use the Bob.  When done, remove the
+-&gt; Bob and update the display without the bob.  Cleanup everything.
+PROC do_Bob(win:PTR TO window) HANDLE
+  DEF myBob=NIL, my_ginfo=NIL
+  my_ginfo:=setupGelSys(win.rport, $03)
+  myBob:=makeBob(myNewBob)
+  AddBob(myBob, win.rport)
+  bobDrawGList(win.rport, ViewPortAddress(win))
+  process_window(win, myBob)
+  RemBob(myBob)
+  bobDrawGList(win.rport, ViewPortAddress(win))
+EXCEPT DO
+  IF myBob THEN freeBob(myBob, myNewBob.rasDepth)
+  IF my_ginfo THEN cleanupGelSys(my_ginfo, win.rport)
+  ReThrow()
+ENDPROC
+-&gt;&gt;&gt;
+
+-&gt;&gt;&gt; PROC main()
+PROC main() HANDLE
+  DEF win=NIL
+  KickVersion(37)
+  -&gt; E-Note: set-up global data
+  -&gt; Bob data - two sets that are alternated between.  Note that this data is
+  -&gt; at the resolution of the screen.
+  bob_data1:=copyListToChip([$FFFF0003, $FFF00003, $FFF00003, $FFFF0003,
+                             $3FFFFFFC, $3FF00FFC, $3FF00FFC, $3FFFFFFC])
+  bob_data2:=copyListToChip([$C000FFFF, $C0000FFF, $C0000FFF, $C000FFFF,
+                             $3FFFFFFC, $3FF00FFC, $3FF00FFC, $3FFFFFFC])
+  -&gt; Data for the new Bob object defined in animtools.m
+  myNewBob:=[bob_data2, 2, GEL_SIZE,
+             2, 3, 0, VSF_SAVEBACK OR VSF_OVERLAY,
+             0, 8, 160, 100, 0, 0]:newBob
+  win:=OpenWindow([80, 20, 400, 150, -1, -1,
+                   IDCMP_CLOSEWINDOW OR IDCMP_INTUITICKS,
+                   WFLG_ACTIVATE OR WFLG_CLOSEGADGET OR WFLG_DEPTHGADGET OR
+                     WFLG_RMBTRAP,
+                   NIL, NIL, &#x27;Bob&#x27;, NIL, NIL, 0, 0, 0, 0, WBENCHSCREEN]:nw)
+  do_Bob(win)
+EXCEPT DO
+  IF win THEN CloseWindow(win)
+  SELECT exception
+  CASE ERR_KICK; WriteF(&#x27;Error: requires V37\n&#x27;)
+  CASE ERR_WIN;  WriteF(&#x27;Error: could not open window\n&#x27;)
+  CASE &quot;MEM&quot;;    WriteF(&#x27;Error: ran out of memory\n&#x27;)
+  ENDSELECT
+ENDPROC IF exception&lt;&gt;ERR_NONE THEN RETURN_FAIL ELSE RETURN_OK
+-&gt;&gt;&gt;
+
+-&gt;&gt;&gt; PROC copyListToChip(data)
+-&gt; E-Note: get some Chip memory and copy list (quick, since LONG aligned)
+PROC copyListToChip(data)
+  DEF size, mem
+  size:=ListLen(data)*SIZEOF LONG
+  mem:=NewM(size, MEMF_CHIP)
+  CopyMemQuick(data, mem, size)
+ENDPROC mem
+-&gt;&gt;&gt;
+
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

@@ -1,0 +1,268 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>bgui_06.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-nlvclass-bgui.html">nlvclass_bgui</a> &rsaquo; bgui_06.e</div><h1>File: <code>bgui_06.e</code></h1><p class="meta">242 lines · project <a href="../examples/pkg-nlvclass-bgui.html"><code>nlvclass_bgui</code></a></p><p class="pathctx">nlvclass_bgui/nlistview_class/examples/bgui_06.e</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/bgui.html">bgui/bgui</a></li></ul></div><h2>Source</h2><pre class="code">OPT OSVERSION=37
+OPT PREPROCESS
+
+MODULE &#x27;bgui/bgui&#x27;,&#x27;bgui/bguic&#x27;,&#x27;bgui/bguim&#x27;,&#x27;bgui&#x27;,
+       &#x27;intuition/intuition&#x27;,&#x27;intuition/classes&#x27;,&#x27;intuition/classusr&#x27;,
+       &#x27;intuition/gadgetclass&#x27;,
+       &#x27;graphics/gfxbase&#x27;,&#x27;graphics/displayinfo&#x27;,
+       &#x27;graphics/modeid&#x27;,&#x27;graphics/text&#x27;,
+       &#x27;libraries/gadtools&#x27;,&#x27;libraries/asl&#x27;,&#x27;asl&#x27;,
+       &#x27;utility/tagitem&#x27;,&#x27;utility/hooks&#x27;,&#x27;utility&#x27;,
+       &#x27;devices/inputevent&#x27;,
+       &#x27;other/ecode&#x27;,&#x27;tools/boopsi&#x27;,&#x27;tools/installhook&#x27;,
+       &#x27;amigalib/boopsi&#x27;,&#x27;tools/exceptions&#x27;,
+       &#x27;exec/nodes&#x27;,&#x27;exec/lists&#x27;,&#x27;exec/ports&#x27;
+MODULE &#x27;*nlistview_class_06&#x27;
+
+CONST   ID_QUIT = 1,ID_LIST = 2, ID_DISABLE = 3
+ENUM    ERR_NONE,ERR_LIB,ERR_CLASS
+
+OBJECT hookData
+  mx,list
+ENDOBJECT
+
+PROC tabHookFunc()
+  DEF mhook:PTR TO hook,obj:PTR TO object,msg:PTR TO intuimessage
+  DEF wnd=NIL:PTR TO window,my_obj:PTR TO object,pos=0,code
+  DEF data:PTR TO hookData,bool=0
+
+  MOVE.L A0,mhook
+  MOVE.L A1,msg
+  MOVE.L A2,obj
+  data:=mhook.data
+  code:=msg.code
+  GetAttr(WINDOW_WINDOW,obj,{wnd})
+  SELECT code
+  CASE $42 /* TAB */
+    my_obj:=data.mx
+    GetAttr(MX_ACTIVE,my_obj,{pos})
+    IF (msg.qualifier) AND (IEQUALIFIER_LSHIFT OR IEQUALIFIER_RSHIFT )
+      pos--
+    ELSE
+      pos++
+    ENDIF
+      SetGadgetAttrsA(my_obj,wnd,NIL,[MX_ACTIVE,pos,TAG_END])
+  CASE $4C /* CURS UP */
+    my_obj:=data.list
+    GetAttr(BT_INHIBIT,my_obj,{bool})
+    IF bool THEN RETURN
+    IF (msg.qualifier) AND (IEQUALIFIER_LSHIFT OR IEQUALIFIER_RSHIFT)
+      SetGadgetAttrsA(my_obj,wnd,NIL,[LISTV_SELECT,LISTV_SELECT_PAGE_UP,TAG_END])
+    ELSEIF (msg.qualifier) AND IEQUALIFIER_CONTROL
+      SetGadgetAttrsA(my_obj,wnd,NIL,[LISTV_SELECT,LISTV_SELECT_FIRST,TAG_END])
+    ELSE
+      SetGadgetAttrsA(my_obj,wnd,NIL,[LISTV_SELECT,LISTV_SELECT_PREVIOUS,TAG_END])
+    ENDIF
+  CASE $4D /* CUSR DOWN */
+    my_obj:=data.list
+    GetAttr(BT_INHIBIT,my_obj,{bool})
+    IF bool THEN RETURN
+    IF (msg.qualifier) AND (IEQUALIFIER_LSHIFT OR IEQUALIFIER_RSHIFT)
+      SetGadgetAttrsA(my_obj,wnd,NIL,[LISTV_SELECT,LISTV_SELECT_PAGE_DOWN,TAG_END])
+    ELSEIF (msg.qualifier) AND (IEQUALIFIER_CONTROL)
+      SetGadgetAttrsA(my_obj,wnd,NIL,[LISTV_SELECT,LISTV_SELECT_LAST,TAG_END])
+    ELSE
+      SetGadgetAttrsA(my_obj,wnd,NIL,[LISTV_SELECT,LISTV_SELECT_NEXT,TAG_END])
+    ENDIF
+  CASE $4F /* CURS LEFT */
+    my_obj:=data.list
+    GetAttr(BT_INHIBIT,my_obj,{bool})
+    IF bool THEN RETURN
+    IF (msg.qualifier) AND (IEQUALIFIER_LSHIFT OR IEQUALIFIER_RSHIFT)
+      SetGadgetAttrsA(my_obj,wnd,NIL,[LISTV_HORIZOFFSET,LISTV_HORIZOFFSET_PAGE_LEFT,TAG_END])
+    ELSEIF (msg.qualifier) AND (IEQUALIFIER_CONTROL)
+      SetGadgetAttrsA(my_obj,wnd,NIL,[LISTV_HORIZOFFSET,LISTV_HORIZOFFSET_FIRST,TAG_END])
+    ELSE
+      SetGadgetAttrsA(my_obj,wnd,NIL,[LISTV_HORIZOFFSET,LISTV_HORIZOFFSET_LEFT,TAG_END])
+    ENDIF
+  CASE $4E /* CURS RIGHT */
+    my_obj:=data.list
+    GetAttr(BT_INHIBIT,my_obj,{bool})
+    IF bool THEN RETURN
+    IF (msg.qualifier) AND (IEQUALIFIER_LSHIFT OR IEQUALIFIER_RSHIFT)
+      SetGadgetAttrsA(my_obj,wnd,NIL,[LISTV_HORIZOFFSET,LISTV_HORIZOFFSET_PAGE_RIGHT,TAG_END])
+    ELSEIF (msg.qualifier) AND (IEQUALIFIER_CONTROL)
+      SetGadgetAttrsA(my_obj,wnd,NIL,[LISTV_HORIZOFFSET,LISTV_HORIZOFFSET_LAST,TAG_END])
+    ELSE
+      SetGadgetAttrsA(my_obj,wnd,NIL,[LISTV_HORIZOFFSET,LISTV_HORIZOFFSET_RIGHT,TAG_END])
+    ENDIF
+  CASE    $44 /* RETURN */
+  CASE    $43 /* ENTER */
+  ENDSELECT
+ENDPROC
+
+PROC main() HANDLE
+  DEF nlc:PTR TO nlistviewclass
+  DEF wd_obj,mx_tabs,pg_page,lv1_listview,lv2_listview,sl_slide
+  DEF signal,running=TRUE,rc=0,dir
+  DEF my_data:hookData,tabHook:PTR TO hook,ffont:PTR TO textattr
+  DEF gb:PTR TO gfxbase
+
+  IF (aslbase:=OpenLibrary(&#x27;asl.library&#x27;,38))=NIL THEN Raise(ERR_LIB)
+  IF (bguibase:=OpenLibrary(&#x27;bgui.library&#x27;,41))=NIL THEN Raise(ERR_LIB)
+  IF (utilitybase:=OpenLibrary(&#x27;utility.library&#x27;,0))=NIL THEN Raise(ERR_LIB)
+  NEW nlc.init()
+  IF nlc.class=NIL THEN Raise(ERR_CLASS)
+  NEW tabHook
+  tabHook.entry:=eCodePreserve({tabHookFunc})
+
+  -&gt;- lepiej zamknâê oczy i nie patrzeê na to... brrr
+  gb:=gfxbase
+  NEW ffont
+  ffont.name:=StrCopy(String(32),gb.defaultfont.mn.ln.name)
+  ffont.style:=FS_NORMAL
+  ffont.ysize:=gb.defaultfont.ysize
+  ffont.flags:=gb.defaultfont.flags
+
+  dir:=[&#x27;\euTEMP                         Dir ----rwed 15-Lip-96    21:34:36\en&#x27;,
+        &#x27;\ep3Tools                        Dir ----rwed Ôroda        16:57:39&#x27;,
+        &#x27;\eu\ed3Trashcan                     Dir ----rwed Dziô         18:26:25&#x27;,
+        &#x27;\eb\ei\euTrashcan.info               1629 ----rw-d 23-Cze-96    17:53:21&#x27;,
+        &#x27;Music.info                  1233 ----rw-d 23-Cze-96    17:16:04&#x27;,
+        &#x27;DiskTools.info              1233 ----rw-d 27-Cze-96    14:28:22&#x27;,
+        &#x27;Edit.info                   1233 ----rw-d 23-Cze-96    17:20:54&#x27;,
+        &#x27;Graph.info                  1233 ----rw-d 23-Cze-96    18:35:37&#x27;,
+        &#x27;PRO.info                    1233 ----rw-d 27-Cze-96    19:56:26&#x27;,
+        &#x27;TEMP.info                   1233 ----rw-d 23-Cze-96    21:47:13&#x27;,
+        &#x27;Tools.info                  1233 ----rw-d 23-Cze-96    18:34:40&#x27;,
+        &#x27;\ei\ebDisk.info                   2104 ----rw-d 23-Cze-96    17:15:18\en&#x27;,
+        &#x27;.archie                      Dir ----rwed 10-Wrz-96    20:47:18&#x27;,
+        &#x27;Net                          Dir ----rwed 10-Wrz-96    23:03:14&#x27;,
+        &#x27;Net.info                    1233 ----rw-d 10-Wrz-96    22:42:42&#x27;,
+        &#x27;C                            Dir ----rwed Czwartek     16:10:49&#x27;,
+        &#x27;DiskTools                    Dir ----rwed 29-Sie-96    12:27:11&#x27;,
+        &#x27;Edit                         Dir ----rwed 02-Sie-96    22:35:33&#x27;,
+        &#x27;Graph                        Dir ----rwed 07-Sie-96    21:35:57&#x27;,
+        &#x27;LIBS                         Dir ----rwed 10-Wrz-96    22:25:19&#x27;,
+        &#x27;Music                        Dir ----rwed 10-Wrz-96    22:21:30&#x27;,
+        &#x27;PRO                          Dir ----rwed Piâtek       23:32:58&#x27;,
+        &#x27;.backdrop                     74 ----rw-d 18-Lip-96    23:09:13&#x27;,
+        NIL]
+
+  wd_obj:=WindowObject,
+    WINDOW_UNIQUEID,        &quot;WIND&quot;,
+    WINDOW_TITLE,           &#x27;BGUI&#x27;,
+    WINDOW_RMBTRAP,         TRUE,
+    WINDOW_CLOSEONESC,      TRUE,
+    WINDOW_SMARTREFRESH,    TRUE,
+    WINDOW_IDCMPHOOKBITS,   IDCMP_RAWKEY,
+    WINDOW_IDCMPHOOK,       tabHook,
+    WINDOW_AUTOKEYLABEL,    TRUE,
+    WINDOW_AUTOASPECT,      TRUE,
+    WINDOW_MASTERGROUP,
+      VGroupObject,HOffset(4),VOffset(4),Spacing(4),
+        StartMember,
+          mx_tabs:=MxObject,
+            MX_TABSOBJECT,TRUE,
+            MX_LABELS,[&#x27;Fixed Font&#x27;,&#x27;Prop Font&#x27;,NIL],
+            MX_ACTIVE,0,
+          EndObject,FixMinHeight,
+        EndMember,
+        StartMember,pg_page:=PageObject,
+
+          PageMember,
+            VGroupObject,
+              StartMember,lv1_listview:=nlc.newObject(
+                [LISTV_ENTRYARRAY,dir,
+                PGA_NEWLOOK,TRUE,
+                LISTV_ListFont,ffont,
+                LISTV_HORIZSTEPS,60-1,
+-&gt;                LISTV_PROPOBJECT,NIL,
+-&gt;                LISTV_HORIZOBJECT,NIL,
+-&gt;                LISTV_COLUMNS,2,
+-&gt;                LISTV_SCROLLCOLUMN,1,
+                BT_DRAGOBJECT,TRUE,
+                NIL]),
+              EndMember,
+            EndObject,
+
+          PageMember,
+            VGroupObject,
+              StartMember,
+                KeyButton(&#x27;Disable&#x27;,ID_DISABLE),
+                FixMinHeight,
+              EndMember,
+              StartMember,sl_slide:=SliderObject,
+                SLIDER_MIN,-10,
+                SLIDER_MAX,30,
+                SLIDER_LEVEL,0,
+                SLIDER_THINFRAME,TRUE,
+                PGA_NEWLOOK,TRUE,
+              EndObject,FixHeight(13),EndMember,
+              StartMember,lv2_listview:=nlc.newObject(
+                [LISTV_ENTRYARRAY,dir,
+                PGA_NEWLOOK,TRUE,
+                LISTV_HORIZSTEPS,80,
+                LAB_LABEL,&#x27;Nowy _Listview&#x27;,
+                LAB_PLACE,PLACE_ABOVE,
+                LISTV_HORIZOBJECT,sl_slide,
+                NIL]),
+              EndMember,
+            EndObject,
+        EndObject,EndMember,
+      EndObject,
+    EndObject
+
+  IF wd_obj
+    my_data.mx:=mx_tabs
+    my_data.list:=lv1_listview
+    tabHook.data:=my_data
+    AddMap(mx_tabs,pg_page,[MX_ACTIVE,PAGE_ACTIVE,TAG_END])
+
+    WindowOpen(wd_obj)
+    GetAttr(WINDOW_SIGMASK,wd_obj,{signal})
+    WHILE running=TRUE
+      Wait(signal)
+      WHILE (rc:=HandleEvent(wd_obj))&lt;&gt;WMHI_NOMORE
+        SELECT rc
+        CASE WMHI_CLOSEWINDOW
+          running:=FALSE
+        CASE ID_QUIT
+          running:=FALSE
+        CASE ID_DISABLE
+          SetAttrsA(lv2_listview,[GA_DISABLED,TRUE,TAG_DONE])
+        ENDSELECT
+      ENDWHILE
+    ENDWHILE
+    DisposeObject( wd_obj )
+  ELSE
+    WriteF(&#x27;Unable to create a window object\n&#x27;)
+  ENDIF
+EXCEPT DO
+  IF exception THEN report_exception()
+  IF bguibase
+    END nlc
+    CloseLibrary(bguibase)
+  ENDIF
+  IF utilitybase THEN CloseLibrary(utilitybase)
+  IF aslbase THEN CloseLibrary(aslbase)
+ENDPROC
+
+CHAR 0,&#x27;$VER: bgui_tester v0.6 (26.09.96) (c) by Piotr Gapiïski&#x27;,0
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

@@ -1,0 +1,434 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>cosmic_32.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-ignite-unf-mos-r2.html">ignite-unf-mos-r2</a> &rsaquo; cosmic_32.e</div><h1>File: <code>cosmic_32.e</code></h1><p class="meta">408 lines · project <a href="../examples/pkg-ignite-unf-mos-r2.html"><code>ignite-unf-mos-r2</code></a></p><p class="pathctx">ignite-unf-mos-r2/ignite-unf-mos/source/ignite/stuff/cosmic_32.e</p><p class="prose">** cosmic_32.e - Generates cosmic flame fractals :-) ** This version makes use of and requires 24 bit <a href="../modules/graphics.html">graphics</a>. ** ** Based on cosmic.e, this version uses more colours, more detail ** and is alot slower :) Also removed accesses to customchips. ** Copyright © 2004 Leif Salomonsson. ** ** Copyright © </p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/colorwheel.html">colorwheel</a></li><li><a href="../modules/colorwheel.html">gadgets/colorwheel</a></li><li><a href="../modules/modeid.html">graphics/modeid</a></li><li><a href="../modules/intuitionbase.html">intuition/intuitionbase</a></li><li><a href="../modules/tagitem.html">utility/tagitem</a></li></ul></div><h2>Source</h2><pre class="code">/*
+**    cosmic_32.e - Generates cosmic flame fractals :-)
+**    This version makes use of and requires 24 bit graphics.
+**
+**    Based on cosmic.e, this version uses more colours, more detail
+**    and is alot slower :) Also removed accesses to customchips.
+**    Copyright © 2004 Leif Salomonsson.
+**
+**    Copyright © 1996 by Chris Sumner
+**
+**
+**    Cosmic flame fractal code derived from FracBlank source code
+**    Copyright © 1991-1992 by Olaf `Olsen&#x27; Barthel
+**
+**    Cosmic flame fractal code derived from xlock source code
+**    Copyright © 1988-1991 by Patrick J. Naughton.
+**
+**   Permission to use, copy, modify, and distribute this software and its
+**   documentation for any purpose and without fee is hereby granted,
+**   provided that the above copyright notice appear in all copies and that
+**   both that copyright notice and this permission notice appear in
+**   supporting documentation.
+*/
+
+
+
+/* MorphOS version by LS 2004 */
+
+OPT POWERPC, STACK=500000
+
+OPT PREPROCESS
+
+
+OBJECT recursedata
+   x:REAL, y:REAL
+   r:REAL, g:REAL, b:REAL
+   z:REAL
+   level
+ENDOBJECT
+
+
+
+/* FEEDBACK (New concept ?) Generates repetive patterns */
+
+#define FUNCTION f := functionCosmic(old,new,f)
+#define FEEDBACK(a) new.a := doFeedback(new.a,old.a)
+#define ALTERNATE(a) new.a := doAlternate(new.a,new.x,new.y,new.r,new.g,new.b,new.z)
+
+MODULE &#x27;*macros&#x27;
+
+MODULE &#x27;graphics/modeid&#x27;
+MODULE &#x27;intuition/intuitionbase&#x27;,&#x27;intuition/intuition&#x27;,&#x27;intuition/screens&#x27;
+MODULE &#x27;utility/tagitem&#x27;
+
+MODULE &#x27;morphos/cybergfx&#x27;
+MODULE &#x27;colorwheel&#x27;
+MODULE &#x27;gadgets/colorwheel&#x27;
+
+RAISE &quot;^C&quot; IF CtrlC()=TRUE
+RAISE &quot;STCK&quot; IF FreeStack() &lt; 8000
+
+CONST MAXFLAMELEVEL   = 250
+CONST MAXTOTALPOINTS  = 50000
+CONST FLAME_SIZE      = 500
+CONST WIDTH = 800, HEIGHT = 600
+
+
+DEF dorgb, feedback, alternate
+
+DEF flame:PTR TO REAL
+DEF points,count=0
+
+DEF win:PTR TO window, width, height, left, top
+DEF rp
+
+DEF degrees=0:PTR TO LONG
+
+PROC functionCosmic(old:PTR TO recursedata,new:PTR TO recursedata, f:PTR TO REAL)
+   DEF r:REAL, g:REAL, b:REAL, x:REAL, y:REAL, z:REAL, a:REAL
+
+   r := old.r
+   g := old.g
+   b := old.b
+   x := old.x
+   y := old.y
+   z := old.z
+
+   a := ! r*g*b + (Rnd(32000)!/16000.0-1.0*0.002)
+
+   new.x := ! (!x*f[]++) + (!y*f[]++) + (!a*f[]++) + f[]++
+   new.y := ! (!x*f[]++) + (!y*f[]++) + (!a*f[]++) + f[]++
+
+   a := ! x*y -&gt;+ (Rnd(32000)!/16000.0-1.0*0.005)
+
+   new.r := ! (!r*f[]++) + (!g*f[]++) + (!b*f[]++) + (!a*f[]++) * 0.5 + f[]++
+   new.g := ! (!r*f[]++) + (!g*f[]++) + (!b*f[]++) + (!a*f[]++) * 0.5 + f[]++
+   new.b := ! (!r*f[]++) + (!g*f[]++) + (!b*f[]++) + (!a*f[]++) * 0.5 + f[]++
+
+ENDPROC f
+
+PROC functionTest(old:PTR TO recursedata,new:PTR TO recursedata, f:PTR TO REAL)
+   DEF r:REAL, g:REAL, b:REAL, x:REAL, y:REAL, z:REAL, a1:REAL, a2:REAL, a3:REAL
+
+   r := old.r
+   g := old.g
+   b := old.b
+   x := old.x
+   y := old.y
+   z := old.z
+
+   -&gt;a := ! r*g*b
+
+   new.x := ! (!x*f[]++) + (!y*f[]++) + f[]++
+   new.y := ! (!x*f[]++) + (!y*f[]++) + f[]++
+
+   new.r := ! (!r*f[]++) + (!g*f[]++) + (!b*f[]++) + f[]++
+   new.g := ! (!r*f[]++) + (!g*f[]++) + (!b*f[]++) + f[]++
+   new.b := ! (!r*f[]++) + (!g*f[]++) + (!b*f[]++) + f[]++
+
+   -&gt;new.z := ! (!z*f[]++) + (!x*f[]++) + (!y*f[]++) * 0.5 + f[]++
+
+   new.x := ! x + new.x * 0.5
+   new.y := ! y + new.y * 0.5
+
+ENDPROC f
+
+PROC functionTest2(old:PTR TO recursedata,new:PTR TO recursedata, f:PTR TO REAL)
+   DEF x:REAL, y:REAL, a1:REAL, a2:REAL, a3:REAL
+
+   x := old.x
+   y := old.y
+
+   -&gt;a := ! r*g*b
+
+   new.x := ! (!x*f[]++) + (!y*f[]++) + f[]++
+   new.y := ! (!x*f[]++) + (!y*f[]++) + f[]++
+
+   a1 := Fabs(!new.x-x)
+   a2 := Fabs(!new.y-y)
+   a1 := ! a1*a1
+   a2 := ! a2*a2
+
+   new.z := ! Fsqrt(!a1+a2)
+
+ENDPROC f
+
+-&gt; very cool, very bright ands clear colours
+PROC function1(old:PTR TO recursedata,new:PTR TO recursedata, f:PTR TO REAL)
+   DEF r:REAL, g:REAL, b:REAL, x:REAL, y:REAL, z:REAL
+
+   r := old.r
+   g := old.g
+   b := old.b
+   x := old.x
+   y := old.y
+   z := old.z
+
+   #define Func1a   !(!x*f[]++)+(!y*f[]++) * z * 2.0 + f[]++
+   #define Func1b   !(!r*f[]++)+(!g*f[]++)+(!b*f[]++) * z + f[]++
+   #define Func1c   !(!r*f[]++)+(!g*f[]++)+(!b*f[]++)+(!x*f[]++)+(!y*f[]++)+(!z*f[]++) * 0.5 + f[]++
+
+   new.x := Func1a
+   new.y := Func1a
+   new.z := Func1c
+   new.r := Func1b
+   new.b := Func1b
+   new.g := Func1b
+
+ENDPROC f
+
+PROC functionSpeedCol(old:PTR TO recursedata,new:PTR TO recursedata, f:PTR TO REAL)
+   DEF r:REAL, g:REAL, b:REAL, x:REAL, y:REAL, z:REAL
+
+   r := old.r
+   g := old.g
+   b := old.b
+   x := old.x
+   y := old.y
+   z := old.z
+
+
+   new.x := ! (!x+f[]++) + (!y+f[]++) + (!z*f[]++) + f[]++
+   new.y := ! (!x+f[]++) + (!y+f[]++) + (!z*f[]++) + f[]++
+   new.z := ! (!x+f[]++) + (!y+f[]++) + (!z*f[]++) + f[]++
+
+   new.r := ! (!new.x - x*f[]++) + (!r*f[]++) + f[]++
+   new.g := ! (!new.y - y*f[]++) + (!g*f[]++) + f[]++
+   new.b := ! (!new.z - z*f[]++) + (!b*f[]++) + f[]++
+
+ENDPROC f
+
+PROC doFeedback(a:REAL, b:REAL)
+   SELECT feedback
+   CASE 0
+   CASE 1 ; a := ! a + a + a + a + a + a + a + a + a + -b / 5.0
+   CASE 2 ; a := ! a + a + a + a + -b / 2.0
+   CASE 3 ; a := ! a + a + a + -b / 1.5
+   CASE 4 ; a := ! a*a - (!b*b)
+   CASE 5 ; a := ! b*b - (!a*a)
+   ENDSELECT
+ENDPROC a
+
+PROC doAlternate(a:REAL, x:REAL, y:REAL, r:REAL, g:REAL, b:REAL, z:REAL)
+   SELECT alternate
+   CASE 0
+   CASE 1 ; a := -a -&gt; yes, INTEGER negate !! :)
+   CASE 2 ; a := ! a + (Rnd(32000)!/16000.0-1.0*0.1)
+   CASE 3 ; a := ! a * Fsqrt(!a+1.0*2.0) - a
+   CASE 4 ; a := ! a * a / (!(!x*x)+(!y*y)+(!z*z))
+   CASE 5 ; a := ! a * a / (!x*y*z)
+   CASE 6 ; a := ! a / (!(!x*y*z) + (!r*g*b))
+   CASE 7 ; a := ! a / (!(!x*x) + (!y*y) + (!z*z))
+   CASE 8 ; a := ! a / Fsqrt(Fabs(a))
+   ENDSELECT
+ENDPROC a
+
+PROC main() HANDLE
+  openiface()
+  LOOP
+    cosmic()
+    IF LeftMouse(win) THEN Raise(0)
+  ENDLOOP
+EXCEPT
+  closeiface()
+  ExceptionReport(&#x27;main()&#x27;)
+ENDPROC
+
+PROC cosmic()
+   DEF ib:PTR TO intuitionbase
+   DEF x,q, str[50]:STRING
+   DEF old:PTR TO recursedata
+
+  ib:=intuitionbase
+  q := Eor(ib.micros,ib.seconds) -&gt;- count
+  Rnd(q OR $80000000)
+  q := Rnd(1000)
+
+  dorgb := TRUE-&gt;q AND 1
+  IF q AND 2
+     feedback := Rnd(59) / 10
+     alternate :=0
+  ELSE
+     alternate := Rnd(89) / 10
+     feedback := 0
+  ENDIF
+
+  FOR x := 0 TO 10 DO Rnd(32768)
+  x:=0
+  WHILE x&lt;FLAME_SIZE
+     flame[x] := Rnd(32768)!/16384.0-1.0*0.9
+     x++
+  ENDWHILE
+
+  TextF(10,10,&#x27;dorgb=\d, feedback=\d, alternate=\d&#x27;, dorgb, feedback, alternate)
+
+  points:=0
+  old := NEW [0.0,0.0,0.0,0.0,0.0,0.0,0]:recursedata
+  recurse6d(old)
+  FastDisposeList(old)
+
+  IF count++ = 3
+      count := 0
+      Delay(120)
+      clearwindow(win)
+
+
+   ENDIF
+
+ENDPROC
+
+PROC    clearwindow(window:PTR TO window)
+
+
+    FillPixelArray(window.rport,  window.borderleft,
+                            window.bordertop,
+                            window.width-window.borderright-1,
+                            window.height-window.borderbottom-1, $00000000)
+
+
+ENDPROC
+
+
+PROC recurse6d(old:PTR TO recursedata)
+   DEF f:PTR TO REAL-&gt;, alternate=FALSE
+   DEF new:recursedata, x
+   DEF rgb[3]:ARRAY OF CHAR, ix, iy, ir, ig, ib, t:PTR TO LONG
+
+   new.level := old.level + 1
+
+  CtrlC()
+
+  FreeStack()
+
+
+   IF points &gt; MAXTOTALPOINTS THEN RETURN FALSE
+
+   IF old.level &gt;= MAXFLAMELEVEL
+      points++
+
+      ix := !old.x+1.0*(width/2!)! + left
+      iy := !old.y+1.0*(height/2!)! + top
+
+      t := ReadRGBPixel(rp,ix,iy)
+      rgb[0] := Shr(t,16)
+      rgb[1] := Shr(t,8)
+      rgb[2] := t AND $FF
+
+      ir := ! old.r * 40.0 + 127.0 !
+      ig := ! old.g * 40.0 + 127.0 !
+      ib := ! old.b * 40.0 + 127.0 !
+
+      -&gt;ir := ! Fsqrt(! old.r * 3000.0 + 3000.0) !
+      -&gt;ig := ! Fsqrt(! old.g * 3000.0 + 3000.0) !
+      -&gt;ib := ! Fsqrt(! old.b * 3000.0 + 3000.0) !
+
+      ir := Max(Min(ir, 255), 0)
+      ig := Max(Min(ig, 255), 0)
+      ib := Max(Min(ib, 255), 0)
+
+      ir := rgb[0] + ir / 2
+      ig := rgb[1] + ig / 2
+      ib := rgb[2] + ib / 2
+
+      -&gt;ir := ir + (255-ir/10)
+      -&gt;ig := ig + (255-ig/10)
+      -&gt;ib := ib + (255-ib/10)
+
+
+      -&gt;IF rgb[0] OR rgb[1] OR rgb[2] THEN alternate := TRUE
+
+      WriteRGBPixel(rp, ix, iy,
+      Long([0,ir,ig,ib]:CHAR))
+
+   ELSE
+
+
+   f := flame
+
+    FOR x := 0 TO 1
+
+      FUNCTION
+
+      -&gt;FEEDBACK(x)
+      -&gt;FEEDBACK(y)
+      -&gt;&gt;FEEDBACK(r)
+      -&gt;FEEDBACK(g)
+      -&gt;FEEDBACK(b)
+      -&gt;FEEDBACK(z)
+
+      -&gt;ALTERNATE(x)
+      -&gt;ALTERNATE(y)
+      -&gt;ALTERNATE(r)
+      -&gt;ALTERNATE(g)
+      -&gt;ALTERNATE(b)
+      -&gt;ALTERNATE(z)
+
+      IF recurse6d(new)=FALSE THEN RETURN FALSE
+
+   ENDFOR
+
+
+  ENDIF
+ENDPROC TRUE
+
+
+-&gt;----------------------------------------------------------------------------&lt;-
+
+PROC openiface()
+   DEF tags:PTR TO LONG, x
+   DEF a, ib:PTR TO intuitionbase
+
+   cybergfxbase := OpenLibrary(&#x27;cybergraphics.library&#x27;,41)
+   IF cybergfxbase = NIL THEN Raise(&quot;LIB&quot;)
+
+   colorwheelbase := OpenLibrary(&#x27;gadgets/colorwheel.gadget&#x27;,41)
+   IF colorwheelbase = NIL THEN Raise(&quot;LIB&quot;)
+
+  -&gt; lets hope workbench is atleast 24bit !
+  win:=OpenW(10,10,800,600,NIL,$800,&#x27;cosmic32&#x27;,NIL,NIL,NIL,NIL)
+  IF win=NIL THEN Raise(&quot;wndw&quot;)
+
+  left := win.borderleft
+  top := win.bordertop
+  width := win.width-win.borderright-1
+
+  height := win.height-win.borderbottom-1
+  rp:=win.rport
+
+  NEW flame[FLAME_SIZE]
+
+  SetStdRast(rp)
+
+  clearwindow(win)
+
+ENDPROC
+
+PROC closeiface()
+  IF win THEN CloseW(win)
+  IF cybergfxbase THEN CloseLibrary(cybergfxbase)
+  IF colorwheelbase THEN CloseLibrary(colorwheelbase)
+ENDPROC
+
+
+
+
+
+
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

@@ -1,0 +1,274 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Build.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-amigae30a-fr.html">amigae30a_fr</a> &rsaquo; Build.e</div><h1>File: <code>Build.e</code></h1><p class="meta">248 lines · project <a href="../examples/pkg-amigae30a-fr.html"><code>amigae30a_fr</code></a></p><p class="pathctx">amigae30a_fr/AmigaE30f/Sources/Utils/Build.e</p><p class="prose">build en E. AFAIRE: - vérification cyclic des structures - constantes (amigados?)</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/file.html">tools/file</a></li></ul></div><h2>Source</h2><pre class="code">/* build en E.
+
+AFAIRE:   - vérification cyclic des structures
+          - constantes (amigados?)
+
+*/
+
+OPT OSVERSION=37
+
+MODULE &#x27;tools/file&#x27;, &#x27;dos/dosextens&#x27;, &#x27;dos/dos&#x27;
+
+/* object: dep1 dep2 ....
+     act1
+     act2
+*/
+
+OBJECT object
+  next:PTR TO object
+  name:PTR TO CHAR
+  firstdep:PTR TO dependancy
+  firstaction:PTR TO action
+  child
+ENDOBJECT
+
+OBJECT dependancy
+  next:PTR TO dependancy
+  object:PTR TO object
+ENDOBJECT
+
+OBJECT action
+  next:PTR TO action
+  comstring:PTR TO CHAR
+ENDOBJECT
+
+OBJECT arg
+  target,buildfile,force
+ENDOBJECT
+
+DEF curline=0, curstring, uptodate=TRUE, args:PTR TO arg
+
+PROC main() HANDLE
+  DEF m,l,buildfile[200]:STRING,rdargs=NIL
+  NEW args
+  IF (rdargs:=ReadArgs(&#x27;TARGET,FROM/K,FORCE/S&#x27;,args,NIL))=NIL THEN Raise(&quot;barg&quot;)
+  IF args.buildfile THEN StrCopy(buildfile,args.buildfile)
+  StrAdd(buildfile,&#x27;.build&#x27;)
+  PrintF(&#x27;E Build v0.8 (c) 1993 Rob et Wouter (processing &quot;\s&quot;)\n&#x27;,buildfile)
+  m,l:=readfile(buildfile)
+  buildtree(parse(stringsinfile(m,l,countstrings(m,l))))
+  IF uptodate THEN PrintF(&#x27;All files are up to date.\n&#x27;)
+  Raise()
+EXCEPT
+  IF rdargs THEN FreeArgs(rdargs)
+  IF exception=0 THEN RETURN
+  PrintF(&#x27;Error: &#x27;)
+  SELECT exception
+    CASE &quot;OPEN&quot;
+      PrintF(&#x27;Ne peut ouvrir &quot;\s&quot;.\n&#x27;,exceptioninfo)
+    CASE &quot;MEM&quot;
+      PrintF(&#x27;Pas assez de mémoire.\n&#x27;)
+    CASE &quot;IN&quot;
+      PrintF(&#x27;Ne peut lire le fichier.\n&#x27;)
+    CASE &quot;nobj&quot;
+      PrintF(&#x27;action sans objet.\n&#x27;)
+    CASE &quot;fexp&quot;
+      PrintF(&#x27;nom de fichier attendu.\n&#x27;)
+    CASE &quot;dexp&quot;
+      PrintF(&#x27;&quot;:&quot; attendu.\n&#x27;)
+    CASE &quot;empt&quot;
+      PrintF(&#x27;Rien à créer.\n&#x27;)
+    CASE &quot;circ&quot;
+      PrintF(&#x27;dépendances circulaires entre fichiers.\n&#x27;)
+    CASE &quot;bada&quot;
+      PrintF(&#x27;impossible de construire &quot;\s&quot;.\n&#x27;,exceptioninfo)
+    CASE &quot;badd&quot;
+      PrintF(&#x27;dépendance &quot;\s&quot; non disponible.\n&#x27;,exceptioninfo)
+    CASE &quot;derr&quot;
+      PrintF(&#x27;Processus fils manqué.\n&#x27;)
+    CASE &quot;ntar&quot;
+      PrintF(&#x27;Pas une telle cible: &quot;\s&quot;\n&#x27;,args.target)
+    CASE &quot;ndep&quot;
+      PrintF(&#x27;Pas de dépendance pour l&#x27;objet &quot;\s&quot;.\n&#x27;,exceptioninfo)
+    CASE &quot;barg&quot;
+      PrintFault(IoErr(),NIL)
+    DEFAULT
+      PrintF(&#x27;Coucou tralala !.\n&#x27;)
+  ENDSELECT
+  IF curline THEN PrintF(&#x27;en ligne: (\d) &quot;\s&quot;\n&#x27;,curline,curstring)
+  IF exception THEN PrintF(&#x27;Build terminé\n&#x27;)
+  RETURN 10
+ENDPROC
+
+PROC parse(list:PTR TO LONG)
+  DEF l=NIL:PTR TO object, s, c, i, t
+  FOR curline:=0 TO ListLen(list)-1
+    s:=list[curline]
+    curstring:=s
+    c:=s[]
+    IF (c&lt;&gt;&quot;#&quot;) AND (c&lt;&gt;&quot;\0&quot;)                   -&gt; ignore?
+      IF (c=&quot; &quot;) OR (c=&quot;\t&quot;)                    -&gt; action
+        s:=eatwhite(s)
+        IF s[]
+          IF l=NIL THEN Raise(&quot;nobj&quot;)
+          l.firstaction:=NEW [l.firstaction,s]:action
+        ENDIF
+      ELSE                                      -&gt; object rule
+        i:=s
+        s:=eatname(s)
+        IF s=i THEN Raise(&quot;fexp&quot;)
+        t:=s
+        s:=eatwhite(s)
+        IF s[]++&lt;&gt;&quot;:&quot; THEN Raise(&quot;dexp&quot;)
+        t[]:=&quot;\0&quot;
+        l:=NEW [l,i,NIL,NIL,0]:object
+        s:=eatwhite(s)
+        IF s[]&lt;&gt;&quot;\0&quot;
+          REPEAT
+            i:=s
+            s:=eatname(s)
+            t:=s
+            IF t=i THEN Raise(&quot;fexp&quot;)
+            s:=eatwhite(s)
+            t[]:=&quot;\0&quot;
+            l.firstdep:=NEW [l.firstdep,i]:dependancy
+          UNTIL s[]=&quot;\0&quot;
+        ENDIF
+      ENDIF
+    ENDIF
+  ENDFOR
+  curline:=0
+  IF l=NIL THEN Raise(&quot;empt&quot;)
+ENDPROC l
+
+PROC eatwhite(s)
+  WHILE (s[]=&quot; &quot;) OR (s[]=&quot;\t&quot;) DO s++
+ENDPROC s
+
+PROC eatname(s)
+  WHILE (s[]&lt;&gt;&quot; &quot;) AND (s[]&lt;&gt;&quot;\t&quot;) AND (s[]&lt;&gt;&quot;\0&quot;) AND (s[]&lt;&gt;&quot;:&quot;) DO s++
+ENDPROC s
+
+PROC execute(c)
+  PrintF(&#x27;\t\s\n&#x27;,c)
+  uptodate:=FALSE
+  IF Execute(c,NIL,stdout)=NIL THEN Raise(&quot;derr&quot;)
+ENDPROC
+
+PROC filetime(name:PTR TO CHAR)
+  DEF l:PTR TO filelock, fib:fileinfoblock, date:PTR TO datestamp
+  IF l:=Lock(name,ACTION_READ)
+    IF Examine(l,fib)
+      date:=fib.datestamp
+      IF fib.direntrytype&lt;0
+        UnLock(l)
+        RETURN date.days, Shl(date.minute,12)+date.tick
+      ENDIF
+    ENDIF
+    UnLock(l)
+  ENDIF
+ENDPROC -1
+
+PROC timelater(day1,tick1,day2,tick2)
+  IF day1&gt;day2
+    RETURN TRUE
+  ELSEIF day1=day2
+    RETURN tick1&gt;tick2
+  ENDIF
+ENDPROC FALSE
+
+/*----------------partie de rob-------------------*/
+
+PROC buildtree(list:PTR TO object) -&gt; retourne la racine de l&#x27;arbre
+  DEF dep:PTR TO dependancy,
+      obj:PTR TO object
+
+  obj:=list
+  WHILE obj         -&gt; traverse objects
+    dep:=obj.firstdep
+    WHILE dep       -&gt; traverse dependencies
+      dep.object:=findobject(dep.object,list)
+      dep:=dep.next
+    ENDWHILE
+    obj:=obj.next
+  ENDWHILE
+
+  -&gt; VERIFICATION DES CYCLES!!!
+
+  obj:=list
+  IF args.target
+    WHILE obj
+      IF StrCmp(args.target,obj.name) THEN JUMP out
+      obj:=obj.next
+    ENDWHILE
+    Raise(&quot;ntar&quot;)
+    out:
+  ELSE
+    IF obj THEN WHILE obj.next DO obj:=obj.next
+  ENDIF
+  traverse(obj)
+ENDPROC
+
+
+-&gt; trouve les objets dansla liste des objet par le nom
+PROC findobject(name:PTR TO CHAR,list:PTR TO object)
+  WHILE list
+    IF StrCmp(name,list.name)
+      -&gt; enlève l&#x27;objet de la racine de la liste
+      list.child:=TRUE;
+      RETURN list
+    ENDIF
+    list:=list.next
+  ENDWHILE
+ENDPROC NEW [NIL,name,NIL,NIL]:object
+
+-&gt; child-first traversal of dependancy tree
+PROC traverse(obj:PTR TO object) -&gt; éxécute les actions dans l&#x27;arbre
+  DEF dep:PTR TO dependancy,maxtime1=0,maxtime2=0,time1,time2,action:PTR TO action
+
+  IF obj.firstdep OR obj.firstaction    -&gt; objet avec dépendances/actions
+    -&gt; traverse children et prend le maximum de temps
+    dep:=obj.firstdep
+    WHILE dep
+      time1,time2:=traverse(dep.object)
+      IF timelater(time1,time2,maxtime1,maxtime2)
+        maxtime1:=time1
+        maxtime2:=time2
+      ENDIF
+      dep:=dep.next
+    ENDWHILE
+    time1,time2:=filetime(obj.name)
+    IF time1&lt;0 OR timelater(maxtime1,maxtime2,time1,time2) OR args.force
+      -&gt; fichiers de dépendance plus récent: build object
+      -&gt; éxécute les actions
+      action:=obj.firstaction
+      WHILE action
+        execute(action.comstring)
+        action:=action.next
+      ENDWHILE
+      time1,time2:=filetime(obj.name)
+      IF (time1&lt;0) AND (obj.child=TRUE) THEN Throw(&quot;bada&quot;,obj.name)
+    ENDIF
+    RETURN time1,time2
+  ENDIF
+  -&gt; object requires no action: return timestamp
+  time1,time2:=filetime(obj.name);
+  IF time1&lt;0 THEN Throw(&quot;badd&quot;,obj.name)
+ENDPROC time1,time2
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

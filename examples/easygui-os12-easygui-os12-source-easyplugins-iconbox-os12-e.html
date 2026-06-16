@@ -1,0 +1,259 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>iconbox_os12.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-easygui-os12.html">EasyGUI_OS12</a> &rsaquo; iconbox_os12.e</div><h1>File: <code>iconbox_os12.e</code></h1><p class="meta">233 lines · project <a href="../examples/pkg-easygui-os12.html"><code>EasyGUI_OS12</code></a></p><p class="pathctx">EasyGUI_OS12/easygui_os12/source/easyplugins/iconbox_os12.e</p><p class="prose">$VER: iconbox_plugin 1.4 (30.1.98) Author: Ali Graham ($01) &lt;agraham@hal9000.net.au&gt; <a href="../modules/easygui.html#const-plugin">PLUGIN</a> id: $01 Desc.: A box to <a href="../modules/display.html">display</a> <a href="../modules/icon.html">icon</a> <a href="../modules/images.html">images</a> and accept <a href="../modules/icon.html">icon</a> drops. Tags: <a href="../modules/iconbox.html#const-pla-iconbox-iconname">PLA_IconBox_IconName</a> [ISG] <a href="../modules/iconbox.html#const-pla-iconbox-showselected">PLA_IconBox_ShowSelected</a> [ISG] <a href="../modules/iconbox.html#const-pla-iconbox-disabled">PLA_IconBox_Disabled</a> [ISG]</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/text.html">graphics/text</a></li><li><a href="../modules/easygui.html">tools/easygui</a></li><li><a href="../modules/easygui-os12.html">tools/easygui_os12</a></li><li><a href="../modules/ghost.html">tools/ghost</a></li><li><a href="../modules/tagitem.html">utility/tagitem</a></li><li><a href="../modules/workbench.html">workbench/workbench</a></li></ul></div><h2>Source</h2><pre class="code">
+/*
+
+    $VER: iconbox_plugin 1.4 (30.1.98)
+
+    Author:         Ali Graham ($01)
+                    &lt;agraham@hal9000.net.au&gt;
+
+    PLUGIN id:      $01
+
+    Desc.:          A box to display icon images and accept icon drops.
+
+    Tags:           PLA_IconBox_IconName            [ISG]
+                    PLA_IconBox_ShowSelected        [ISG]
+                    PLA_IconBox_Disabled            [ISG]
+
+*/
+
+OPT MODULE
+OPT PREPROCESS
+
+-&gt; RST: Added conditional EASY_OS12 support
+#define EASY_OS12
+
+#ifdef EASY_OS12
+  MODULE &#x27;tools/easygui_os12&#x27;,&#x27;hybrid/tagdata&#x27;
+  #define GetTagData getTagData
+#endif
+#ifndef EASY_OS12
+  OPT OSVERSION=37
+  MODULE &#x27;tools/easygui&#x27;,&#x27;utility&#x27;
+#endif
+
+-&gt;&gt; iconbox_plugin: Modules
+MODULE &#x27;graphics/text&#x27;,
+       &#x27;intuition/intuition&#x27;, &#x27;graphics/rastport&#x27;
+
+MODULE &#x27;utility/tagitem&#x27;
+
+MODULE &#x27;workbench/workbench&#x27;, &#x27;workbench/startup&#x27;, &#x27;icon&#x27;
+
+MODULE &#x27;tools/ghost&#x27;
+
+-&gt;&lt;
+
+/* $$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$ */
+
+-&gt;&gt; iconbox_plugin: Definitions
+EXPORT OBJECT iconbox_plugin OF plugin PRIVATE
+
+    name
+    selected
+    disabled
+
+    icon:PTR TO diskobject
+
+ENDOBJECT
+
+-&gt; PROGRAMMER_ID | MODULE_ID
+-&gt;      $01      |   $01
+
+EXPORT ENUM PLA_IconBox_IconName=$81010001,
+            PLA_IconBox_ShowSelected,
+            PLA_IconBox_Disabled
+
+-&gt;&lt;
+
+/* $$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$ */
+
+-&gt;&gt; iconbox_plugin: iconbox() &amp; end()
+
+PROC iconbox(tags=NIL:PTR TO tagitem) OF iconbox_plugin
+
+#ifndef EASY_OS12
+    IF (utilitybase AND iconbase)
+#endif
+#ifdef EASY_OS12
+    IF iconbase
+#endif
+        self.name     := self.set(PLA_IconBox_IconName, GetTagData(PLA_IconBox_IconName, &#x27;&#x27;, tags))
+        self.selected := GetTagData(PLA_IconBox_ShowSelected, FALSE, tags)
+        self.disabled := GetTagData(PLA_IconBox_Disabled, FALSE, tags)
+
+    ELSE
+
+        Raise(&quot;iblb&quot;)
+
+    ENDIF
+
+ENDPROC
+
+PROC end() OF iconbox_plugin IS self.set(PLA_IconBox_IconName, NIL)
+
+-&gt;&lt;
+
+-&gt;&gt; iconbox_plugin: set() &amp; get()
+
+PROC set(attr, value) OF iconbox_plugin
+
+    SELECT attr
+
+        CASE PLA_IconBox_IconName
+
+            IF self.name&lt;&gt;value
+
+                IF self.icon
+
+                    FreeDiskObject(self.icon)
+                    self.icon:=NIL
+
+                ENDIF
+
+                IF value
+
+                    IF StrLen(value)&gt;0
+
+                        self.name:=value
+                        self.icon:=GetDiskObject(self.name)
+
+                    ENDIF
+
+                ENDIF
+
+                IF (self.disabled=FALSE) THEN  self.draw(self.gh.wnd)
+
+            ENDIF
+
+        CASE PLA_IconBox_ShowSelected
+
+            IF self.selected&lt;&gt;value
+
+                self.selected:=value
+
+                IF (self.disabled=FALSE) THEN self.draw(self.gh.wnd)
+
+            ENDIF
+
+        CASE PLA_IconBox_Disabled
+
+            IF self.disabled&lt;&gt;value
+
+                self.disabled:=value
+
+                self.draw(self.gh.wnd)
+
+            ENDIF
+
+    ENDSELECT
+
+ENDPROC
+
+PROC get(attr) OF iconbox_plugin
+
+    SELECT attr
+
+        CASE PLA_IconBox_IconName;      RETURN self.name, TRUE
+        CASE PLA_IconBox_ShowSelected;  RETURN self.selected, TRUE
+        CASE PLA_IconBox_Disabled;      RETURN self.disabled, TRUE
+
+    ENDSELECT
+
+ENDPROC -1, FALSE
+
+-&gt;&lt;
+
+-&gt;&gt; iconbox_plugin: draw()
+PROC draw(win:PTR TO window) OF iconbox_plugin
+
+    IF win
+
+        SetStdRast(win.rport)
+
+        Box(self.x, self.y, (self.x+(self.xs-1)), (self.y+(self.ys-1)), 0)
+
+        IF self.icon AND (self.disabled=FALSE)
+
+            IF (self.icon.gadget.width &lt; self.xs) AND (self.icon.gadget.height &lt; self.ys)
+
+                DrawImage(win.rport,
+                          IF self.selected THEN self.icon.gadget.selectrender ELSE self.icon.gadget.gadgetrender,
+                          self.x+((self.xs-self.icon.gadget.width)/2), self.y+((self.ys-self.icon.gadget.height)/2))
+
+            ENDIF
+
+        ENDIF
+
+        IF self.disabled THEN ghost(win, self.x, self.y, self.xs, self.ys)
+
+    ENDIF
+
+ENDPROC
+-&gt;&lt;
+
+-&gt;&gt; easygui standard procs
+PROC min_size(ta:PTR TO textattr, fh) OF iconbox_plugin
+
+    DEF width, height
+
+    IF self.icon
+
+        width:=self.icon.gadget.width + 16
+        height:=self.icon.gadget.height + 12
+
+    ELSE
+
+        width:=48
+        height:=32
+
+    ENDIF
+
+ENDPROC width, height
+
+PROC will_resize() OF iconbox_plugin IS (RESIZEX OR RESIZEY)
+
+PROC render(ta:PTR TO textattr, x, y, xs, ys, win:PTR TO window) OF iconbox_plugin
+
+   self.draw(win)
+
+ENDPROC
+
+PROC appmessage(amsg:PTR TO appmessage, win:PTR TO window) OF iconbox_plugin
+
+    DEF xok=FALSE, yok=FALSE
+
+    xok:=(amsg.mousex&gt;=(self.x)) AND (amsg.mousex&lt;=(self.x+self.xs-1))
+    yok:=(amsg.mousey&gt;=(self.y)) AND (amsg.mousey&lt;=(self.y+self.ys-1))
+
+ENDPROC ((xok AND yok) AND (self.disabled=FALSE))
+
+-&gt;&lt;
+
+
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

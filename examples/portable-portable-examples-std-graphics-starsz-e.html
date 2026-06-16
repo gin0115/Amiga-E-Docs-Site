@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>StarsZ.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-portable.html">PortablE</a> &rsaquo; StarsZ.e</div><h1>File: <code>StarsZ.e</code></h1><p class="meta">94 lines · project <a href="../examples/pkg-portable.html"><code>PortablE</code></a></p><p class="pathctx">PortablE/PortablE/Examples/std/Graphics/StarsZ.e</p><p class="prose">StarsZ.e 04-08-2012 by Chris Handley</p><h2>Source</h2><pre class="code">/* StarsZ.e 04-08-2012 by Chris Handley
+*/
+OPT INLINE
+MODULE &#x27;std/cGfxSimple&#x27;
+MODULE &#x27;CSH/pRnd&#x27;	-&gt;use my own random-number generator, since Rnd() can give bad-looking results on AROS &amp; MorphOS
+
+OBJECT star
+	x, y, z		-&gt;position inside the cube
+ENDOBJECT
+
+CONST STARDENSITY = 10		-&gt;10 is typical
+CONST SPEED       = 10		-&gt;10 is typical
+
+PROC main()
+	DEF width, height, skippingNextFrame:BOOL
+	DEF cubesize, starmax, stars:ARRAY OF star, star:PTR TO star, starColour:ARRAY OF VALUE
+	DEF i, brightness
+	DEF zOrigin, x, y, z
+	DEF quit:BOOL, type, subType, value
+	
+	IsFullWindowApp()
+	ChangeGfxWindow(NILA, /*hideMousePointer*/ TRUE)
+	OpenFull()
+	width  := InfoWidth()
+	height := InfoHeight()
+	SetAutoUpdate(FALSE)
+	SetFrameSkipping(TRUE)
+	
+	-&gt;generate the stars in the cube
+	cubesize := Max(width, height)		-&gt;the size or resolution of the star cube
+	starmax  := width * height * STARDENSITY / 10 / 614
+	NEW stars[starmax+1]
+	
+	FOR i := 0 TO starmax
+		star := stars[i]
+		star.x := rnd(cubesize) - (cubesize/2)
+		star.y := rnd(cubesize) - (cubesize/2)
+		star.z := rnd(cubesize)
+	ENDFOR
+	
+	-&gt;precalculate star colour (for all distances)
+	NEW starColour[cubesize]
+	
+	FOR z := 0 TO cubesize-1
+		brightness := 255 - (z * 255 / (cubesize-1))
+		starColour[z] := MakeRGB(brightness, brightness, brightness)
+	ENDFOR
+	
+	-&gt;animate the stars
+	zOrigin := 0
+	skippingNextFrame := FALSE
+	quit := FALSE
+	REPEAT
+		-&gt;recalculate position inside cube (forwards by one step)
+		zOrigin := positiveMod(cubesize * SPEED / 2000 + zOrigin, cubesize)
+		
+		-&gt;draw all the stars (for the current view origin)
+		IF skippingNextFrame = FALSE
+			Clear(RGB_BLACK)
+			FOR i := 0 TO starmax
+				star := stars[i]
+				
+				-&gt;draw star
+				z := positiveMod(star.z - zOrigin, cubesize)
+				x :=  width * star.x / (z+1) + ( width / 2)
+				y := height * star.y / (z+1) + (height / 2)
+				
+				SetColour(starColour[z])
+				IF z &lt; (cubesize/7)
+					DrawBox(x, y, 2, 2)
+				ELSE
+					DrawDot(x, y)
+				ENDIF
+			ENDFOR
+		ENDIF
+		
+		-&gt;update the window with what we&#x27;ve drawn &amp; wait for the screen to refresh
+		skippingNextFrame := UpdateAndWaitForScreenRefresh()
+		
+		-&gt;handle window events
+		WHILE CheckForGfxWindowEvent()
+			type, subType, value := GetLastEvent()
+			IF (type = EVENT_WINDOW) AND (subType = EVENT_WINDOW_CLOSE) THEN quit := TRUE
+			IF (type = EVENT_KEY) AND (subType = EVENT_KEY_SPECIAL) AND (value = EVENT_KEY_SPECIAL_ESCAPE) THEN quit := TRUE
+		ENDWHILE
+	UNTIL quit
+FINALLY
+	PrintException()
+	END stars, starColour
+ENDPROC
+
+-&gt;the same as FastMod(), except the result is always positive
+PROC positiveMod(num, size) IS FastMod(num, size) + IF num &lt; 0 THEN size ELSE 0
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

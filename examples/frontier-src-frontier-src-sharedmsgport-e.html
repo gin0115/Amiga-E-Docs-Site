@@ -1,0 +1,175 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>sharedmsgport.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-frontier-src.html">FRONTIER-Src</a> &rsaquo; sharedmsgport.e</div><h1>File: <code>sharedmsgport.e</code></h1><p class="meta">149 lines · project <a href="../examples/pkg-frontier-src.html"><code>FRONTIER-Src</code></a></p><p class="pathctx">FRONTIER-Src/FRONTIER-Src/sharedmsgport.e</p><h2>Source</h2><pre class="code">Am 29-Mai-98 schrieb David Lidström:
+
+
+&gt;Hm... it might got optimized a bit, but I didn&#x27;t notice it cuz&#x27; of 
+&gt;the still very slow GUI...
+&gt;I liked that talk about shared msg ports - but I, still, don&#x27;t
+&gt;know how on earth I shall use it... 
+
+To make Windows share their Message-Ports you have to do it
+like that:
+
+I don`t know if you could compile it (because i had written it now
+in 3 Minutes and the Modules are missing), but it shows how Message-
+portSharing (and IDCMP-Sharing, because it is needed here!) is done!
+
+---8&lt;-----8&lt;-----8&lt;-----8&lt;-----8&lt;-CUT-8&lt;-8&lt;-----8&lt;-----8&lt;-----8&lt;
+
+CONST   WINDOW_IDCMP = IDCMP_xxx OR IDCMP_yyy...
+                                        -&gt; Our IDCMP-Flags for
+                                        -&gt; the Window...
+
+PROC main() HANDLE
+DEF     sharedmp:PTR TO mp,             -&gt; Message Port
+        win1:PTR TO window,             -&gt; First Window
+        win2:PTR TO window,             -&gt; Second Window
+        win3:PTR TO window              -&gt; Third Window
+  sharedmp:=openSharedPort()            -&gt; Open Shared MsgPort
+   win1:=openWindowShared(sharedmp)     -&gt; Open Window 1
+    win2:=openWindowShared(sharedmp)    -&gt; Open Window 2
+     win3:=openWindowShared(sharedmp)   -&gt; Open Window 3
+-&gt;    ...
+
+       handleShared(sharedport)         -&gt; Handle Shared MsgPort
+
+EXCEPT DO
+
+-&gt;    ...
+     closeSharedWindow(win3)            -&gt; Close Window 3
+    closeSharedWindow(win2)             -&gt; Close Window 3
+   closeSharedWindow(win1)              -&gt; Close Window 3
+  closeSharedPort(sharedmp)             -&gt; Close Shared MsgPort
+ CleanUp(exception)                     -&gt; CleanUp...
+ENDPROC
+
+PROC openSharedPort()                   -&gt; Opens a MspPort Shared
+ DEF    port:PTR TO mp
+  IF (port:=CreateMsgPort())=NIL THEN Raise(ERR_MSGPORT)
+                                        -&gt; Open the Port
+ENDPROC port                            -&gt; Returning MsgPort-PTR
+
+PROC closeSharedPort(port)              -&gt; Closes a SharedMsgPort
+ IF (port&lt;&gt;NIL) THEN DeleteMsgPort(port)
+ENDPROC
+
+PROC openWindowShared(port:PTR TO mp)   -&gt; Opens a Window with
+ DEF    win:PTR TO window               -&gt; shared MsgPort
+  IF (win:=OpenWindowTagList(NIL,[...Tags...    
+                                        -&gt; Open the Window
+         WA_IDCMP,              NIL,    -&gt; IMPORTANT! IDCMP = NIL!
+         TAG_END,               NIL]))  -&gt; Because we use SharedIDCMP!
+    win.userport:=port                  -&gt; IMPORTANT!! (SharedMsgPort!)
+   ModifyIDCMP(win,WINDOW_IDCMP)        -&gt; Set our IDCMP-Flags
+  ENDIF
+ENDPROC win
+
+PROC closeWindowShared(win:PTR TO window)
+                                        -&gt; Closes a Window with
+                                        -&gt; Shared MsgPort
+ IF (win&lt;&gt;NIL)
+  Forbid()                              -&gt; Must be in Forbid()/Permit()
+   removemsgs(win.userport,win)         -&gt; Remode our Msgs out of the
+                                        -&gt; Msg-Queue!
+    win.userport:=NIL                   -&gt; To prevent the MsgPort
+                                        -&gt; from closing!
+     ModifyIDCMP(win,NIL)               -&gt; To Prevent from Closing
+  Permit()                              -&gt; Allow the forbiden thing again
+   CloseWindow(win)                     -&gt; And now close the Window...
+  win:=NIL
+ ENDIF
+ENDPROC
+
+PROC removemsgs(port:PTR TO mp,win:PTR TO window)
+                                        -&gt; Removes all Msgs for our 
+  DEF   msg:PTR TO intuimessage         -&gt; Window out of the Msg-List!
+   Forbid()                             -&gt; Not necessary, but safer :-)
+    msg:=port.msglist.head              -&gt; Get the first Msg from the List
+     WHILE (msg&lt;&gt;NIL)                   -&gt; Get every Message
+      next:=msg.ln.succ                 -&gt; Get PTR to the next Msg
+       IF msg.idcmpwindow=win           -&gt; If the Msg is from our Window...
+        Remove(msg)                     -&gt; remove it out of the Msg-List
+        ReplyMsg(msg)                   -&gt; Reply it so it could be freed
+                                        -&gt; by Exec... MUST HAPPEN!
+       ENDIF
+      msg:=next                         -&gt; Set the PTR to the next Msg...
+     ENDWHILE
+   Permit()                             -&gt; Allow it again...
+ENDPROC
+
+PROC handleShared(port:PTR TO mp)       -&gt; Handles the Events...
+ DEF    quit=FALSE,                     -&gt; used to end the Loop...
+        msg=NIL:PTR TO intuimessage,    -&gt; The Message for a window...
+        win=NIL:PTR TO window,          -&gt; PTR to the Window, where the Msg
+                                        -&gt; came from
+        class,                          -&gt; intuimessage.class
+        code,                           -&gt; intuimessage.code
+        qual,                           -&gt; intuimessage.qualifier (UNSIGNED!)
+        gad:PTR TO gadget               -&gt; intuimessage.iadress
+
+  WHILE (quit=FALSE)                    -&gt; Repeat `till we want to quit...
+   Wait(Shl(1,port.sigbit))             -&gt; Wait for a Message..!
+    WHILE (msg:=GetMsg(port))           -&gt; Another loop, because it is
+                                        -&gt; Possible to get more than one
+                                        -&gt; Message at one sigal-Time!!!
+     class:=msg.class                   -&gt; IDCMP_xxx
+      code:=msg.code                    -&gt; specific!
+       gad:=msg.iadress                 -&gt; specific!
+      qual:=((msg.qualifier) AND $FFFF) -&gt; Unsign the Qualifier!!!
+       win:=msg.idcmpwindow             -&gt; PTR TO our Window!!!
+     ReplyMsg(msg)                      -&gt; Reply the Msg again (should be
+                                        -&gt; done as quickly as possible to
+                                        -&gt; slow down the system as less
+                                        -&gt; as possible!
+      SELECT    class                   -&gt; Get the Type of Message
+        CASE    IDCMP_CLOSEWINDOW       -&gt; Close the Window!
+         IF (win=win1)                  -&gt; If it is the main-Window, which
+                                        -&gt; should closed, then...
+          quit:=TRUE                    -&gt; Close all Windows...!!
+         ELSE                           -&gt; If it was another window, then
+          closeWindowShared(win)        -&gt; Close the specific Window!
+         ENDIF
+-&gt;      CASE    IDCMP_xxx               -&gt; Other IDCMP-Types...
+
+      ENDSELECT
+    ENDWHILE
+  ENDWHILE
+ENDPROC
+
+---8&lt;-----8&lt;-----8&lt;-----8&lt;-----8&lt;-CUT-8&lt;-8&lt;-----8&lt;-----8&lt;-----8&lt;
+
+I hope i could help...
+
+If you have questions.. just ask!
+
+-- 
+ ________                     ______
+/__    __\ __________()_____ _\    / /\    turrican@starbase.inka.de
+   \  //\/\\  _/\  _//\\ __//_\\   \/  \       THE DARK FRONTIER
+    \//____\\/   \/ /__\\_//___\\/\_____\  Softwareentwicklung PD+Share
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>deviceuse.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-jrh-rkrm-1.html">JRH-RKRM-1</a> &rsaquo; deviceuse.e</div><h1>File: <code>deviceuse.e</code></h1><p class="meta">86 lines · project <a href="../examples/pkg-jrh-rkrm-1.html"><code>JRH-RKRM-1</code></a></p><p class="pathctx">JRH-RKRM-1/JRH-RKRM-PartOne/Exec_Library/DeviceIO/deviceuse.e</p><p class="prose">DeviceUse.e - an example of using an Amiga <a href="../modules/device.html">device</a> (here, <a href="../modules/serial.html">serial</a> <a href="../modules/device.html">device</a>) - attempt to create a <a href="../modules/message.html">message</a> port with createPort()   (from amigalib) - attempt to create the I/O request with ereateExtIO() (from amigalib) - attempt to open the <a href="../modules/serial.html">serial</a> <a href="../modules/device.html">device</a> with Exec <a href="../modules/exec.html#fn-opendevice">OpenDevice</a>()  If successful, use the ser</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/io.html">amigalib/io</a></li></ul></div><h2>Source</h2><pre class="code">-&gt; DeviceUse.e - an example of using an Amiga device (here, serial device)
+-&gt;    - attempt to create a message port with createPort()   (from amigalib)
+-&gt;    - attempt to create the I/O request with ereateExtIO() (from amigalib)
+-&gt;    - attempt to open the serial device with Exec OpenDevice()
+-&gt;
+-&gt; If successful, use the serial command SDCMD_QUERY, then reverse our steps.
+-&gt; If we encounter an error at any time, we will gracefully exit.  Note that
+-&gt; applications which require at least V37 OS should use the Exec functions
+-&gt; CreateMsgPort()/DeleteMsgPort() and CreateIORequest()/DeleteIORequest()
+-&gt; instead of the similar amigalib functions which are used in this example.
+
+OPT PREPROCESS
+
+MODULE &#x27;amigalib/io&#x27;,
+       &#x27;amigalib/ports&#x27;,
+       &#x27;devices/serial&#x27;,
+       &#x27;exec/io&#x27;,
+       &#x27;exec/ports&#x27;
+
+ENUM ERR_NONE, ERR_DEV, ERR_IO, ERR_PORT
+
+RAISE ERR_DEV IF OpenDevice()&lt;&gt;0
+
+PROC main() HANDLE
+  DEF serialMP=NIL:PTR TO mp, serialIO=NIL:PTR TO ioextser,
+      reply:PTR TO ioextser
+  -&gt; Create the message port.
+  IF NIL=(serialMP:=createPort(NIL,NIL)) THEN Raise(ERR_PORT)
+
+  -&gt; Create the I/O request.  Note that &#x27;devices/serial&#x27; defines the type of
+  -&gt; io required by the serial device--an ioextser.  Many devices require
+  -&gt; specialised extended IO requests which start with an embedded io object.
+  -&gt; E-Note: ignore the rubbish about casting
+  IF NIL=(serialIO:=createExtIO(serialMP, SIZEOF ioextser)) THEN Raise(ERR_IO)
+
+  -&gt; Open the serial device (non-zero return value means failure here).
+  OpenDevice(SERIALNAME, 0, serialIO, 0)
+
+  -&gt; Device is open
+  serialIO.iostd.command:=SDCMD_QUERY
+  -&gt; DoIO - demonstrates synchronous device use, returns error or 0.
+  IF DoIO(serialIO)
+    WriteF(&#x27;Query failed.  Error - \d\n&#x27;, serialIO.iostd.error)
+  ELSE
+    -&gt; Print serial device status - see include file for meaning.
+    -&gt; Note that with DoIO, the Wait and GetMsg are done by Exec.
+    WriteF(&#x27;Serial device status: $\h\n\n&#x27;, serialIO.status)
+  ENDIF
+
+  serialIO.iostd.command:=SDCMD_QUERY
+  -&gt; SendIO - demonstrates asynchronous device use (returns immediately).
+  SendIO(serialIO)
+  -&gt; We could do other things here while the query is being done.  And to
+  -&gt; manage our asynchronous device IO:
+  -&gt;   - we can CheckIO(serialIO) to check for completion
+  -&gt;   - we can AbortIO(serialIO) to abort the command
+  -&gt;   - we can WaitPort(serialMP) to wait for any serial port reply
+  -&gt;  OR we can WaitIO(serialIO) to wait for this specific IO request
+  -&gt;  OR we can Wait(Shl(1, serialMP.sigbit)) for reply port signal
+  Wait(Shl(1, serialMP.sigbit))
+
+  WHILE reply:=GetMsg(serialMP)
+    -&gt; Since we sent out only one serialIO request the while loop is not
+    -&gt; really needed--we only expect one reply to our one query command, and
+    -&gt; the reply message pointer returned by GetMsg() will just be another
+    -&gt; pointer to our one serialIO request.  With Wait() or WaitPort(), you
+    -&gt; must GetMsg() the message.
+    IF reply.iostd.error
+      WriteF(&#x27;Query failed.  Error - \d\n&#x27;, reply.iostd.error)
+    ELSE
+      WriteF(&#x27;Serial device status: $\h\n\n&#x27;, reply.status)
+    ENDIF
+  ENDWHILE
+  CloseDevice(serialIO)  -&gt; Close the serial device.
+EXCEPT DO
+  IF serialIO THEN deleteExtIO(serialIO)  -&gt; Delete the I/O request.
+  IF serialMP THEN deletePort(serialMP)   -&gt; Delete the message port.
+  SELECT exception
+  CASE ERR_DEV;  WriteF(&#x27;Error: \s did not open\n&#x27;, SERIALNAME)
+  -&gt; Inform user that the I/O request could be created.
+  CASE ERR_IO;   WriteF(&#x27;Error: Could not create I/O request\n&#x27;)
+  -&gt; Inform user that the message port could not be created.
+  CASE ERR_PORT; WriteF(&#x27;Error: Could not create message port\n&#x27;)
+  ENDSELECT
+ENDPROC
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

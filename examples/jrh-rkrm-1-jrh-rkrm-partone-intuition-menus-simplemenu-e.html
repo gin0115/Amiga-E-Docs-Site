@@ -1,0 +1,166 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>simplemenu.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-jrh-rkrm-1.html">JRH-RKRM-1</a> &rsaquo; simplemenu.e</div><h1>File: <code>simplemenu.e</code></h1><p class="meta">140 lines · project <a href="../examples/pkg-jrh-rkrm-1.html"><code>JRH-RKRM-1</code></a></p><p class="pathctx">JRH-RKRM-1/JRH-RKRM-PartOne/Intuition/Menus/simplemenu.e</p><p class="prose">simplemenu.e: How to use the menu system with a <a href="../modules/window.html">window</a> under all OS versions.</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/rastport.html">graphics/rastport</a></li></ul></div><h2>Source</h2><pre class="code">-&gt; simplemenu.e: How to use the menu system with a window under all OS versions.
+
+OPT PREPROCESS
+
+MODULE &#x27;graphics/rastport&#x27;,
+       &#x27;graphics/text&#x27;,
+       &#x27;intuition/intuition&#x27;,
+       &#x27;intuition/screens&#x27;
+
+-&gt; These values are based on the ROM font Topaz8. Adjust these values to
+-&gt; correctly handle the screen&#x27;s current font.
+CONST MENWIDTH=56+8, -&gt; Longest menu item name * font width + 8 pixels for trim
+      MENHEIGHT=10   -&gt; Font height + 2 pixels
+
+-&gt; We only use a single menu, but the code is generalisable to more than
+-&gt; one menu.
+CONST NUM_MENUS=1
+
+ENUM ERR_NONE, ERR_WIN, ERR_MENU
+
+RAISE ERR_WIN  IF OpenWindow()=NIL,
+      ERR_MENU IF SetMenuStrip()=FALSE  -&gt; E-Note: not really necessary...
+
+PROC main() HANDLE
+  -&gt; E-Note: some of these are global arrays in the C version
+  DEF topaz80, submenu1, menu1, menutitle, menustrip:PTR TO menu,
+      win=NIL:PTR TO window, left=2
+
+  win:=OpenWindow([40, 40, 300, 100, 0, 1, IDCMP_CLOSEWINDOW OR IDCMP_MENUPICK,
+                   WFLG_DRAGBAR OR WFLG_ACTIVATE OR WFLG_CLOSEGADGET, NIL, NIL,
+                   &#x27;Menu Test Window&#x27;, NIL, NIL, 0, 0, 0, 0, WBENCHSCREEN]:nw)
+
+  -&gt; To keep this example simple, we&#x27;ll hard-code the font used for menu items.
+  -&gt; Algorithmic layout can be used to handle arbitrary fonts.  Under Release 2,
+  -&gt; GadTools provides font-sensitive menu layout.  Note that we still must
+  -&gt; handle fonts for the menu headers.
+  topaz80:=[&#x27;topaz.font&#x27;, 8, 0, 0]:textattr
+
+  -&gt; E-Note: linking needs to be done in reverse order to layout
+  -&gt; Sub-item 1, NLQ
+  submenu1:=[NIL, MENWIDTH-2, MENHEIGHT-2, MENWIDTH, MENHEIGHT,
+             ITEMTEXT OR MENUTOGGLE OR ITEMENABLED OR HIGHCOMP, 0,
+             [0, 1, RP_JAM2, 0, 1, topaz80, &#x27;NLQ&#x27;, NIL]:intuitext,
+             NIL, NIL, NIL, NIL]:menuitem
+  -&gt; Sub-item 0, Draft
+  submenu1:=[submenu1, MENWIDTH-2, -2, MENWIDTH, MENHEIGHT,
+             ITEMTEXT OR MENUTOGGLE OR ITEMENABLED OR HIGHCOMP, 0,
+             [0, 1, RP_JAM2, 0, 1, topaz80, &#x27;Draft&#x27;, NIL]:intuitext,
+             NIL, NIL, NIL, NIL]:menuitem
+
+  -&gt; E-Note: linking needs to be done in reverse order to layout
+  -&gt; Item 3, Quit
+  menu1:=[NIL, 0, 3*MENHEIGHT, MENWIDTH, MENHEIGHT,
+          ITEMTEXT OR MENUTOGGLE OR ITEMENABLED OR HIGHCOMP, 0,
+          [0, 1, RP_JAM2, 0, 1, topaz80, &#x27;Quit&#x27;, NIL]:intuitext,
+          NIL, NIL, NIL, NIL]:menuitem
+  -&gt; Item 2, Print
+  menu1:=[menu1, 0, 2*MENHEIGHT, MENWIDTH, MENHEIGHT,
+          ITEMTEXT OR MENUTOGGLE OR ITEMENABLED OR HIGHCOMP, 0,
+          [0, 1, RP_JAM2, 0, 1, topaz80, &#x27;Print »&#x27;, NIL]:intuitext,
+          NIL, NIL, submenu1, NIL]:menuitem
+  -&gt; Item 1, Save
+  menu1:=[menu1, 0, MENHEIGHT, MENWIDTH, MENHEIGHT,
+          ITEMTEXT OR MENUTOGGLE OR ITEMENABLED OR HIGHCOMP, 0,
+          [0, 1, RP_JAM2, 0, 1, topaz80, &#x27;Save&#x27;, NIL]:intuitext,
+          NIL, NIL, NIL, NIL]:menuitem
+  -&gt; Item 0, Open...
+  menu1:=[menu1, 0, 0, MENWIDTH, MENHEIGHT,
+          ITEMTEXT OR MENUTOGGLE OR ITEMENABLED OR HIGHCOMP, 0,
+          [0, 1, RP_JAM2, 0, 1, topaz80, &#x27;Open...&#x27;, NIL]:intuitext,
+          NIL, NIL, NIL, NIL]:menuitem
+
+  menutitle:=&#x27;Project&#x27;
+
+  -&gt; E-Note: use NEW, or remember to initialise last elements to 0
+  menustrip:=[NIL, left, 0,
+              TextLength(win.wscreen.rastport, menutitle, StrLen(menutitle))+8,
+              MENHEIGHT, MENUENABLED, menutitle, menu1, 0, 0, 0, 0]:menu
+
+  left:=left+menustrip.width
+
+  SetMenuStrip(win, menustrip)
+
+  handleWindow(win, menustrip)
+
+  ClearMenuStrip(win)
+
+ -&gt; E-Note: exit and clean up via handler
+EXCEPT DO
+  IF win THEN CloseWindow(win)
+  -&gt; E-Note: we can print a minimal error message
+  SELECT exception
+  CASE ERR_WIN;  WriteF(&#x27;Error: Failed to open window\n&#x27;)
+  CASE ERR_MENU; WriteF(&#x27;Error: Failed to attach menu\n&#x27;)
+  ENDSELECT
+ENDPROC
+
+-&gt; E-Note: used to convert an INT to unsigned
+#define UNSIGNED(x) ((x) AND $FFFF)
+
+-&gt; Wait for the user to select the close gadget.
+-&gt; E-Note: E version is simpler, since we use WaitIMessage
+PROC handleWindow(win, menuStrip)
+  DEF done=FALSE, class, menuNumber, menuNum, itemNum, subNum,
+      item:PTR TO menuitem
+  REPEAT
+    class:=WaitIMessage(win)
+    SELECT class
+    CASE IDCMP_CLOSEWINDOW
+      done:=TRUE
+    CASE IDCMP_MENUPICK
+      -&gt; E-Note: menuNumber is an unsigned INT
+      menuNumber:=UNSIGNED(MsgCode())
+      WHILE (menuNumber&lt;&gt;MENUNULL) AND (done=FALSE)
+        item:=ItemAddress(menuStrip, menuNumber)
+
+        -&gt; Process this item
+        -&gt; If there were no sub-items attached to that item,
+        -&gt; SubNumber will equal NOSUB.
+        menuNum:=MENUNUM(menuNumber)
+        itemNum:=ITEMNUM(menuNumber)
+        subNum:=SUBNUM(menuNumber)
+
+        -&gt; Note that we are printing all values, even things like NOMENU,
+        -&gt; NOITEM and NOSUB.  An application should check for these cases.
+        WriteF(&#x27;IDCMP_MENUPICK: menu \d, item \d, sub \d\n&#x27;,
+               menuNum, itemNum, subNum)
+
+        -&gt; This one is the quit menu selection...
+        -&gt; stop if we get it, and don&#x27;t process any more.
+        -&gt; E-Note: the C version is wrong! QUIT is itemNum = 3
+        IF (menuNum=0) AND (itemNum=3) THEN done:=TRUE
+
+        -&gt; E-Note: menuNumber is an unsigned INT
+        menuNumber:=UNSIGNED(item.nextselect)
+      ENDWHILE
+    ENDSELECT
+  UNTIL done
+ENDPROC
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

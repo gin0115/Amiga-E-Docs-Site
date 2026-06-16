@@ -1,0 +1,225 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>cosmic_deluxe.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-portable.html">PortablE</a> &rsaquo; cosmic_deluxe.e</div><h1>File: <code>cosmic_deluxe.e</code></h1><p class="meta">199 lines · project <a href="../examples/pkg-portable.html"><code>PortablE</code></a></p><p class="pathctx">PortablE/PortablE/Examples/Amiga/cosmic/cosmic_deluxe.e</p><p class="prose">An ECX example converted to PortablE. Included with permission from Leif.</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/modeid.html">graphics/modeid</a></li><li><a href="../modules/intuition.html">intuition</a></li><li><a href="../modules/intuitionbase.html">intuition/intuitionbase</a></li><li><a href="../modules/tagitem.html">utility/tagitem</a></li></ul></div><h2>Source</h2><pre class="code">/* An ECX example converted to PortablE.
+   Included with permission from Leif. */
+
+/*
+**    cosmic_deluxe.e - Generates cosmic flame fractals :-)
+**
+**    Based on cosmic.e, this version uses more colours, more detail
+**    and is alot slower :) Also removed accesses to customchips.
+**    Copyright © 2004 Leif Salomonsson.
+**
+**    Copyright © 1996 by Chris Sumner
+**
+**
+**    Cosmic flame fractal code derived from FracBlank source code
+**    Copyright © 1991-1992 by Olaf `Olsen&#x27; Barthel
+**
+**    Cosmic flame fractal code derived from xlock source code
+**    Copyright © 1988-1991 by Patrick J. Naughton.
+**
+**   Permission to use, copy, modify, and distribute this software and its
+**   documentation for any purpose and without fee is hereby granted,
+**   provided that the above copyright notice appear in all copies and that
+**   both that copyright notice and this permission notice appear in
+**   supporting documentation.
+*/
+
+/* MorphOS PPC version by LS 2004, uses REAL so needs ECX */
+
+OPT POINTER
+OPT PREPROCESS
+OPT STACK=700000
+
+MODULE &#x27;*macros&#x27;
+
+MODULE &#x27;graphics/modeid&#x27;
+MODULE &#x27;intuition/intuitionbase&#x27;,&#x27;intuition/intuition&#x27;,&#x27;intuition/screens&#x27;
+MODULE &#x27;utility/tagitem&#x27;
+MODULE &#x27;intuition&#x27;, &#x27;graphics&#x27;, &#x27;exec&#x27;, &#x27;dos&#x27;
+
+RAISE &quot;^C&quot; IF CtrlC()=TRUE
+RAISE &quot;STCK&quot; IF FreeStack() &lt;= 4000
+
+CONST MAXFLAMELEVEL   = 25
+CONST MAXTOTALPOINTS  = 200000
+CONST FLAME_SIZE      = 50
+CONST WIDTH = 800, HEIGHT = 600, NUMCOLOURS = 256
+
+
+DEF flame[FLAME_SIZE]:ARRAY OF FLOAT
+DEF points,alternate,count,colr=1
+
+DEF win:PTR TO window
+DEF scr:PTR TO screen
+DEF rp:PTR TO rastport
+
+DEF cols:ARRAY OF VALUE -&gt; used to be static
+
+PROC main()
+  openiface()
+  LOOP
+    cosmic()
+    IF LeftMouse(win) THEN RETURN
+  ENDLOOP
+FINALLY
+  closeiface()
+  ExceptionReport(&#x27;main()&#x27;)
+ENDPROC
+
+PROC cosmic()
+DEF ib:PTR TO intuitionbase
+DEF x,r
+
+  ib:=intuitionbase !!PTR!!PTR TO intuitionbase
+  r:=ib.micros XOR ib.seconds OR %1
+  Rnd(r)
+
+
+  SetAPen(rp,colr++)
+  IF colr = NUMCOLOURS THEN colr:=1
+
+  x:=0
+  WHILE x&lt;FLAME_SIZE
+    flame[x]:=Rnd(32768)/16384.0-1.0*0.9
+    x++
+  ENDWHILE
+
+  alternate:= (r AND 4) = 0
+  points:=0
+  recurse(0.0,0.0,0)
+
+
+  IF (count++ AND 7)=NIL
+    Delay(120)
+    SetRast(rp,0)
+    colr:=Rnd(NUMCOLOURS-2)+1
+  ENDIF
+
+ENDPROC
+
+PROC recurse(x:FLOAT,y:FLOAT,level)
+   DEF f:ARRAY OF FLOAT
+   DEF nx:FLOAT,ny:FLOAT
+
+  FreeStack()
+
+  f:=flame
+
+
+  IF level&gt;=MAXFLAMELEVEL
+    IF (points++)&gt;MAXTOTALPOINTS THEN RETURN FALSE
+    IF Fabs(x) &lt; 1.0
+       IF Fabs(y) &lt; 1.0
+         WritePixel(rp,x+1.0*(WIDTH/2)!!LONG,y+1.0*(HEIGHT/2)!!LONG)
+       ENDIF
+    ENDIF
+  ELSE
+
+    nx:=(f[0]*x)+(f[1]*y)+(f[2]*f[3])
+    ny:=(f[4]*x)+(f[5]*y)+(f[6]*f[7])
+
+    IF alternate
+      nx:=Fsin(nx)
+      ny:=Fcos(ny)
+    ENDIF
+
+    IF recurse(nx,ny,level+1)=FALSE THEN RETURN FALSE
+
+
+    nx:=(f[ 8]*x)+(f[ 9]*y)+(f[10]*f[11])
+    ny:=(f[12]*x)+(f[13]*y)+(f[14]*f[15])
+
+    IF alternate
+      nx:=Fcos(nx)
+      ny:=Fsin(ny)
+    ENDIF
+
+    IF recurse(nx,ny,level+1)=FALSE THEN RETURN FALSE
+
+
+
+  ENDIF
+ENDPROC TRUE
+
+
+
+-&gt;----------------------------------------------------------------------------&lt;-
+
+PROC openiface()
+   DEF tags:ARRAY OF tagitem
+   DEF a, ib:PTR TO intuitionbase
+  /* generate random colourable */
+  ib := intuitionbase !!PTR!!PTR TO intuitionbase
+  Rnd(-(ib.micros XOR ib.seconds OR %1))
+  NEW cols[1+(NUMCOLOURS*3)+1]
+  PutInt(cols !!VALUE!!PTR TO INT, NUMCOLOURS)
+  PutInt(cols+2 !!VALUE!!PTR TO INT, 0)
+  FOR a := 4 TO NUMCOLOURS*3 DO cols[a] := Shl(Rnd(200)+50,24)
+
+  TagInit(tags)
+  Tag(SA_WIDTH,WIDTH)
+  Tag(SA_HEIGHT,HEIGHT)
+  Tag(SA_DEPTH,8)
+  Tag(SA_TYPE,CUSTOMSCREEN)
+  Tag(SA_DISPLAYID,HIRESLACE_KEY)
+  Tag(SA_SHOWTITLE,FALSE)
+  Tag(SA_OVERSCAN,OSCAN_STANDARD)
+  Tag(SA_COLORS32,cols)
+  Tag(SA_INTERLEAVED,TRUE)
+  TagDone
+
+  scr:=OpenScreenTagList(NIL,tags)
+  IF scr=NIL THEN Raise(&quot;scrn&quot;)
+
+  TagInit(tags)
+  Tag(WA_WIDTH,WIDTH)
+  Tag(WA_HEIGHT,HEIGHT)
+  Tag(WA_CLOSEGADGET,FALSE)
+  Tag(WA_DRAGBAR,FALSE)
+  Tag(WA_DEPTHGADGET,FALSE)
+  Tag(WA_NOCAREREFRESH,TRUE)
+  Tag(WA_BORDERLESS,TRUE)
+  Tag(WA_BACKDROP,TRUE)
+  Tag(WA_CUSTOMSCREEN,scr)
+  Tag(WA_RMBTRAP,TRUE)
+  TagDone
+
+  win:=OpenWindowTagList(NIL,tags)
+  IF win=NIL THEN Raise(&quot;wndw&quot;)
+
+  rp:=win.rport
+  SetStdRast(rp)
+
+ENDPROC
+
+PROC closeiface()
+  CloseWindow(win)
+  CloseScreen(scr)
+ENDPROC
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

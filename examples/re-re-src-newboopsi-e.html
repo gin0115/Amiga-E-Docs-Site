@@ -1,0 +1,287 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>newboopsi.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-re.html">RE</a> &rsaquo; newboopsi.e</div><h1>File: <code>newboopsi.e</code></h1><p class="meta">261 lines · project <a href="../examples/pkg-re.html"><code>RE</code></a></p><p class="pathctx">RE/RE/Src/newboopsi.e</p><p class="prose">some basic procedures to handle BOOPSI-like objects ** procedures are called putting <a href="../modules/args.html">args</a> on <a href="../modules/stack.html">stack</a> instead of regs ** a different method af accessing <a href="../modules/classes.html">classes</a>&#x27; attributes (AKA OBJECT&#x27;s members) is used ** without using <a href="../modules/classusr.html#const-om-get">OM_GET</a> ** Created by Marco Antoniazzi</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/memory.html">exec/memory</a></li></ul></div><h2>Source</h2><pre class="code">/* some basic procedures to handle BOOPSI-like objects
+** procedures are called putting args on stack instead of regs
+** a different method af accessing classes&#x27; attributes (AKA OBJECT&#x27;s members) is used
+** without using OM_GET
+** Created by Marco Antoniazzi
+*/
+MODULE
+       &#x27;exec/memory&#x27;,
+       &#x27;utility&#x27;,
+       &#x27;utility/tagitem&#x27;,
+       &#x27;utility/hooks&#x27;
+
+-&gt;PROC objects
+OBJECT mlh
+ 
+      head:PTR TO MinNode
+      tail:PTR TO MinNode
+      tailpred:PTR TO MinNode
+ENDOBJECT
+
+OBJECT sclass
+  dispatcher:Hook
+  reserved:LONG
+  super:PTR TO sclass
+  id:LONG
+  userdata:LONG
+  subclasscount:LONG
+  objectcount:LONG
+  flags:LONG
+ENDOBJECT
+
+OBJECT object
+  succ
+  pred
+  class:PTR TO sclass
+ENDOBJECT
+
+OBJECT basedata
+  userdata
+ENDOBJECT
+
+OBJECT baseobject
+  obj:object
+  data:basedata
+ENDOBJECT
+
+OBJECT windata
+  window
+ENDOBJECT
+
+OBJECT winobject
+  obj:baseobject
+  data:windata
+ENDOBJECT
+
+OBJECT msg
+  methodid:LONG
+ENDOBJECT
+
+OBJECT opnew
+  methodid:LONG
+  datasize:LONG
+  attrlist:PTR TO TagItem
+ENDOBJECT
+
+-&gt; ENDPROC
+
+ENUM ERR_NONE,ERR_UTIL
+
+ENUM A_FirstTag=$90007000,
+     A_UserData,
+     A_Window
+     
+ENUM OM_NEW=$101,
+     OM_DISPOSE,
+     M_Window_Open=$90007002
+
+DEF rclass:PTR TO sclass,bclass:PTR TO sclass,wclass:PTR TO sclass
+
+#define V_UnrecognizedMethod   $49893131
+
+#define basedata(obj)   obj::baseobject.data
+#define windata(obj)    obj::winobject.data
+-&gt;#define windata(obj)    basedata(obj).data
+
+#define CLRMEM            MEMF_PUBLIC OR MEMF_CLEAR
+
+
+/* call using stack instead of regs*/
+PROC callHookA(h,o,msg)
+ENDPROC h::Hook.Entry(h, o, msg)
+
+#define installhook(h,f) h::Hook.Entry := f
+
+
+PROC main() HANDLE
+  DEF bo:PTR TO object,
+      wi:PTR TO object
+    
+  IF (UtilityBase:=OpenLibrary(&#x27;utility.library&#x27;,0))=0 THEN Raise(ERR_UTIL)
+  initclasses()
+  bo:=newObjectA(bclass,0,SIZEOF baseobject,[A_UserData,1,0])
+  WriteF(&#x27;bud \d\n&#x27;,basedata(bo).userdata)
+  wi:=newObjectA(wclass,0,SIZEOF winobject,[A_Window,2,0])
+  WriteF(&#x27;wwi \d\n&#x27;,windata(wi).window)
+  exeMethodA(wi,[M_Window_Open,0,0])
+EXCEPT DO
+  disposeObject(wi)
+  disposeObject(bo)
+  freeclasses()
+  CloseLibrary(UtilityBase)
+ENDPROC
+
+PROC initclasses()
+  rclass:=makeClass(0,0,0,{dispatch_rclass})
+  bclass:=makeClass(0,0,rclass,{dispatch_bclass})
+  wclass:=makeClass(0,0,bclass,{dispatch_wclass})
+ENDPROC
+
+PROC freeclasses()
+  freeClass(wclass)
+  freeClass(bclass)
+  freeClass(rclass)
+ENDPROC
+
+
+
+PROC makeClass(classID,superclassID,superPTR,dispatcher)
+  DEF cl:PTR TO sclass
+  
+  IF cl:=AllocVec(SIZEOF sclass,CLRMEM)
+    cl.super:=superPTR  -&gt; valid also if superPTR=0 !
+    installhook(cl.dispatcher,dispatcher)
+  ENDIF
+ENDPROC cl
+
+PROC freeClass(cl)
+  IF cl THEN FreeVec(cl)
+ENDPROC
+
+PROC exeMethodA(o:PTR TO object,msg)
+  IF o AND msg
+    RETURN callHookA(o.class.dispatcher,o,msg)
+  ENDIF
+ENDPROC 0
+
+PROC exeSuperMethodA(cl:PTR TO sclass,o,msg)
+  IF cl AND o AND msg
+    RETURN callHookA(cl.super.dispatcher,o,msg)
+  ENDIF
+ENDPROC 0
+
+PROC newObjectA(class:PTR TO sclass,classID,datasize,taglist)
+  IF class THEN RETURN callHookA(class.dispatcher,class,[OM_NEW,datasize,taglist])
+ENDPROC
+
+PROC disposeObject(o)
+  exeMethodA(o,[OM_DISPOSE])
+ENDPROC
+
+
+
+-&gt; rootclass
+PROC dispatch_rclass(cl,o,msg:PTR TO msg)
+PrintF(&#x27;root_disp\n&#x27;)
+  SELECT msg.methodid
+    CASE OM_NEW     ; RETURN new_rclass(cl,o,msg)
+    CASE OM_DISPOSE ; RETURN dispose_rclass(cl,o,msg)
+    DEFAULT         ; RETURN V_UnrecognizedMethod
+  ENDSELECT
+ENDPROC
+
+PROC new_rclass(cl,o,msg:PTR TO msg)
+  DEF obj:PTR TO object,
+      tags:PTR TO TagItem,
+      tag:PTR TO TagItem
+
+PrintF(&#x27;root_new\n&#x27;)
+  IF obj:=AllocVec(msg::opnew.datasize,CLRMEM)
+    obj.class:=o
+    /* parse initial taglist */
+    tags:=msg::opnew.attrlist
+    WHILE tag:=NextTagItem({tags})
+      SELECT tag.Tag
+    -&gt;      CASE A_UserData ; basedata(obj).userdata:=tag.data
+      ENDSELECT
+    ENDWHILE
+  ENDIF
+ENDPROC obj
+
+PROC dispose_rclass(cl,o,msg)
+PrintF(&#x27;root_end\n&#x27;)
+  FreeVec(o)
+ENDPROC
+
+-&gt; baseclass
+PROC dispatch_bclass(cl,o,msg:PTR TO msg)
+  
+PrintF(&#x27;  base_disp\n&#x27;)
+  SELECT msg.methodid
+    CASE OM_NEW ; RETURN new_bclass(cl,o,msg)
+-&gt;    CASE OM_DISPOSE ; RETURN dispose_bclass(cl,o,msg)
+    DEFAULT ; RETURN exeSuperMethodA(cl,o,msg)
+  ENDSELECT
+ENDPROC
+
+PROC new_bclass(cl,o,msg:PTR TO msg)
+  DEF obj:PTR TO object,
+      tags:PTR TO TagItem,
+      tag:PTR TO TagItem
+  
+PrintF(&#x27;  base_new\n&#x27;)
+  IF obj:=exeSuperMethodA(cl,o,msg)
+    /* parse initial taglist */
+    tags:=msg::opnew.attrlist
+    WHILE tag:=NextTagItem({tags})
+      SELECT tag.Tag
+        CASE A_UserData ; basedata(obj).userdata:=tag.Data
+      ENDSELECT
+    ENDWHILE
+  ENDIF
+ENDPROC obj
+
+/* nothing to free and object is freed by rootclass
+PROC dispose_bclass(cl,o,msg)
+ENDPROC
+*/
+
+
+-&gt; windowclass
+PROC dispatch_wclass(cl,o,msg:PTR TO msg)
+  
+PrintF(&#x27;    win_disp\n&#x27;)
+  SELECT msg.methodid
+    CASE OM_NEW         ; RETURN new_wclass(cl,o,msg)
+    CASE M_Window_Open  ; RETURN open_wclass(cl,o,msg)
+    DEFAULT             ; RETURN exeSuperMethodA(cl,o,msg)
+  ENDSELECT
+ENDPROC
+
+PROC new_wclass(cl,o,msg:PTR TO msg)
+  DEF obj:PTR TO object,
+      tags:PTR TO TagItem,
+      tag:PTR TO TagItem
+  
+PrintF(&#x27;    win_new\n&#x27;)
+  IF obj:=exeSuperMethodA(cl,o,msg)
+    /* parse initial taglist */
+    tags:=msg::opnew.attrlist
+    WHILE tag:=NextTagItem({tags})
+      SELECT tag.Tag
+        CASE A_Window ; windata(obj).window:=tag.Data
+      ENDSELECT
+    ENDWHILE
+  ENDIF
+ENDPROC obj
+
+PROC open_wclass(cl,o,msg)
+  WriteF(&#x27;    open window\n&#x27;)
+ENDPROC
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

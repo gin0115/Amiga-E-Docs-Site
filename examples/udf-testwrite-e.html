@@ -1,0 +1,187 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>testwrite.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-udf.html">udf</a> &rsaquo; testwrite.e</div><h1>File: <code>testwrite.e</code></h1><p class="meta">161 lines · project <a href="../examples/pkg-udf.html"><code>udf</code></a></p><p class="pathctx">udf/testwrite.e</p><p class="prose">************************************************************************** ** ** ** Simple example of a UDF archive ** ** ©2000 M&amp;F Software Corporation ** ** All Right Reserved ** ** ** ** AmigaE 3.3 ** ** ** ** $VER: UDF example 1.0.0 (27.01.00) ** ** ** *******************************************</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/udf.html">m&amp;f/udf</a></li></ul></div><h2>Source</h2><pre class="code">/***************************************************************************
+**                                                                        **
+**  Simple example of a UDF archive                                       **
+**  ©2000 M&amp;F Software Corporation                                        **
+**  All Right Reserved                                                    **
+**                                                                        **
+**  AmigaE 3.3                                                            **
+**                                                                        **
+**  $VER: UDF example 1.0.0 (27.01.00)                                    **
+**                                                                        **
+***************************************************************************/
+
+/*
+
+We are going to create this tree of chunks:
+
++------------+
+|&#x27;level 1&#x27;   |
+|2 metachunks|
++------------+
++------------+
++------------+
+      |
+      |
++------------+   +------------+   +------------+   +------------+
+|&#x27;level 2a&#x27;  |   |&#x27;level 2b&#x27;  |   |&#x27;level 2c&#x27;  |   |&#x27;level 2d&#x27;  |
+|0 metachunks|-- |0 metachunks|---|1 metachunk |---|0 metachunks|
++------------+   +------------+   +------------+   +------------+
+      |                           +------------+          |
+      |                                                   | 
++------------+                                     +------------+   +------------+
+|&#x27;level 3a1&#x27; |                                     |&#x27;level 3d1  |   |&#x27;level 3d2&#x27; |
+|0 metachunks|                                     |2 metachunks|---|0 metachunks|
++------------+                                     +------------+   +------------+
+                                                   +------------+
+                                                   +------------+
+
+More complex trees can be easily created.
+
+No error checking is done.
+
+*/
+
+OPT OSVERSION=37
+OPT PREPROCESS
+OPT REG=3
+
+MODULE  &#x27;M&amp;F/udf&#x27;
+
+#define filename &#x27;RAM:archive1.udf&#x27;
+
+PROC main() HANDLE
+  
+  DEF lib=NIL:PTR TO udf, len=0, err=0
+  DEF ck=NIL:PTR TO ck
+  
+  NEW lib.new(filename)
+
+  IF lib=NIL THEN Raise(&quot;ERR&quot;)
+
+  /* First chunk of the tree. You cannot add other chunks 
+     on this level as they won&#x27;t be reacheable. */
+     
+  ck:= lib.pushlevel([
+    CK_ID, ID_TEXT,
+    CK_SIZE, SIZE_UNKNOWN,
+    -&gt;CK_MASK, XPK_COMPRESSION_MODE,
+    CK_XPK_METHOD, &#x27;FEAL&#x27;,
+    CK_XPK_MODE, 60,
+    CK_XPK_PASSWORD, TRUE,
+    0])
+  len, err := ck.store(&#x27;level 1&#x27;)
+  
+  /* Some optional metachunks for the first chunk */
+  ck.addmeta([
+    CK_ID, ID_TEXT,
+    CK_NUMBER, 1,
+    CK_SIZE, 12,
+    CK_BUFFER, &#x27;A metachunk&#x27;,
+    0])
+  
+  ck.addmeta([
+    CK_ID, ID_TEXT,
+    CK_NUMBER, 2,
+    CK_SIZE, 17,
+    CK_BUFFER, &#x27;Another metachunk&#x27;,
+    0])
+
+  /* Creating second level */
+  ck := lib.pushlevel([
+    CK_ID, ID_TEXT,0])
+  ck.store(&#x27;Level 2a&#x27;)
+
+  /* Creating thrird level */
+  ck := lib.pushlevel([
+    CK_ID, ID_TEXT,0])
+  ck.store(&#x27;Level 3&#x27;)
+
+  lib.poplevel()
+  
+  /* Adding new chunks to the second level again */
+  ck := lib.pushchunk([
+    CK_ID, ID_TEXT,
+    0])
+  ck.store(&#x27;Level 2b&#x27;)
+
+  ck := lib.pushchunk([
+    CK_ID, ID_TEXT,0])
+  ck.store(&#x27;Level 2c&#x27;)
+  
+  ck.addmeta([
+    CK_ID, ID_TEXT,
+    CK_NUMBER, 1,
+    CK_BUFFER, &#x27;A metachunk for chunk 2c&#x27;,
+    CK_SIZE, STRLEN+1,
+    0])
+
+  ck := lib.pushchunk([
+    CK_ID, ID_TEXT,0])
+  ck.store(&#x27;Level 2d&#x27;)
+
+  /* Adding a sub level to &#x27;level 2d&#x27; chunk */
+  ck := lib.pushlevel([
+    CK_ID, ID_TEXT,0])
+  ck.store(&#x27;Level 3d1&#x27;)
+  
+  ck.addmeta([
+    CK_ID, ID_TEXT,
+    CK_NUMBER, 1,
+    CK_BUFFER, &#x27;Metachunk 3d1-1&#x27;,
+    CK_SIZE, STRLEN+1,
+    0])
+
+  ck.addmeta([
+    CK_ID, ID_TEXT,
+    CK_NUMBER, 2,
+    CK_BUFFER, &#x27;Metachunk 3d1-2&#x27;,
+    CK_SIZE, STRLEN+1,
+    0])
+
+  ck := lib.pushchunk([
+    CK_ID, ID_TEXT, 0])
+  ck.store(&#x27;Level 3d2&#x27;)
+
+  lib.poplevel()
+
+  lib.poplevel()
+  lib.poplevel()
+  
+  lib.save()
+  
+  END lib
+
+EXCEPT DO
+
+  IF exception
+    PrintF(&#x27;An error occured\n&#x27;)
+  ENDIF
+
+ENDPROC
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

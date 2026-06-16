@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Joey.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-aepd18.html">AEPD18</a> &rsaquo; Joey.e</div><h1>File: <code>Joey.e</code></h1><p class="meta">94 lines · project <a href="../examples/pkg-aepd18.html"><code>AEPD18</code></a></p><p class="pathctx">AEPD18/EPD18/Amiga_E-Programme/Joey/Joey.e</p><p class="prose">Joey.e - A Deiconner <a href="../modules/utility.html">utility</a></p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/dos.html">dos/dos</a></li></ul></div><h2>Source</h2><pre class="code">/* Joey.e   -   A Deiconner utility */
+/* Version 1.0 - The first reasonable one */
+
+MODULE &#x27;dos/dos&#x27;
+
+DEF path[100]:STRING
+
+
+PROC showtitle()
+   WriteF(&#x27;Joey V1.0 © SoupySoft by Paul Stevenson\n&#x27;)
+ENDPROC
+
+/* WE START HERE... */
+
+PROC main()
+   DEF lock,fib:fileinfoblock,pathchar[1]:STRING
+
+   showtitle()
+   IF StrCmp(arg,&#x27;&#x27;,ALL)
+      WriteF(&#x27;Usage is :  Joey &lt;dir&gt;\n&#x27;)
+   ELSE
+   IF lock:=Lock(arg,ACCESS_READ)
+      IF Examine(lock,fib)
+         IF fib.direntrytype&gt;0
+
+/* We have a valid user input (directory as argument). We need to do a
+   little work to make things easier later. If the argument ends in &#x27;:&#x27;
+   then we are okay (the input is df0: or something) if not, we assume
+   the input is something like df0:t and if this is the case, we need to
+   append a &#x27;/&#x27; to the argument. */
+
+            StrAdd(path,arg,ALL)
+            RightStr(pathchar,path,1)
+            IF StrCmp(pathchar,&#x27;:&#x27;,1)=NIL THEN StrAdd(path,&#x27;/&#x27;,1)
+            dodir(lock)
+         ELSE
+            WriteF(&#x27;\s is not a directory\n&#x27;,arg);
+         ENDIF
+      ELSE
+         WriteF(&#x27;Error: could not examine \s\n&#x27;,arg);
+      ENDIF
+      UnLock(lock)
+   ELSE
+         WriteF(&#x27;\s not found\n&#x27;,arg);
+   ENDIF
+   ENDIF
+ENDPROC
+
+
+/* dodir function:
+   This function takes as its argument a lock on a directory, it then
+   examines all the entries in the directory, deleting each .info file,
+   and calling itself whenever it comes to another (sub)directory. In
+   this way, all directories are recusively checked. */
+
+
+PROC dodir(lok)
+   DEF info:fileinfoblock,delcheck,oldpath[100]:STRING,check[6]:STRING,
+      filepath[100]:STRING,oldlok
+
+   Examine(lok,info)
+   StrCopy(oldpath,path,ALL)
+   WHILE ExNext(lok,info)
+      IF info.direntrytype&gt;0
+         oldlok := lok
+         StrAdd(path,info.filename,ALL)
+         lok := Lock(path,ACCESS_READ)
+         StrAdd(path,&#x27;/&#x27;,1)
+         IF lok = 0 THEN WriteF(&#x27;Could not lock \s\n&#x27;,path)
+         dodir(lok)
+         IF lok THEN UnLock(lok)
+         StrCopy(path,oldpath,ALL)
+         lok := oldlok
+      ELSE
+         StrCopy(filepath,info.filename,ALL)
+         RightStr(check,filepath,5)
+         IF StrCmp(check,&#x27;.info&#x27;,5)
+            StrCopy(filepath,path,ALL)
+            StrAdd(filepath,info.filename,ALL)
+            delcheck := DeleteFile(filepath)
+            IF delcheck = NIL
+               WriteF(&#x27;\s could not be deleted.\n&#x27;,filepath)
+            ELSE
+               WriteF(&#x27;Deleted \s\n&#x27;,filepath)
+            ENDIF
+         ENDIF
+      ENDIF
+   ENDWHILE
+   StrCopy(path,oldpath,ALL)
+ENDPROC
+
+
+
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

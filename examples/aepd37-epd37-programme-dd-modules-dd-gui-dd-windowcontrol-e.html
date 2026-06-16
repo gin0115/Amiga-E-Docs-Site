@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>dd_windowcontrol.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-aepd37.html">AEPD37</a> &rsaquo; dd_windowcontrol.e</div><h1>File: <code>dd_windowcontrol.e</code></h1><p class="meta">110 lines · project <a href="../examples/pkg-aepd37.html"><code>AEPD37</code></a></p><p class="pathctx">AEPD37/EPD37/Programme/dd_Modules/dd_gui/dd_windowcontrol.e</p><p class="prose"><a href="../modules/dd-windowcontrol.html">dd_windowcontrol</a>.e - <a href="../modules/window.html">window</a> control <a href="../modules/class.html">class</a>  Copyrights © 1995 by Leon `LikeWise&#x27; Woestenberg, Digital Disturbance. All Rights Reserved  FOLDER opts</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/intuition.html">intuition/intuition</a></li></ul></div><h2>Source</h2><pre class="code">-&gt;
+-&gt; dd_windowcontrol.e - window control class
+-&gt;
+-&gt; Copyrights © 1995 by Leon `LikeWise&#x27; Woestenberg, Digital Disturbance.
+-&gt; All Rights Reserved
+-&gt;
+-&gt; FOLDER opts
+OPT MODULE
+-&gt; ENDFOLDER
+-&gt; FOLDER modules
+MODULE &#x27;intuition/intuition&#x27;
+MODULE &#x27;*dd_busypointer&#x27;
+-&gt; ENDFOLDER
+-&gt; FOLDER classes
+-&gt; window control class definition
+EXPORT OBJECT dd_windowcontrol
+  PRIVATE
+  window:PTR TO window
+  idcmpflags:LONG
+  disablecount:LONG
+  blockrequester:PTR TO requester
+  busypointer:PTR TO busypointer
+ENDOBJECT
+-&gt; ENDFOLDER
+
+-&gt; FOLDER new
+-&gt; constructor
+EXPORT PROC new(window=NIL) OF dd_windowcontrol
+  -&gt; Remember the window this object must act on.
+  self.window:=window
+  -&gt; Counter to keep the number of nested disable calls.
+  self.disablecount:=0
+  -&gt; Get ourselves a busypointer object.
+  NEW self.busypointer.new(self.window)
+ENDPROC
+-&gt; ENDFOLDER
+-&gt; FOLDER end
+-&gt; destructor
+EXPORT PROC end() OF dd_windowcontrol
+  -&gt; If the program exits prematurely, we call enable here for each
+  -&gt; outstanding disable call. This should never occur (!).
+  WHILE self.disablecount DO self.enable()
+  END self.busypointer
+ENDPROC
+-&gt; ENDFOLDER
+-&gt; FOLDER disable
+EXPORT PROC disable(disableidcmpflags=IDCMP_REFRESHWINDOW) OF dd_windowcontrol
+  -&gt; Only act if this is a valid instance. This makes it safe to invoke
+  -&gt; this method on a NIL pointer.
+  IF self
+
+    -&gt; valid window?
+    IF self.window
+
+      -&gt; We keep a disable count, to allow nested calls.
+      self.disablecount:=self.disablecount+1
+      -&gt; We only have to act if the window first enters busy state, i.e. when
+      -&gt; the count becomes 1. If the count was higher, the window already is
+      -&gt; in disabled state, and we just skip.
+      IF self.disablecount=1
+
+        -&gt; Remember the IDCMP flags of the enabled window.
+        self.idcmpflags:=self.window.idcmpflags
+        -&gt; Now clear some IDCMP flags.
+        ModifyIDCMP(self.window,disableidcmpflags AND self.idcmpflags)
+
+        -&gt; Attach an invisible requester, that blocks user input.
+        InitRequester(NEW self.blockrequester)
+        Request(self.blockrequester,self.window)
+
+        -&gt; Put the busypointer object into busy state.
+        self.busypointer.busy()
+      ENDIF
+    ENDIF
+  ENDIF
+ENDPROC
+-&gt; ENDFOLDERER
+-&gt; FOLDER enable
+EXPORT PROC enable() OF dd_windowcontrol
+
+  -&gt; Only act if this is a valid instance. This makes it safe to invoke
+  -&gt; this method on a NIL pointer.
+  IF self
+
+    -&gt; valid window?
+    IF self.window
+
+      -&gt; We decrease the disable count by one. If this window is going into
+      -&gt; disable state now, we act. Otherwise, the window still has a nested
+      -&gt; disable call pending.
+      self.disablecount:=self.disablecount-1
+      IF self.disablecount=0
+
+        -&gt; Get busypointer object out of busy state.
+        self.busypointer.unbusy()
+
+        -&gt; We detach the block requester.
+        EndRequest(self.blockrequester,self.window)
+        END self.blockrequester
+
+        -&gt; Restore the IDCMP flags to those prior to disable.
+        ModifyIDCMP(self.window,self.idcmpflags)
+
+      ENDIF
+    ENDIF
+  ENDIF
+ENDPROC
+-&gt; ENDFOLDER
+
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

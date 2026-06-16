@@ -1,0 +1,129 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Brush2E.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-estuff.html">Estuff</a> &rsaquo; Brush2E.e</div><h1>File: <code>Brush2E.e</code></h1><p class="meta">103 lines · project <a href="../examples/pkg-estuff.html"><code>Estuff</code></a></p><p class="pathctx">Estuff/e-stuff/la salsa/Brush2E.e</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/intuition.html">intuition/intuition</a></li></ul></div><h2>Source</h2><pre class="code">MODULE  &#x27;intuition/intuition&#x27;, &#x27;intuition/screens&#x27;,
+&#x27;libraries/iff&#x27;, &#x27;iff&#x27;,
+&#x27;tools/ctype&#x27;
+
+PROC main()
+  DEF sn:PTR TO screen, wn:PTR TO window
+  DEF iff, bmhd:PTR TO bmh
+  DEF ct[256]:ARRAY OF INT
+  DEF rdargs, myargs[4]:LIST
+  DEF currentplane, x, y, xx, i, number, pixel, pass=NIL
+  DEF str[100]:STRING, temp[100]:STRING
+  DEF fh, name[100]:STRING
+  IF (iffbase:=OpenLibrary(&#x27;iff.library&#x27;, 22))
+    myargs[0]:=NIL
+    myargs[1]:=NIL
+    myargs[2]:=NIL
+    IF (rdargs:=ReadArgs(&#x27;PICTURE/A,FILE/A,COLOURS/S&#x27;,myargs,0))
+      StrCopy(name,myargs[0])
+      StringF(name,&#x27;\s&#x27;, FilePart(myargs[0]))
+      LowerStr(name)
+      IF (iff:=IfFL_OpenIFF(myargs[0],IFFL_MODE_READ))
+        bmhd:=IfFL_GetBMHD(iff)
+        PrintF(&#x27;\s\t=\t\d x \d x \e[1m\d\e[0m\n&#x27;, FilePart(myargs[0]), bmhd.width, bmhd.height, twotothepower(bmhd.nplanes))
+        IF (fh:=Open(myargs[1],NEWFILE))
+          IF (sn:=OpenScreenTagList(NIL,[SA_WIDTH,bmhd.pagewidth,SA_HEIGHT,bmhd.pageheight,SA_DEPTH,bmhd.nplanes,
+            SA_TITLE,FilePart(myargs[0]),SA_DISPLAYID,($8ce4 AND IfFL_GetViewModes(iff)),NIL]))
+            IF (wn:=OpenWindowTagList(NIL,[WA_CUSTOMSCREEN,sn,WA_BORDERLESS,TRUE,NIL]))
+              LoadRGB4(sn.viewport,ct,IfFL_GetColorTab(iff,ct))
+              IfFL_DecodePic(iff,sn.bitmap)
+              Write(fh,&#x27;-&gt; Brush2E was written by Steven Goodgrove\n\n&#x27;, 44)
+              IF myargs[2]=-1
+                StringF(temp,&#x27;\scolours:\n&#x27;, name)
+                Write(fh,temp,StrLen(temp))
+                pass:=0
+                FOR i:=0 TO twotothepower(bmhd.nplanes)-1
+                  IF pass=0 THEN Write(fh,&#x27;\nINT\t&#x27;, 5)
+                  IF pass=3 THEN pass:=0 ELSE pass:=pass+1
+                  StringF(temp,&#x27;$\z\h[4]&#x27;, ct[i])
+                  Write(fh,temp,StrLen(temp))
+                  IF pass&lt;&gt;0 THEN Write(fh,&#x27;, &#x27;,2)
+                ENDFOR
+              ENDIF
+              StringF(temp,&#x27;\n\n\sbody:&#x27;, name)
+              Write(fh,temp,StrLen(temp))
+              FOR currentplane:=1 TO bmhd.nplanes
+                StringF(temp,&#x27;\n\n-&gt; Plane \d&#x27;, currentplane)
+                Write(fh,temp,StrLen(temp))
+                pass:=NIL
+                FOR y:=0 TO bmhd.height-1
+                  FOR x:=0 TO bmhd.width-1 STEP 16
+                    IF pass&lt;&gt;0 THEN Write(fh,&#x27;, &#x27;,2)
+                    IF pass=0 THEN Write(fh,&#x27;\nINT\t&#x27;,5)
+                    IF pass=8 THEN pass:=0 ELSE pass:=pass+1
+                    StringF(str,&#x27;$&#x27;)
+                    FOR xx:=0 TO 3
+                      number:=NIL
+                      FOR i:=0 TO 3
+                        pixel:=ReadPixel(sn.rastport,x+(xx*4)+i,y)
+                        IF pixel AND twotothepower(currentplane-1) = twotothepower(currentplane-1) THEN number:=number+twotothepower(3-i)
+                      ENDFOR
+                      StringF(str,&#x27;\s\z\h[1]&#x27;, str, number)
+                    ENDFOR
+                    Write(fh,str,StrLen(str))
+                  ENDFOR
+                ENDFOR
+              ENDFOR
+              StringF(temp,&#x27;\n\n\sdata:=[0,0,\d,\d,\d,{\sbody},\d,0,0]:image\n&#x27;, name, bmhd.width, bmhd.height,
+              bmhd.nplanes, name, twotothepower(bmhd.nplanes)-1)
+              Write(fh,temp,StrLen(temp))
+              CloseW(wn)
+            ENDIF
+            CloseS(sn)
+          ELSE
+            PrintF(&#x27;Could\ant open screen\n&#x27;)
+          ENDIF
+          Close(fh)
+        ELSE
+          PrintF(&#x27;Couldn\at open output file\n&#x27;)
+        ENDIF
+        IfFL_CloseIFF(iff)
+      ELSE
+        PrintF(&#x27;Couldn\at open iff brush\n&#x27;)
+      ENDIF
+      FreeArgs(rdargs)
+    ELSE
+      PrintF(&#x27;Bad args!\n&#x27;)
+    ENDIF
+    CloseLibrary(iffbase)
+  ELSE
+    PrintF(&#x27;Couldn\at open iff.library version 22 or better.\n&#x27;)
+  ENDIF
+ENDPROC
+
+PROC twotothepower(no)
+  DEF i, res=1
+  FOR i:=1 TO no
+    res:=res*2
+  ENDFOR
+ENDPROC res
+
+version:
+CHAR  0, &#x27;$VER: Brush2E 3.2 (03/07/97)&#x27;, 0
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

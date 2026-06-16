@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>muicustomclass.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-portable.html">PortablE</a> &rsaquo; muicustomclass.e</div><h1>File: <code>muicustomclass.e</code></h1><p class="meta">56 lines · project <a href="../examples/pkg-portable.html"><code>PortablE</code></a></p><p class="pathctx">PortablE/PortablE/PEmodules/target/CPP_AmigaOS3/mui/muicustomclass.e</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/muimaster.html">muimaster</a></li></ul></div><h2>Source</h2><pre class="code">OPT INLINE, NATIVE
+MODULE &#x27;muimaster&#x27;, &#x27;exec/libraries&#x27;, &#x27;exec/types&#x27;, &#x27;intuition/classes&#x27;, &#x27;intuition/classusr&#x27;
+MODULE &#x27;target/amigalib&#x27;, &#x27;utility/hooks&#x27;
+{
+class data_muicustomclass: public object {
+public:
+	long  user;          // for userdata (use iclass.userdata[] instead of iclass.userdata)
+	void* dispfunc;      // holds the address of the dispatcher-function
+};
+
+long dispentry_muicustomclass(struct IClass* iclass, Object* object2, struct _Msg* message)  {
+	long methodid;
+	data_muicustomclass* data2=NULL;
+	
+	data2 = (data_muicustomclass*) iclass-&gt;cl_UserData ;
+	methodid = ((long (*)(struct IClass*,Object*,struct _Msg*))data2-&gt;dispfunc )(iclass, object2, message);
+	return methodid ;
+} 
+
+struct MUI_CustomClass* eMUI_CreateCustomClass(struct Library* base, char* supername, struct MUI_CustomClass* supermcc, long datasize, void* dispfunc)  {
+	struct MUI_CustomClass* mcc=NULL;
+	struct IClass* iclass=NULL; data_muicustomclass* data2=NULL;
+	data_muicustomclass* temp_PTR_TO_data=NULL; long temp_QUAD;
+try {
+	temp_QUAD = exception ;
+	exception = 0 ;
+	
+	data2 = new data_muicustomclass;
+	data2-&gt;user     = 0;
+	data2-&gt;dispfunc = dispfunc;
+	
+	mcc = MUI_CreateCustomClass(base ,supername ,supermcc , (int) datasize ,(APTR) (long) (void*) &amp;HookEntry  );
+	if( (void*) mcc == NULL ) { goto finally;}
+	
+	iclass = mcc-&gt;mcc_Class;
+	temp_PTR_TO_data = data2;
+	data2= (data_muicustomclass*) NULL;
+	iclass-&gt;cl_UserData = (ULONG) (long) temp_PTR_TO_data ;
+	
+	//bad hack starts here!
+	iclass-&gt;cl_Dispatcher.h_Entry    = (ULONG (*)()) (long) (void*) &amp;HookEntry;
+	iclass-&gt;cl_Dispatcher.h_SubEntry = (ULONG (*)()) (long) (void*) &amp;dispentry_muicustomclass;
+finally: 0; 
+} catch(...) {}
+	delete data2; data2=NULL; 
+	if (exception!=0) {throw eException;} else {EMPTY;};
+	exception = temp_QUAD ;
+	return mcc ;
+} 
+}
+NATIVE {data_muicustomclass} OBJECT
+NATIVE {dispentry_muicustomclass} PROC
+NATIVE {eMUI_CreateCustomClass} PROC
+
+PROC eMui_CreateCustomClass(base:PTR TO lib, supername:ARRAY OF CHAR, supermcc:PTR TO mui_customclass, datasize:VALUE, dispfunc:PTR) IS NATIVE {eMUI_CreateCustomClass(} base {,} supername {,} supermcc {,} datasize {,} dispfunc {)} ENDNATIVE !!PTR TO mui_customclass
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

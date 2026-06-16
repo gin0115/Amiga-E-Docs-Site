@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>MakeKickFile.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-amigae30a-fr.html">amigae30a_fr</a> &rsaquo; MakeKickFile.e</div><h1>File: <code>MakeKickFile.e</code></h1><p class="meta">110 lines · project <a href="../examples/pkg-amigae30a-fr.html"><code>amigae30a_fr</code></a></p><p class="pathctx">amigae30a_fr/AmigaE30f/Sources/Pd/MakeKickFile.e</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/dos.html">dos/dos</a></li></ul></div><h2>Source</h2><pre class="code">;/* MakeKickFile.e - Executez moi pour compilation avec Amiga E v2.1
+ec MakeKickFile
+quit
+*/
+/*
+**      $Filename: MakeKickFile.e $
+**      $Release: 1.1 $
+**
+**      (C) Droits de copie 1991-1993 Jaba Development.
+**          Écrit par Jan van den Baard
+**
+**      Crée un fichier rom-kick de la machine où il tourne.
+**      Il peut créer des fichier de ROM 256K et 512K.
+**
+**      C&#x27;est la traduction littérale de mon propre original en code C
+**      et la première chose que j&#x27;écris en miga E. Toute fois, il ne
+**      doit pas utiliser l&#x27;E a fond toutes ses possibilités.
+**      Pardonnez moi s&#x27;il vous plait.
+**
+**      L&#x27;utilisation est simple. Vous passez à ce programme un nom de
+**      fichier et, si la ROM est connue, il écrira la ROM de la machine
+**      dans le fichier. Il écrit la ROM, *PAS* la soft-kicked* ROM.
+**
+**      Le fichier puet ensuite être utilisé par SETCPU ou SKICK pour
+**      booter une machine avec le fichier ROM.
+**
+**      Je l&#x27;ai testé avec succès avec une ROM de l&#x27;A1200 sur un A2500.
+**
+**      Aucun test n&#x27;a été fait avec un fichier ROM 1.2/1.3
+**      Je n&#x27;ai pas accès à des machines 1.2/1.3.
+**
+**      C&#x27;est vraiment un hack...mais un hack qui marche !
+**
+** Traduction : Olivier ANH (BUGSS)
+**/
+
+MODULE  &#x27;dos/dos&#x27;
+
+/* constantes de taille de la ROM et les cookies magiques */
+CONST   SMALLROM = $00040000, SMALLMAGIC = $11114EF9,
+        BIGROM   = $00080000, BIGMAGIC   = $11144EF9
+
+/* structure RomFileHeader de C= */
+OBJECT  romfileheader
+    alwaysnil :  LONG       /* sans commentaire -: toujours NIL */
+    romsize   :  LONG       /* la taille de la ROM */
+ENDOBJECT
+
+/* seulement 3 erreurs d&#x27;exception... */
+ENUM    ER_USAGE=1, ER_UNKNOWN, ER_IO
+
+/* Vas-y, Simone... */
+PROC main() HANDLE
+    DEF outfile = NIL,
+        base    = NIL : PTR TO LONG,
+        size    = NIL,
+        len     = NIL,
+        rk, rfh       : romfileheader
+
+    WriteF( &#x27;\e[1mMakeKickFile version 1.1 - (C) 1991-1993 Jaba Development\e[0m\n&#x27; );
+
+    /* pas d&#x27;argument ou &quot;?&quot;, alors imprime l&#x27;utilisation */
+    IF StrCmp( arg, &#x27;&#x27;, 1 ) OR StrCmp( arg, &#x27;?&#x27;, 2 ) THEN Raise( ER_USAGE )
+
+    /* d&#x27;abord essaye avec une ROM de 512 KB */
+    base := $00F80000
+
+    /* si le cookie magique n&#x27;est pas un BIGMAGIC alors ça doit être une ROM de 256 KB */
+    IF ( base[ 0 ] &lt;&gt; BIGMAGIC ) THEN base := $00FC0000
+
+    /* voyons voir avec quelle ROM on a affaire */
+    rk := base[ 0 ]
+
+    SELECT rk
+        CASE    SMALLMAGIC; size := SMALLROM        /* 256 KB */
+        CASE    BIGMAGIC;   size := BIGROM          /* 512 KB */
+        DEFAULT;            Raise( ER_UNKNOWN )     /* inconnu... */
+    ENDSELECT
+
+    /* montre la taille de la ROM */
+    WriteF( &#x27;Taille de la ROM = \dKoctets.\n&#x27;, size / 1024 )
+
+    /* ouvre le fichier kick */
+    IF ( outfile := Open( arg, MODE_NEWFILE ))
+        WriteF( &#x27;écrit le fichier image Kick...\n&#x27; )
+
+        rfh.alwaysnil := NIL        /* met ça à NIL */
+        rfh.romsize   := size       /* met ici la taille de la ROM */
+
+        len := Write( outfile, rfh, 8 ) /* écrit le romfileheader */
+        len := len + Write( outfile, base, size )   /* écrit la rom */
+
+        Close( outfile ) /* close the kick-file */
+
+        /* tout a été bien écrit ? */
+        IF ( ( len &lt;&gt; ( size + 8 )) OR IoErr() ) THEN Raise( ER_IO )
+    ELSE
+        /* ne peut pas ouvrir le fichier! */
+        WriteF( &#x27;Impossible d&#x27;ouvrir le fichier de sortie !\n&#x27; )
+    ENDIF
+EXCEPT
+    /* procédure d&#x27;exception quand aucun argument n&#x27;est donné
+       ou la ROM n&#x27;est pas reconnue ou il y a une erreur d&#x27;entrée/sortie. */
+    SELECT exception
+        CASE    ER_USAGE;   WriteF( &#x27;Usage: MakeKickFile &lt;romfilename&gt;\n&#x27; )
+        CASE    ER_UNKNOWN; WriteF( &#x27;ROM inconue !\n&#x27; )
+        DEFAULT;            PrintFault( IoErr(), &#x27;Erreur -&#x27; )
+    ENDSELECT
+ENDPROC IoErr()
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

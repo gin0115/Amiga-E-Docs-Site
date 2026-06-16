@@ -1,0 +1,141 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>gu.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-gec-extra.html">GEC-extra</a> &rsaquo; gu.e</div><h1>File: <code>gu.e</code></h1><p class="meta">115 lines · project <a href="../examples/pkg-gec-extra.html"><code>GEC-extra</code></a></p><p class="pathctx">GEC-extra/GEC/source/Grio/tst/gu.e</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/time.html">grio/time</a></li><li><a href="../modules/intuition.html">intuition/intuition</a></li><li><a href="../modules/screens.html">intuition/screens</a></li></ul></div><h2>Source</h2><pre class="code">
+MODULE &#x27;gadutil&#x27;,&#x27;libraries/gadutil&#x27;,&#x27;libraries/gadtools&#x27;
+MODULE &#x27;intuition/intuition&#x27;,&#x27;utility/tagitem&#x27;,&#x27;exec/ports&#x27;
+MODULE &#x27;intuition/screens&#x27;,&#x27;graphics/rastport&#x27;
+MODULE &#x27;grio/time&#x27;
+
+
+CONST GD_BUTT=1,GD_BOX=2,GD_PROG=3
+
+
+
+PROC main()
+DEF butt,box,prog:PTR TO progressgad,gads,glist,ginfo
+DEF win:PTR TO window,scr:PTR TO screen,x=0,y=1
+DEF imsg:PTR TO intuimessage,class
+DEF t:PTR TO time,tsig=0,sig,wsig,z=0
+
+
+IF (gadutilbase:=OpenLibrary(&#x27;gadutil.library&#x27;,36))
+   IF (scr:=LockPubScreen(NIL))
+       butt:=[GU_GADGETKIND,BUTTON_KIND,
+              GU_GADGETTEXT,&#x27;Button&#x27;,
+              GU_LEFT,60,
+              GU_TOP,8,
+              GU_AUTOHEIGHT,5,
+              GU_AUTOWIDTH,20,
+              TAG_DONE]
+       box:=[GU_GADGETKIND,BEVELBOX_KIND,
+             GU_GADGETTEXT,&#x27;BevelBox&#x27;,
+             GU_LEFT,30,
+             GU_TOP,34,
+             GU_AUTOWIDTH,70,
+             GU_AUTOHEIGHT,30,
+             GUBB_FRAMETYPE,BFT_RIDGE,
+             GUBB_RECESSED,1,
+             GUBB_FLAGS,BB_SUNAT_UL OR BB_3DTEXT,
+             GUBB_TEXTCOLOR,2,
+             TAG_DONE]
+       prog:=[GU_GADGETKIND,PROGRESS_KIND,
+              GU_GADGETTEXT,&#x27;Progress&#x27;,
+              GU_LEFT,30,
+              GU_TOP,94,
+              GU_HEIGHT,20,
+              GUPR_TOTAL,100,
+              GUPR_CURRENT,0,
+              GUPR_FILLCOLOR,1,
+              GU_FLAGS,PLACETEXT_ABOVE,
+              TAG_DONE]
+       gads:=[GD_BUTT,butt,NIL,NIL,
+              GD_BOX, box, NIL,NIL,
+              GD_PROG,prog,NIL,NIL,
+              -1]:layoutgadget
+
+       IF (ginfo:=Gu_LayoutGadgetsA({glist},gads,scr,NIL))
+          prog:=Gu_GetGadgetPtr(GD_PROG,gads)
+          IF (win:=OpenWindowTagList(NIL,[
+             WA_LEFT,50,
+             WA_TOP,30,
+             WA_WIDTH,200,
+             WA_HEIGHT,150,
+             WA_IDCMP,IDCMP_CLOSEWINDOW OR
+                      IDCMP_REFRESHWINDOW,
+             WA_FLAGS,WFLG_CLOSEGADGET OR
+                      WFLG_RMBTRAP OR
+                      WFLG_DEPTHGADGET OR
+                      WFLG_DRAGBAR OR
+                      WFLG_ACTIVATE,
+             WA_TITLE,&#x27;GRIO window&#x27;,
+             WA_GADGETS,glist,
+             WA_ZOOM,[50,30,200,scr.wbortop+scr.rastport.txheight+1]:INT,
+             TAG_DONE]))
+           Gu_RefreshWindow(win,ginfo)
+           NEW t
+           wsig:=Shl(1,win.userport.sigbit)
+           IF (tsig:=t.new()) THEN t.delay(0,2000)
+           REPEAT
+               REPEAT
+                     sig:=Wait(wsig OR tsig)
+                     IF y THEN INC x ELSE DEC x
+                     prog.current:=x
+                     Gu_UpdateProgress(win,ginfo,prog)
+                     IF x=100
+                        Delay(3)
+                        y:=0
+                     ENDIF
+                     IF x=0
+                        y:=1
+                        IF z
+                           prog.fillcolor:=1
+                           z:=0
+                        ELSE
+                           prog.fillcolor:=3
+                           z:=1
+                        ENDIF
+                     ENDIF
+                     IF tsig THEN t.delay(0,3000)
+               UNTIL sig=tsig
+               imsg:=Gu_GetIMsg(win.userport)
+               class:=imsg.class
+               Gu_ReplyIMsg(imsg)
+               IF (IDCMP_REFRESHWINDOW=class) THEN Gu_RefreshBoxes(win,ginfo)
+           UNTIL (IDCMP_CLOSEWINDOW=class)
+           END t
+           CloseWindow(win)
+       ENDIF
+       Gu_FreeLayoutGadgets(ginfo)
+       ENDIF
+       UnlockPubScreen(NIL,scr)
+   ENDIF
+   CloseLibrary(gadutilbase)
+ENDIF
+
+ENDPROC
+
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

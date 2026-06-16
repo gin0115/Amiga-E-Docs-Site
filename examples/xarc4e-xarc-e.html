@@ -1,0 +1,411 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>xarc.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-xarc4e.html">Xarc4E</a> &rsaquo; xarc.e</div><h1>File: <code>xarc.e</code></h1><p class="meta">385 lines · project <a href="../examples/pkg-xarc4e.html"><code>Xarc4E</code></a></p><p class="pathctx">Xarc4E/xarc.e</p><p class="prose">-- ----------------------------------------------------------------- -- * * -- Program.....: xarc.e -- * * -- Author......: Daniel Kasmeroglu &lt;raptor@cs.tu-berlin.de&gt; -- * * -- Based on....: Xarc.c from Matthias Meixner -- * * -- Description.: simple archiver -- * * -- ------------------------------</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/xpkarchive.html">lib/xpkarchive</a></li><li><a href="../modules/xpkarchive.html">libraries/xpkarchive</a></li></ul></div><h2>Source</h2><pre class="code">/* -- ----------------------------------------------------------------- -- *
+ * -- Program.....: xarc.e                                              -- *
+ * -- Author......: Daniel Kasmeroglu &lt;raptor@cs.tu-berlin.de&gt;          -- *
+ * -- Based on....: Xarc.c from Matthias Meixner                        -- *
+ * -- Description.: simple archiver                                     -- *
+ * -- ----------------------------------------------------------------- -- *
+ * -- History                                                           -- *
+ * --                                                                   -- *
+ * --   0.1 (11. August 1998) - Started with writing.                   -- *
+ * --   1.0 (12. August 1998) - Completion with some additional stuff.  -- *
+ * -- ----------------------------------------------------------------- -- */
+
+/* -- ----------------------------------------------------------------- -- *
+ * --                              Modules                              -- *
+ * -- ----------------------------------------------------------------- -- */
+
+MODULE &#x27;libraries/xpkarchive&#x27;,
+       &#x27;libraries/xpk&#x27;,
+       &#x27;utility/tagitem&#x27;,
+       &#x27;utility/hooks&#x27;,
+       &#x27;tools/inithook&#x27;,
+       &#x27;exec/memory&#x27;,
+       &#x27;dos/dos&#x27;
+
+MODULE &#x27;lib/xpkarchive&#x27;
+
+
+/* -- ----------------------------------------------------------------- -- *
+ * --                             Constants                             -- *
+ * -- ----------------------------------------------------------------- -- */
+
+ENUM ARG_ARCHIVE   , -&gt; the archive name (it doesn&#x27;t matter if with or without &quot;.xar&quot;)
+     ARG_METHOD    , -&gt; the selected method (look at &quot;libs/compressors&quot; and &quot;libs/archivers&quot;)
+     ARG_EXTRACT   , -&gt; extract all or the named files
+     ARG_LIST      , -&gt; list archive contents
+     ARG_NOCOMMENT , -&gt; list without filenote
+     ARG_FILES       -&gt; the list of all files
+
+
+/* -- ----------------------------------------------------------------- -- *
+ * --                               Main                                -- *
+ * -- ----------------------------------------------------------------- -- */
+
+PROC main() HANDLE
+DEF ma_args      : PTR TO LONG
+DEF ma_path      : PTR TO CHAR
+DEF ma_chunkhook : hook
+DEF ma_rdargs,ma_arc
+
+  -&gt; do some initialisations (don&#x27;t remove the next lines !!!)
+  ma_arc        := NIL
+  ma_rdargs     := NIL
+  ma_path       := NIL
+  ma_args       := [ NIL, NIL, FALSE, FALSE, FALSE, NIL ]
+
+  -&gt; if we&#x27;re started from workbench, we will abort
+  IF wbmessage &lt;&gt; NIL THEN Raise( &quot;NOWB&quot; )
+
+  -&gt; Yeah, dos is always funny
+  ma_rdargs     := ReadArgs( {lab_Template}, ma_args, NIL )
+  IF ma_rdargs = NIL THEN Raise( &quot;ARGS&quot; )
+
+  -&gt; getting memory to store the path of the archive
+  ma_path := AllocVec( StrLen( ma_args[ ARG_ARCHIVE ] ) + 5, MEMF_PUBLIC )
+  IF ma_path = NIL THEN Raise( &quot;MEM&quot; )
+
+  -&gt; copy the path and add extension if needed, so each archive will
+  -&gt; end with &quot;.xar&quot;
+  StringF( ma_path, &#x27;\s&#x27;, ma_args[ ARG_ARCHIVE ] )
+  IF StrCmp( ma_path + StrLen( ma_path ) - 4, {lab_Extension} ) = FALSE
+    StrAdd( ma_path, {lab_Extension} )
+  ENDIF
+
+  -&gt; this should be clear for every one
+  xpkarchivebase := OpenLibrary( &#x27;xpkarchive.library&#x27;, 0 )
+  IF xpkarchivebase = NIL THEN Raise( &quot;LIB&quot; )
+
+  -&gt; open the archiv. do this with XMODE_APPEND so the archive will be
+  -&gt; created if it doesn&#x27;t exist or it will be opened.
+  -&gt; i&#x27;ve renamed the constant &quot;XAR_MODExxx&quot; to &quot;XMODE_xxx&quot; because
+  -&gt; the prefix &quot;XAR_&quot; suggests that this is a tag-value.
+  ma_arc := XarOpenArchiveA( [ XAR_ARCHIVENAME , ma_path      ,
+                               XAR_ARCHIVEMODE , XMODE_APPEND ,
+                               XAR_SHOWDIRS    , TRUE         ,
+                               TAG_END ] )
+
+  IF ma_arc = NIL THEN Raise( &quot;CARC&quot; )
+
+  -&gt; install the hook-function
+  inithook( ma_chunkhook, {chunkfunc} )
+
+  -&gt; only use one of the possible functions. the order isn&#x27;t important.
+  IF ma_args[ ARG_LIST ] &lt;&gt; FALSE
+    listarchive( ma_arc, ma_args[ ARG_NOCOMMENT ] )
+  ELSEIF ma_args[ ARG_EXTRACT ] &lt;&gt; FALSE
+    extractarchive( ma_arc, ma_args[ ARG_FILES ], ma_chunkhook )
+  ELSE
+    add2archive( ma_arc, ma_args[ ARG_FILES ], ma_chunkhook, ma_args[ ARG_METHOD ] )
+  ENDIF
+
+EXCEPT DO
+
+  -&gt; print the message if an exception was raised
+  SELECT exception
+  CASE &quot;CARC&quot; ; Vprintf( { lab_OpenArc       } , [ ma_args[ ARG_ARCHIVE ] ] )
+  CASE &quot;ARGS&quot; ; Vprintf( { lab_InfoText      } , NIL                        )
+  CASE &quot;LIB&quot;  ; Vprintf( { lab_OpenLib       } , NIL                        )
+  CASE &quot;NOWB&quot; ; Vprintf( { lab_NoWB          } , NIL                        )
+  CASE &quot;MEM&quot;  ; Vprintf( { lab_NoMem         } , NIL                        )
+  ENDSELECT
+
+  -&gt; free all stuff
+  IF ma_path        &lt;&gt; NIL THEN FreeVec         ( ma_path        )
+  IF ma_arc         &lt;&gt; NIL THEN XarCloseArchive ( ma_arc         )
+  IF xpkarchivebase &lt;&gt; NIL THEN CloseLibrary    ( xpkarchivebase )
+  IF ma_rdargs      &lt;&gt; NIL THEN FreeArgs        ( ma_rdargs      )
+
+ENDPROC
+
+
+/* -- ----------------------------------------------------------------- -- *
+ * --                            Procedures                             -- *
+ * -- ----------------------------------------------------------------- -- */
+
+PROC listarchive( lis_arc, lis_nocomment )
+DEF lis_data         : PTR TO xarfiledata
+DEF lis_list         : PTR TO LONG
+DEF lis_pname    [2] : ARRAY OF LONG
+DEF lis_ratiostr [6] : STRING
+DEF lis_fib          : xpkfib
+DEF lis_sum1,lis_sum2
+DEF lis_compsize,lis_lock
+
+  -&gt; size of all files (uncompressed and compressed)
+  lis_sum1 := 0
+  lis_sum2 := 0
+
+  Vprintf( {lab_ListHeader}, NIL )
+
+  -&gt; get first fileentry
+  lis_lock := XarGetLock( lis_arc )
+  WHILE lis_lock &lt;&gt; NIL
+
+    -&gt; get some data
+    lis_data     := XarGetFileData( lis_lock )
+    lis_compsize := XarGetFileSize( lis_lock )
+    lis_sum1     := lis_sum1 + lis_data.filesize
+    lis_sum2     := lis_sum2 + lis_compsize
+
+    -&gt; set up the argument-list
+    lis_list := [ lis_data.filesize          ,  -&gt; original filesize
+                  lis_compsize               ,  -&gt; size of the compressed file
+                  lis_ratiostr               ,  -&gt; the compression-ratio
+                  lis_data.time.day          ,  -&gt; should be obvious
+                  lis_data.time.month        ,
+                  lis_data.time.year         ,
+                  lis_data.time.hour         ,
+                  lis_data.time.min          ,
+                  lis_data.time.sec          ,
+                  lis_data.generation        ,  -&gt; generation number
+                  NIL                        ,  -&gt; see below
+                  XarGetFileName( lis_lock ) ]  -&gt; the filename
+
+    -&gt; calculate ratio and convert real to string
+    calcratio( lis_ratiostr, lis_data.filesize, lis_compsize )
+
+    IF XarIsXpkArchive( lis_arc ) &lt;&gt; 0
+
+      -&gt; archive was created with an xpk-sublibrary
+      XarExamine( lis_lock, lis_fib )
+      lis_pname [  0 ] := lis_fib.id
+      lis_pname [  1 ] := 0
+      lis_list  [ 10 ] := lis_pname
+    ELSE
+      -&gt; archive was created with a xar-sublibrary
+      lis_list  [ 10 ] := lis_data.flags
+    ENDIF
+
+    -&gt; print out the entry
+    Vprintf( {lab_ListEntry}, lis_list )
+
+    -&gt; if there is a filenote, then print it out
+    IF (XarGetFileNote( lis_lock ) &lt;&gt; NIL) AND (lis_nocomment = FALSE)
+      Vprintf( &#x27;\e[2m\e[3m:\s\e[0m\n&#x27;, [ XarGetFileNote( lis_lock ) ] )
+    ENDIF
+
+    -&gt; get next fileentry
+    lis_lock := XarNextLock( lis_lock )
+
+  ENDWHILE
+
+  -&gt; print the whole size (compressed and uncompressed)
+  calcratio( lis_ratiostr, lis_sum1, lis_sum2 )
+  Vprintf( {lab_ListEnd}, [ lis_sum1, lis_sum2, lis_ratiostr ] )
+
+ENDPROC
+
+
+PROC calcratio( cal_ratiostr, cal_size, cal_compressed )
+  IF cal_size = 0
+    cal_size := 0.0
+  ELSE
+    cal_size := cal_size!
+    cal_size := ! (cal_compressed!) / cal_size
+    cal_size := ! 100.0 * cal_size
+    cal_size := ! 100.0 - cal_size
+  ENDIF
+  RealF( cal_ratiostr, cal_size, 2 )
+ENDPROC
+
+
+PROC extractarchive( ext_arc, ext_files : PTR TO LONG, ext_chunkhook : PTR TO hook )
+DEF ext_gen,ext_file
+
+  WHILE ext_files[] &lt;&gt; NIL
+
+    ext_file,ext_gen := splitname( ext_files[]++ )
+
+    IF XarExtractFileA( [ XAR_OUTNAME      , ext_file      ,
+                          XAR_FILENAME     , ext_file      ,
+                          XAR_GENERATION   , ext_gen       ,
+                          XAR_ARCHIVE      , ext_arc       ,
+                          XAR_PROGRESSHOOK , ext_chunkhook ,
+                          TAG_END ] ) &lt;&gt; XARERR_NO_ERR
+
+      Vprintf( {lab_Error}, [ XarWhy( ext_arc, 0 ) ] )
+
+    ENDIF
+
+  ENDWHILE
+
+ENDPROC
+
+
+PROC splitname( spl_name )
+DEF spl_backslash,spl_gen
+DEF spl_valid
+
+  spl_backslash := InStr( spl_name, &#x27;\\&#x27;, 0 )
+  IF spl_backslash &lt;&gt; -1
+    spl_name[ spl_backslash ] := 0
+    spl_gen,spl_valid := Val( spl_name + spl_backslash + 1 )
+    IF spl_valid = 0 THEN spl_gen := 0
+  ELSE
+    spl_gen  := 0
+  ENDIF
+
+ENDPROC spl_name,spl_gen
+
+
+PROC add2archive( add_arc, add_files : PTR TO LONG, add_chunkhook : PTR TO hook, add_method )
+DEF add_basename,add_path
+DEF add_dp,add_gen
+
+  WHILE add_files[] &lt;&gt; NIL
+
+    add_path,add_gen := splitname( add_files[]++ )
+    add_dp           := InStr( add_path, &#x27;:&#x27; )
+    IF add_dp &lt;&gt; -1
+      add_basename := add_path + add_dp + 1
+    ELSE
+      add_basename := add_path
+    ENDIF
+
+    IF XarAddFileA( [ XPK_INNAME       , add_path      ,
+                      XAR_FILENAME     , add_basename  ,
+                      XAR_ARCHIVE      , add_arc       ,
+                      XAR_PACKMETHOD   , add_method    ,
+                      XAR_PROGRESSHOOK , add_chunkhook ,
+                      XAR_GENERATION   , add_gen       ,
+                      TAG_END ] ) = 0
+
+      Vprintf( {lab_Error}, [ XarWhy( add_arc, 0 ) ] )
+
+    ENDIF
+
+  ENDWHILE
+
+ENDPROC
+
+
+/* -- ----------------------------------------------------------------- -- *
+ * --                           Hook-Routines                           -- *
+ * -- ----------------------------------------------------------------- -- */
+
+PROC chunkfunc( chu_hook, chu_obj, chu_prog : PTR TO xpkprogress )
+DEF chu_list : PTR TO LONG
+DEF chu_str
+
+  chu_list := [ chu_prog.packername ,
+                chu_prog.activity   ,
+                NIL                 ,
+                chu_prog.cf         ,
+                chu_prog.speed      ,
+                chu_prog.filename   ,
+                13                  ]
+
+  IF chu_prog.type &lt;&gt; XPKPROG_END
+
+    chu_str        := {lab_ChunkNotAtEnd}
+    chu_list [ 2 ] := chu_prog.done
+    Flush( stdout )
+
+  ELSE
+
+    chu_str        := {lab_ChunkAtEnd}
+    chu_list [ 2 ] := Shr( chu_prog.ulen, 10 )
+
+  ENDIF
+
+  Vprintf( chu_str, chu_list )
+
+ENDPROC SetSignal( 0, SIGBREAKF_CTRL_C ) AND SIGBREAKF_CTRL_C
+
+
+/* -- ----------------------------------------------------------------- -- *
+ * --                               Data                                -- *
+ * -- ----------------------------------------------------------------- -- */
+
+lab_Template:
+CHAR &#x27;ARCHIVE/A,M=METHOD/K,X=EXTRACT/S,L=LIST/S,N=NOCOMMENT/S,FILES/M&#x27;,0
+
+lab_Extension:
+CHAR &#x27;.xar&#x27;,0
+
+lab_ListHeader:
+CHAR &#x27;\e[1mOriginal Packed Ratio  Date     Time    Gen Mode Name\n&#x27;,
+     &#x27;-------- ------ ----- -------- -------- --- ---- ----------\e[0m\n&#x27;,0
+
+-&gt; NOTE: you can see, that there are &quot;C&quot;-styled formatting codes mixed up
+-&gt;       with E formatting codes. E doesn&#x27;t allow to print out preceding
+-&gt;       zeros or unsigned decimals. for the fact that the function &quot;PrintF()&quot;
+-&gt;       uses &quot;RawDoFmt()&quot; from exec you can use these formatting codes
+-&gt;       without any problem. f.e. E translates the sequence &quot;\d[8]&quot; to
+-&gt;       &quot;%8ld&quot;.
+
+lab_ListEntry:
+CHAR &#x27;\d[8] \d[6] \s[5] %02ld.%02ld.%02ld %02ld:%02ld:%02ld \d[3] \d[4] \s\n&#x27;,0
+
+lab_ListEnd:
+CHAR &#x27;\e[1m-------- ------ -----\n\d[8] \d[6] \s[5]\e[0m\n&#x27;,0
+
+lab_InfoText:
+CHAR &#x27;\nXARC ARCHIVE/A,M=METHOD/K,L=LIST/S,X=EXTRACT/S,N=NOCOMMENT/S,FILES/M\n\n&#x27;,
+     &#x27; ARCHIVE/A     -&gt; specifies the path of your archive. if the extension\n&#x27;,
+     &#x27;               -&gt; &quot;.xar&quot; is missing, it will be added automatically.\n\n&#x27;,
+     &#x27; M=METHOD/K    -&gt; this option is required wenn archiving some data. it is\n&#x27;,
+     &#x27;               -&gt; used to specify the compression method.\n\n&#x27;,
+     &#x27; L=LIST/S      -&gt; if this parameter appears, the contents of the archive\n&#x27;,
+     &#x27;               -&gt; will be shown.\n\n&#x27;,
+     &#x27; X=EXTRACT/S   -&gt; this will extract the complete archive or the files\n&#x27;,
+     &#x27;               -&gt; specified with the option &quot;FILES/M&quot;\n\n&#x27;,
+     &#x27; N=NOCOMMENT/S -&gt; this works only if the option &quot;LIST/S&quot; is set. it will\n&#x27;,
+     &#x27;               -&gt; suppress the output of the filenotes.\n\n&#x27;,
+     &#x27; FILES/M       -&gt; enter a list of files for extracting or archieving.\n&#x27;,
+     &#x27;               -&gt; you can specify the generation-number by adding the\n&#x27;,
+     &#x27;               -&gt; sequence &quot;&lt;filename&gt;\\&lt;generation-number&gt;&quot;\n\n&#x27;,
+     &#x27;\e[1mPLEASE READ THE FILE &quot;Xarc.readme&quot; for further information.\e[0m\n&#x27;,0
+
+
+lab_OpenLib:
+CHAR &#x27;Can\at open &quot;xpkarchive.library&quot; v0+\n&#x27;,0
+
+lab_OpenArc:
+CHAR &#x27;Can\at create archive &quot;\s&quot;\n&#x27;,0
+
+lab_NoWB:
+CHAR &#x27;Xarc isn\at runnable from workbench !\n&#x27;,0
+
+lab_NoMem:
+CHAR &#x27;Not enough memory available !\n&#x27;,0
+
+lab_Error:
+CHAR &#x27;Error: \s\n&#x27;,0
+
+lab_ChunkNotAtEnd:
+CHAR &#x27;\e[M\s[4]: \l\s[8] ( \r\d[3] %% done, \r\d[2] % CF, \r\d[6] cps ) \s\c&#x27;,0
+
+lab_ChunkAtEnd:
+CHAR &#x27;\e[M\s[4]: \l\s[8] ( \r\d[4] KB, \r\d[2] % CF, \r\d[6] cps ) \s\n&#x27;,0
+
+lab_Version:
+CHAR &#x27;$VER: XArc 1.0 (11.08.98) [ Daniel Kasmeroglu ]\n&#x27;,0
+
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

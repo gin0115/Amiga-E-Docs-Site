@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>showpic.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-amigae30a-fr.html">amigae30a_fr</a> &rsaquo; showpic.e</div><h1>File: <code>showpic.e</code></h1><p class="meta">70 lines · project <a href="../examples/pkg-amigae30a-fr.html"><code>amigae30a_fr</code></a></p><p class="pathctx">amigae30a_fr/AmigaE30f/Sources/Tools/ILBM/showpic.e</p><p class="prose">showpic.e Michael Zucchi 1994 Un simple afficheur d&#x27;<a href="../modules/image.html">image</a> IFF ILBM Démontre l&#x27;utilisation du module ILBM, et le requester de fichier asl Ce programme peut être distribué librement seulement au sein des propriétaires enregistrés de l&#x27;AmigaE.</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/ilbm.html">tools/ilbm</a></li></ul></div><h2>Source</h2><pre class="code">/*
+
+        showpic.e                          Michael Zucchi 1994
+
+        Un simple afficheur d&#x27;image IFF ILBM
+        Démontre l&#x27;utilisation du module ILBM, et le requester de fichier asl
+
+        Ce programme peut être distribué librement seulement au sein des
+        propriétaires enregistrés de l&#x27;AmigaE.
+ */
+
+
+MODULE &#x27;tools/ilbm&#x27;, &#x27;tools/ilbmdefs&#x27;,
+        &#x27;intuition/intuition&#x27;,
+        &#x27;asl&#x27;, &#x27;libraries/ASL&#x27;
+
+DEF scr,
+        buffer[256]:ARRAY
+
+PROC main()
+DEF ilbm,filename
+
+IF filename:=requestfile(&#x27;Select picture&#x27;)
+        IF ilbm:=ilbm_New(filename,0)
+                ilbm_LoadPicture(ilbm,[ILBML_GETSCREEN,{scr},0])
+                ilbm_Dispose(ilbm)      -&gt; plus du tout nécessaire ...
+
+                -&gt; ce n&#x27;est juste qu&#x27;un exemple!  Dans un application réelle,
+                -&gt; utilisez toujours les ports IDCMP et les fenêtres.
+
+                IF scr                  -&gt; seulement si une a été créé.
+                        WHILE Mouse()&lt;&gt;1
+                                Delay(4)
+                        ENDWHILE
+                        CloseScreen(scr)
+                ENDIF
+        ENDIF
+ENDIF
+
+ENDPROC
+
+/*
+        Affiche une requête de fichier ASL.  Si l&#x27;utilisateur choisit un fichier,
+        il est étendu à son chemin + nom de fichier.
+ */
+PROC requestfile(title)
+DEF name=0,fr:PTR TO filerequester
+
+IF aslbase:=OpenLibrary(&#x27;asl.library&#x27;,36)
+        IF fr:=AllocAslRequest(ASL_FILEREQUEST,[ASLFR_TITLETEXT,title,0])
+                IF AslRequest(fr,0)
+
+                        -&gt; désolé, un peu d&#x27;asm ici. Ben ... comment sinon?
+                        -&gt; ca réalise une copie de chaine (strcpy()) ...
+                        MOVE.L  fr,A0
+                        MOVE.L  8(A0),A0        -&gt; pointeur répertoire de la requête de fichier.
+                        MOVE.L  buffer,A1
+                cp:     MOVE.B  (A0)+,(A1)+
+                        BNE.S   cp
+
+                        AddPart(buffer,fr.file,256)
+                        name:=buffer
+                ENDIF
+                FreeAslRequest(fr)
+        ENDIF
+        CloseLibrary(aslbase)
+ENDIF
+
+ENDPROC name
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

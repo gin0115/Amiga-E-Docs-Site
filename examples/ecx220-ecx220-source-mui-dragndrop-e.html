@@ -1,0 +1,367 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Dragndrop.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-ecx220.html">ecx220</a> &rsaquo; Dragndrop.e</div><h1>File: <code>Dragndrop.e</code></h1><p class="meta">341 lines · project <a href="../examples/pkg-ecx220.html"><code>ecx220</code></a></p><p class="pathctx">ecx220/ecx220/source/MUI/Dragndrop.e</p><p class="prose">** Original C Code written by Stefan Stuntz ** ** Translation into E by Klaus Becker ** ** All comments are from the C-Source</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/muicustomclass.html">mui/muicustomclass</a></li><li><a href="../modules/muimaster.html">muimaster</a></li></ul></div><h2>Source</h2><pre class="code">/*
+**  Original C Code written by Stefan Stuntz
+**
+**  Translation into E by Klaus Becker
+**
+**  All comments are from the C-Source
+*/
+
+OPT PREPROCESS
+
+MODULE &#x27;mui/muicustomclass&#x27;
+MODULE &#x27;muimaster&#x27;,&#x27;libraries/mui&#x27;,&#x27;libraries/muip&#x27;,
+       &#x27;intuition/classes&#x27;,&#x27;intuition/classusr&#x27;,
+       &#x27;intuition/screens&#x27;,&#x27;intuition/intuition&#x27;,
+       &#x27;utility/tagitem&#x27;, &#x27;amigalib/boopsi&#x27;
+
+DEF nase,fields
+
+DEF cl_fieldslist   =NIL: PTR TO mui_customclass
+DEF cl_choosefields =NIL: PTR TO mui_customclass
+
+OBJECT fieldslist_data
+  dummy
+ENDOBJECT
+
+OBJECT choosefields_data
+  dummy
+ENDOBJECT
+
+PROC doSuperNew(cl:PTR TO iclass,obj,tag1:PTR TO LONG)
+ENDPROC doSuperMethodA(cl,obj,[OM_NEW,tag1,NIL])
+
+/****************************************************************************/
+/* FieldsList class                                                         */
+/****************************************************************************/
+
+/*
+** FieldsList list class creates a list that accepts D&amp;D items
+** from exactly one other listview, the one which is stored in
+** the objects userdata. You could also store the allowed source
+** object in another private attribute, I was just too lazy to add
+** the get/set methods in this case. :-)
+**
+** This class is designed to be used for both, the list of the
+** available fields and the list of the visible fields.
+**
+** Note: Stop being afraid of custom classes. This one here takes
+** just a few lines of code, 90% of the stuff below is comments. :-)
+*/
+
+PROC fieldslist_dragquery(cl:PTR TO iclass,obj:PTR TO object,msg:PTR TO muip_dragdrop)
+
+  IF (msg.obj=obj)
+    /*
+    ** If somebody tried to drag ourselves onto ourselves, we let our superclass
+    ** (the list class) handle the necessary actions. Depending on the state of
+    ** its MUIA_List_DragSortable attribute, it will either accept or refuse to become
+    ** the destination object.
+    */
+    RETURN (doSuperMethodA(cl,obj,msg))
+  ELSEIF (msg.obj= muiUserData(obj))
+    /*
+    ** If our predefined source object wants us to become active,
+    ** we politely accept it.
+    */
+    RETURN (MUIV_DragQuery_Accept)
+  ELSE
+    /*
+    ** Otherwise, someone tried to feed us with something we don&#x27;t like
+    ** very much. Just refuse it.
+    */
+    RETURN (MUIV_DragQuery_Refuse)
+  ENDIF
+ENDPROC
+
+PROC fieldslist_dragdrop(cl:PTR TO iclass,obj,msg:PTR TO muip_dragdrop)
+  DEF entry,dropmark,sortable
+
+  IF (msg.obj=obj)
+    /*
+    ** user wants to move entries within our object, these kinds of actions
+    ** can get quite complicated, but fortunately, everything is automatically
+    ** handled by list class. We just need to pass through the method.
+    */
+    RETURN (doSuperMethodA(cl,obj,msg))
+  ELSE
+    /*
+    ** we can be sure that msg-&gt;obj is our predefined source object
+    ** since we wouldnt have accepted the MUIM_DragQuery and wouldnt
+    ** have become an active destination object otherwise.
+    */
+
+    /*
+    ** get the current entry from the source object, remove it there, and insert
+    ** it to ourselves. You would have to do a little more action if the source
+    ** listview would support multi select, but this one doesnt, so things get
+    ** quite easy. Note that this direct removing/adding of list entries is only
+    ** possible if both contain lists simple pointers to static items. If they would
+    ** feature custom construct/destruct hooks, we&#x27;d need to create a copy of
+    ** the entries instead of simply moving pointers.
+    */
+
+    /* get source entry */
+    doMethodA(msg.obj,[MUIM_List_GetEntry,MUIV_List_GetEntry_Active,{entry}])
+
+    /* remove source entry */
+    doMethodA(msg.obj,[MUIM_List_Remove,MUIV_List_Remove_Active])
+
+    get(obj,MUIA_List_DragSortable,{sortable})
+    IF (sortable)
+      /*
+      ** if we are in a sortable list (in our case the visible fields),
+      ** we need to make sure to insert the new entry at the correct
+      ** position. The MUIA_List_DropMark attribute is maintained
+      ** by list class and shows us where we shall go after a drop.
+      */
+
+      get(obj,MUIA_List_DropMark,{dropmark})
+      doMethodA(obj,[MUIM_List_InsertSingle,entry,dropmark])
+    ELSE
+      /*
+      ** we are about to return something to the available fields
+      ** listview which is always sorted.
+      */
+      doMethodA(obj,[MUIM_List_InsertSingle,entry,MUIV_List_Insert_Sorted])
+    ENDIF
+
+    /*
+    ** make the insterted object the active and make the source listviews
+    ** active object inactive to give some more visual feedback to the user.
+    */
+
+    get(obj,MUIA_List_InsertPosition,{dropmark})
+    set(obj,MUIA_List_Active,dropmark)
+    set(msg.obj,MUIA_List_Active,MUIV_List_Active_Off)
+  ENDIF
+ENDPROC 0
+
+PROC fieldslist_dispatcher(cl:PTR TO iclass,obj,msg:PTR TO msg)
+  DEF methodid
+  methodid:=msg.methodid
+  SELECT methodid
+    CASE MUIM_DragQuery; RETURN (fieldslist_dragquery(cl,obj,msg))
+    CASE MUIM_DragDrop ; RETURN (fieldslist_dragdrop (cl,obj,msg))
+   ENDSELECT
+ENDPROC (doSuperMethodA(cl,obj,msg))
+
+/****************************************************************************/
+/* ChooseFields class                                                       */
+/****************************************************************************/
+
+/*
+** This class creates two listviews, one contains all available fields,
+** the other one contains the visible fields. You can control this
+** stuff completely with D&amp;D. This thing could e.g. be useful to
+** configure the display of an address utility.
+*/
+
+PROC choosefields_new(cl:PTR TO iclass,obj,msg:PTR TO opset)
+  DEF available, visible
+  obj:= doSuperNew(cl,obj,
+    [MUIA_Group_Columns, 2,
+    MUIA_Group_VertSpacing, 1,
+    Child, TextObject, MUIA_Text_Contents, &#x27;\ecAvailable Fields\n(alpha sorted)&#x27;, End,
+    Child, TextObject, MUIA_Text_Contents, &#x27;\ecVisible Fields\n(sortable)&#x27;, End,
+    Child, ListviewObject,
+      MUIA_Listview_DragType, 1,
+      MUIA_Listview_List, available:= NewObjectA(cl_fieldslist.mcc_class,NIL,
+        [InputListFrame,
+        MUIA_List_SourceArray, fields,
+        MUIA_List_ShowDropMarks, FALSE,
+        TAG_DONE]),
+    End,
+    Child, ListviewObject,
+      MUIA_Listview_DragType, 1,
+      MUIA_Listview_List, visible:= NewObjectA(cl_fieldslist.mcc_class,NIL,
+        [InputListFrame,
+        MUIA_List_DragSortable, MUI_TRUE,
+        TAG_DONE]),
+    End,
+    TAG_DONE])
+
+  IF (obj)
+    /*
+    ** tell available object to accept items from visible object.
+    ** the use of MUIA_UserData is just to make the FieldsList
+    ** subclass more simple.
+    */
+
+    set(available,MUIA_UserData,visible)
+
+    /*
+    ** the other way round...
+    */
+
+    set(visible,MUIA_UserData,available)
+  ENDIF
+
+ENDPROC obj
+
+PROC choosefields_dispatcher(cl:PTR TO iclass,obj,msg:PTR TO msg)
+  DEF methodid
+  methodid:=msg.methodid
+  SELECT methodid
+    CASE OM_NEW; RETURN (choosefields_new(cl,obj,msg))
+  ENDSELECT
+ENDPROC (doSuperMethodA(cl,obj,msg))
+
+/****************************************************************************/
+/* Main Program                                                             */
+/****************************************************************************/
+
+PROC exitclasses()
+  IF (cl_fieldslist  ) THEN Mui_DeleteCustomClass(cl_fieldslist  )
+  IF (cl_choosefields) THEN Mui_DeleteCustomClass(cl_choosefields)
+ENDPROC
+
+PROC initclasses()
+  cl_fieldslist    := eMui_CreateCustomClass(NIL,MUIC_List ,NIL,SIZEOF fieldslist_data,{fieldslist_dispatcher})
+  cl_choosefields  := eMui_CreateCustomClass(NIL,MUIC_Group,NIL,SIZEOF choosefields_data,{choosefields_dispatcher})
+
+  IF (cl_fieldslist AND cl_choosefields) THEN RETURN TRUE
+  exitclasses()
+ENDPROC FALSE
+
+PROC main() HANDLE
+  DEF app,window,sigs=0
+
+  nase:=[&#x27;Line 1&#x27;,&#x27;Line 2&#x27;,&#x27;Line 3&#x27;,&#x27;Line 4&#x27;,&#x27;Line 5&#x27;,
+         &#x27;Line 6&#x27;,&#x27;Line 7&#x27;,&#x27;Line 8&#x27;,&#x27;Line 9&#x27;,&#x27;Line 10&#x27;,
+         &#x27;Line 11&#x27;,&#x27;Line 12&#x27;,&#x27;Line 13&#x27;,&#x27;Line 14&#x27;,&#x27;Line 15&#x27;,
+         &#x27;Line 16&#x27;,&#x27;Line 17&#x27;,&#x27;Line 18&#x27;,&#x27;Line 19&#x27;,&#x27;Line 20&#x27;,
+         &#x27;Line 21&#x27;,&#x27;Line 22&#x27;,&#x27;Line 23&#x27;,&#x27;Line 24&#x27;,&#x27;Line 25&#x27;,
+         &#x27;Line 26&#x27;,&#x27;Line 27&#x27;,&#x27;Line 28&#x27;,&#x27;Line 29&#x27;,&#x27;Line 30&#x27;,
+         &#x27;Line 31&#x27;,&#x27;Line 32&#x27;,&#x27;Line 33&#x27;,&#x27;Line 34&#x27;,&#x27;Line 35&#x27;,
+         &#x27;Line 36&#x27;,&#x27;Line 37&#x27;,&#x27;Line 38&#x27;,&#x27;Line 39&#x27;,&#x27;Line 40&#x27;,
+         &#x27;Line 41&#x27;,&#x27;Line 42&#x27;,&#x27;Line 43&#x27;,&#x27;Line 44&#x27;,&#x27;Line 45&#x27;,
+         &#x27;Line 46&#x27;,&#x27;Line 47&#x27;,&#x27;Line 48&#x27;,&#x27;Line 49&#x27;,&#x27;Line 50&#x27;,NIL]
+
+  fields:=[&#x27;Age&#x27;,
+           &#x27;Birthday&#x27;,
+           &#x27;c/o&#x27;,
+           &#x27;City&#x27;,
+           &#x27;Comment&#x27;,
+           &#x27;Country&#x27;,
+           &#x27;EMail&#x27;,
+           &#x27;Fax&#x27;,
+           &#x27;First name&#x27;,
+           &#x27;Job&#x27;,
+           &#x27;Name&#x27;,
+           &#x27;Phone&#x27;,
+           &#x27;Projects&#x27;,
+           &#x27;Salutation&#x27;,
+           &#x27;State&#x27;,
+           &#x27;Street&#x27;,
+           &#x27;ZIP&#x27;,
+           NIL]
+
+  IF (muimasterbase:=OpenLibrary(MUIMASTER_NAME,MUIMASTER_VMIN))=NIL THEN
+    Raise(&#x27;Failed to open muimaster.library&#x27;)
+
+  #ifdef __AMIGAOS4__
+   IF (muimasteriface := GetInterface(muimasterbase, &#x27;main&#x27;, 1, NIL)) = NIL THEN
+    Raise(&#x27;failed to open muimaster.interface&#x27;)
+  #endif
+
+  IF initclasses()=NIL THEN
+    Raise(&#x27;failed to init classes.&#x27;)
+
+  app:= ApplicationObject,
+    MUIA_Application_Title      , &#x27;DragnDrop&#x27;,
+    MUIA_Application_Version    , &#x27;$VER: DragnDrop 12.9 (21.11.95)&#x27;,
+    MUIA_Application_Copyright  , &#x27;c1992-95, Stefan Stuntz&#x27;,
+    MUIA_Application_Author     , &#x27;Stefan Stuntz &amp; Klaus Becker&#x27;,
+    MUIA_Application_Description, &#x27;Demonstrate Drag &amp; Drop capabilities&#x27;,
+    MUIA_Application_Base       , &#x27;DRAGNDROP&#x27;,
+    SubWindow, window:= WindowObject,
+      MUIA_Window_Title, &#x27;Drag&amp;Drop Demo&#x27;,
+      MUIA_Window_ID   , &quot;DRAG&quot;,
+      WindowContents, VGroup,
+        Child, NewObjectA(cl_choosefields.mcc_class,NIL,[TAG_DONE]),
+        Child, ColGroup(2),
+          Child, TextObject, TextFrame, MUIA_Background, MUII_TextBack, MUIA_Text_Contents, &#x27;\ecListview without\nmultiple selection.&#x27;, End,
+          Child, TextObject, TextFrame, MUIA_Background, MUII_TextBack, MUIA_Text_Contents, &#x27;\ecListview with\nmultiple selection.&#x27;, End,
+          Child, ListviewObject,
+            MUIA_Listview_DragType, 1,
+            MUIA_Dropable, FALSE,
+            MUIA_Listview_List, ListObject,
+              InputListFrame,
+              MUIA_List_SourceArray, nase,
+              MUIA_List_DragSortable, MUI_TRUE,
+            End,
+          End,
+          Child, ListviewObject,
+            MUIA_Dropable, MUI_TRUE,
+            MUIA_Listview_DragType, 1,
+            MUIA_Listview_MultiSelect, MUI_TRUE,
+            MUIA_Listview_List, ListObject,
+              InputListFrame,
+              MUIA_List_SourceArray, nase,
+              MUIA_List_DragSortable, MUI_TRUE,
+            End,
+          End,
+        End,
+      End,
+    End,
+  End
+
+  IF app=NIL THEN
+    Raise(&#x27;Failed to create Application.&#x27;)
+
+  doMethodA(window,[MUIM_Notify,MUIA_Window_CloseRequest,MUI_TRUE,
+    app,2,MUIM_Application_ReturnID,MUIV_Application_ReturnID_Quit])
+
+  /*
+  ** This is the ideal input loop for an object oriented MUI application.
+  ** Everything is encapsulated in classes, no return ids need to be used,
+  ** we just check if the program shall terminate.
+  ** Note that MUIM_Application_NewInput expects sigs to contain the result
+  ** from Wait() (or 0). This makes the input loop significantly faster.
+  */
+
+  set(window,MUIA_Window_Open,MUI_TRUE)
+
+  WHILE (doMethodA(app,[MUIM_Application_NewInput,{sigs}]) &lt;&gt; MUIV_Application_ReturnID_Quit)
+    IF (sigs) THEN sigs:=Wait(sigs)
+  ENDWHILE
+
+  set(window,MUIA_Window_Open,FALSE)
+
+EXCEPT DO
+
+  IF app THEN Mui_DisposeObject(app) -&gt; note that you must first dispose all objects
+  exitclasses()                      -&gt; *before* deleting the classes!
+  #ifdef __AMIGAOS4__
+  DropInterface(muimasteriface)
+  #endif
+  IF muimasterbase THEN CloseLibrary(muimasterbase)
+  IF exception THEN WriteF(&#x27;\s\n&#x27;,exception)
+ENDPROC
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

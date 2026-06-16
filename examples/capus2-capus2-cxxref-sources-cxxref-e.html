@@ -1,0 +1,829 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>CxXref.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-capus2.html">capus2</a> &rsaquo; CxXref.e</div><h1>File: <code>CxXref.e</code></h1><p class="meta">803 lines · project <a href="../examples/pkg-capus2.html"><code>capus2</code></a></p><p class="pathctx">capus2/capus2/CxXref/Sources/CxXref.e</p><p class="prose">=========================================================================================</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/amigaguide.html">amigaguide</a></li><li><a href="../modules/commodities.html">commodities</a></li><li><a href="../modules/icon.html">icon</a></li><li><a href="../modules/intuition.html">intuition/intuition</a></li><li><a href="../modules/reqtools.html">reqtools</a></li></ul></div><h2>Source</h2><pre class="code">/*=========================================================================================*/
+/* Source code generate by Gui2E v0.1 © 1994 NasGûl                                        */
+/*=========================================================================================*/
+/*======&lt;&lt;&lt; Peps Header &gt;&gt;&gt;======
+ PRGVERSION &#x27;0&#x27;
+ ================================
+ PRGREVISION &#x27;2&#x27;
+ ================================
+ AUTHOR      &#x27;NasGûl&#x27;
+ ===============================*/
+/*======&lt;&lt;&lt;   History   &gt;&gt;&gt;======
+ ===============================*/
+OPT OSVERSION=37
+CONST DEBUG=FALSE
+/*&quot;Modules/Erreurs&quot;*/
+MODULE &#x27;intuition/intuition&#x27;,&#x27;gadtools&#x27;,&#x27;libraries/gadtools&#x27;,&#x27;intuition/gadgetclass&#x27;,&#x27;intuition/screens&#x27;,
+       &#x27;graphics/text&#x27;,&#x27;exec/lists&#x27;,&#x27;exec/nodes&#x27;,&#x27;exec/ports&#x27;,&#x27;eropenlib&#x27;,&#x27;utility/tagitem&#x27;,
+       &#x27;intuition/intuitionbase&#x27;
+MODULE &#x27;amigaguide&#x27;,&#x27;libraries/amigaguide&#x27;
+MODULE &#x27;reqtools&#x27;,&#x27;libraries/reqtools&#x27;
+MODULE &#x27;icon&#x27;,&#x27;workbench/workbench&#x27;,&#x27;workbench/startup&#x27;,&#x27;mheader&#x27;
+MODULE &#x27;commodities&#x27;,&#x27;libraries/commodities&#x27;
+ENUM ER_NONE,ER_LOCKSCREEN,ER_VISUAL,ER_CONTEXT,ER_MENUS,ER_GADGET,ER_WINDOW,
+     ER_LOCKAG,ER_HANDLEAG,ER_NEWAG,ER_BADARGS,ER_NOICON,ER_PORT,ER_CX
+/**/
+/*&quot;Globals Definitions&quot;*/
+DEF screen:PTR TO screen,
+    visual=NIL,
+    tattr:PTR TO textattr,
+    reelquit=FALSE,
+    offy,offx
+/*=======================================
+ = xref Definitions
+ =======================================*/
+DEF xref_window=NIL:PTR TO window
+DEF xref_glist=NIL
+/*==================*/
+/*     Gadgets      */
+/*==================*/
+CONST GA_G_XREFLIST=0
+CONST GA_G_LOADXREF=1
+CONST GA_G_EXPUNGEXREF=2
+CONST GA_G_FONCTIONLIST=3
+CONST GA_G_FILE=4
+CONST GA_G_VIEWGUIDE=5
+CONST GA_G_VIEWREMEMBER=6
+CONST GA_G_REMEMBER=7
+CONST GA_G_QUIT=8
+/*=============================
+ = Gadgets labels of xref
+ =============================*/
+DEF g_xreflist
+DEF g_loadxref
+DEF g_expungexref
+DEF g_fonctionlist
+DEF g_file
+DEF g_viewguide
+DEF g_viewremember
+DEF g_remember
+DEF g_quit
+/**/
+/*&quot;App definitions&quot;*/
+DEF keyagbase=NIL
+DEF mylist:PTR TO lh
+DEF xreflist:PTR TO lh
+DEF rememberlist:PTR TO lh
+DEF currentnode=-1
+DEF handleag=NIL
+DEF agsig=-1
+DEF myag:PTR TO newamigaguide
+DEF defaultdir[256]:STRING
+DEF context[20]:LIST
+DEF text_include[256]:STRING
+DEF xref_file[256]:STRING
+DEF docguide[256]:STRING
+DEF psn[80]:STRING
+DEF baselock,popup=FALSE
+/**/
+/*&quot;Pmodules&quot;*/
+PMODULE &#x27;CxXrefList&#x27;
+PMODULE &#x27;CxXrefCX&#x27;
+PMODULE &#x27;Pmodules:PMHeader&#x27;
+PMODULE &#x27;PModules:dWriteF&#x27;
+/**/
+/*&quot;p_OpenLibraries()&quot;*/
+PROC p_OpenLibraries() HANDLE 
+    dWriteF([&#x27;p_OpenLibraries\n&#x27;],0)
+    IF (intuitionbase:=OpenLibrary(&#x27;intuition.library&#x27;,37))=NIL THEN Raise(ER_INTUITIONLIB)
+    IF (gadtoolsbase:=OpenLibrary(&#x27;gadtools.library&#x27;,37))=NIL THEN Raise(ER_GADTOOLSLIB)
+    IF (gfxbase:=OpenLibrary(&#x27;graphics.library&#x27;,37))=NIL THEN Raise(ER_GRAPHICSLIB)
+    IF (amigaguidebase:=OpenLibrary(&#x27;amigaguide.library&#x27;,34))=NIL THEN Raise(ER_AMIGAGUIDELIB)
+    IF (reqtoolsbase:=OpenLibrary(&#x27;reqtools.library&#x27;,37))=NIL THEN Raise(ER_REQTOOLSLIB)
+    IF (iconbase:=OpenLibrary(&#x27;icon.library&#x27;,37))=NIL THEN Raise(ER_ICONLIB)
+    IF (cxbase:=OpenLibrary(&#x27;commodities.library&#x27;,37))=NIL THEN Raise(ER_COMMODITIESLIB)
+    Raise(ER_NONE)
+EXCEPT
+    RETURN exception
+ENDPROC
+/**/
+/*&quot;p_CloseLibraries()&quot;*/
+PROC p_CloseLibraries()  
+    dWriteF([&#x27;p_CloseLibraries()\n&#x27;],0)
+    IF cxbase THEN CloseLibrary(cxbase)
+    IF iconbase THEN CloseLibrary(iconbase)
+    IF reqtoolsbase THEN CloseLibrary(reqtoolsbase)
+    IF amigaguidebase THEN CloseLibrary(amigaguidebase)
+    IF gfxbase THEN CloseLibrary(gfxbase)
+    IF gadtoolsbase THEN CloseLibrary(gadtoolsbase)
+    IF intuitionbase THEN CloseLibrary(intuitionbase)
+ENDPROC
+/**/
+/*&quot;p_SetUpScreen()&quot;*/
+PROC p_SetUpScreen() HANDLE 
+    dWriteF([&#x27;p_SetUpScreen()\n&#x27;],0)
+    IF psn=NIL
+        IF (screen:=LockPubScreen(p_LockActivePubScreen()))=NIL THEN Raise(ER_LOCKSCREEN)
+    ELSE
+        IF (screen:=LockPubScreen(psn))=NIL
+            IF (screen:=LockPubScreen(p_LockActivePubScreen()))=NIL THEN Raise(ER_LOCKSCREEN)
+        ENDIF
+    ENDIF
+    IF (visual:=GetVisualInfoA(screen,NIL))=NIL THEN Raise(ER_VISUAL)
+    offy:=screen.wbortop+Int(screen.rastport+58)-10
+    Raise(ER_NONE)
+EXCEPT
+    RETURN exception
+ENDPROC
+/**/
+/*&quot;p_SetDownScreen()&quot;*/
+PROC p_SetDownScreen() 
+    dWriteF([&#x27;p_SetDownScreen()\n&#x27;],0)
+    IF visual THEN FreeVisualInfo(visual)
+    IF screen THEN UnlockPubScreen(NIL,screen)
+ENDPROC
+/**/
+/*&quot;p_LockActivePubScreen()&quot;*/
+PROC p_LockActivePubScreen()
+    DEF ps:PTR TO pubscreennode
+    DEF s:PTR TO screen
+    DEF sn:PTR TO ln
+    DEF psl:PTR TO lh
+    DEF ret=NIL
+    DEF myintui:PTR TO intuitionbase
+    dWriteF([&#x27;p_LockActivePubScreen()\n&#x27;],0)
+    myintui:=intuitionbase
+    s:=myintui.activescreen
+    IF psl:=LockPubScreenList()
+        sn:=psl.head
+        WHILE sn
+            ps:=sn
+            IF sn.succ&lt;&gt;0
+                IF ps.screen=s THEN ret:=sn.name
+            ENDIF
+            sn:=sn.succ
+        ENDWHILE
+        UnlockPubScreenList()
+    ENDIF
+    RETURN ret
+ENDPROC
+/**/
+
+/*&quot;p_InitxrefWindow()&quot;*/
+PROC p_InitxrefWindow() HANDLE 
+    DEF g:PTR TO gadget
+    dWriteF([&#x27;p_InitxrefWindow()\n&#x27;],0)
+    IF (g:=CreateContext({xref_glist}))=NIL THEN Raise(ER_CONTEXT)
+    IF (g_xreflist:=CreateGadgetA(LISTVIEW_KIND,g,[offx+36,offy+18,197,32,&#x27;XRef File(s).&#x27;,tattr,0,2,visual,0]:newgadget,[GTLV_READONLY,TRUE,GTLV_LABELS,NIL,GT_UNDERSCORE,&quot;_&quot;,TAG_DONE]))=NIL THEN Raise(ER_GADGET)
+    IF (g_loadxref:=CreateGadgetA(BUTTON_KIND,g_xreflist,[offx+364,offy+18,101,11,&#x27;Load Xref&#x27;,tattr,1,16,visual,0]:newgadget,[GA_RELVERIFY,TRUE,GA_DISABLED,FALSE,GT_UNDERSCORE,&quot;_&quot;,TAG_DONE]))=NIL THEN Raise(ER_GADGET)
+    IF (g_expungexref:=CreateGadgetA(BUTTON_KIND,g_loadxref,[offx+364,offy+35,101,11,&#x27;ExpungeXRef&#x27;,tattr,2,16,visual,0]:newgadget,[GA_RELVERIFY,TRUE,GA_DISABLED,FALSE,GT_UNDERSCORE,&quot;_&quot;,TAG_DONE]))=NIL THEN Raise(ER_GADGET)
+    IF (g_fonctionlist:=CreateGadgetA(LISTVIEW_KIND,g_expungexref,[offx+36,offy+71,197,40,&#x27;Fonctions List.&#x27;,tattr,3,4,visual,0]:newgadget,[GTLV_SHOWSELECTED,NIL,GTLV_LABELS,NIL,GT_UNDERSCORE,&quot;_&quot;,TAG_DONE]))=NIL THEN Raise(ER_GADGET)
+    IF (g_file:=CreateGadgetA(TEXT_KIND,g_fonctionlist,[offx+288,offy+71,177,11,&#x27;File&#x27;,tattr,4,1,visual,0]:newgadget,[GTTX_BORDER,1,GTTX_TEXT,&#x27;&#x27;,GTTX_COPYTEXT,FALSE,GT_UNDERSCORE,&quot;_&quot;,TAG_DONE]))=NIL THEN Raise(ER_GADGET)
+    IF (g_viewguide:=CreateGadgetA(BUTTON_KIND,g_file,[offx+244,offy+83,101,11,&#x27;View Guide&#x27;,tattr,5,16,visual,0]:newgadget,[GA_RELVERIFY,TRUE,GA_DISABLED,FALSE,GT_UNDERSCORE,&quot;_&quot;,TAG_DONE]))=NIL THEN Raise(ER_GADGET)
+    IF (g_viewremember:=CreateGadgetA(BUTTON_KIND,g_viewguide,[offx+364,offy+83,101,11,&#x27;V Remember&#x27;,tattr,6,16,visual,0]:newgadget,[GA_RELVERIFY,TRUE,GA_DISABLED,FALSE,GT_UNDERSCORE,&quot;_&quot;,TAG_DONE]))=NIL THEN Raise(ER_GADGET)
+    IF (g_remember:=CreateGadgetA(BUTTON_KIND,g_viewremember,[offx+244,offy+96,101,11,&#x27;Remember&#x27;,tattr,7,16,visual,0]:newgadget,[GA_RELVERIFY,TRUE,GA_DISABLED,FALSE,GT_UNDERSCORE,&quot;_&quot;,TAG_DONE]))=NIL THEN Raise(ER_GADGET)
+    IF (g_quit:=CreateGadgetA(BUTTON_KIND,g_remember,[offx+364,offy+96,101,11,&#x27;Quit&#x27;,tattr,8,16,visual,0]:newgadget,[GA_RELVERIFY,TRUE,GA_DISABLED,FALSE,GT_UNDERSCORE,&quot;_&quot;,TAG_DONE]))=NIL THEN Raise(ER_GADGET)
+    Raise(ER_NONE)
+EXCEPT
+    RETURN exception
+ENDPROC
+/**/
+/*&quot;p_RenderxrefWindow()&quot;*/
+PROC p_RenderxrefWindow() 
+    dWriteF([&#x27;p_RenderxrefWindow()\n&#x27;],0)
+    IF currentnode&lt;&gt;-1 THEN p_UpDateFileGadget(currentnode) ELSE Gt_SetGadgetAttrsA(g_file,xref_window,NIL,[GTTX_TEXT,&#x27;None.&#x27;,TAG_DONE])
+    IF (p_EmptyList(mylist)&lt;&gt;-1)
+        Gt_SetGadgetAttrsA(g_fonctionlist,xref_window,NIL,[GA_DISABLED,FALSE,GTLV_SHOWSELECTED,0,GTLV_LABELS,mylist,TAG_DONE])
+    ELSE
+        Gt_SetGadgetAttrsA(g_fonctionlist,xref_window,NIL,[GA_DISABLED,FALSE,GTLV_SHOWSELECTED,NIL,GTLV_LABELS,NIL,TAG_DONE])
+    ENDIF
+    IF (p_EmptyList(xreflist)&lt;&gt;-1)
+        Gt_SetGadgetAttrsA(g_xreflist,xref_window,NIL,[GA_DISABLED,FALSE,GTLV_SHOWSELECTED,0,GTLV_LABELS,xreflist,TAG_DONE])
+    ELSE
+        Gt_SetGadgetAttrsA(g_xreflist,xref_window,NIL,[GA_DISABLED,FALSE,GTLV_SHOWSELECTED,NIL,GTLV_LABELS,NIL,TAG_DONE])
+    ENDIF
+    DrawBevelBoxA(xref_window.rport,offx+10,offy+12,463,42,[GT_VISUALINFO,visual,TAG_DONE,0])
+    DrawBevelBoxA(xref_window.rport,offx+12,offy+55,460,56,[GT_VISUALINFO,visual,TAG_DONE,0])
+    RefreshGList(g_xreflist,xref_window,NIL,-1)
+    Gt_RefreshWindow(xref_window,NIL)
+ENDPROC
+/**/
+/*&quot;p_UpDateFileGadget(num)&quot;*/
+PROC p_UpDateFileGadget(num)
+    DEF xn:PTR TO xref
+    dWriteF([&#x27;p_UpDateFileGadget()\n&#x27;],0)
+    xn:=p_GetAdrNode(mylist,num)
+    Gt_SetGadgetAttrsA(g_file,xref_window,NIL,[GTTX_TEXT,xn.file,TAG_DONE])
+ENDPROC
+/**/
+/*&quot;p_OpenxrefWindow()&quot;*/
+PROC p_OpenxrefWindow() HANDLE
+    dWriteF([&#x27;p_OpenxrefWindow()\n&#x27;],0)
+    IF (xref_window:=OpenWindowTagList(NIL,
+                      [WA_LEFT,screen.mousex-240,
+                       WA_TOP,screen.mousey-57,
+                       WA_WIDTH,offx+481,
+                       WA_HEIGHT,offy+114,
+                       WA_IDCMP,$278+IDCMP_REFRESHWINDOW+IDCMP_MENUHELP+IDCMP_RAWKEY,
+                       WA_FLAGS,$102E+WFLG_HASZOOM,
+                       WA_ZOOM,[0,0,offy+290,11]:INT,
+                       WA_GADGETS,xref_glist,
+                       WA_CUSTOMSCREEN,screen,
+                       WA_TITLE,title_req,
+                       WA_SCREENTITLE,&#x27;Made With GadToolsBox V2.0b © 1991-1993&#x27;,
+                       TAG_DONE]))=NIL THEN Raise(ER_WINDOW)
+    p_RenderxrefWindow()
+    Raise(ER_NONE)
+EXCEPT
+    RETURN exception
+ENDPROC
+/**/
+/*&quot;p_RemxrefWindow()&quot;*/
+PROC p_RemxrefWindow() 
+    dWriteF([&#x27;p_RemxrefWindow()\n&#x27;],0)
+    IF xref_window THEN CloseWindow(xref_window)
+    IF xref_glist THEN FreeGadgets(xref_glist)
+    xref_window:=NIL
+ENDPROC
+/**/
+/*&quot;p_OpenWindow()&quot;*/
+PROC p_OpenWindow() HANDLE 
+/*===============================================================================
+ = Para         : NONE
+ = Return       : ER_NONE if ok,else the error.
+ = Description  : Lock,init gagets lists and open whatview window.
+ ==============================================================================*/
+    DEF t
+    dWriteF([&#x27;p_OpenWindow()\n&#x27;],[0])
+    IF (t:=p_SetUpScreen())&lt;&gt;ER_NONE THEN Raise(t)
+    IF (t:=p_InitxrefWindow())&lt;&gt;ER_NONE THEN Raise(t)
+    IF (t:=p_OpenxrefWindow())&lt;&gt;ER_NONE THEN Raise(t)
+    Raise(ER_NONE)
+EXCEPT
+    RETURN exception
+ENDPROC
+/**/
+/*&quot;p_CloseWindow()&quot;*/
+PROC p_CloseWindow() 
+/*===============================================================================
+ = Para         : NONE
+ = Return       : NONE
+ = Description  : free gadgets lists,close window and unlock screen.
+ ==============================================================================*/
+    dWriteF([&#x27;p_CloseWindow()\n&#x27;],[0])
+    IF xref_window THEN p_RemxrefWindow()
+    IF screen THEN p_SetDownScreen()
+    screen:=NIL
+    xref_window:=NIL
+ENDPROC
+/**/
+
+/*&quot;p_LookAllMessage()&quot;*/
+PROC p_LookAllMessage() 
+    DEF sigreturn
+    DEF xrefport:PTR TO mp
+    IF xref_window THEN xrefport:=xref_window.userport ELSE xrefport:=NIL
+    sigreturn:=Wait(Shl(1,xrefport.sigbit) OR 
+                    agsig OR 
+                    cxsigflag OR
+                    $F000)
+    IF (sigreturn AND Shl(1,xrefport.sigbit))
+        IF p_LookxrefMessage()=TRUE THEN p_CloseWindow()
+    ENDIF
+    IF (sigreturn AND agsig)
+        p_LookAmigaGuideMessage()
+    ENDIF
+    IF (sigreturn AND cxsigflag)
+        p_LookCxMessage()
+    ENDIF
+    IF (sigreturn AND $F000)
+        reelquit:=TRUE
+    ENDIF
+ENDPROC
+/**/
+/*&quot;p_LookxrefMessage()&quot;*/
+PROC p_LookxrefMessage() 
+   DEF mes:PTR TO intuimessage
+   DEF g:PTR TO gadget
+   DEF type=0,infos=NIL
+   DEF ret=FALSE
+   WHILE mes:=Gt_GetIMsg(xref_window.userport)
+       type:=mes.class
+       /*WriteF(&#x27;\h\n&#x27;,type)*/
+       SELECT type
+           CASE IDCMP_REFRESHWINDOW
+              p_RenderxrefWindow()
+           CASE IDCMP_MENUPICK
+              infos:=mes.code
+              SELECT infos
+              ENDSELECT
+           CASE IDCMP_CLOSEWINDOW
+              ret:=TRUE
+           CASE IDCMP_GADGETUP
+              g:=mes.iaddress
+              infos:=g.gadgetid
+              SELECT infos
+                  CASE GA_G_XREFLIST
+                  CASE GA_G_LOADXREF
+                    IF (p_FileRequester())=TRUE THEN p_RenderxrefWindow()
+                  CASE GA_G_EXPUNGEXREF
+                    Gt_SetGadgetAttrsA(g_file,xref_window,NIL,[GTTX_TEXT,&#x27;Clear Xref..&#x27;,TAG_DONE])
+                    ExpungeXRef()
+                    currentnode:=-1
+                    p_UpDateListes()
+                    xreflist:=p_CleanList(xreflist,FALSE,0,LIST_CLEAN)
+                    p_RenderxrefWindow()
+                  CASE GA_G_FONCTIONLIST
+                    currentnode:=mes.code
+                    p_UpDateFileGadget(currentnode)
+                  CASE GA_G_FILE
+                  CASE GA_G_VIEWGUIDE
+                    p_ShowAmigaGuideFile(currentnode)
+                  CASE GA_G_VIEWREMEMBER
+                    p_ViewRememberGuide()
+                  CASE GA_G_REMEMBER
+                    p_AddToRememberList(currentnode)
+                  CASE GA_G_QUIT
+                    reelquit:=TRUE
+              ENDSELECT
+           CASE IDCMP_RAWKEY
+              IF mes.code=95 THEN p_CheckMousePosition()
+       ENDSELECT
+       Gt_ReplyIMsg(mes)
+   ENDWHILE
+   RETURN ret
+ENDPROC
+/**/
+/*&quot;p_LookCxMessage()&quot;*/
+PROC p_LookCxMessage() 
+    DEF msgid=NIL,msgtype=NIL
+    DEF msg
+    WHILE msg:=GetMsg(broker_mp) 
+        msgid:=CxMsgID(msg)
+        msgtype:=CxMsgType(msg) 
+        SELECT msgtype 
+            CASE CXM_IEVENT 
+                SELECT msgid 
+                    CASE EVT_HOTKEY_CXREF
+                        IF xref_window=NIL
+                            p_OpenWindow() 
+                        ELSE
+                            p_CloseWindow() 
+                        ENDIF 
+                    CASE EVT_HOTKEY_GUIDE;  p_ShowAmigaGuideFile(currentnode)
+                ENDSELECT 
+            CASE CXM_COMMAND 
+                SELECT msgid
+                    CASE CXCMD_KILL 
+                        reelquit:=TRUE
+                    CASE  CXCMD_DISABLE 
+                        ActivateCxObj(broker,0) 
+                    CASE CXCMD_ENABLE
+                        ActivateCxObj(broker,1) 
+                    CASE CXCMD_APPEAR 
+                        IF xref_window=NIL
+                            p_OpenWindow() 
+                        ELSE 
+                            WindowToFront(xref_window)
+                        ENDIF 
+                    CASE CXCMD_DISAPPEAR 
+                        IF xref_window&lt;&gt;NIL
+                            p_CloseWindow() 
+                        ENDIF 
+                ENDSELECT
+        ENDSELECT
+        ReplyMsg(msg)
+    ENDWHILE
+ENDPROC
+/**/
+
+/*&quot;p_AddToRememberList(numnode)&quot;*/
+PROC p_AddToRememberList(numnode)
+    DEF n:PTR TO ln
+    DEF xn:PTR TO xref
+    DEF cmd[256]:STRING
+    n:=p_GetAdrNode(mylist,numnode)
+    xn:=n
+    IF n.type=1
+        StringF(cmd,&#x27;   @{&quot;\s&quot; link &quot;\s/\s&quot;}&#x27;,n.name,xn.file,xn.name)
+        IF FindName(rememberlist,cmd)=0
+            p_AjouteNode(rememberlist,cmd,0)
+        ELSE
+            p_Request(&#x27;\s est déjà dans Remember.Guide&#x27;,&#x27;Merci&#x27;,[xn.name])
+        ENDIF
+    ELSE
+        StringF(cmd,&#x27;    @{&quot;\s&quot; link &quot;\s/Main&quot; \d \d}&#x27;,n.name,xn.file,xn.line,n.type)
+        IF FindName(rememberlist,cmd)=0
+            p_AjouteNode(rememberlist,cmd,0)
+        ELSE
+            p_Request(&#x27;\s est déjà dans Remember.Guide&#x27;,&#x27;Merci&#x27;,[xn.name])
+        ENDIF
+    ENDIF
+ENDPROC
+/**/
+/*&quot;p_ViewRememberGuide()&quot;*/
+PROC p_ViewRememberGuide()
+    DEF h
+    DEF oldstdout
+    DEF n:PTR TO ln
+    IF p_EmptyList(rememberlist)&lt;&gt;-1
+        oldstdout:=stdout
+        IF h:=Open(&#x27;T:Remember.Guide&#x27;,1006)
+            stdout:=h
+            WriteF(&#x27;@database &quot;CxXref Remember.Guide&quot;\n&#x27;)
+            WriteF(&#x27;@node main &quot;Remember List&quot;\n&#x27;)
+            n:=rememberlist.head
+            WHILE n
+                IF n.succ&lt;&gt;0
+                    WriteF(&#x27;\s\n&#x27;,n.name)
+                ENDIF
+                n:=n.succ
+            ENDWHILE
+            WriteF(&#x27;@endnode\n&#x27;)
+            IF h THEN Close(h)
+        ELSE
+            p_Request(&#x27;Vous devez sortir du Document en cours.&#x27;,&#x27;D\aAccord&#x27;,0)
+            JUMP skk
+        ENDIF
+        stdout:=oldstdout
+        myag.name:=&#x27;T:Remember.guide&#x27;
+        myag.node:=&#x27;main&#x27;
+        myag.line:=0
+        myag.context:=0
+        SendAmigaGuideCmd(handleag,&#x27;Link &quot;T:Remember.guide/main&quot;&#x27;,NIL)
+    ELSE
+        p_Request(&#x27;Le fichier T:Remember.guide ne contient aucun noeud&#x27;,&#x27;Merci&#x27;,0)
+    ENDIF
+    skk:
+ENDPROC
+/**/
+/*&quot;p_LookAmigaGuideMessage()&quot;*/
+PROC p_LookAmigaGuideMessage()
+    DEF agmsg:PTR TO amigaguidemsg
+    DEF type
+    WHILE (agmsg:=GetAmigaGuideMsg(handleag))
+        type:=agmsg.type
+        /*WriteF(&#x27;Type :\h Pri_Ret:\h\n&#x27;,type,agmsg.pri_ret)*/
+        ReplyAmigaGuideMsg(agmsg)
+    ENDWHILE
+ENDPROC
+/**/
+/*&quot;p_CheckMousePosition()&quot;*/
+PROC p_CheckMousePosition()
+    DEF myg:PTR TO gadget
+    DEF mx=-1,my=-1
+    DEF minx,maxx,miny,maxy
+    DEF id
+    DEF cmd[256]:STRING
+    DEF test,found=FALSE
+    mx:=xref_window.mousex
+    my:=xref_window.mousey
+    myg:=g_xreflist
+    REPEAT
+        minx:=myg.leftedge
+        maxx:=myg.leftedge+myg.width
+        miny:=myg.topedge
+        maxy:=myg.topedge+myg.height
+        /*WriteF(&#x27;Mx :\d My :\d \d \d \d \d\n&#x27;,mx,my,minx,maxx,miny,maxy)*/
+        IF ((mx&lt;maxx) AND (mx&gt;minx))
+            IF ((my&lt;maxy) AND (my&gt;miny))
+                id:=myg.gadgetid
+                myag.name:=docguide
+                myag.node:=&#x27;main&#x27;
+                myag.line:=0
+                myag.context:=context
+                StringF(cmd,&#x27;link &quot;\s/\s&quot;&#x27;,docguide,context[id])
+                test:=SendAmigaGuideCmd(handleag,cmd,NIL)
+                found:=TRUE
+                /*WriteF(&#x27;\s \d\n&#x27;,cmd,test)*/
+            ENDIF
+        ENDIF
+        myg:=myg.nextgadget
+    UNTIL myg=NIL
+    IF found=FALSE
+        StringF(cmd,&#x27;link &quot;\s/\s&quot;&#x27;,docguide,&#x27;COPY&#x27;)
+        test:=SendAmigaGuideCmd(handleag,cmd,NIL)
+        /*WriteF(&#x27;\s \d\n&#x27;,cmd,test)*/
+    ENDIF
+ENDPROC
+/**/
+/*&quot;p_InitAPP()&quot;*/
+PROC p_InitAPP() HANDLE
+    DEF flist:PTR TO lh
+    dWriteF([&#x27;p_InitAPP()\n&#x27;],0)
+    StrCopy(defaultdir,&#x27;Ram:&#x27;,ALL)
+    IF EstrLen(text_include)&lt;&gt;0 THEN AssignPath(&#x27;TEXT_INCLUDE&#x27;,text_include)
+    IF EstrLen(xref_file)&lt;&gt;0 THEN StrCopy(defaultdir,xref_file,ALL)
+    IF (keyagbase:=LockAmigaGuideBase(NIL))=NIL THEN Raise(ER_LOCKAG)
+    mylist:=p_InitList()
+    xreflist:=p_InitList()
+    rememberlist:=p_InitList()
+    GetAmigaGuideAttr(AGA_XREFLIST,NIL,flist)
+    IF (myag:=New(SIZEOF newamigaguide))=NIL THEN Raise(ER_NEWAG)
+    myag.basename:=&#x27;CxXRef&#x27;
+    myag.name:=docguide
+    myag.node:=&#x27;Main&#x27;
+    myag.line:=0
+    myag.flags:=HTF_CACHE_NODE+HTF_UNIQUE
+    context:=[&#x27;XREFLIST&#x27;,&#x27;LOADXREF&#x27;,&#x27;EXPUNGEXREF&#x27;,&#x27;FONCTIONLIST&#x27;,&#x27;FILE&#x27;,&#x27;VIEWGUIDE&#x27;,&#x27;VIEWREMEMBER&#x27;,&#x27;REMEMBER&#x27;,&#x27;QUIT&#x27;,NIL]
+    myag.context:=context
+    IF (handleag:=OpenAmigaGuideAsync(myag,NIL))=NIL THEN Raise(ER_HANDLEAG)
+    agsig:=AmigaGuideSignal(handleag)
+    SetAmigaGuideAttrsA(handleag,[AGA_ACTIVATE,TRUE,NIL])
+    mylist:=Long(flist)
+    UnlockAmigaGuideBase(keyagbase)
+    keyagbase:=NIL
+    Raise(ER_NONE)
+EXCEPT
+    RETURN exception
+ENDPROC
+/**/
+/*&quot;p_RemAPP()&quot;*/
+PROC p_RemAPP()
+    /*IF keyagbase&lt;&gt;NIL THEN UnlockAmigaGuideBase(keyagbase)*/
+    dWriteF([&#x27;p_RemAPP()\n&#x27;],0)
+    IF handleag&lt;&gt;NIL THEN CloseAmigaGuide(handleag)
+    DeleteFile(&#x27;T:Remember.Guide&#x27;)
+    DeleteFile(&#x27;T:Data.Guide&#x27;)
+ENDPROC
+/**/
+/*&quot;p_StartCLI()&quot;*/
+PROC p_StartCLI() HANDLE
+    DEF myargs:PTR TO LONG,rdargs=NIL
+    myargs:=[0,0,0,0,0,0,0,0]
+    IF rdargs:=ReadArgs(&#x27;XR=XREF_FILE/K,TI=TEXT_INCLUDE/K,GUIDE/K,PUBSCREEN/K,HT=CX_POPKEY/K,P=CX_PRIORITY/N,HG=CX_HOTKEYGUIDE/K,CX_POPUP/S&#x27;,myargs,NIL)
+        IF myargs[0] THEN StrCopy(xref_file,myargs[0],ALL) ELSE StrCopy(xref_file,&#x27;Guide:&#x27;,ALL)
+        IF myargs[1] THEN StrCopy(text_include,myargs[1],ALL) ELSE StrCopy(text_include,&#x27;LC:/Compiler_headers&#x27;,ALL)
+        IF myargs[2] THEN StrCopy(docguide,myargs[2],ALL) ELSE StrCopy(docguide,&#x27;CxXref.Guide&#x27;,ALL)
+        IF myargs[3] THEN StrCopy(psn,myargs[3],ALL) ELSE StrCopy(psn,&#x27;&#x27;,ALL)
+        IF myargs[4] THEN StrCopy(hotkey,myargs[4],ALL) ELSE StrCopy(hotkey,&#x27;lcommand esc&#x27;,ALL)
+        IF myargs[5] THEN cxpri:=Long(myargs[5]) ELSE cxpri:=0
+        IF myargs[6] THEN StrCopy(hotkeyguide,myargs[6],ALL) ELSE StrCopy(hotkeyguide,&#x27;lalt esc&#x27;,ALL)
+        IF myargs[7] THEN popup:=TRUE
+    ELSE
+        Raise(ER_BADARGS)
+    ENDIF
+    Raise(ER_NONE)
+EXCEPT
+    IF rdargs THEN FreeArgs(rdargs)
+    RETURN exception
+ENDPROC
+/**/
+/*&quot;p_StartWB()&quot;*/
+PROC p_StartWB() HANDLE
+    DEF name[256]:STRING
+    DEF wb:PTR TO wbstartup
+    DEF args:PTR TO wbarg
+    DEF dob:PTR TO diskobject
+    DEF data[256]:STRING
+    dob:=NIL
+    wb:=wbmessage
+    args:=wb.arglist
+    StrCopy(name,args[0].name,ALL)
+    baselock:=CurrentDir(args[0].lock)
+    IF (dob:=GetDiskObject(name))
+        IF data:=FindToolType(dob.tooltypes,&#x27;CX_POPKEY&#x27;)
+            StrCopy(hotkey,data,ALL)
+        ELSE
+            StrCopy(hotkey,&#x27;lcommand esc&#x27;,ALL)
+        ENDIF
+        IF data:=FindToolType(dob.tooltypes,&#x27;CX_PRIORITY&#x27;)
+            cxpri:=Val(data,NIL)
+        ELSE
+            cxpri:=0
+        ENDIF
+        IF data:=FindToolType(dob.tooltypes,&#x27;CX_POPUP&#x27;) THEN popup:=TRUE
+        IF data:=FindToolType(dob.tooltypes,&#x27;CX_POPKEYGUIDE&#x27;)
+            StrCopy(hotkeyguide,data,ALL)
+        ELSE
+            StrCopy(hotkeyguide,&#x27;lalt esc&#x27;,ALL)
+        ENDIF
+        IF data:=FindToolType(dob.tooltypes,&#x27;TEXT_INCLUDE&#x27;)
+            StrCopy(text_include,data,ALL)
+        ELSE
+            StrCopy(text_include,&#x27;LC:/Complier_headers&#x27;,ALL)
+        ENDIF
+        IF data:=FindToolType(dob.tooltypes,&#x27;XREF_FILE&#x27;)
+            StrCopy(xref_file,data,ALL)
+        ELSE
+            StrCopy(xref_file,&#x27;Guide:&#x27;,ALL)
+        ENDIF
+        IF data:=FindToolType(dob.tooltypes,&#x27;GUIDE&#x27;)
+            StrCopy(docguide,data,ALL)
+        ELSE
+            StrCopy(docguide,&#x27;CxXRef.guide&#x27;,ALL)
+        ENDIF
+        IF data:=FindToolType(dob.tooltypes,&#x27;PUBSCREEN&#x27;)
+            StrCopy(psn,data,ALL)
+        ELSE
+            StrCopy(psn,&#x27;&#x27;,ALL)
+        ENDIF
+    ELSE
+        Raise(ER_NOICON)
+    ENDIF
+    Raise(ER_NONE)
+EXCEPT
+    IF dob&lt;&gt;NIL THEN FreeDiskObject(dob)
+    IF baselock THEN CurrentDir(baselock)
+    RETURN exception
+ENDPROC
+/**/
+/*&quot;p_Request(bodytext,gadgettext,the_arg)&quot;*/
+PROC p_Request(bodytext,gadgettext,the_arg)
+/*===============================================================================
+ = Para         : texte (STRING),gadgets (STRING),the_arg.
+ = Return       : FALSE if cancel selected,else TRUE.
+ = Description  : PopUp a requester (reqtools.library).
+ ==============================================================================*/
+    DEF ret
+    DEF taglist
+    IF xref_window&lt;&gt;NIL
+        taglist:=[RT_WINDOW,xref_window,RT_LOCKWINDOW,TRUE,RTEZ_REQTITLE,&#x27;CxXRef&#x27;,RT_UNDERSCORE,&quot;_&quot;,0]
+    ELSE
+        taglist:=[RTEZ_REQTITLE,&#x27;CxXRef&#x27;,RT_UNDERSCORE,&quot;_&quot;,0]
+    ENDIF
+    ret:=RtEZRequestA(bodytext,gadgettext,0,the_arg,taglist)
+    RETURN ret
+ENDPROC
+/**/
+/*&quot;p_FileRequester()&quot;*/
+PROC p_FileRequester()
+/*===============================================================================
+ = Para         : NONE
+ = Return       : False if cancel selected.
+ = Description  : PopUp a MultiFileRequester,build the cxxref arguments.
+ ==============================================================================*/
+    DEF reqfile:PTR TO rtfilerequester
+    DEF liste:PTR TO rtfilelist
+    DEF buffer[120]:STRING
+    DEF add_liste=0
+    DEF ret=FALSE
+    DEF the_reelname[256]:STRING
+    DEF fullname[256]:STRING
+    DEF pv[256]:STRING
+    DEF test
+    reqfile:=NIL
+    IF reqfile:=RtAllocRequestA(RT_FILEREQ,NIL)
+        buffer[0]:=0
+        RtChangeReqAttrA(reqfile,[RTFI_DIR,defaultdir,TAG_DONE])
+        add_liste:=RtFileRequestA(reqfile,buffer,&#x27;CxXRef: Load Xref&#x27;,
+                                  [RTFI_FLAGS,FREQF_MULTISELECT,RTFI_OKTEXT,&#x27;Load&#x27;,RTFI_HEIGHT,200,
+                                   RT_UNDERSCORE,&quot;_&quot;,TAG_DONE])
+        StrCopy(defaultdir,reqfile.dir,ALL)
+        StrCopy(pv,reqfile.dir,ALL)
+        AddPart(pv,&#x27;&#x27;,256)
+        IF reqfile THEN RtFreeRequest(reqfile)
+        IF add_liste THEN ret:=TRUE
+    ELSE
+        ret:=FALSE
+    ENDIF
+    IF ret=TRUE
+        liste:=add_liste
+        IF add_liste
+            Gt_SetGadgetAttrsA(g_file,xref_window,NIL,[GTTX_TEXT,&#x27;Wait Loading Xref..&#x27;,TAG_DONE])
+            WHILE liste
+                StringF(the_reelname,&#x27;\s&#x27;,liste.name)
+                StringF(fullname,&#x27;\s\s&#x27;,pv,the_reelname)
+                test:=LoadXRef(NIL,fullname)
+                SELECT test
+                    CASE -1; NOP
+                    CASE  0; p_Request(&#x27;Impossible de charger \s&#x27;,&#x27;Ok&#x27;,[the_reelname])
+                    CASE  1
+                        p_AjouteNode(xreflist,the_reelname,0)
+                        p_UpDateListes()
+                    CASE 2 ; p_Request(&#x27;\s est déjà chargé&#x27;,&#x27;Merci&#x27;,[the_reelname])
+                ENDSELECT
+                liste:=liste.next
+            ENDWHILE
+            IF add_liste THEN RtFreeFileList(add_liste)
+        ENDIF
+    ELSE
+        ret:=FALSE
+    ENDIF
+    RETURN ret
+ENDPROC
+/**/
+/*&quot;p_UpDateListes()&quot;*/
+PROC p_UpDateListes()
+    DEF flist
+    GetAmigaGuideAttr(AGA_XREFLIST,NIL,flist)
+    mylist:=Long(flist)
+ENDPROC
+/**/
+/*&quot;p_ShowAmigaGuideFile(numnode)&quot;*/
+PROC p_ShowAmigaGuideFile(numnode)
+    DEF n:PTR TO ln
+    DEF xn:PTR TO xref
+    DEF cmd[256]:STRING
+    IF numnode=-1 THEN RETURN
+    n:=p_GetAdrNode(mylist,numnode)
+    xn:=n
+    IF n.type=1
+        StringF(cmd,&#x27;link &quot;\s&quot;&#x27;,xn.name)
+        myag.name:=xn.file
+        myag.node:=xn.name
+        myag.line:=xn.line
+        myag.context:=0
+        SendAmigaGuideCmd(handleag,cmd,NIL)
+    ELSE
+        IF p_WriteAmigaGuide(xn.file,xn.name,xn.line,n.type)=TRUE
+            StrCopy(cmd,&#x27;link &quot;T:Data.Guide/Structure Info&quot;&#x27;,ALL)
+            myag.name:=&#x27;T:data.guide&#x27;
+            myag.node:=&#x27;Structure Info&#x27;
+            myag.line:=xn.line
+            myag.context:=0
+            SendAmigaGuideCmd(handleag,cmd,NIL)
+        ENDIF
+    ENDIF
+ENDPROC
+/**/
+/*&quot;p_WriteAmigaGuide(fichier,nom,ligne,type)&quot;*/
+PROC p_WriteAmigaGuide(fichier,nom,ligne,type)
+    DEF h,ret=TRUE
+    DEF oldstdout
+    /*
+    DEF cmd[256]:STRING
+    StringF(cmd,&#x27;hd3:Amiga_e_v3.0a/bin/showmodule &gt;T:\s \s&#x27;,nom,fichier)
+    WriteF(&#x27;\s\n&#x27;,cmd)
+    Execute(cmd,0,stdout)
+    StringF(cmd,&#x27;T:\s&#x27;,nom)
+    fichier:=cmd
+    */
+    oldstdout:=stdout
+    IF h:=Open(&#x27;T:Data.Guide&#x27;,1006)
+        stdout:=h
+        WriteF(&#x27;@database &quot;CxXRefv0.0&quot;\n&#x27;)
+        WriteF(&#x27;@node main\n&#x27;)
+        WriteF(&#x27;@endnode\n&#x27;)
+        WriteF(&#x27;@node &quot;Structure Info&quot;\n\n&#x27;)
+        WriteF(&#x27;    @{&quot;\s&quot; link &quot;\s/Main&quot; \d \d}\n&#x27;,nom,fichier,ligne,type)
+        WriteF(&#x27;@endnode\n&#x27;)
+        Close(h)
+    ELSE
+        p_Request(&#x27;Vous devez sortir du Document en cours.&#x27;,&#x27;D\aAccord&#x27;,0)
+        ret:=FALSE
+    ENDIF
+    stdout:=oldstdout
+    RETURN ret
+ENDPROC
+/**/
+/*&quot;main()&quot;*/
+PROC main() HANDLE 
+    DEF testmain
+    tattr:=[&#x27;topaz.font&#x27;,8,0,0]:textattr
+    IF (testmain:=p_OpenLibraries())&lt;&gt;ER_NONE THEN Raise(testmain)
+    p_DoReadHeader({banner})
+    IF wbmessage&lt;&gt;NIL
+        IF (testmain:=p_StartWB())&lt;&gt;ER_NONE THEN Raise(testmain)
+    ELSE
+        IF (testmain:=p_StartCLI())&lt;&gt;ER_NONE THEN Raise(testmain)
+    ENDIF
+    IF (testmain:=p_InitCx())&lt;&gt;ER_NONE THEN Raise(testmain)
+    IF (testmain:=p_InitAPP())&lt;&gt;ER_NONE THEN Raise(testmain)
+    IF popup=TRUE THEN p_OpenWindow()
+    REPEAT
+        p_LookAllMessage()
+    UNTIL reelquit=TRUE
+    Raise(ER_NONE)
+EXCEPT
+    IF xref_window&lt;&gt;NIL THEN p_RemxrefWindow()
+    IF screen&lt;&gt;NIL THEN p_SetDownScreen()
+    p_RemAPP()
+    p_RemCx()
+    p_CloseLibraries()
+    SELECT exception
+        CASE ER_LOCKSCREEN; WriteF(&#x27;Lock Screen Failed.&#x27;)
+        CASE ER_VISUAL;     WriteF(&#x27;Error Visual.&#x27;)
+        CASE ER_CONTEXT;    WriteF(&#x27;Error Context.&#x27;)
+        CASE ER_MENUS;      WriteF(&#x27;Error Menus.&#x27;)
+        CASE ER_GADGET;     WriteF(&#x27;Error Gadget.&#x27;)
+        CASE ER_WINDOW;     WriteF(&#x27;Error Window.&#x27;)
+        CASE ER_LOCKAG;     WriteF(&#x27;Error Lock AmigaGuideBase.\n&#x27;)
+        CASE ER_NEWAG;      WriteF(&#x27;Error Allocate New AmigaGuide.\n&#x27;)
+        CASE ER_HANDLEAG;   WriteF(&#x27;Error Create AmigaGuideAsync.\n&#x27;)
+        CASE ER_BADARGS;    WriteF(&#x27;Error ReadArgs() fct.\n&#x27;)
+        CASE ER_NOICON;     WriteF(&#x27;Error NoIcon.\n&#x27;)
+        CASE ER_AMIGAGUIDELIB;  WriteF(&#x27;amigaguide.library ?\n&#x27;)
+        CASE ER_REQTOOLSLIB;    WriteF(&#x27;reqtools.library ?\n&#x27;)
+        CASE ER_PORT;           WriteF(&#x27;Error CreateMsgPort() for commodities.\n&#x27;)
+        CASE ER_CX;             WriteF(&#x27;Error Cx.\n&#x27;)
+    ENDSELECT
+ENDPROC
+/**/
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

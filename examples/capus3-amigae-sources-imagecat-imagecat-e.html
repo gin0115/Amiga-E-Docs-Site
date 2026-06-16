@@ -1,0 +1,1027 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ImageCat.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-capus3.html">capus3</a> &rsaquo; ImageCat.e</div><h1>File: <code>ImageCat.e</code></h1><p class="meta">1001 lines · project <a href="../examples/pkg-capus3.html"><code>capus3</code></a></p><p class="pathctx">capus3/AmigaE/Sources/ImageCat/ImageCat.e</p><p class="prose">&gt; EDEVHEADER</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/dos.html">dos/dos</a></li><li><a href="../modules/nodes.html">exec/nodes</a></li><li><a href="../modules/muimaster.html">muimaster</a></li><li><a href="../modules/plist.html">other/plist</a></li><li><a href="../modules/rexxsyslib.html">rexxsyslib</a></li><li><a href="../modules/boopsi.html">tools/boopsi</a></li><li><a href="../modules/ilbm.html">tools/ilbm</a></li><li><a href="../modules/wb.html">wb</a></li></ul></div><h2>Source</h2><pre class="code">-&gt;&gt; EDEVHEADER
+/*= © NasGûl =========================
+ ESOURCE ImageCat.e
+ EDIR    Workbench:AmigaE/Sources/ImageCat
+ ECOPT   ERRLINE
+ EXENAME ImageCat
+ MAKE    EC
+ AUTHOR  NasGûl
+ TYPE    EXEDOS
+ =====================================*/
+-&gt;&lt;
+-&gt;&gt; ©/DISTRIBUTION/UTILISATION
+/*=====================================
+
+ - TOUTE UTILISATION COMMERCIALE DES CES SOURCES EST
+   INTERDITE SANS MON AUTORISATION.
+
+ - TOUTE DISTRIBUTION DOIT ETRE FAITES EN TOTALITE (EXECUTABLES/MODULES E/SOURCES E).
+
+ !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+ !! TOUTE INCLUSION SUR UN CD-ROM EST INTERDITE SANS MON AUTORISATION.!!
+ !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+=====================================*/
+-&gt;&lt;
+OPT PREPROCESS
+OPT LARGE
+-&gt;&gt; MODULES
+
+MODULE &#x27;muimaster&#x27;,&#x27;libraries/mui&#x27;
+MODULE &#x27;tools/boopsi&#x27;,&#x27;utility/tagitem&#x27;,&#x27;utility/hooks&#x27;,&#x27;icon&#x27;
+MODULE &#x27;wb&#x27;,&#x27;workbench/workbench&#x27;,&#x27;workbench/startup&#x27;
+MODULE &#x27;tools/ilbm&#x27;,&#x27;tools/ilbmdefs&#x27;,&#x27;iff&#x27;,&#x27;libraries/iff&#x27;
+MODULE &#x27;other/plist&#x27;,&#x27;intuition/screens&#x27;,&#x27;graphics/gfx&#x27;,&#x27;graphics/view&#x27;,&#x27;reqtools&#x27;,&#x27;libraries/reqtools&#x27;
+MODULE &#x27;dos/dos&#x27;,&#x27;dos/var&#x27;,&#x27;dos/dostags&#x27;,&#x27;tools/easygui&#x27;,&#x27;tools/exceptions&#x27;
+MODULE &#x27;exec/nodes&#x27;,&#x27;exec/lists&#x27;,&#x27;exec/ports&#x27;
+MODULE &#x27;rexxsyslib&#x27;,&#x27;rexx/rxslib&#x27;,&#x27;rexx/storage&#x27;,&#x27;rexx/errors&#x27;
+MODULE &#x27;*errorarexx&#x27;
+
+-&gt;&lt;
+-&gt;&gt; OBJECTS
+
+-&gt;&gt; OBJECT ataimagecat
+OBJECT dataimagecat
+    mybitmap:LONG
+    width:LONG
+    height:LONG
+    depth:LONG
+    suffix:LONG
+    imagepresent:LONG
+    wbpal:LONG
+    iconx:LONG
+    icony:LONG
+    viewer:LONG
+    destg:LONG
+    destd:LONG
+    winbackdrop:LONG
+    stampcommand:LONG
+    patternreq:LONG
+    scriptdir:LONG
+    imagecattools:LONG
+    toolslist:LONG
+    currenttool:LONG
+    screen:LONG
+    screenid:LONG
+    sigscreen:LONG
+    baselock:LONG
+    imagelist:LONG
+    imageinfolist:LONG
+    closearexxlib:LONG
+ENDOBJECT
+-&gt;&lt;
+-&gt;&gt; OBJECT app_rexx
+OBJECT app_arexx
+    commands :  PTR TO mui_command
+    error    :  hook
+ENDOBJECT
+-&gt;&lt;
+-&gt;&gt; OBJECT app_display
+OBJECT app_display
+    getIconDef    : hook
+    delIcondef    : hook
+ENDOBJECT
+-&gt;&lt;
+-&gt;&gt; OBJECT app_obj
+OBJECT app_obj
+    app       : PTR TO LONG
+    wi_stamp      : PTR TO LONG
+    im_icon   : PTR TO LONG
+    lv_texticon   : PTR TO LONG
+    lv_name   : PTR TO LONG
+    bt_loadcat    : PTR TO LONG
+    bt_view   : PTR TO LONG
+    bt_tools      : PTR TO LONG
+    bt_copyram    : PTR TO LONG
+    bt_copydf0    : PTR TO LONG
+ENDOBJECT
+-&gt;&lt;
+
+-&gt;&lt;
+-&gt;&gt; DEFINITIONS GLOBALES
+
+
+ENUM    ER_NONE,ER_ONLYWB,ER_LIBMUIMASTER,ER_LIBICON,ER_LIBWORKBENCH,ER_LIBIFF,ER_LIBREQTOOLS,
+    ER_NOICON,ER_NOIMAGEPRESENT,ER_NOSTAMPSUFFIX,ER_BADIMAGEPRESENT,ER_NOSCREENID,
+    ER_NOSCREEN,ER_NOSIG,ER_NOASSIGN,ER_LIBREXXSYSLIB
+
+ENUM BT_LOADCAT=10,
+     BT_VIEW,BT_TOOLS,BT_COPYRAM,BT_COPYDF0,BT_IMGDBL,BT_VIEWSTAMP
+
+ENUM LOADCATA
+
+ENUM ACTION_VIEW,ACTION_TOOLS,ACTION_COPYG,ACTION_COPYD
+
+ENUM F_S,F_D
+
+DEF mycat:PTR TO dataimagecat
+DEF myapp:PTR TO app_obj
+DEF textfilereq:PTR TO LONG
+DEF arexxword:PTR TO LONG
+-&gt;&lt;
+
+-&gt;&gt; main() HANDLE
+PROC main() HANDLE
+    DEF t
+    IF wbmessage=NIL THEN Raise(ER_ONLYWB)
+    IF (t:=openLibraries())&lt;&gt;ER_NONE THEN Raise(t)
+    IF (t:=initImageCat())&lt;&gt;ER_NONE THEN Raise(t)
+    IF NEW myapp.create(NIL,NIL,NIL)
+    myapp.init_notifications(NIL)
+    setTextList(mycat.imageinfolist)
+    lookMUIMessage()
+    myapp.dispose()
+    ELSE
+    WriteF(&#x27;application MUI failed\n&#x27;)
+    ENDIF
+    Wait(Shl(1,mycat.sigscreen))
+    Raise(ER_NONE)
+EXCEPT
+    IF mycat THEN remImageCat()
+    closeLibraries()
+    SELECT exception
+    CASE ER_ONLYWB;         WriteF(&#x27;Programme WB.\n&#x27;)
+    CASE ER_LIBMUIMASTER;       WriteF(&#x27;muimaster.library ?\n&#x27;)
+    CASE ER_LIBICON;        WriteF(&#x27;icon.library ?\n&#x27;)
+    CASE ER_LIBWORKBENCH;       WriteF(&#x27;workbench.library ?\n&#x27;)
+    CASE ER_LIBIFF;         WriteF(&#x27;iff.library ?\n&#x27;)
+    CASE ER_LIBREQTOOLS;             WriteF(&#x27;reqtools.library ?\n&#x27;)
+    CASE ER_NOICON;         WriteF(&#x27;pas d\aicône. ?\n&#x27;)
+    CASE ER_NOIMAGEPRESENT;       WriteF(&#x27;ToolType IMAGE_PRESENT absent.\n&#x27;)
+    CASE ER_NOSTAMPSUFFIX;       WriteF(&#x27;ToolType STAMP_SUFFIX absent.\n&#x27;)
+    CASE ER_BADIMAGEPRESENT;       WriteF(&#x27;mauvaise image en IMAGE_PRESENT.\n&#x27;)
+    CASE ER_NOSCREENID;       WriteF(&#x27;ToolType SCREEN_ID absent.\n&#x27;)
+    CASE ER_NOSCREEN;       WriteF(&#x27;Ouverture de l\aécran impossible.\n&#x27;)
+    CASE ER_NOSIG;           WriteF(&#x27;AllocSignal impossible.\n&#x27;)
+    CASE ER_NOASSIGN;       WriteF(&#x27;ImageCat: doit être assigner.\n&#x27;)
+    CASE ER_LIBREXXSYSLIB;           WriteF(&#x27;rexxsyslib.library ?\n&#x27;)
+    ENDSELECT
+ENDPROC
+-&gt;&lt;-&gt;
+-&gt;&gt; openImageCatScreen() HANDLE
+PROC openImageCatScreen() HANDLE
+    DEF s=NIL,sig=-1
+    IF sig:=AllocSignal(-1)
+    mycat.sigscreen:=sig
+    IF s:=OpenScreenTagList(0,
+            [SA_DEPTH,mycat.depth,
+             SA_DISPLAYID,mycat.screenid,
+             SA_PUBNAME,&#x27;ImageCatScreen&#x27;,
+             SA_TITLE,&#x27;ImageCatScreen&#x27;,
+             SA_PUBSIG,mycat.sigscreen,
+             SA_TYPE,CUSTOMSCREEN+PUBLICSCREEN,
+             SA_PENS,[0,1,1,2,1,3,1,0,2,1,2,1]:INT,    /* Répartition de couleurs WB 2.0 */
+             SA_DETAILPEN,1,        /* Detailpen */
+             SA_BLOCKPEN,2,     /* BlockPen  */
+             SA_PUBTASK,NIL,
+             0,0])
+        PubScreenStatus(s,0)
+-&gt;        SetDefaultPubScreen(&#x27;ImageCatScreen&#x27;)
+-&gt;        SetPubScreenModes(SHANGHAI)
+        mycat.screen:=s
+        loadPalette(s,mycat.imagepresent)
+    ELSE
+        Raise(ER_NOSCREEN)
+    ENDIF
+    ELSE
+    Raise(ER_NOSIG)
+    ENDIF
+    Raise(ER_NONE)
+EXCEPT
+    RETURN exception
+ENDPROC
+-&gt;&lt;-&gt;
+-&gt;&gt; loadPalette(screen:PTR TO screen,fichier)
+PROC loadPalette(screen:PTR TO screen,fichier)
+    DEF count,colortable[768]:ARRAY OF INT,iff
+    IF iff:=IfFL_OpenIFF(fichier,IFFL_MODE_READ)
+    count:=IfFL_GetColorTab(iff,colortable)
+    IF (IfFL_FindChunk(iff,&quot;CMAP&quot;))
+        LoadRGB4(screen.viewport,colortable,count)
+    ENDIF
+    IF iff THEN IfFL_CloseIFF(iff)
+    ENDIF
+ENDPROC
+-&gt;&lt;-&gt;
+-&gt;&gt; remImageCat()
+PROC remImageCat()
+    deleteEnvFile()
+    IF mycat.closearexxlib
+    rexxExecute(&#x27;Call remlib(&#x27;&#x27;rexxsupport.library&#x27;&#x27;)&#x27;,RXFUNC+RXFF_STRING)
+    rexxExecute(&#x27;Call remlib(&#x27;&#x27;rexxarplib.library&#x27;&#x27;)&#x27;,RXFUNC+RXFF_STRING)
+    ENDIF
+    IF mycat.screen&lt;&gt;NIL THEN CloseS(mycat.screen)
+    IF mycat.sigscreen&gt;=0 THEN FreeSignal(mycat.sigscreen)
+    IF mycat.mybitmap THEN ilbm_FreeBitMap(mycat.mybitmap)
+    IF mycat.suffix&lt;&gt;0 THEN DisposeLink(mycat.suffix)
+    IF mycat.imagepresent&lt;&gt;0 THEN DisposeLink(mycat.imagepresent)
+    IF mycat.scriptdir&lt;&gt;0 THEN DisposeLink(mycat.scriptdir)
+    IF mycat.imagecattools&lt;&gt;0 THEN DisposeLink(mycat.imagecattools)
+    IF mycat.viewer&lt;&gt;0 THEN DisposeLink(mycat.viewer)
+    IF mycat.patternreq&lt;&gt;0 THEN DisposeLink(mycat.patternreq)
+    IF mycat.baselock THEN UnLock(mycat.baselock)
+    IF mycat.imagelist THEN cleanList(mycat.imagelist,FALSE,0,LIST_REMOVE)
+    IF mycat.imageinfolist THEN cleanList(mycat.imageinfolist,FALSE,0,LIST_REMOVE)
+    IF mycat.toolslist THEN cleanList(mycat.toolslist,FALSE,0,LIST_REMOVE)
+ENDPROC
+-&gt;&lt;-&gt;
+-&gt;&gt; initImageCat() HANDLE
+PROC initImageCat() HANDLE
+    DEF wb:PTR TO wbstartup
+    DEF args:PTR TO wbarg
+    DEF do=NIL:PTR TO diskobject
+    DEF prgname[32]:STRING
+    DEF buffer[256]:STRING
+    DEF baselock=NIL
+    DEF testassign=NIL
+    mycat:=New(SIZEOF dataimagecat)
+    mycat.mybitmap:=0
+    mycat.width:=0
+    mycat.height:=0
+    mycat.depth:=0
+    mycat.suffix:=0
+    mycat.winbackdrop:=FALSE
+    mycat.screen:=0
+    mycat.viewer:=0
+    mycat.sigscreen:=-1
+    mycat.imagelist:=initList()
+    mycat.imageinfolist:=initList()
+    mycat.toolslist:=initList()
+    mycat.closearexxlib:=FALSE
+    initTextList(mycat.imageinfolist)
+    arexxword:=initErrorText()
+    wb:=wbmessage
+    args:=wb.arglist
+    textfilereq:=[&#x27;LoadCat&#x27;,&#x27;SaveCat&#x27;,&#x27;LoadImg&#x27;]
+    IF testassign:=Lock(&#x27;ImageCat:&#x27;,-2)
+    UnLock(testassign)
+    ELSE
+    Raise(ER_NOASSIGN)
+    ENDIF
+    checkArexxLib()
+    baselock:=CurrentDir(args[0].lock)
+    StrCopy(prgname,args[0].name,ALL)
+    IF do:=GetDiskObject(prgname)
+    IF buffer:=FindToolType(do.tooltypes,&#x27;IMAGE_PRESENT&#x27;)
+        mycat.imagepresent:=String(EstrLen(buffer))
+        StrCopy(mycat.imagepresent,buffer,ALL)
+        setEnv(&#x27;IC_IMAGE_PRESENT&#x27;,mycat.imagepresent,F_S)
+    ELSE
+        Raise(ER_NOIMAGEPRESENT)
+    ENDIF
+    IF buffer:=FindToolType(do.tooltypes,&#x27;STAMP_SUFFIX&#x27;)
+        mycat.suffix:=String(EstrLen(buffer))
+        StrCopy(mycat.suffix,buffer,ALL)
+        setEnv(&#x27;IC_STAMP_SUFFIX&#x27;,mycat.suffix,F_S)
+    ELSE
+        Raise(ER_NOSTAMPSUFFIX)
+    ENDIF
+    IF buffer:=FindToolType(do.tooltypes,&#x27;VIEWER&#x27;)
+        mycat.viewer:=String(EstrLen(buffer))
+        StrCopy(mycat.viewer,buffer,ALL)
+    ENDIF
+    IF buffer:=FindToolType(do.tooltypes,&#x27;PAT_REQ&#x27;)
+        mycat.patternreq:=String(EstrLen(buffer))
+        StrCopy(mycat.patternreq,buffer,ALL)
+    ELSE
+        mycat.patternreq:=String(EstrLen(&#x27;#?&#x27;))
+        StrCopy(mycat.patternreq,&#x27;#?&#x27;,ALL)
+    ENDIF
+    IF buffer:=FindToolType(do.tooltypes,&#x27;WBPALETTE&#x27;)
+        mycat.wbpal:=String(EstrLen(buffer))
+        StrCopy(mycat.wbpal,buffer,ALL)
+    ELSE
+        mycat.wbpal:=String(EstrLen(&#x27;ImageCat:WB.Palette&#x27;))
+        StrCopy(mycat.wbpal,&#x27;ImageCat:WB.Palette&#x27;,ALL)
+    ENDIF
+    setEnv(&#x27;IC_WBPALETTE&#x27;,mycat.wbpal,F_S)
+    IF buffer:=FindToolType(do.tooltypes,&#x27;ICON_X&#x27;)
+        mycat.iconx:=Val(buffer,NIL)
+    ELSE
+        mycat.iconx:=144
+    ENDIF
+    setEnv(&#x27;IC_ICONX&#x27;,mycat.iconx,F_D)
+    IF buffer:=FindToolType(do.tooltypes,&#x27;ICON_Y&#x27;)
+        mycat.icony:=Val(buffer,NIL)
+    ELSE
+        mycat.icony:=28
+    ENDIF
+    setEnv(&#x27;IC_ICONY&#x27;,mycat.icony,F_D)
+    IF buffer:=FindToolType(do.tooltypes,&#x27;SCRIPT_DIR&#x27;)
+        mycat.scriptdir:=String(EstrLen(buffer))
+        StrCopy(mycat.scriptdir,buffer,ALL)
+    ELSE
+        mycat.scriptdir:=String(EstrLen(&#x27;ImageCat:Scripts/&#x27;))
+        StrCopy(mycat.scriptdir,&#x27;ImageCat:Scripts/&#x27;,ALL)
+    ENDIF
+    IF buffer:=FindToolType(do.tooltypes,&#x27;IMAGECAT_TOOLS&#x27;)
+        mycat.imagecattools:=String(EstrLen(buffer))
+        StrCopy(mycat.imagecattools,buffer,ALL)
+    ELSE
+        mycat.imagecattools:=String(EstrLen(&#x27;ImageCat:ImageCat.Tools&#x27;))
+        StrCopy(mycat.imagecattools,&#x27;ImageCat:ImageCat.Tools&#x27;,ALL)
+    ENDIF
+    IF buffer:=FindToolType(do.tooltypes,&#x27;DEST_LEFT&#x27;)
+        mycat.destg:=String(EstrLen(buffer))
+        StrCopy(mycat.destg,buffer,ALL)
+    ELSE
+        mycat.destg:=String(EstrLen(&#x27;Ram:&#x27;))
+        StrCopy(mycat.destg,&#x27;Ram:&#x27;,ALL)
+    ENDIF
+    IF buffer:=FindToolType(do.tooltypes,&#x27;DEST_RIGHT&#x27;)
+        mycat.destd:=String(EstrLen(buffer))
+        StrCopy(mycat.destd,buffer,ALL)
+    ELSE
+        mycat.destd:=String(EstrLen(&#x27;Df0:&#x27;))
+        StrCopy(mycat.destd,&#x27;Df0:&#x27;,ALL)
+    ENDIF
+    IF buffer:=FindToolType(do.tooltypes,&#x27;SCREEN_ID&#x27;)
+        mycat.screenid:=Val(buffer,NIL)
+    ELSE
+        Raise(ER_NOSCREENID)
+    ENDIF
+    IF buffer:=FindToolType(do.tooltypes,&#x27;STAMP_COMMAND&#x27;)
+        mycat.stampcommand:=String(EstrLen(buffer))
+        StrCopy(mycat.stampcommand,buffer,ALL)
+    ENDIF
+    IF buffer:=FindToolType(do.tooltypes,&#x27;CLOSE_AREXX_LIB&#x27;) THEN mycat.closearexxlib:=TRUE
+    IF buffer:=FindToolType(do.tooltypes,&#x27;WINDOW_BACKDROP&#x27;) THEN mycat.winbackdrop:=MUI_TRUE
+    IF Not(getStampBitmap(mycat.imagepresent))
+        setEnv(&#x27;IC_WIDTH&#x27;,mycat.width,F_D)
+        setEnv(&#x27;IC_HEIGHT&#x27;,mycat.height,F_D)
+        setEnv(&#x27;IC_DEPTH&#x27;,mycat.depth,F_D)
+        Raise(openImageCatScreen())
+    ENDIF
+    ELSE
+    Raise(ER_NOICON)
+    ENDIF
+    mycat.baselock:=baselock
+    Raise(ER_NONE)
+EXCEPT
+    IF do THEN FreeDiskObject(do)
+    RETURN exception
+ENDPROC
+-&gt;&lt;-&gt;
+-&gt;&gt; deleteEnvFile()
+PROC deleteEnvFile()
+    DeleteFile(&#x27;Env:IC_DEPTH&#x27;)
+    DeleteFile(&#x27;Env:IC_HEIGHT&#x27;)
+    DeleteFile(&#x27;Env:IC_ICONX&#x27;)
+    DeleteFile(&#x27;Env:IC_ICONY&#x27;)
+    DeleteFile(&#x27;Env:IC_IMAGE_PRESENT&#x27;)
+    DeleteFile(&#x27;Env:IC_STAMP_SUFFIX&#x27;)
+    DeleteFile(&#x27;Env:IC_WBPALETTE&#x27;)
+    DeleteFile(&#x27;Env:IC_WIDTH&#x27;)
+ENDPROC
+-&gt;&lt;-&gt;
+-&gt;&gt; setEnv(nom,data,format)
+PROC setEnv(nom,data,format)
+    DEF cmd[256]:STRING
+    StringF(cmd,IF format=F_S THEN &#x27;\s&#x27; ELSE &#x27;\d&#x27;,data)
+    SetVar(nom,cmd,StrLen(cmd),GVF_GLOBAL_ONLY)
+ENDPROC
+-&gt;&lt;-&gt;
+-&gt;&gt; initTextList(l:PTR TO lh)
+PROC initTextList(l:PTR TO lh)
+    cleanList(l,0,0,LIST_CLEAN)
+    addNode(l,&#x27;ilbm.m             © Michael Zucchi&#x27;,0,0)
+    addNode(l,&#x27;iff.library        © Christian A. Weber&#x27;,0,0)
+    addNode(l,&#x27;reqtools.library   © Nico François&#x27;,0,0)
+    addNode(l,&#x27;muimaster.library  © Stefan Stuntz&#x27;,0,0)
+    addNode(l,&#x27;ARexx              © William S. Hames&#x27;,0,0)
+    addNode(l,&#x27;rexxarplib.library © W.G.L Langeveld&#x27;,0,0)
+    addNode(l,&#x27;AmigaE             © Wouter van Oortmerssen&#x27;,0,0)
+    addNode(l,&#x27;GoldED             © Dietmar Eilert&#x27;,0,0)
+    addNode(l,&#x27;ImageCat           © NasGûl&#x27;,0,0)
+ENDPROC
+-&gt;&lt;-&gt;
+-&gt;&gt; setTextList(l:PTR TO lh)
+PROC setTextList(l:PTR TO lh)
+    DEF n:PTR TO ln,nom
+    n:=l.head
+    getStampBitmap(mycat.imagepresent)
+    set(myapp.im_icon,MUIA_Bitmap_Bitmap,mycat.mybitmap)
+    domethod(myapp.lv_texticon,[MUIM_List_Clear])
+    set(myapp.lv_texticon,MUIA_List_Quiet,MUI_TRUE)
+    WHILE n
+    IF n.succ&lt;&gt;0
+        nom:=n.name
+        domethod(myapp.lv_texticon,[MUIM_List_Insert,{nom},1,MUIV_List_Insert_Bottom])
+    ENDIF
+    n:=n.succ
+    ENDWHILE
+    set(myapp.lv_texticon,MUIA_List_Quiet,FALSE)
+ENDPROC
+-&gt;&lt;-&gt;
+-&gt;&gt; updateBitmap(file)
+PROC updateBitmap(file)
+    DEF buf[256]:STRING
+    DEF lock,fib:fileinfoblock,buffer[256]:STRING,n:PTR TO ln,nom,l:PTR TO lh
+    StringF(buf,&#x27;\s\s&#x27;,file,mycat.suffix)
+    getStampBitmap(buf)
+    cleanList(mycat.imageinfolist,0,0,LIST_CLEAN)
+    IF lock:=Lock(file,-2)
+    IF Examine(lock,fib)
+        addNode(mycat.imageinfolist,file,0,0)
+        StringF(buffer,&#x27;Taille :\d Octets.&#x27;,fib.size)
+        StrCopy(buf,buffer,ALL)
+        StringF(buffer,&#x27;AmigaDos Comment :\s&#x27;,fib.comment)
+        StrCopy(buf,buffer,ALL)
+        n:=addNode(mycat.imageinfolist,buf,0,0)
+    ENDIF
+    UnLock(lock)
+    ENDIF
+    domethod(myapp.lv_texticon,[MUIM_List_Clear])
+    set(myapp.lv_texticon,MUIA_List_Quiet,TRUE)
+    l:=mycat.imageinfolist
+    n:=l.head
+    WHILE n
+    IF n.succ&lt;&gt;0
+        nom:=n.name
+        domethod(myapp.lv_texticon,[MUIM_List_Insert,{nom},1,MUIV_List_Insert_Bottom])
+    ENDIF
+    n:=n.succ
+    ENDWHILE
+    set(myapp.lv_texticon,MUIA_List_Quiet,FALSE)
+ENDPROC
+-&gt;&lt;-&gt;
+-&gt;&gt; getStampBitmap(fichier) HANDLE
+PROC getStampBitmap(fichier) HANDLE
+    DEF ilbm,pi:PTR TO picinfo,bmh:PTR TO bmhd,bm
+    IF FileLength(fichier)&lt;&gt;-1
+        IF mycat.mybitmap&lt;&gt;0 THEN ilbm_FreeBitMap(mycat.mybitmap)
+        IF ilbm:=ilbm_New(fichier,0)
+            ilbm_LoadPicture(ilbm,[ILBML_GETBITMAP,{bm},0])
+            pi:=ilbm_PictureInfo(ilbm)
+            bmh:=pi.bmhd
+            mycat.width:=bmh.w
+            mycat.height:=bmh.h
+            mycat.depth:=bmh.planes
+            ilbm_Dispose(ilbm)
+            IF bm
+                mycat.mybitmap:=bm
+                Raise(ER_NONE)
+            ENDIF
+        ELSE
+            Raise(ER_BADIMAGEPRESENT)
+        ENDIF
+    ENDIF
+EXCEPT
+    RETURN exception
+ENDPROC
+-&gt;&lt;-&gt;
+-&gt;&gt; openLibraries() HANDLE
+PROC openLibraries() HANDLE
+    IF (muimasterbase:=OpenLibrary(&#x27;muimaster.library&#x27;,9))=NIL THEN Raise(ER_LIBMUIMASTER)
+    IF (iconbase:=OpenLibrary(&#x27;icon.library&#x27;,0))=NIL THEN Raise(ER_LIBICON)
+    IF (workbenchbase:=OpenLibrary(&#x27;workbench.library&#x27;,0))=NIL THEN Raise(ER_LIBWORKBENCH)
+    IF (iffbase:=OpenLibrary(&#x27;iff.library&#x27;,0))=NIL THEN Raise(ER_LIBIFF)
+    IF (reqtoolsbase:=OpenLibrary(&#x27;reqtools.library&#x27;,0))=NIL THEN Raise(ER_LIBREQTOOLS)
+    IF (rexxsysbase:=OpenLibrary(&#x27;rexxsyslib.library&#x27;,0))=NIL THEN Raise(ER_LIBREXXSYSLIB)
+    Raise(ER_NONE)
+EXCEPT
+    RETURN exception
+ENDPROC
+-&gt;&lt;-&gt;
+-&gt;&gt; closeLibraries()
+PROC closeLibraries()
+    IF rexxsysbase THEN CloseLibrary(rexxsysbase)
+    IF reqtoolsbase THEN CloseLibrary(reqtoolsbase)
+    IF iffbase THEN CloseLibrary(iffbase)
+    IF workbenchbase THEN CloseLibrary(workbenchbase)
+    IF iconbase THEN CloseLibrary(iconbase)
+    IF muimasterbase THEN CloseLibrary(muimasterbase)
+ENDPROC
+-&gt;&lt;-&gt;
+-&gt;&gt; checkArexxLib()
+PROC checkArexxLib()
+    DEF rx:PTR TO rxslib
+    DEF list:PTR TO lh
+    rx:=rexxsysbase
+    list:=rx.liblist
+    IF FindName(list,&#x27;rexxsupport.library&#x27;)
+    NOP
+    ELSE
+    rexxExecute(&#x27;Call addlib(&#x27;&#x27;rexxsupport.library&#x27;&#x27;,0,-30,0)&#x27;,RXFUNC+RXFF_STRING)
+    ENDIF
+    IF FindName(list,&#x27;rexxarplib.library&#x27;)
+    NOP
+    ELSE
+    rexxExecute(&#x27;Call addlib(\arexxarplib.library\a,0,-30,0)&#x27;,RXFUNC+RXFF_STRING)
+    ENDIF
+ENDPROC
+-&gt;&lt;-&gt;
+-&gt;&gt; rexxExecute(commande,f)
+PROC rexxExecute(commande,f)
+    DEF myport:PTR TO mp
+    DEF rxmsg:PTR TO rexxmsg
+    DEF ap:PTR TO mp
+    DEF execmsg:PTR TO mn
+    DEF node:PTR TO ln
+    DEF test,rc=FALSE,rc2
+    DEF command[256]:STRING
+    StringF(command,&#x27;\s&#x27;,commande)
+    IF myport:=CreateMsgPort()
+    IF rxmsg:=CreateRexxMsg(myport,NIL,NIL)
+        execmsg:=rxmsg
+        node:=execmsg
+        node.name:=&#x27;TempImageCat&#x27;
+        node.type:=NT_MESSAGE
+        node.pri:=0
+        execmsg.replyport:=myport
+        IF test:=CreateArgstring(command,EstrLen(command))
+        CopyMem({test},rxmsg.args,4)
+        rxmsg.action:=f
+        rxmsg.passport:=myport
+        rxmsg.stdin:=Input()
+        rxmsg.stdout:=Output()
+        Forbid()
+        ap:=FindPort(&#x27;REXX&#x27;)
+        IF ap
+            PutMsg(ap,rxmsg)
+        ENDIF
+        Permit()
+        IF ap
+            WaitPort(myport)
+            GetMsg(myport)
+            rc:=rxmsg.result1
+            rc2:=rxmsg.result2
+            IF rc&lt;&gt;0
+            request(&#x27;\s\nRETURN Error:\d Severity:\d\n&#x27;,&#x27;Arexx Error&#x27;,[arexxword[rc2],rc2,rc])
+            ENDIF
+        ELSE
+            request(&#x27;REXX not Actif.&#x27;,&#x27;Ok&#x27;,0)
+        ENDIF
+        ClearRexxMsg(rxmsg,16)
+        ENDIF
+        DeleteRexxMsg(rxmsg)
+    ENDIF
+    DeleteMsgPort(myport)
+    ELSE
+    request(&#x27;Création du port impossible&#x27;,&#x27;Ok&#x27;,0)
+    ENDIF
+ENDPROC
+-&gt;&lt;-&gt;
+-&gt;&gt; lookMUIMessage()
+PROC lookMUIMessage()
+    DEF runnig = TRUE,result,signal,active,line
+    WHILE runnig
+    result:=domethod(myapp.app,[MUIM_Application_Input,{signal}])
+    SELECT result
+        CASE MUIV_Application_ReturnID_Quit
+        runnig := FALSE
+        CASE BT_LOADCAT
+        set(myapp.wi_stamp,MUIA_Window_Sleep,MUI_TRUE)
+        IF fileRequester(LOADCATA)
+            initTextList(mycat.imageinfolist)
+            setTextList(mycat.imageinfolist)
+        ENDIF
+        set(myapp.wi_stamp,MUIA_Window_Sleep,FALSE)
+        CASE BT_IMGDBL
+        get(myapp.lv_name,MUIA_List_Active,{active})
+        IF active&lt;&gt;-1
+            domethod(myapp.lv_name,[MUIM_List_GetEntry,MUIV_List_GetEntry_Active,{line}])
+            updateBitmap(line)
+            set(myapp.im_icon,MUIA_Bitmap_Bitmap,mycat.mybitmap)
+        ENDIF
+        CASE BT_VIEW
+        set(myapp.wi_stamp,MUIA_Window_Sleep,MUI_TRUE)
+        actionSelectImage(ACTION_VIEW)
+        set(myapp.wi_stamp,MUIA_Window_Sleep,FALSE)
+        CASE BT_TOOLS
+        set(myapp.wi_stamp,MUIA_Window_Sleep,MUI_TRUE)
+        selectTools()
+        IF mycat.currenttool&lt;&gt;0 THEN actionSelectImage(ACTION_TOOLS)
+        set(myapp.wi_stamp,MUIA_Window_Sleep,FALSE)
+        CASE BT_COPYRAM
+        set(myapp.wi_stamp,MUIA_Window_Sleep,MUI_TRUE)
+        actionSelectImage(ACTION_COPYG)
+        set(myapp.wi_stamp,MUIA_Window_Sleep,FALSE)
+        CASE BT_COPYDF0
+        set(myapp.wi_stamp,MUIA_Window_Sleep,MUI_TRUE)
+        actionSelectImage(ACTION_COPYD)
+        set(myapp.wi_stamp,MUIA_Window_Sleep,FALSE)
+        CASE BT_VIEWSTAMP
+        set(myapp.wi_stamp,MUIA_Window_Sleep,MUI_TRUE)
+        viewStamp()
+        set(myapp.wi_stamp,MUIA_Window_Sleep,FALSE)
+    ENDSELECT
+    IF (signal AND runnig) THEN Wait(signal)
+    ENDWHILE
+ENDPROC
+-&gt;&lt;-&gt;
+-&gt;&gt; viewStamp()
+PROC viewStamp()
+    DEF l:PTR TO lh
+    DEF n:PTR TO ln
+    DEF name,cmd2[256]:STRING,cmd[256]:STRING
+    l:=mycat.imageinfolist
+    n:=l.head
+    name:=getInfoNode(l,0,GETWITH_NUM,RETURN_NAME)
+    StringF(cmd2,&#x27;\s\s&#x27;,name,mycat.suffix)
+    IF FileLength(cmd2)&lt;&gt;-1
+    StringF(cmd,&#x27;\s \s&#x27;,mycat.stampcommand,cmd2)
+    Execute(cmd,NIL,NIL)
+    ENDIF
+ENDPROC
+-&gt;&lt;-&gt;
+-&gt;&gt; selectTools()
+PROC selectTools()
+    DEF fh,buf[1000]:ARRAY,s,buffer[256]:STRING
+    addNode(mycat.toolslist,&#x27;IC_Cancel&#x27;,0,0)
+    IF FileLength(mycat.imagecattools)&lt;&gt;-1
+    IF fh:=Open(mycat.imagecattools,1005)
+        WHILE Fgets(fh,buf,1000)
+        IF (s:=String(StrLen(buf)))=NIL THEN Raise(&quot;MEM&quot;)
+        StrCopy(s,buf,StrLen(buf)-1)
+        addNode(mycat.toolslist,s,0,0)
+        ENDWHILE
+        Close(fh)
+    ENDIF
+    StringF(buffer,&#x27;ImageCat Tools (\s)&#x27;,mycat.currenttool)
+    easygui(buffer,
+            [BEVEL,
+            [EQROWS,
+                [LISTV,{getToolsName},NIL,50,10,mycat.toolslist,0,NIL,NIL],
+                [SBUTTON,0,&#x27;Ok&#x27;]
+            ]
+            ],NIL,mycat.screen,NIL)
+    cleanList(mycat.toolslist,FALSE,0,LIST_CLEAN)
+    ENDIF
+ENDPROC
+-&gt;&lt;-&gt;
+-&gt;&gt; getToolsName(infos,num)
+PROC getToolsName(infos,num)
+    DEF name
+    IF num&lt;&gt;0
+    name:=getInfoNode(mycat.toolslist,num,GETWITH_NUM,RETURN_NAME)
+    IF name&lt;&gt;-1
+        IF mycat.currenttool&lt;&gt;0 THEN DisposeLink(mycat.currenttool)
+        mycat.currenttool:=String(EstrLen(name))
+        StrCopy(mycat.currenttool,name,ALL)
+    ENDIF
+    ELSE
+    IF mycat.currenttool&lt;&gt;0
+        DisposeLink(mycat.currenttool)
+        mycat.currenttool:=0
+    ENDIF
+    ENDIF
+ENDPROC
+-&gt;&lt;-&gt;
+-&gt;&gt; actionSelectImage(action)
+PROC actionSelectImage(action)
+    DEF sel,num,b,name
+    DEF buffer[2048]:STRING
+    DEF buf[256]:STRING,filesel=FALSE
+    DEF source[256]:STRING,dest[256]:STRING
+    DEF numsel=0
+    StringF(buffer,&#x27;\s &#x27;,mycat.viewer)
+    get(myapp.lv_name,MUIA_List_Entries,{num})
+    FOR b:=0 TO num-1
+        domethod(myapp.lv_name,[MUIM_List_Select,b,MUIV_List_Select_Ask,{sel}])
+        IF sel THEN numsel:=numsel+1
+    ENDFOR
+    setEnv(&#x27;IC_NUMSEL&#x27;,numsel,F_D)
+    get(myapp.lv_name,MUIA_List_Entries,{num})
+    FOR b:=0 TO num-1
+        domethod(myapp.lv_name,[MUIM_List_Select,b,MUIV_List_Select_Ask,{sel}])
+        IF sel=1
+            filesel:=TRUE
+            domethod(myapp.lv_name,[MUIM_List_GetEntry,b,{name}])
+            SELECT action
+                CASE ACTION_VIEW
+                    StringF(buf,&#x27;\s &#x27;,name)
+                    StrAdd(buffer,buf,ALL)
+                CASE ACTION_TOOLS
+                    StringF(buf,&#x27;\s\s \s&#x27;,mycat.scriptdir,mycat.currenttool,name)
+                    rexxExecute(buf,RXCOMM)
+                CASE ACTION_COPYG
+                    /*== copy image ==*/
+                    StringF(source,&#x27;\s&#x27;,name)
+                    StringF(dest,&#x27;\s&#x27;,mycat.destg)
+                    IF Not(copyFile(source,dest)) THEN request(&#x27;Erreur durant la copie de \s&#x27;,&#x27;ok&#x27;,[source])
+                    /*== copy stamp ==*/
+                    StringF(source,&#x27;\s\s&#x27;,name,mycat.suffix)
+                    IF Not(copyFile(source,dest)) THEN request(&#x27;Erreur durant la copie de \s&#x27;,&#x27;ok&#x27;,[source])
+                    /*== copy icon ==*/
+                    StringF(source,&#x27;\s.info&#x27;,name)
+                    copyFile(source,dest)
+                CASE ACTION_COPYD
+                    /*== copy image ==*/
+                    StringF(source,&#x27;\s&#x27;,name)
+                    StringF(dest,&#x27;\s&#x27;,mycat.destd)
+                    IF Not(copyFile(source,dest)) THEN request(&#x27;Erreur durant la copie de \s&#x27;,&#x27;ok&#x27;,[source])
+                    /*== copy stamp ==*/
+                    StringF(source,&#x27;\s\s&#x27;,name,mycat.suffix)
+                    IF Not(copyFile(source,dest)) THEN request(&#x27;Erreur durant la copie de \s&#x27;,&#x27;ok&#x27;,[source])
+                    /*== copy icon ==*/
+                    StringF(source,&#x27;\s.info&#x27;,name)
+                    copyFile(source,dest)
+            ENDSELECT
+        ENDIF
+    ENDFOR
+    IF filesel=TRUE
+        IF action=ACTION_VIEW THEN Execute(buffer,NIL,NIL)
+    ELSE
+        IF action=ACTION_VIEW
+            get(myapp.lv_name,MUIA_List_Active,{num})
+            IF num&lt;&gt;-1
+            domethod(myapp.lv_name,[MUIM_List_GetEntry,num,{name}])
+            StringF(buffer,&#x27;\s \s&#x27;,mycat.viewer,name)
+            Execute(buffer,NIL,NIL)
+            ENDIF
+        ELSEIF action=ACTION_TOOLS
+            get(myapp.lv_name,MUIA_List_Active,{num})
+            IF num&lt;&gt;-1
+            setEnv(&#x27;IC_NUMSEL&#x27;,1,F_D)
+            domethod(myapp.lv_name,[MUIM_List_GetEntry,num,{name}])
+            StringF(buffer,&#x27;\s\s \s&#x27;,mycat.scriptdir,mycat.currenttool,name)
+            rexxExecute(buffer,RXCOMM)
+            ELSE
+            StringF(buf,&#x27;\s\s&#x27;,mycat.scriptdir,mycat.currenttool)
+            rexxExecute(buf,RXCOMM)
+            ENDIF
+        ENDIF
+    ENDIF
+ENDPROC
+-&gt;&lt;-&gt;
+-&gt;&gt; copyFile(source,dest)
+PROC copyFile(source,dest)
+    DEF buffer
+    DEF fhs,fhd,n=1,rc=FALSE
+    DEF s[256]:STRING,d[256]:STRING
+    StringF(s,&#x27;\s&#x27;,source)
+    StringF(d,&#x27;\s&#x27;,dest)
+    AddPart(d,&#x27;&#x27;,256)
+    StrAdd(d,getName(source),ALL)
+    IF buffer:=New(2048)
+    IF fhs:=Open(s,1005)
+        IF fhd:=Open(d,1006)
+        WHILE (n&gt;0)
+            n:=Read(fhs,buffer,2048)
+            Write(fhd,buffer,n)
+        ENDWHILE
+        IF n=0 THEN rc:=TRUE
+        Close(fhd)
+        ENDIF
+        Close(fhs)
+    ENDIF
+    Dispose(buffer)
+    ENDIF
+ENDPROC rc
+-&gt;&lt;-&gt;
+-&gt;&gt; getName(file)
+PROC getName(file)
+    DEF buf[256]:STRING
+    DEF lock,fib:fileinfoblock,buffer[256]:STRING
+    IF lock:=Lock(file,-2)
+    IF Examine(lock,fib)
+        StringF(buffer,&#x27;\s&#x27;,fib.filename)
+    ENDIF
+    UnLock(lock)
+    ENDIF
+    StrCopy(buf,buffer,ALL)
+ENDPROC buf
+-&gt;&lt;-&gt;
+-&gt;&gt; create( display:PTR TO app_display ,icon=NIL ,arexx=NIL:PTR TO app_arexx ,menu=NIL ) OF app_obj
+PROC create( display:PTR TO app_display ,icon=NIL ,arexx=NIL:PTR TO app_arexx ,menu=NIL ) OF app_obj
+    DEF grOUP_ROOT_0 , gr_icontext , gr_listgad , gr_gad
+    DEF gr_gad2 , gr_copy
+    DEF strg[50]:STRING,strd[50]:STRING
+    StringF(strg,&#x27;Copier en \s&#x27;,mycat.destg)
+    StringF(strd,&#x27;Copier en \s&#x27;,mycat.destd)
+    self.im_icon := BitmapObject ,
+    MUIA_Frame , MUIV_Frame_Button ,
+    MUIA_FixWidth,mycat.width,
+    MUIA_FixHeight,mycat.height,
+    MUIA_Bitmap_Bitmap,mycat.mybitmap,
+    MUIA_Bitmap_Width,mycat.width,
+    MUIA_Bitmap_Height,mycat.height,
+    MUIA_InputMode,MUIV_InputMode_RelVerify,
+    End
+    self.lv_texticon := ListObject ,
+    MUIA_Frame , MUIV_Frame_ReadList ,
+    End
+    self.lv_texticon := ListviewObject ,
+    MUIA_HelpNode , &#x27;LV_texticon&#x27; ,
+    MUIA_Listview_Input , FALSE ,
+    MUIA_Listview_List , self.lv_texticon ,
+    End
+    gr_icontext := GroupObject ,
+    MUIA_HelpNode , &#x27;GR_icontext&#x27; ,
+    MUIA_Frame , MUIV_Frame_Group ,
+    MUIA_Group_Horiz , MUI_TRUE ,
+    Child , self.im_icon ,
+    Child , self.lv_texticon ,
+    End
+    self.lv_name := ListObject ,
+    MUIA_Frame , MUIV_Frame_InputList ,
+    End
+    self.lv_name := ListviewObject ,
+    MUIA_HelpNode , &#x27;LV_name&#x27; ,
+    MUIA_Listview_MultiSelect , MUIV_Listview_MultiSelect_Default ,
+    MUIA_Listview_DoubleClick , MUI_TRUE ,
+    MUIA_Listview_SelectChange,MUI_TRUE,
+    MUIA_Listview_Input , MUI_TRUE ,
+    MUIA_Listview_List , self.lv_name ,
+    End
+    self.bt_loadcat := SimpleButton(&#x27;Charger Catalogue&#x27; )
+    gr_gad := GroupObject ,
+    MUIA_HelpNode , &#x27;GR_gad&#x27; ,
+    MUIA_Frame , MUIV_Frame_Group ,
+    MUIA_Group_Horiz , MUI_TRUE ,
+    Child , self.bt_loadcat ,
+    End
+    self.bt_view := SimpleButton(&#x27;Voir&#x27;)
+    self.bt_tools := SimpleButton(&#x27;Utilitaires&#x27;)
+    gr_gad2 := GroupObject ,
+    MUIA_HelpNode , &#x27;GR_gad2&#x27; ,
+    MUIA_Frame , MUIV_Frame_Group ,
+    Child , self.bt_view ,
+    Child, self.bt_tools ,
+    End
+    self.bt_copyram := SimpleButton(strg)
+    self.bt_copydf0 := SimpleButton(strd)
+    gr_copy := GroupObject ,
+    MUIA_HelpNode , &#x27;GR_copy&#x27; ,
+    MUIA_Frame , MUIV_Frame_Group ,
+    MUIA_Group_Horiz , MUI_TRUE ,
+    Child , self.bt_copyram ,
+    Child , self.bt_copydf0 ,
+    End
+    gr_listgad := GroupObject ,
+    MUIA_HelpNode , &#x27;GR_listgad&#x27; ,
+    MUIA_Frame , MUIV_Frame_Group ,
+    Child , self.lv_name ,
+    Child , gr_gad ,
+    Child , gr_gad2 ,
+    Child , gr_copy ,
+    End
+    grOUP_ROOT_0 := GroupObject ,
+    Child , gr_icontext ,
+    Child , gr_listgad ,
+    End
+    self.wi_stamp := WindowObject ,
+    MUIA_Window_Title , &#x27;ImageCat&#x27; ,
+    MUIA_Window_ID , &quot;0WIN&quot; ,
+    MUIA_Window_PublicScreen,&#x27;ImageCatScreen&#x27;,
+    MUIA_Window_Backdrop,mycat.winbackdrop,
+    WindowContents , grOUP_ROOT_0 ,
+    End
+    self.app := ApplicationObject ,
+    ( IF icon THEN MUIA_Application_DiskObject ELSE TAG_IGNORE ) , icon ,
+    /*
+    ( IF arexx.commands THEN MUIA_Application_Commands ELSE TAG_IGNORE ) , arexx.commands ,
+    ( IF arexx.error THEN MUIA_Application_RexxHook ELSE TAG_IGNORE ) , arexx.error ,
+    */
+    ( IF menu THEN MUIA_Application_Menu ELSE TAG_IGNORE ) , menu ,
+    MUIA_Application_Author , &#x27;NasGûl&#x27; ,
+    MUIA_Application_Base , &#x27;IMAGECAT&#x27; ,
+    MUIA_Application_Title , &#x27;ImageCat&#x27; ,
+    MUIA_Application_HelpFile,&#x27;ImageCat:ImageCat.Guide&#x27;,
+    MUIA_Application_Version , &#x27;$VER: ImageCat 0.8 (22.11.95)&#x27; ,
+    MUIA_Application_Copyright , &#x27;© 1995 Nasgûl&#x27; ,
+    MUIA_Application_Description ,&#x27;Catalogueur d\aimages&#x27; ,
+    SubWindow , self.wi_stamp ,
+    End
+ENDPROC self.app
+-&gt;&lt;-&gt;
+-&gt;&gt; dispose() OF app_obj
+PROC dispose() OF app_obj IS Mui_DisposeObject( self.app )
+-&gt;&lt;
+-&gt;&gt; init_notifications( display : PTR TO app_display ) OF app_obj
+PROC init_notifications( display : PTR TO app_display ) OF app_obj
+    domethod( self.wi_stamp , [
+    MUIM_Notify , MUIA_Window_CloseRequest , MUI_TRUE ,
+    self.app ,
+    2 ,
+    MUIM_Application_ReturnID , MUIV_Application_ReturnID_Quit ] )
+    domethod( self.lv_name , [ MUIM_Notify, MUIA_Listview_DoubleClick , MUI_TRUE, self.app,
+                    2, MUIM_Application_ReturnID, BT_IMGDBL] )
+    domethod( self.im_icon,[MUIM_Notify,MUIA_Pressed,FALSE,self.app,2,
+          MUIM_Application_ReturnID,BT_VIEWSTAMP])
+    domethod( self.bt_loadcat,[MUIM_Notify,MUIA_Pressed,FALSE,self.app,2,
+          MUIM_Application_ReturnID,BT_LOADCAT])
+    domethod( self.bt_view,[MUIM_Notify,MUIA_Pressed,FALSE,self.app,2,
+          MUIM_Application_ReturnID,BT_VIEW])
+    domethod( self.bt_tools,[MUIM_Notify,MUIA_Pressed,FALSE,self.app,2,
+          MUIM_Application_ReturnID,BT_TOOLS])
+    domethod( self.bt_copyram,[MUIM_Notify,MUIA_Pressed,FALSE,self.app,2,
+          MUIM_Application_ReturnID,BT_COPYRAM])
+    domethod( self.bt_copydf0,[MUIM_Notify,MUIA_Pressed,FALSE,self.app,2,
+          MUIM_Application_ReturnID,BT_COPYDF0])
+    domethod( self.wi_stamp , [
+    MUIM_Window_SetCycleChain , self.lv_texticon , self.lv_name, self.bt_loadcat ,
+    self.bt_view,self.bt_tools,self.bt_copyram ,self.bt_copydf0,0 ] )
+    set( self.wi_stamp , MUIA_Window_Open , MUI_TRUE )
+
+ENDPROC
+-&gt;&lt;-&gt;
+-&gt;&gt; readCatalogue(fichier,pad)
+PROC readCatalogue(fichier,pad)
+    DEF fh,buf[1000]:ARRAY,s,buffer[256]:STRING
+    IF pad=TRUE
+    domethod(myapp.lv_name,[MUIM_List_Clear])
+    cleanList(mycat.imagelist,FALSE,0,LIST_CLEAN)
+    ENDIF
+    set(myapp.lv_name,MUIA_List_Quiet,TRUE)
+    IF FileLength(fichier)&lt;&gt;-1
+    IF fh:=Open(fichier,1005)
+        WHILE Fgets(fh,buf,1000)
+        IF (s:=String(StrLen(buf)))=NIL THEN Raise(&quot;MEM&quot;)
+        StrCopy(s,buf,StrLen(buf)-1)
+-&gt;        IF FileLength(s)&lt;&gt;-1
+            StringF(buffer,&#x27;\s\s&#x27;,s,mycat.suffix)
+-&gt;            IF FileLength(buffer)&lt;&gt;-1
+                addNode(mycat.imagelist,s,0,0)
+                domethod(myapp.lv_name,[MUIM_List_Insert,{s},1,MUIV_List_Insert_Bottom])
+-&gt;            ENDIF
+-&gt;        ENDIF
+        ENDWHILE
+        Close(fh)
+    ENDIF
+    ENDIF
+    set(myapp.lv_name,MUIA_List_Quiet,FALSE)
+ENDPROC
+-&gt;&lt;-&gt;
+-&gt;&gt; fileRequester(a)
+PROC fileRequester(a)
+/*===============================================================================
+ = Para     : NONE
+ = Return   : False if cancel selected.
+ = Description  : PopUp a MultiFileRequester,build the whatview arguments.
+ ==============================================================================*/
+    DEF reqfile:PTR TO rtfilerequester
+    DEF liste:PTR TO rtfilelist
+    DEF buffer[120]:STRING
+    DEF add_liste=0
+    DEF ret=FALSE
+    DEF the_reelname[256]:STRING
+    DEF defaultdir[256]:STRING,firstfile=TRUE,numfile=0
+    reqfile:=NIL
+    IF reqfile:=RtAllocRequestA(RT_FILEREQ,NIL)
+    buffer[0]:=0
+    RtChangeReqAttrA(reqfile,[RTFI_MATCHPAT,mycat.patternreq,TAG_DONE])
+    add_liste:=RtFileRequestA(reqfile,buffer,textfilereq[a],
+                  [RT_PUBSCRNAME,&#x27;ImageCatScreen&#x27;,RTFI_FLAGS,FREQF_MULTISELECT+FREQF_PATGAD,RTFI_OKTEXT,textfilereq[a],RTFI_HEIGHT,200,
+                   RT_UNDERSCORE,&quot;_&quot;,TAG_DONE])
+    StrCopy(defaultdir,reqfile.dir,ALL)
+    AddPart(defaultdir,&#x27;&#x27;,256)
+    IF reqfile THEN RtFreeRequest(reqfile)
+    IF add_liste THEN ret:=TRUE
+    ELSE
+    ret:=FALSE
+    ENDIF
+    IF ret=TRUE
+    liste:=add_liste
+    IF add_liste
+        WHILE liste
+        StringF(the_reelname,&#x27;\s\s&#x27;,defaultdir,liste.name)
+        readCatalogue(the_reelname,firstfile)
+        numfile:=numfile+1
+        IF numfile&lt;&gt;0 THEN firstfile:=FALSE
+        liste:=liste.next
+        ENDWHILE
+        IF add_liste THEN RtFreeFileList(add_liste)
+    ENDIF
+    ELSE
+    ret:=FALSE
+    ENDIF
+    RETURN ret
+ENDPROC
+-&gt;&lt;-&gt;
+-&gt;&gt; request(bodytext,gadgettext,the_arg)
+PROC request(bodytext,gadgettext,the_arg)
+    DEF ret
+    ret:=RtEZRequestA(bodytext,gadgettext,0,the_arg,[RT_PUBSCRNAME,&#x27;ImageCatScreen&#x27;,TAG_DONE])
+    RETURN ret
+ENDPROC
+-&gt;&lt;-&gt;
+
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

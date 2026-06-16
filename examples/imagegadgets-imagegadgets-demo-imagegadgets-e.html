@@ -1,0 +1,187 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>imagegadgets.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-imagegadgets.html">imagegadgets</a> &rsaquo; imagegadgets.e</div><h1>File: <code>imagegadgets.e</code></h1><p class="meta">161 lines · project <a href="../examples/pkg-imagegadgets.html"><code>imagegadgets</code></a></p><p class="pathctx">imagegadgets/ImageGadgets/demo/imagegadgets.e</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/gadtools.html">gadtools</a></li></ul></div><h2>Source</h2><pre class="code">
+OPT OSVERSION=37
+
+MODULE &#x27;gadtools&#x27;,&#x27;libraries/gadtools&#x27;,&#x27;intuition/intuition&#x27;,&#x27;gcc/imagegadgets&#x27;,
+       &#x27;intuition/screens&#x27;, &#x27;intuition/gadgetclass&#x27;, &#x27;graphics/text&#x27;,&#x27;exec/memory&#x27;
+
+ENUM NONE,NOCONTEXT,NOGADGET,NOWB,NOVISUAL,OPENGT,NOWINDOW,NOMENUS
+
+DEF pause=0,win:PTR TO window,glist,infos:PTR TO gadget,scr:PTR TO screen,offx,offy,tattr
+DEF ip1,cip1,ip2,cip2,image1: image,image2: image
+
+PROC setupscreen()
+  IF (gadtoolsbase:=OpenLibrary(&#x27;gadtools.library&#x27;,37))=NIL THEN RETURN OPENGT
+  IF (scr:=LockPubScreen(&#x27;Workbench&#x27;))=NIL THEN RETURN NOWB
+  IF (visual:=GetVisualInfoA(scr,NIL))=NIL THEN RETURN NOVISUAL
+  offy:=scr.wbortop+Int(scr.rastport+58)-10
+  tattr:=[&#x27;topaz.font&#x27;,8,0,0]:textattr
+ENDPROC
+
+PROC closedownscreen()
+  IF visual THEN FreeVisualInfo(visual)
+  IF scr THEN UnlockPubScreen(NIL,scr)
+  IF gadtoolsbase THEN CloseLibrary(gadtoolsbase)
+ENDPROC
+
+PROC init_images()
+ip1:=[$0000,$0200,$0000,$0600,$0000,$0600,$0FE0,$0600,
+       $0040,$0600,$008F,$E600,$0100,$4600,$0200,$8600,
+       $0401,$0600,$0FE2,$0600,$0004,$0600,$000F,$E600,
+       $0000,$0600,$0000,$0600,$7FFF,$FE00,
+       $FFFF,$FC00,$C000,$0000,$C000,$0000,$C000,$0000,
+       $C000,$0000,$C000,$0000,$C000,$0000,$C000,$0000,
+       $C000,$0000,$C000,$0000,$C000,$0000,$C000,$0000,
+       $C000,$0000,$C000,$0000,$8000,$0000]:INT
+cip1:=AllocVec(120,MEMF_CHIP); CopyMemQuick(ip1,cip1,120)
+image1.leftedge:=0
+image1.topedge:=0
+image1.width:=23
+image1.height:=15
+image1.depth:=3
+image1.imagedata:=cip1
+image1.planepick:=$0003
+image1.planeonoff:=$0000
+image1.nextimage:=NIL
+ip2:=[$FFFF,$FC00,$FFFF,$F800,$FFFF,$F800,$FFFF,$F800,
+       $FFFF,$F800,$FFFF,$F800,$FFFF,$F800,$FFFF,$F800,
+       $FFFF,$F800,$FFFF,$F800,$FFFF,$F800,$FFFF,$F800,
+       $FFFF,$F800,$FFFF,$F800,$8000,$0000,
+       $0000,$0200,$3FFF,$FE00,$3FFF,$FE00,$301F,$FE00,
+       $3FBF,$FE00,$3F70,$1E00,$3EFF,$BE00,$3DFF,$7E00,
+       $3BFE,$FE00,$301D,$FE00,$3FFB,$FE00,$3FF0,$1E00,
+       $3FFF,$FE00,$3FFF,$FE00,$7FFF,$FE00]:INT
+cip2:=AllocVec(120,MEMF_CHIP); CopyMemQuick(ip2,cip2,120)
+image2.leftedge:=0
+image2.topedge:=0
+image2.width:=23
+image2.height:=15
+image2.depth:=3
+image2.imagedata:=cip2
+image2.planepick:=$0003
+image2.planeonoff:=$0000
+image2.nextimage:=NIL
+ENDPROC
+
+PROC remove_images()
+ IF cip1 THEN FreeVec(cip1)
+ IF cip2 THEN FreeVec(cip2)
+ENDPROC
+
+PROC set_text(gad,text)
+ Gt_SetGadgetAttrsA(gad,win,NIL,[GTTX_TEXT,text,NIL])
+ENDPROC
+
+PROC mainloop()
+DEF disk1,disk2,disk3,hide,textgad
+DEF id1: PTR TO image,id2: PTR TO image,text[20]: STRING
+DEF mes:PTR TO intuimessage,type,ende=FALSE
+
+  id1:=image1; id2:=image2; StrCopy(text,&#x27;Welcome!&#x27;,ALL)
+  IF (g:=CreateContext({glist}))=NIL THEN RETURN NOCONTEXT
+  gcc_InitImageGadgets()
+  gcc_InitDiskImage(1,0); gcc_InitDiskImage(0,1)
+  IF (disk1:=gcc_CreateGetFileA(1,60,20,0))=-1 THEN RETURN NOGADGET
+  IF (disk2:=gcc_CreateGetFileA(0,20,20,0))=-1 THEN RETURN NOGADGET
+  IF (disk3:=gcc_InstallGetFileA(2,110,20,0,0))=-1 THEN RETURN NOGADGET
+  IF (hide:=gcc_CreateGadgetA(177,20,id1,id2,0))=-1 THEN RETURN NOGADGET
+  IF (g:=textgad:=CreateGadgetA(TEXT_KIND,g,
+    [offx+14,offy+45,186,11,&#x27;&#x27;,tattr,17,0,visual,0]:newgadget,
+    [GTTX_TEXT,text,
+     GTTX_BORDER,1,
+     NIL]))=NIL THEN RETURN NOGADGET
+  IF (win:=OpenWindowTagList(NIL,
+    [WA_LEFT,112,
+     WA_TOP,67,
+     WA_WIDTH,offx+214,
+     WA_HEIGHT,offy+66,
+     WA_IDCMP,$24C077E,
+     WA_FLAGS,$100E,
+     WA_TITLE,&#x27;ImageGadgets&#x27;,
+     WA_CUSTOMSCREEN,scr,
+     WA_GADGETS,glist,
+     NIL]))=NIL THEN RETURN NOWINDOW
+  DrawBevelBoxA(win.rport,offx+14,offy+17,132,23,
+    [GT_VISUALINFO,visual,NIL])
+  Gt_RefreshWindow(win,NIL)
+  REPEAT
+    type:=0
+    IF mes:=Gt_GetIMsg(win.userport)
+      type:=mes.class
+      IF (type=IDCMP_GADGETDOWN) OR (type=IDCMP_GADGETUP)
+        infos:=mes.iaddress
+        IF infos=disk1
+         set_text(textgad,&#x27;KIND: GetFile TYPE: 1&#x27;)
+        ENDIF
+        IF infos=disk2
+         set_text(textgad,&#x27;KIND: GetFile TYPE: 0&#x27;)
+        ENDIF
+        IF infos=disk3
+         set_text(textgad,&#x27;KIND: GetFile TYPE: 2&#x27;)
+        ENDIF
+        IF infos=hide
+         IF pause=0 THEN pause:=1 ELSE pause:=0
+         gcc_SetGadgetAttrsA(disk2,win,GA_DISABLED,pause)
+         gcc_SetGadgetAttrsA(disk1,win,GA_DISABLED,pause)
+         gcc_SetGadgetAttrsA(disk3,win,GA_DISABLED,pause)
+         IF pause=0 THEN set_text(textgad,&#x27;gadgets enabled&#x27;) ELSE set_text(textgad,&#x27;gadgets disabled&#x27;)
+        ENDIF
+      ELSEIF type=IDCMP_REFRESHWINDOW
+        Gt_BeginRefresh(win)
+        Gt_EndRefresh(win,TRUE)
+        type:=0
+      ELSEIF type=IDCMP_CLOSEWINDOW
+        ende:=TRUE
+      ENDIF
+      Gt_ReplyIMsg(mes)
+    ELSE
+      WaitPort(win.userport)
+    ENDIF
+  UNTIL ende=TRUE
+  IF win THEN CloseWindow(win)
+  IF glist THEN FreeGadgets(glist)
+  gcc_RemoveDiskImage(ALL)
+ENDPROC
+
+PROC reporterr(er)
+  DEF erlist:PTR TO LONG
+  IF er
+    erlist:=[&#x27;get context&#x27;,&#x27;create gadget&#x27;,&#x27;lock wb&#x27;,&#x27;get visual infos&#x27;,
+      &#x27;open &quot;gadtools.library&quot; v37+&#x27;,&#x27;open window&#x27;,&#x27;create menus&#x27;]
+    EasyRequestArgs(0,[20,0,0,&#x27;Could not \s!&#x27;,&#x27;ok&#x27;],0,[erlist[er-1]])
+  ENDIF
+ENDPROC er
+
+PROC main()
+  IF reporterr(setupscreen())=0
+   init_images(); mainloop()
+  ENDIF
+  remove_images(); closedownscreen()
+ENDPROC
+
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

@@ -1,0 +1,172 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>wbrun.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-capus.html">capus</a> &rsaquo; wbrun.e</div><h1>File: <code>wbrun.e</code></h1><p class="meta">146 lines · project <a href="../examples/pkg-capus.html"><code>capus</code></a></p><p class="pathctx">capus/WorkBench/wbrun.e</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/dostags.html">dos/dostags</a></li><li><a href="../modules/ports.html">exec/ports</a></li></ul></div><h2>Source</h2><pre class="code">
+ENUM ER_NONE,ER_ONLYCLI,ER_BADARGS,ER_PORT,ER_NOPORT,ER_NOINFO
+
+MODULE &#x27;exec/ports&#x27;,&#x27;exec/nodes&#x27;,&#x27;wbmessage&#x27;
+MODULE &#x27;dos/dostags&#x27;,&#x27;dos/dosextens&#x27;
+
+DEF comm[256]:STRING
+DEF stack=4000,pri=0
+DEF pro:PTR TO process
+PROC main() HANDLE /*&quot;main()&quot;*/
+    DEF myargs:PTR TO LONG,rdargs=NIL
+    IF wbmessage&lt;&gt;NIL THEN Raise(ER_ONLYCLI)
+    myargs:=[0,0,0]
+    pro:=FindTask(0)
+    IF rdargs:=ReadArgs(&#x27;Commande/A,S=Stack/N,P=Priorité/N&#x27;,myargs,NIL)
+        StrCopy(comm,myargs[0],ALL)
+        IF myargs[1] THEN stack:=Long(myargs[1])
+        IF myargs[2] THEN pri:=Long(myargs[2])
+        IF stack&lt;4000 THEN stack:=4000
+        IF ((pri&lt;-10) OR (pri&gt;10)) THEN pri:=0
+        Raise(wb_WBRun(comm,stack,pri))
+    ELSE
+        Raise(ER_BADARGS)
+    ENDIF
+    Raise(ER_NONE)
+EXCEPT
+    IF rdargs THEN FreeArgs(rdargs)
+    SELECT exception
+        CASE ER_ONLYCLI;    WriteF(&#x27;Du CLi Uniquement.\n&#x27;)
+        CASE ER_BADARGS;    WriteF(&#x27;Mauvais argument(s).\n&#x27;)
+        CASE ER_PORT;       WriteF(&#x27;Impossible de créer le port de message.\n&#x27;)
+        CASE ER_NOPORT;     WriteF(&#x27;Impossible de trouver le &quot;WBStart-Handler Port&quot;.\n&#x27;)
+        CASE ER_NOINFO;     WriteF(&#x27;Pas d\aicone pour le fichier \s.\n&#x27;,comm)
+    ENDSELECT
+ENDPROC
+PROC wb_WBRun(com,st,pr) HANDLE /*&quot;wb_WBrun(com,st,pr)&quot;*/
+    DEF execmsg:PTR TO mn
+    DEF wbsm:wbstartmsg
+    DEF rc=FALSE
+    DEF node:PTR TO ln
+    DEF dummyport:PTR TO mp
+    DEF hp
+    DEF pv[256]:STRING,flen
+    StringF(pv,&#x27;\s.info&#x27;,com)
+    IF (flen:=FileLength(pv))=-1 THEN Raise(wb_CLIRun(com))
+    IF (dummyport:=CreateMsgPort())=NIL THEN Raise(ER_PORT)
+    wbsm:=New(SIZEOF wbstartmsg)
+    execmsg:=wbsm
+    node:=execmsg
+    node.type:=NT_MESSAGE
+    node.pri:=0
+    execmsg.replyport:=dummyport
+    wbsm.name:=com
+    wbsm.dirlock:=Lock(com,-2)
+    wbsm.stack:=st
+    wbsm.prio:=pr
+    wbsm.numargs:=0
+    wbsm.arglist:=0
+    Forbid()
+    IF (hp:=FindPort(&#x27;WBStart-Handler Port&#x27;))=NIL  /* THEN Raise(ER_NOPORT)  */
+        hp:=wb_InitWBHandler()
+    ENDIF
+    IF hp
+        PutMsg(hp,wbsm)
+    ENDIF
+    Permit()
+    IF hp
+        WaitPort(dummyport)
+        GetMsg(dummyport)
+        rc:=wbsm.stack
+    ENDIF
+    IF rc=0 THEN WriteF(&#x27;WBRun Failed.\n&#x27;)
+    Raise(ER_NONE)
+EXCEPT
+    IF wbsm.dirlock THEN UnLock(wbsm.dirlock)
+    IF wbsm THEN Dispose(wbsm)
+    IF dummyport THEN DeleteMsgPort(dummyport)
+    RETURN exception
+ENDPROC
+PROC wb_CLIRun(cmd) HANDLE /*&quot;wv_CLIRun(cmd)&quot;*/
+    DEF ofh:PTR TO filehandle
+    DEF ifh:PTR TO filehandle
+    DEF newct=NIL:PTR TO mp
+    DEF oldct:PTR TO mp
+    DEF oldcd
+    DEF newcd
+    DEF er,cli:PTR TO commandlineinterface
+    IF ofh:=Open(&#x27;NIL:&#x27;,1006)
+        IF IsInteractive(ofh)
+            WriteF(&#x27;IsInteractive Ok\n&#x27;)
+            newct:=ofh.type
+            oldct:=SetConsoleTask(newct)
+            ifh:=Open(&#x27;CONSOLE:&#x27;,1005)
+            SetConsoleTask(oldct)
+        ELSE
+            ifh:=Open(&#x27;NIL:&#x27;,1005)
+        ENDIF
+    ENDIF
+    newcd:=Lock(cmd,-2)
+    oldcd:=CurrentDir(newcd)
+    IF SystemTagList(cmd,[SYS_OUTPUT,stdout,
+                         SYS_INPUT,pro.cis,
+                         SYS_ASYNCH,FALSE,
+                         SYS_USERSHELL,FALSE,
+                         NP_STACKSIZE,4000,
+                         NP_PRIORITY,0,
+                         NP_PATH,NIL,
+                         NP_CONSOLETASK,newct,
+                         NP_CLI,conout,
+                         0])
+        er:=IoErr()
+    ENDIF
+    cli:=stdout
+    WriteF(&#x27;Error \d \d \d\n&#x27;,er,pro.result2,cli.returncode)
+    CurrentDir(oldcd)
+    IF ofh THEN Close(ofh)
+    IF ifh THEN Close(ifh)
+    Raise(ER_NONE)
+EXCEPT
+    RETURN exception
+ENDPROC
+PROC wb_InitWBHandler() HANDLE /*&quot;wb_InitWBHandler()&quot;*/
+    DEF ifh
+    DEF ofh
+    DEF wbh
+    IF (ifh:=Open(&#x27;NIL:&#x27;,1006))=NIL THEN Raise(NIL)
+    IF (ofh:=Open(&#x27;NIL:&#x27;,1005))=NIL THEN Raise(NIL)
+    SystemTagList(&#x27;L:WBStart-Handler&#x27;,[SYS_INPUT,ifh,
+                                      SYS_OUTPUT,ofh,
+                                      SYS_ASYNCH,TRUE,
+                                      SYS_USERSHELL,TRUE,
+                                      NP_CONSOLETASK,NIL,
+                                      NP_WINDOWPTR,NIL])
+    Delay(25)
+    wbh:=FindPort(&#x27;WBStart-Handler Port&#x27;)
+    Raise(wbh)
+EXCEPT
+    IF Not(wbh)
+        IF ifh THEN Close(ifh)
+        IF ofh THEN Close(ofh)
+    ENDIF
+    RETURN wbh
+ENDPROC
+
+
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

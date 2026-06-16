@@ -1,0 +1,336 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>asl.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-ooep.html">OOEP</a> &rsaquo; asl.e</div><h1>File: <code>asl.e</code></h1><p class="meta">310 lines · project <a href="../examples/pkg-ooep.html"><code>OOEP</code></a></p><p class="pathctx">OOEP/oomodules/library/asl.e</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/library.html">oomodules/library</a></li></ul></div><h2>Source</h2><pre class="code">OPT MODULE
+
+MODULE  &#x27;oomodules/library&#x27;,
+
+        &#x27;asl&#x27;,
+        &#x27;libraries/asl&#x27;,
+
+        &#x27;other/ecode&#x27;,
+        &#x27;dos/dos&#x27;,
+        &#x27;dos/dosasl&#x27;,
+        &#x27;utility/hooks&#x27;
+
+CONST MAXPATTERNLENGTH=80,
+      MAXFILELENGTH=30,
+      MAXDIRLENGTH=255
+
+DEF patbuffer,
+
+/*
+ * The patbuffer variable is used in hookFunc and getFileWithPattern. It holds
+ * the pattern the files should match.
+ */
+
+    temporaryBuffer:PTR TO CHAR -&gt; contains temporary data
+
+/*
+ * the temporary buffer contains the absolute file name of the file name
+ * that was chosen in the last requester.
+ */
+
+EXPORT OBJECT asl OF library
+/****** asl/asl ******************************
+
+    NAME
+      asl of library
+
+    PURPOSE
+      Object for handling the asl.library.
+
+    ATTRIBUTES
+      patbuffer[MAXPATTERNLENGTH]:ARRAY OF CHAR -- buffer to store the file
+          pattern in.
+
+      lastFileChosen[MAXFILELENGTH]:ARRAY OF CHAR -- buffer to store the name
+          of the file that was chosen in the last requester.
+
+      lastDirChosen[MAXDIRLENGTH]:ARRAY OF CHAR -- buffer to store the name
+          of the directory that was chosen in the last requester.
+
+    NOTES
+      Not all functions of the asl.library are implemented.
+
+    SEE ALSO
+        library
+
+********/
+  patbuffer[MAXPATTERNLENGTH]:ARRAY OF CHAR,
+  lastFileChosen[MAXFILELENGTH]:ARRAY OF CHAR
+  lastDirChosen[MAXDIRLENGTH]:ARRAY OF CHAR
+ENDOBJECT
+
+PROC init() OF asl
+/****** reqtools/init ******************************************
+
+    NAME 
+        init() -- Initialization of the object.
+
+    SYNOPSIS
+        asl.init()
+
+    FUNCTION
+        Copies &#x27;SYS:&#x27; to the lastDirChosen attribute.
+        Sets the library&#x27;s name and the version to 0. After that the library
+        is opened.
+
+    SEE ALSO
+        open()
+******************************************************************************
+
+History
+
+
+*/
+  temporaryBuffer := String(255)
+
+  AstrCopy(self.lastDirChosen, &#x27;SYS:&#x27;)
+
+  self.identifier:=&#x27;asl.library&#x27;
+  self.version:=0
+  self.open()
+ENDPROC
+
+EXPORT PROC open() OF asl
+/****** asl/open ******************************
+
+    NAME
+        open() of asl -- Open the asl.library.
+
+    SYNOPSIS
+        asl.open()
+
+    FUNCTION
+        Open the asl.library. The version to open can be specified in the
+        option list you pass to new().
+
+    EXCEPTION
+        As with all libraries, the exception &quot;lib&quot; is raised when the opening
+        failed. The exceptioninfo contains a string that tells this.
+
+    NOTES
+        The string may be localized in the future.
+
+    SEE ALSO
+        asl
+
+********/
+
+ IF (aslbase:=OpenLibrary(self.identifier,self.version)) = NIL THEN Throw(&quot;lib&quot;,{aslOpen})
+
+ENDPROC
+
+EXPORT PROC close() OF asl
+/****** asl/close ******************************
+
+    NAME
+        close() of asl -- Close the library.
+
+    SYNOPSIS
+        asl.close()
+
+    FUNCTION
+        Closes the library if it is open.
+
+    SEE ALSO
+        asl
+
+********/
+
+  IF aslbase THEN CloseLibrary(aslbase)
+
+ENDPROC
+
+PROC end() OF asl
+/****** asl/end ******************************
+
+    NAME
+        end() of asl -- Global destructor.
+
+    SYNOPSIS
+        asl.end()
+
+    FUNCTION
+        Frees allocated resources and closes the library.
+
+    SEE ALSO
+        asl
+
+********/
+
+  DisposeLink(temporaryBuffer)
+  self.close()
+
+ENDPROC
+
+PROC hookFunc(type, obj:PTR TO anchorpath, fr)
+/****** /hookFunc ******************************
+
+    NAME
+        hookFunc() -- Hook function for requesters.
+
+    SYNOPSIS
+        hookFunc(LONG, PTR TO anchorpath, LONG)
+
+        hookFunc(type, obj, fr)
+
+    FUNCTION
+        Used when displaying the file requesters.
+
+    NOTES
+        Stolen from JRH&#x27;s rkrm examples. Dunno how it works, so this autodoc
+        lacks the input description :-(
+
+    SEE ALSO
+        getFileWithPattern(), rkrm examples
+********/
+  DEF returnvalue
+  SELECT type
+  CASE FILF_DOMSGFUNC
+    -&gt; We got a message meant for the window
+    RETURN obj
+  CASE FILF_DOWILDFUNC
+    -&gt; We got an AnchorPath structure, should the requester display this file?
+
+    -&gt; MatchPattern() is a dos.library function that compares a matching
+    -&gt; pattern (parsed by the ParsePattern() DOS function) to a string and
+    -&gt; returns TRUE if they match.
+    returnvalue:=MatchPattern(patbuffer, obj.info.filename)
+
+    -&gt; We have to negate MatchPattern()&#x27;s return value because the file
+    -&gt; requester expects a zero for a match not a TRUE value
+    RETURN returnvalue=FALSE
+  ENDSELECT
+ENDPROC
+
+EXPORT PROC getFileWithPattern(pattern:PTR TO CHAR, taglist=NIL) OF asl
+/****** asl/getFileWithPattern ******************************
+
+    NAME
+        getFileWithPattern() of asl -- Get a file that matches the pattern.
+
+    SYNOPSIS
+        asl.getFileWithPattern(PTR TO CHAR, LONG=NIL)
+
+        asl.getFileWithPattern(pattern, taglist)
+
+    FUNCTION
+        Opens a file requester that displays the files that match the pattern
+        provided.
+
+    INPUTS
+        pattern:PTR TO CHAR -- The pattern of the files that should appear in
+            the file list. The usual dos.library wildcards are allowed.
+
+        taglist:LONG -- asl tags. See CBM&#x27;s asl.doc for those.
+
+    RESULT
+        PTR TO CHAR -- The chosen file or NIL if the user aborted.
+
+    NOTES
+        The attributes lastFileChosen and lastDirChosen are set by this proc.
+
+        Stolen from JRH&#x27;s rkrm examples.
+
+    KNOWN BUGS
+        Tries to add a file name even if no file was chosen. Fixed this bug
+        (May 26 1996 Gregor Goldbach).
+
+    SEE ALSO
+        asl/asl, CBM&#x27;s asl.doc, JRH&#x27;s rkrm examples
+
+********/
+DEF fr:PTR TO filerequester,
+    myFunc,
+    nulist
+
+  ParsePattern(pattern, self.patbuffer, MAXPATTERNLENGTH)
+
+  patbuffer := self.patbuffer
+
+  fr:=AllocFileRequest()
+  -&gt; E-Note: eCodeASLHook() sets up an E PROC for use as an ASL hook function
+  myFunc:=eCodeASLHook({hookFunc})
+
+  IF myFunc
+
+ /*
+  * now we have myFunc. we&#x27;re able to set up the tag list
+  */
+
+    nulist := List(255)
+    ListCopy(nulist, taglist)
+    ListAdd(nulist, [ASL_HOOKFUNC, myFunc, ASL_FUNCFLAGS, FILF_DOWILDFUNC OR FILF_DOMSGFUNC OR FILF_SAVE])
+
+
+/*
+    IF AslRequest(fr, [ASL_DIR,       &#x27;SYS:Utilities&#x27;,
+-&gt;                       ASL_WINDOW,    window,
+                       ASL_TOPEDGE,   0,
+                       ASL_HEIGHT,    200,
+                       ASL_HAIL,      &#x27;Pick an icon, select save&#x27;,
+                       -&gt; E-Note: use the value returned from aslhook()
+                       ASL_HOOKFUNC,  myFunc,
+                       ASL_FUNCFLAGS, FILF_DOWILDFUNC OR FILF_DOMSGFUNC
+                       ASL_OKTEXT, &#x27;Save&#x27;,
+                       NIL])
+*/
+
+    IF AslRequest(fr, nulist)
+
+      AstrCopy(self.lastDirChosen,fr.drawer, IF StrLen(fr.drawer)&lt;MAXDIRLENGTH THEN StrLen(fr.drawer)+1 ELSE MAXDIRLENGTH)
+      AstrCopy(self.lastFileChosen,fr.file, IF StrLen(fr.file)&lt;MAXFILELENGTH THEN StrLen(fr.file)+1 ELSE MAXFILELENGTH)
+
+/*
+      WriteF(&#x27;PATH=\s FILE=\s\n&#x27;, fr.drawer, fr.file)
+      WriteF(&#x27;To combine the path and filename, copy the path\n&#x27;)
+      WriteF(&#x27;to a buffer, add the filename with Dos AddPart().\n&#x27;)
+*/
+    ENDIF
+
+  ENDIF
+
+  DisposeLink(nulist)
+
+  IF fr THEN FreeFileRequest(fr)
+
+  StrCopy(temporaryBuffer, self.lastDirChosen)
+  IF self.lastFileChosen[0] THEN AddPart(temporaryBuffer, self.lastFileChosen, 255)
+
+  RETURN temporaryBuffer
+
+ENDPROC
+
+
+
+aslOpen: CHAR &#x27;Unable to open asl.library&#x27;,0
+/*EE folds
+-1
+31 29 33 28 36 26 39 18 42 19 45 37 
+EE folds*/
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

@@ -1,0 +1,732 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>cha_stanley.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-cha-source.html">cha_source</a> &rsaquo; cha_stanley.e</div><h1>File: <code>cha_stanley.e</code></h1><p class="meta">706 lines · project <a href="../examples/pkg-cha-source.html"><code>cha_source</code></a></p><p class="pathctx">cha_source/cha_source/cha_stanley.e</p><p class="prose">==========================================================================+ | cha_stanley.e | | a tool for cutting up <a href="../modules/samples.html">samples</a> in OctaMED SoundStudio | | | | .stanley 2.4 file format | | &#x27;cha_stanley \d.\d\n&#x27;, version, revision | | &#x27;\d\n&#x27;, length | | &#x27;\d\n&#x27;, marker position | | ... | | &#x27;\n&#x27; | | EOF |</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/lists.html">amigalib/lists</a></li></ul></div><h2>Source</h2><pre class="code">/*==========================================================================+
+| cha_stanley.e                                                             |
+| a tool for cutting up samples in OctaMED SoundStudio                      |
+|                                                                           |
+| .stanley 2.4 file format                                                  |
+|   &#x27;cha_stanley \d.\d\n&#x27;, version, revision                                |
+|   &#x27;\d\n&#x27;, length                                                          |
+|   &#x27;\d\n&#x27;, marker position                                                 |
+|   ...                                                                     |
+|   &#x27;\n&#x27;                                                                    |
+|   EOF                                                                     |
+|                                                                           |
+| NB: loading is a bit dodgy - no error checking                            |
+|                                                                           |
+| OBJECT marker   -&gt; all the operations on a marker (some change gui list)  |
+| OBJECT stanley  -&gt; all the operations on the current marker and list      |
+| PROC findnode   -&gt; utility function                                       |
+| PROC oss#?      -&gt; octamed interfacing functions                          |
+| PROC a_#?       -&gt; gui action functions                                   |
+| PROC main       -&gt; program entrypoint                                     |
+|                                                                           |
+| cha_stanley v2.4 (1999.12.17)                                             |
+| - save and load marker info                                               |
+| - bugfix to select (didn&#x27;t update text display for to sample)             |
+| cha_stanley v2.3 (1999.12.11)                                             |
+| - now uses OSS instrument numbering                                       |
+| - uses errors.m                                                           |
+| cha_stanley v2.2 (1999.06.19)                                             |
+| - minor changes for source code sharing                                   |
+| - arexx put inline for clarity                                            |
+| - fixed oss_update()                                                      |
+| - fixed default pitch; uses C-3 instead of -|- if not specified           |
+| stanley v2.1 (1999.06.19)                                                 |
+| - changes since previous version are enclosed in /* + + + */              |
++--------------------------------------------------------------------------*/
+
+OPT OSVERSION=37
+OPT LARGE
+
+MODULE &#x27;amigalib/lists&#x27;, &#x27;exec/lists&#x27;, &#x27;exec/nodes&#x27;, &#x27;tools/easygui&#x27;,
+       &#x27;asl&#x27;, &#x27;libraries/asl&#x27;, &#x27;*oss&#x27;, &#x27;*errors&#x27;
+
+RAISE &quot;MEM&quot; IF String() = NIL
+
+/*--------------------------------------------------------------------------*/
+
+CONST SIZE_LVX = 5, SIZE_LVY = 5, SIZE_SLX = 5, SIZE_STX = 5, -&gt; gadget sizes
+      NAMELEN = 40      -&gt; max editable part of name, limit set by OSS
+
+/* + + + */
+DEF screen = NIL
+/* + + + */
+
+/*=========================================================================*/
+
+OBJECT marker OF ln
+	name2 : PTR TO CHAR -&gt; user editable part
+	start : LONG        -&gt; sample start offset
+	to    : LONG        -&gt; value = sample slot, negative = use auto
+ENDOBJECT
+
+/*-------------------------------------------------------------------------*/
+
+PROC new(list : PTR TO lh, offset, name = NIL) OF marker
+	DEF m : PTR TO marker
+	self.type  := NT_UNKNOWN
+	self.pri   := 0
+	self.name  := String(NAMELEN + 20)
+	self.name2 := StrCopy(String(NAMELEN), name)
+	self.start := offset
+	self.to    := -ossv(&#x27;in_getnumber&#x27;)           -&gt; auto
+	m := list.head
+	WHILE m.succ
+	EXIT m.start &gt; self.start
+		m := m.succ
+	ENDWHILE
+	-&gt; m = node to insert before
+	self.succ := m
+	self.pred := m.pred
+	self.succ.pred := self
+	self.pred.succ := self
+	self.updatename()
+ENDPROC
+
+/*-------------------------------------------------------------------------*/
+
+PROC end() OF marker
+	Remove(self)
+	DisposeLink(self.name2)
+	DisposeLink(self.name)
+ENDPROC
+
+/*-------------------------------------------------------------------------*/
+
+PROC updatename() OF marker
+	/* - - - */
+	DEF buf[3] : STRING
+	/* - - - */
+	IF self.to &lt; 0  -&gt; auto
+		StringF(self.name, &#x27;\d[6] (--): \s&#x27;, self.start, self.name2)
+	ELSE            -&gt; manual set
+	/* - - - */
+		StringF(self.name, &#x27;\d[6] (\s[2]): \s&#x27;, self.start, oss_ed_numbertoinum(self.to, buf), self.name2)
+	/* - - - */
+	ENDIF
+ENDPROC
+
+/*-------------------------------------------------------------------------*/
+
+PROC findnode(list : PTR TO lh, start)
+	DEF m : PTR TO marker
+	m := list.head
+	WHILE m.succ
+		IF m.start = start THEN RETURN TRUE
+		m := m.succ
+	ENDWHILE
+ENDPROC FALSE
+
+/*=========================================================================*/
+
+OBJECT stanley
+	-&gt; GUI state
+	gh : PTR TO guihandle      -&gt;&gt;&gt;&gt;&gt;&gt;&gt; OFFSET = 4
+	-&gt; GUI definitions
+	g_button_add
+	g_button_close
+	g_button_delete
+	g_button_play
+	g_button_range
+	g_button_reset
+	g_button_stanley
+	/* + + + */
+	g_button_notify
+	g_check_hires
+	/* + + + */
+	g_check_setto
+	g_listview_select
+	/* - - - */
+	g_text_setto
+	/* - - - */
+	g_slider_setto
+	g_string_setname
+	/** 2.4 **/
+	g_button_load
+	g_button_save
+	/** 2.4 **/
+	g_gui
+	-&gt; Variables
+	v_from                          -&gt; from sample
+	v_cur                           -&gt; current marker id (as in listview)
+	v_curmarker : PTR TO marker     -&gt; current marker
+	v_markers   : mlh               -&gt; ordered list of markers
+	/* + + + */
+	v_hires
+	v_defpitch                      -&gt; filled by stanley()
+	v_stanleyed                     -&gt; stanley has been clicked recently
+	g_title                         -&gt; default window title
+	/* + + + */
+ENDOBJECT
+
+/*-------------------------------------------------------------------------*/
+
+PROC new()          OF stanley
+	self.v_from := -1
+	self.v_cur  := -1
+	self.v_curmarker := NIL
+	newList(self.v_markers)
+	/* + + + */
+	self.v_hires := TRUE
+	-&gt; skip version tag part
+	self.g_title := 6 + &#x27;$VER: cha_stanley v2.4 (1999.12.17) © Claude Heiland-Allen&#x27;
+	/* + + + */
+	self.g_button_add      := NEW [ SBUTTON, {a_button_add},      &#x27;Add&#x27;,     0, 0, 0, FALSE ]
+	self.g_button_delete   := NEW [ SBUTTON, {a_button_delete},   &#x27;Delete&#x27;,  0, 0, 0, TRUE  ]
+	self.g_button_play     := NEW [ SBUTTON, {a_button_play},     &#x27;Play&#x27;,    0, 0, 0, TRUE  ]
+	self.g_button_range    := NEW [ SBUTTON, {a_button_range},    &#x27;Range&#x27;,   0, 0, 0, TRUE  ]
+	self.g_button_reset    := NEW [ SBUTTON, {a_button_reset},    &#x27;Reset&#x27;,   0, 0, 0, FALSE ]
+	self.g_button_stanley  := NEW [ SBUTTON, {a_button_stanley},  &#x27;Stanley&#x27;, 0, 0, 0, FALSE ]
+	/* + + + */
+	self.g_button_notify   := NEW [ SBUTTON, {a_button_notify},   &#x27;Notify&#x27;,  0, 0, 0, FALSE ]
+	self.g_check_hires     := NEW [ CHECK,   {a_check_hires},     &#x27;Hires&#x27;,   TRUE, FALSE, 0, 0, FALSE ]
+	/* + + + */
+	self.g_check_setto     := NEW [ CHECK,   {a_check_autoto},    &#x27;Auto&#x27;,    TRUE, FALSE, 0, 0, FALSE ]
+	self.g_listview_select := NEW [ LISTV,   {a_listview_select}, &#x27;Markers&#x27;, SIZE_LVX, SIZE_LVY, self.v_markers, FALSE, TRUE, self.v_cur, 0, 0, 0, FALSE ]
+	/* - - - */
+	self.g_text_setto      := NEW [ TEXT,    &#x27;  &#x27;,                &#x27;To: &#x27;, FALSE, 0 ]
+	self.g_slider_setto    := NEW [ SLIDE,   {a_slider_setto},    &#x27;&#x27;,  FALSE, 1, 63, 1, SIZE_SLX, &#x27;&#x27;, 0, 0, TRUE ]
+	/* - - - */
+	self.g_string_setname  := NEW [ STR,     {a_string_setname},  &#x27;Name: &#x27;,  String(NAMELEN), NAMELEN, SIZE_STX, FALSE, 0, 0, 0, FALSE ]
+	/** 2.4 **/
+	self.g_button_load     := NEW [ SBUTTON, {a_button_load},     &#x27;Load&#x27;,    0, 0, 0, FALSE ]
+	self.g_button_save     := NEW [ SBUTTON, {a_button_save},     &#x27;Save&#x27;,    0, 0, 0, FALSE ]
+	/** 2.4 **/
+	self.g_gui :=	NEW [ EQCOLS,
+						self.g_listview_select,
+						NEW [ ROWS,
+	/** 2.4 **/
+							NEW [ BEVELR,
+								self.g_button_add
+								],
+	/** 2.4 **/
+							NEW [ SPACE ],
+							NEW [ BEVELR,
+								NEW [ ROWS,
+									NEW [ EQCOLS,
+										self.g_button_delete,
+										self.g_button_range,
+										self.g_button_play
+										],
+									NEW [ COLS,
+	/* - - - */
+										self.g_text_setto,
+	/* - - - */
+										self.g_slider_setto,
+										self.g_check_setto
+										],
+									self.g_string_setname
+									]
+								],
+							NEW [ SPACE ],
+							NEW [ BEVELR,
+								NEW [ ROWS,
+									/* + + + */
+									NEW [ COLS,
+										self.g_button_notify,
+										self.g_check_hires
+										],
+									/* + + + */
+									self.g_button_stanley
+									]
+								],
+	/** 2.4 **/
+							NEW [ SPACE ],
+							NEW [ BEVELR,
+								NEW [ EQCOLS,
+									self.g_button_reset,
+									self.g_button_load,
+									self.g_button_save
+									]
+								]
+	/** 2.4 **/
+							]
+						]
+	self.reset()
+ENDPROC
+
+/*-------------------------------------------------------------------------*/
+
+PROC end()          OF stanley
+	DEF m : PTR TO marker, t
+	m := self.v_markers.head
+	WHILE t := m.succ
+		END m
+		m := t
+	ENDWHILE
+ENDPROC
+
+/*-------------------------------------------------------------------------*/
+
+/** 2.4 **/
+PROC add(start=-1)  OF stanley
+	DEF m = NIL : PTR TO marker
+	IF start = -1 THEN start := ossv(&#x27;sa_getrangestart&#x27;)
+/** 2.4 **/
+	IF findnode(self.v_markers, start) = FALSE
+		setlistvlabels(self.gh, self.g_listview_select, -1)
+		NEW m.new(self.v_markers, start, oss(&#x27;in_getname&#x27;))
+		/* + + + */
+		self.cannotify(FALSE)
+		/* + + + */
+		setlistvlabels(self.gh, self.g_listview_select, self.v_markers)
+	ENDIF
+ENDPROC
+
+/*-------------------------------------------------------------------------*/
+
+PROC close()        OF stanley IS TRUE -&gt; true = close window, had requester but got annoying
+
+/*-------------------------------------------------------------------------*/
+
+PROC delete()       OF stanley      -&gt; cannot be called for end markers
+	setlistvlabels(self.gh, self.g_listview_select, -1)
+	END self.v_curmarker
+	self.select(self.v_cur, TRUE)   -&gt; next marker
+	/* + + + */
+	self.cannotify(FALSE)
+	/* + + + */
+	setlistvlabels(self.gh, self.g_listview_select, self.v_markers)
+ENDPROC
+
+/*-------------------------------------------------------------------------*/
+
+PROC play()         OF stanley IS self.range() BUT oss(&#x27;sa_play range&#x27;)  -&gt; cannot be called for end markers
+
+/*-------------------------------------------------------------------------*/
+
+PROC range()        OF stanley IS oss(&#x27;sa_range \d \d&#x27;, self.v_curmarker.start, self.v_curmarker.succ::marker.start - 1)      -&gt; cannot be called for end markers
+
+/*-------------------------------------------------------------------------*/
+
+PROC reset()        OF stanley
+	DEF m : PTR TO marker, t, len, nosample
+	setlistvlabels(self.gh, self.g_listview_select, -1)
+	-&gt; Flush list
+	m := self.v_markers.head
+	WHILE t := m.succ
+		END m
+		m := t
+	ENDWHILE
+	-&gt; Get current instrument
+	self.v_from := ossv(&#x27;in_getnumber&#x27;)
+	-&gt; Add start and end markers
+	len := ossv(&#x27;sa_getsamplelength&#x27;)
+	nosample := (len = 0)
+-&gt;	setdisabled(self.gh, self.g_listview_select, nosample)  -&gt; broken in v37?
+	setdisabled(self.gh, self.g_button_add,      nosample)
+	setdisabled(self.gh, self.g_button_stanley,  nosample)
+	/* + + + */
+	self.cannotify(FALSE)
+	/* + + + */
+	IF nosample = FALSE THEN NEW m.new(self.v_markers, 0, oss(&#x27;in_getname&#x27;))
+	NEW m.new(self.v_markers, len, &#x27;«« END »»&#x27;)
+	-&gt; Update GUI
+	self.select(0, TRUE)
+	setlistvlabels(self.gh, self.g_listview_select, self.v_markers)
+ENDPROC
+
+/*-------------------------------------------------------------------------*/
+
+PROC select(index, force = FALSE)  OF stanley
+	DEF islast, isauto, isfirst, gh, m : PTR TO marker, i, s[4] : STRING
+	IF (self.v_cur &lt;&gt; index) OR force
+		gh := self.gh
+		self.v_cur := index
+		m := self.v_markers.head
+		FOR i := 0 TO index - 1 DO m := m.succ
+		self.v_curmarker := m
+		islast  := (m.succ.succ = 0)
+		isauto  := (m.to &lt; 0)
+		isfirst := (index = 0)
+		setdisabled(gh, self.g_slider_setto,   islast OR isauto)
+		setdisabled(gh, self.g_button_delete,  islast OR isfirst)
+		setdisabled(gh, self.g_button_range,   islast)
+		setdisabled(gh, self.g_button_play,    islast)
+		setdisabled(gh, self.g_check_setto,    islast)
+		setdisabled(gh, self.g_string_setname, islast)
+		setstr     (gh, self.g_string_setname, m.name2)
+		/** 2.4 **/
+		settext    (gh, self.g_text_setto, oss_ed_numbertoinum(Abs(m.to), s))
+		/** 2.4 **/
+		setslide   (gh, self.g_slider_setto, Abs(m.to))
+		setcheck   (gh, self.g_check_setto, isauto)
+	ENDIF
+ENDPROC
+
+/*-------------------------------------------------------------------------*/
+
+PROC setname(name)  OF stanley
+	setlistvlabels(self.gh, self.g_listview_select, -1)
+	StrCopy(self.v_curmarker.name2, name)
+	self.v_curmarker.updatename()
+	setlistvlabels(self.gh, self.g_listview_select, self.v_markers)
+ENDPROC
+
+/*-------------------------------------------------------------------------*/
+
+PROC setto(to)      OF stanley
+	DEF s[4] : STRING
+	setlistvlabels(self.gh, self.g_listview_select, -1)
+	self.v_curmarker.to := to
+	self.v_curmarker.updatename()
+	setdisabled(self.gh, self.g_slider_setto, to &lt; 0)
+	/* - - - */
+	settext(self.gh, self.g_text_setto, oss_ed_numbertoinum(Abs(to), s))
+	/* - - - */
+	/* + + + */
+	self.cannotify(FALSE)
+	/* + + + */
+	setlistvlabels(self.gh, self.g_listview_select, self.v_markers)
+ENDPROC
+
+/*-------------------------------------------------------------------------*/
+
+PROC stanley()      OF stanley
+	DEF m : PTR TO marker, finetune, transpose, pitch, volume
+	/* + + + */
+	-&gt; hmmm, are changes really visible? better safe than sorry...
+	changetitle(self.gh, &#x27;cha_stanley: working...&#x27;)
+	setlistvlabels(self.gh, self.g_listview_select, -1)
+	/* + + + */
+	oss(&#x27;in_select \d&#x27;, self.v_from)
+	pitch     := ossv(&#x27;in_getdefaultpitch&#x27;)
+	IF pitch = 0 THEN pitch := 25 -&gt; C-3
+	/* + + + */
+	self.v_defpitch := pitch
+	self.cannotify(TRUE)
+	/* + + + */
+	finetune  := ossv(&#x27;in_getfinetune&#x27;)
+	transpose := ossv(&#x27;in_gettranspose&#x27;)
+	volume    := ossv(&#x27;in_getvolume&#x27;)
+	m := self.v_markers.head
+	WHILE m.succ.succ &lt;&gt; NIL    -&gt; all but end marker
+		-&gt; copy sample
+		oss(&#x27;sa_range \d \d&#x27;, m.start, m.succ::marker.start - 1)
+		oss(&#x27;sa_copyrange&#x27;)
+		IF m.to &lt; 0 THEN oss(&#x27;in_select nextfree&#x27;) ELSE oss(&#x27;in_select \d&#x27;, m.to)
+		/* + + + */
+		-&gt; store sample actually copied to
+		m.to := IF m.to &lt; 0 THEN -ossv(&#x27;in_getnumber&#x27;) ELSE ossv(&#x27;in_getnumber&#x27;)
+		m.updatename()
+		IF m = self.v_curmarker THEN setslide(self.gh, self.g_slider_setto, Abs(m.to))
+		/* + + + */
+		oss(&#x27;sa_buffertosample&#x27;)
+		-&gt; copy settings
+		oss(&#x27;in_setname &quot;\s&quot;&#x27;, m.name2)
+		oss(&#x27;in_setdefaultpitch \d&#x27;, pitch)
+		oss(&#x27;in_setfinetune \d&#x27;, finetune)
+		oss(&#x27;in_settranspose \d&#x27;, transpose)
+		oss(&#x27;in_setvolume \d&#x27;, volume)
+		-&gt; next
+		oss(&#x27;in_select \d&#x27;, self.v_from)
+		m := m.succ
+	ENDWHILE
+	/* + + + */
+	setlistvlabels(self.gh, self.g_listview_select, self.v_markers)
+	changetitle(self.gh, self.g_title)
+	/* + + + */
+ENDPROC
+
+/* + + + */
+
+PROC cannotify(can) OF stanley
+	self.v_stanleyed := can
+	setdisabled(self.gh, self.g_button_notify, can = FALSE)
+ENDPROC
+
+PROC notify() OF stanley HANDLE
+	DEF tpl, start, end, track, totaltp, totalsmp, note,
+	    smp, line, tp, m : PTR TO marker, prevline = -1,
+	    tp4, totaltp4
+	changetitle(self.gh, &#x27;Stanley: working...&#x27;)
+	oss_update(FALSE)
+	IF ossv(&#x27;rn_isranged&#x27;) = FALSE THEN self.notify_warn(
+	        &#x27; No range selected for notify &#x27;,
+	        &#x27; Select a range in the tracker editor &#x27;)
+	tpl   := ossv(&#x27;sg_gettempotpl&#x27;)
+	end   := ossv(&#x27;rn_getrangeendline&#x27;)
+	start := ossv(&#x27;rn_getrangestartline&#x27;)
+	track := ossv(&#x27;rn_getrangestarttrack&#x27;)
+	oss(&#x27;rn_erase range&#x27;)   -&gt; do this after getting range info
+	totaltp := Mul(end - start + 1, tpl)
+	totalsmp := self.v_markers.tailpred::marker.start
+	note  := self.v_defpitch
+	m := self.v_markers.head
+	totaltp4 := Shl(totaltp, 2)
+	WHILE m.succ.succ
+		smp := m.start
+		IF self.v_hires
+			-&gt; this formula selects the timing pulse before the
+			-&gt; exact time, unless it is 3/4 of the way through
+			tp4 := Div(Mul(totaltp4, smp), totalsmp)
+			IF (tp4 AND %11) = %11 THEN tp4 := tp4 + 1
+			tp, line := Mod(Shr(tp4, 2), tpl)
+			line := line + start
+			IF line = prevline THEN self.notify_warn(
+			      &#x27; Not enough space in notify &#x27;, &#x27; Select a longer range &#x27;)
+			oss(&#x27;ed_setdata track=\d line=\d note=\d inum=\d cmdnum=\d qual=\d&#x27;,
+			                        track, line, note, Abs(m.to),
+			                        IF tp THEN $1F ELSE 0,
+			                        IF tp THEN Shl(tp, 4) AND $F0 ELSE 0)
+		ELSE
+			tp, line := Mod(Div(Mul(totaltp, smp), totalsmp), tpl)
+			line := line + start
+			-&gt; get nearest line
+			IF Mul(tp, 2) &gt;= tpl THEN line := line + 1
+			IF line = prevline THEN self.notify_warn(
+			      &#x27; Not enough space in notify &#x27;, &#x27; Select a longer range &#x27;)
+			oss(&#x27;ed_setdata track=\d line=\d note=\d inum=\d cmdnum=\d qual=\d&#x27;,
+			                track, line, note, Abs(m.to), 0, 0)
+		ENDIF
+		prevline := line
+		m := m.succ
+	ENDWHILE
+EXCEPT DO
+	oss_update(TRUE)
+	changetitle(self.gh, self.g_title)
+	IF exception &lt;&gt; &quot;warn&quot; THEN ReThrow()
+ENDPROC
+
+PROC notify_warn(text1, text2) OF stanley
+	easyguiA(&#x27;cha_stanley&#x27;,
+	        NEW [ ROWS,
+	            NEW [ TEXT, text1, 0,0,1 ],
+	            NEW [ TEXT, text2, 0,0,1 ],
+	            NEW [ BUTTON, 0, &#x27;Ok&#x27;    ]
+	        ],
+	        NEW [ EG_SCRN, screen, EG_WTYPE, WTYPE_NOSIZE, NIL ])
+	Raise(&quot;warn&quot;)
+ENDPROC
+
+/* + + + */
+
+
+/** 2.4 **/
+
+PROC save(filename) OF stanley HANDLE
+	DEF fh = NIL, s[256] : STRING, m : PTR TO marker, len
+	IF fh := Open(filename, NEWFILE)
+		Fputs(fh, &#x27;cha_stanley 2.4\n&#x27;)
+		-&gt; last marker
+		m := self.v_markers.head
+		WHILE m.succ.succ DO m := m.succ
+		len := m.start
+		StringF(s, &#x27;\d\n&#x27;, m.start)
+		Fputs(fh, s)
+		m := self.v_markers.head
+		-&gt; all but last marker
+		WHILE m.succ.succ
+			StringF(s, &#x27;\d\n&#x27;, m.start)
+			Fputs(fh, s)
+			m := m.succ
+		ENDWHILE
+	ELSE
+		Throw(&quot;OPEN&quot;, filename)
+	ENDIF
+EXCEPT DO
+	IF fh THEN Close(fh)
+	ReThrow()
+ENDPROC
+
+-&gt; dos.FGets() has a bug in OS &lt; v39, so pass len-1
+PROC load(filename) OF stanley HANDLE
+	DEF fh = NIL, s[256] : STRING, m : PTR TO marker, len, v, ok, reallen, f
+	IF fh := Open(filename, OLDFILE)
+		-&gt; reset
+		self.reset()
+		-&gt; get real length
+		m := self.v_markers.head
+		WHILE m.succ.succ DO m := m.succ
+		reallen := m.start
+		-&gt; header
+		Fgets(fh, s, 256-1)
+		-&gt; length
+		Fgets(fh, s, 256-1)
+		len, ok := Val(s)
+		-&gt; factor
+		f := ! (reallen !) / (len !)
+		-&gt; markers
+		WHILE Fgets(fh, s, 256-1)
+			v, ok := Val(s)
+			self.add(v ! * f !)
+		ENDWHILE
+	ELSE
+		Throw(&quot;OPEN&quot;, filename)
+	ENDIF
+EXCEPT DO
+	IF fh THEN Close(fh)
+	ReThrow()
+ENDPROC
+
+/** 2.4 **/
+
+/*=========================================================================*/
+
+PROC a_button_add       (s : PTR TO stanley)        IS s.add()
+PROC a_button_close     (s : PTR TO stanley)        IS IF s.close() THEN Raise(&quot;QUIT&quot;) ELSE 0
+PROC a_button_delete    (s : PTR TO stanley)        IS s.delete()
+PROC a_button_play      (s : PTR TO stanley)        IS s.play()
+PROC a_button_range     (s : PTR TO stanley)        IS s.range()
+PROC a_button_reset     (s : PTR TO stanley)        IS s.reset()
+PROC a_button_stanley   (s : PTR TO stanley)        IS s.stanley()
+/* + + + */
+PROC a_button_notify    (s : PTR TO stanley)        IS s.notify()
+PROC a_check_hires      (s : PTR TO stanley, hires) ;  s.v_hires := hires; ENDPROC      -&gt; x.y:=z  is a statement not an expression...
+/* + + + */
+PROC a_check_autoto     (s : PTR TO stanley, to)    IS s.setto(IF to THEN -Abs(s.v_curmarker.to) ELSE Abs(s.v_curmarker.to))
+PROC a_listview_select  (s : PTR TO stanley, index) IS s.select(index)
+PROC a_slider_setto     (s : PTR TO stanley, to)    IS s.setto(to)
+PROC a_string_setname   (s : PTR TO stanley, name)  IS s.setname(name)
+
+/** 2.4 **/
+
+PROC a_button_load(s : PTR TO stanley) HANDLE
+	DEF filename
+	IF filename := filerequester(FALSE) THEN s.load(filename)
+EXCEPT
+	SELECT exception
+	CASE &quot;OPEN&quot;; displayerror(&#x27;Can&#x27;&#x27;t open file&#x27;, exceptioninfo)
+	CASE &quot;FORM&quot;; displayerror(&#x27;Bad format in file&#x27;, exceptioninfo)
+	DEFAULT;     ReThrow()
+	ENDSELECT
+ENDPROC
+
+PROC a_button_save(s : PTR TO stanley) HANDLE
+	DEF filename
+	IF filename := filerequester(TRUE) THEN s.save(filename)
+EXCEPT
+	SELECT exception
+	CASE &quot;OPEN&quot;; displayerror(&#x27;Can&#x27;&#x27;t open file&#x27;, exceptioninfo)
+	CASE &quot;FORM&quot;; displayerror(&#x27;Bad format in file&#x27;, exceptioninfo)
+	DEFAULT;     ReThrow()
+	ENDSELECT
+ENDPROC
+
+-&gt; based on rkrm example libraries/asl/filereq.e
+PROC filerequester(save) HANDLE
+	DEF fr : PTR TO filerequester, s = NIL
+	IF fr := AllocAslRequest(ASL_FILEREQUEST,
+	          NEW [ ASL_HAIL,             &#x27;cha_stanley&#x27;,
+	                ASLFR_SCREEN,         screen,
+	                ASL_OKTEXT,           IF save THEN &#x27;Save&#x27; ELSE &#x27;Load&#x27;,
+	                ASL_CANCELTEXT,       &#x27;Cancel&#x27;,
+	                ASLFR_DOSAVEMODE,     save,
+	                ASL_DIR,              &#x27;RAM:&#x27;,
+	                ASL_FILE,             &#x27;&#x27;,
+	                ASLFR_INITIALPATTERN, &#x27;#?.stanley&#x27;,
+	                ASLFR_DOPATTERNS,     TRUE,
+	                NIL
+	              ])
+		IF AslRequest(fr, NIL)
+			s := String(1024)
+			StrCopy(s, fr.drawer)
+			IF AddPart(s, fr.file, 1024) = 0
+				DisposeLink(s)
+				s := NIL
+			ENDIF
+		ENDIF
+	ELSE
+		displayerror(&#x27;Couldn&#x27;&#x27;t create file requester&#x27;, &#x27;(out of memory?)&#x27;)
+	ENDIF
+EXCEPT DO
+	IF fr THEN FreeAslRequest(fr)
+ENDPROC s
+
+PROC displayerror(text1, text2)
+	easyguiA(&#x27;cha_stanley&#x27;,
+	        NEW [ ROWS,
+	            NEW [ TEXT, text1, 0,0,1 ],
+	            NEW [ TEXT, text2, 0,0,1 ],
+	            NEW [ BUTTON, 0, &#x27;Cancel&#x27; ]
+	        ],
+	        NEW [ EG_SCRN, screen, EG_WTYPE, WTYPE_NOSIZE, NIL ])
+ENDPROC
+
+/** 2.4 **/
+
+/*=========================================================================*/
+
+-&gt; fixed
+PROC oss_update(on)
+	IF on
+		oss(&#x27;ed_setdata_update on&#x27;)
+		oss(&#x27;ed_setdata_update&#x27;)
+	ELSE
+		oss(&#x27;ed_setdata_update off&#x27;)
+	ENDIF
+ENDPROC
+
+/*=========================================================================*/
+
+PROC main() HANDLE
+	DEF stanley = NIL : PTR TO stanley
+	    /* + + + screen made global + + + */
+	oss_init()
+	screen := LockPubScreen(&#x27;OCTAMED&#x27;) -&gt; fall back to default screen
+	/** 2.4 **/
+	aslbase := OpenLibrary(&#x27;asl.library&#x27;, 38)
+	IF aslbase = NIL THEN Raise(&quot;ASL&quot;)
+	/** 2.4 **/
+	NEW stanley.new()
+	/* + + + */
+	-&gt; tags made NEW (for residentablity, but nsm isn&#x27;t...), version moved
+	easyguiA(stanley.g_title,
+	/* + + + */
+	        stanley.g_gui,
+	        NEW [   EG_INFO,    stanley,
+	                EG_GHVAR,   stanley + 4,    -&gt; OFFSETOF stanley.gh
+	                EG_CLOSE,   {a_button_close},
+	                EG_SCRN,    screen,
+	                NIL
+	            ])
+EXCEPT DO
+	END stanley
+	/** 2.4 **/
+	IF aslbase THEN CloseLibrary(aslbase)
+	/** 2.4 **/
+	oss_cleanup()
+	IF screen THEN UnlockPubScreen(NIL, screen)
+	/* - - - */
+	-&gt; Error reporting!
+	SELECT exception
+	/** 2.4 **/
+	CASE &quot;ASL&quot;;  WriteF(&#x27;*** Error: can&#x27;&#x27;t open &quot;asl.library&quot; v38\n&#x27;)
+	/** 2.4 **/
+	CASE &quot;GT&quot;;   WriteF(&#x27;*** Error: can&#x27;&#x27;t open &quot;gadtools.library&quot; (out of memory?)\n&#x27;)
+	CASE &quot;GUI&quot;;  WriteF(&#x27;*** Error: can&#x27;&#x27;t create gui (out of memory?)\n&#x27;)
+	CASE &quot;bigg&quot;; WriteF(&#x27;*** Error: gui too big for screen (select smaller font)\n&#x27;)
+	DEFAULT;     printerror(exception, exceptioninfo)
+	ENDSELECT
+	/* - - - */
+ENDPROC IF exception THEN 5 ELSE 0
+
+/*--------------------------------------------------------------------------+
+| END: cha_stanley.e                                                        |
++==========================================================================*/
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

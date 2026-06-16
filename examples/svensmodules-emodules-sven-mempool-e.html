@@ -1,0 +1,174 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>mempool.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-svensmodules.html">SvensModules</a> &rsaquo; mempool.e</div><h1>File: <code>mempool.e</code></h1><p class="meta">148 lines · project <a href="../examples/pkg-svensmodules.html"><code>SvensModules</code></a></p><p class="pathctx">SvensModules/emodules/sven/mempool.e</p><p class="prose">Simple (but fast and effecient) memorypool-handling. ** Only allocating of <a href="../modules/memory.html">memory</a> possible. You can only deallocate the whole ** <a href="../modules/memory.html">memory</a> pool. ** ** Throws <a href="../modules/exception.html">exception</a> &quot;MEMP&quot;. The exceptioninfo contains the reason of failure ** (MEM_xxx). ** ** Also, on low <a href="../modules/memory.html">memory</a> situations, the user is asked about wh</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/intuition.html">intuition/intuition</a></li></ul></div><h2>Source</h2><pre class="code">/* Simple (but fast and effecient) memorypool-handling.
+** Only allocating of memory possible. You can only deallocate the whole
+** memory pool.
+**
+** Throws exception &quot;MEMP&quot;. The exceptioninfo contains the reason of failure
+** (MEM_xxx).
+**
+** Also, on low memory situations, the user is asked about what to do.
+** So he may close other applications.
+*/
+
+OPT MODULE
+
+MODULE &#x27;intuition/intuition&#x27;,&#x27;exec/memory&#x27;
+
+
+EXPORT ENUM MEM_Ok,MEM_NoMem
+
+EXPORT OBJECT pool
+  liststart:PTR TO puddleheader
+  flags
+  regionsize
+  newsize
+ENDOBJECT
+
+/* every puddle consists of such an header
+*/
+OBJECT puddleheader
+  next:PTR TO puddleheader
+  size:LONG
+  freesize:LONG     -&gt; free memory in this puddle
+  freestart:LONG    -&gt; start of free memory
+ENDOBJECT
+
+/* Allocates and initialiazes an new memory pool.
+** &#x27;flags&#x27; is the memory type.
+** &#x27;regionsize&#x27; is the size of one puddle.
+** &#x27;newsize&#x27; is the largest allocation that goes into the normal puddles.
+**           larger allocations are taken directly from new memory block.
+**           Must be less or equal than &#x27;regionsize&#x27;.
+**
+** Returns the pool.
+*/
+EXPORT PROC __CreatePool(flags=MEMF_ANY,regionsize=40000,newsize=30000)
+DEF poo=NIL:PTR TO pool
+
+  flags:=flags OR MEMF_CLEAR
+  IF poo:=AllocMem(SIZEOF pool,flags)
+    poo.flags:=flags
+    poo.regionsize:=regionsize
+    poo.newsize:=newsize
+  ELSE
+    Throw(&quot;MEMP&quot;,MEM_NoMem)
+  ENDIF
+
+ENDPROC poo
+
+
+/* Deletes a pool allocated with __CreatePool(). Frees all the memory.
+*/
+EXPORT PROC __DeletePool(poo:PTR TO pool)
+DEF pd1:PTR TO puddleheader,
+    pd2:PTR TO puddleheader
+
+  IF poo
+    pd1:=poo.liststart
+    WHILE pd1
+      pd2:=pd1.next
+      FreeMem(pd1,pd1.size)
+      pd1:=pd2
+    ENDWHILE
+    FreeMem(poo,SIZEOF pool)
+  ENDIF
+ENDPROC
+
+
+PROC __AllocRegion(poo:PTR TO pool,size)
+DEF mem=NIL:PTR TO puddleheader,
+    hilf:PTR TO puddleheader,
+    response
+
+  size:=Max(poo.regionsize,size)+SIZEOF puddleheader
+
+  /* Round it MEM_BLOCKSIZE.
+  ** The system does it and it would be a pity to throw away all
+  ** those bytes unused.
+  */
+  size:=size+(MEM_BLOCKSIZE-And(size,MEM_BLOCKMASK))
+
+  REPEAT
+    IF mem:=AllocMem(size,poo.flags)
+      IF hilf:=poo.liststart
+        WHILE hilf.next DO hilf:=hilf.next
+        hilf.next:=mem
+      ELSE
+        poo.liststart:=mem
+      ENDIF
+      mem.size:=size
+      mem.freesize :=size-SIZEOF puddleheader
+      mem.freestart:=mem+SIZEOF puddleheader
+      response:=0
+    ELSE
+      response:=EasyRequestArgs(NIL,
+                                [20,0,&#x27;Error&#x27;,&#x27;Not enough memory - Need %ld Bytes free memory&#x27;,&#x27;Try it again|Abort&#x27;],
+                                 NIL,[size])
+    ENDIF
+  UNTIL response=0
+  IF mem=NIL THEN Throw(&quot;MEMP&quot;,MEM_NoMem)
+
+ENDPROC mem
+
+
+PROC initmem(mem:PTR TO puddleheader,size)
+DEF mem2:PTR TO CHAR
+
+  mem2:=mem.freestart
+  mem.freesize :=mem.freesize-size
+  mem.freestart:=mem2+size
+
+ENDPROC mem2
+
+
+EXPORT PROC __AllocPooled(poo:PTR TO pool,size)
+DEF mem:REG PTR TO puddleheader
+
+  /* list empty , or size larger than newsize?
+  ** then allocate an new puddle and return the memory
+  */
+  IF (poo.liststart=NIL) OR  (size&gt;poo.newsize)
+    RETURN initmem(__AllocRegion(poo,size),size)
+  ENDIF
+
+  /* Search the list if we find a puddle with enough free memory
+  */
+  mem:=poo.liststart
+  WHILE mem
+    IF mem.freesize&gt;=size
+      RETURN initmem(mem,size)
+    ENDIF
+    mem:=mem.next
+  ENDWHILE
+
+  /* we could not find a matching puddle.
+  ** Simply allocate a new one and initialize it.
+  */
+ENDPROC initmem(__AllocRegion(poo,size),size)
+
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

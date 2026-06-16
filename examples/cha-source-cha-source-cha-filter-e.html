@@ -1,0 +1,208 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>cha_filter.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-cha-source.html">cha_source</a> &rsaquo; cha_filter.e</div><h1>File: <code>cha_filter.e</code></h1><p class="meta">182 lines · project <a href="../examples/pkg-cha-source.html"><code>cha_source</code></a></p><p class="pathctx">cha_source/cha_source/cha_filter.e</p><p class="prose">==========================================================================+ | cha_filter.e | | various filters for OctaMED SoundStudio | | | | main program | | | | Based on mkfilter/mkshape/genplot: | | A. J. Fisher | | fisher@minster.york.ac.uk | +---------------------------------------------------</p><h2>Source</h2><pre class="code">/*==========================================================================+
+| cha_filter.e                                                              |
+| various filters for OctaMED SoundStudio                                   |
+|                                                                           |
+| main program                                                              |
+|                                                                           |
+| Based on mkfilter/mkshape/genplot:                                        |
+|   A. J. Fisher                                                            |
+|   fisher@minster.york.ac.uk                                               |
++--------------------------------------------------------------------------*/
+
+OPT PREPROCESS, LARGE, OSVERSION=37
+
+-&gt; experimental GUI, not for release in this version
+-&gt; #define PLOT
+
+MODULE &#x27;*filter_splane&#x27;, &#x27;*filter_zplane&#x27;, &#x27;*filter&#x27;,
+       &#x27;*oss_input&#x27;, &#x27;*oss_output&#x27;, &#x27;*oss_sample&#x27;, &#x27;*fxfilter&#x27;, &#x27;*oss&#x27;,
+       &#x27;*filter_specification&#x27;, &#x27;*errors&#x27;
+#ifdef PLOT
+MODULE &#x27;*filter_plot&#x27;, &#x27;tools/easygui&#x27;
+#endif
+
+RAISE &quot;^C&quot; IF CtrlC() = TRUE
+
+PROC main() HANDLE
+
+	DEF spec     = NIL : PTR TO filterspecification,
+	    input    = NIL : PTR TO oss_input,
+	    output   = NIL : PTR TO oss_output,
+	    splane   = NIL : PTR TO splane,
+	    zplane   = NIL : PTR TO zplane,
+	    filter   = NIL : PTR TO filter,
+	    fxfilter = NIL : PTR TO fxfilter,
+	    x, f, lf, hf, count = 0
+#ifdef PLOT
+	DEF draws    = NIL : PTR TO drawplane,
+	    drawz    = NIL : PTR TO drawplane,
+	    drawf    = NIL : PTR TO drawfreq
+#endif
+
+	oss_init()
+
+	NEW spec.cli()
+
+	NEW input.oss_input(spec.from)
+	IF spec.rate = RATE_UNKNOWN THEN spec.rate := input.info.rate !
+
+-&gt;	NEW output.oss_output(spec.to, spec.volume)
+	output := setupoutput(spec.from, spec.to, input, spec.volume)
+
+	x := spec.type
+	SELECT 5 OF x
+
+	CASE FILTERTYPE_BUTTERWORTH,
+	     FILTERTYPE_CHEBYSHEV,
+	     FILTERTYPE_BESSEL
+		SELECT 5 OF x
+		CASE FILTERTYPE_BUTTERWORTH;NEW splane.butterworth(spec, spec.order)
+		CASE FILTERTYPE_CHEBYSHEV;  NEW splane.chebyshev  (spec, spec.order, spec.ripple)
+		CASE FILTERTYPE_BESSEL;     NEW splane.bessel     (spec, spec.order)
+		ENDSELECT
+		x := spec.mode
+		SELECT x
+		CASE FILTERMODE_BILINEAR;   f := prebilinear(spec.freq,  spec.rate);   lf := prebilinear(spec.lfreq, spec.rate);   hf := prebilinear(spec.hfreq, spec.rate)
+		CASE FILTERMODE_MATCHEDZ;   f := prematchedz(spec.freq,  spec.rate);   lf := prematchedz(spec.lfreq, spec.rate);   hf := prematchedz(spec.hfreq, spec.rate)
+		DEFAULT;                    Throw(&quot;bug&quot;, &#x27;main.splane.mode&#x27;)
+		ENDSELECT
+		x := spec.shape
+		SELECT x
+		CASE FILTERSHAPE_LOWPASS;   splane.lowpass(f)
+		CASE FILTERSHAPE_HIGHPASS;  splane.highpass(f)
+		CASE FILTERSHAPE_BANDPASS;  splane.bandpass(lf, hf)
+		CASE FILTERSHAPE_BANDSTOP;  splane.bandstop(lf, hf)
+		DEFAULT;                    Throw(&quot;bug&quot;, &#x27;main.splane.shape&#x27;)
+		ENDSELECT
+		x := spec.mode
+		SELECT x
+		CASE FILTERMODE_BILINEAR;   NEW zplane.bilinear(splane)
+		CASE FILTERMODE_MATCHEDZ;   NEW zplane.matchedz(splane)
+		DEFAULT;                    Throw(&quot;bug&quot;, &#x27;main.splane.mode&#x27;)
+		ENDSELECT
+        -&gt;easyguiA(&#x27;s-plane&#x27;, [PLUGIN, 0, NEW draws.drawsplane(splane)])
+
+	CASE FILTERTYPE_RESONATOR
+		f := preresonator(spec.freq, spec.rate)
+		x := spec.shape
+		SELECT x
+		CASE FILTERSHAPE_BANDPASS;  NEW zplane.bandpass(spec, f, spec.qfactor)
+		CASE FILTERSHAPE_ALLPASS;   NEW zplane.allpass (spec, f, spec.qfactor)
+		CASE FILTERSHAPE_NOTCH;     NEW zplane.notch   (spec, f, spec.qfactor)
+		DEFAULT;                    Throw(&quot;bug&quot;, &#x27;main.resonator.shape&#x27;)
+		ENDSELECT
+
+	DEFAULT;                        Throw(&quot;bug&quot;, &#x27;main.type&#x27;)
+	ENDSELECT
+#ifdef PLOT
+	easyguiA(&#x27;z-plane&#x27;, [PLUGIN, 0, NEW drawz.drawzplane(zplane)])
+#endif
+	zplane.compile()
+
+#ifdef PLOT
+	x := spec.shape
+	SELECT 7 OF x
+	CASE FILTERSHAPE_LOWPASS,
+	     FILTERSHAPE_HIGHPASS,
+	     FILTERSHAPE_ALLPASS,
+	     FILTERSHAPE_NOTCH
+		easyguiA(&#x27;frequency&#x27;, [PLUGIN, 0, NEW drawf.drawzfreq(zplane, ! spec.freq / spec.rate)])
+	CASE FILTERSHAPE_BANDSTOP
+		easyguiA(&#x27;frequency&#x27;, [PLUGIN, 0, NEW drawf.drawzfreq(zplane, ! spec.lfreq / spec.rate, ! spec.hfreq / spec.rate)])
+	CASE FILTERSHAPE_BANDPASS
+		IF spec.type = FILTERTYPE_RESONATOR
+			easyguiA(&#x27;frequency&#x27;, [PLUGIN, 0, NEW drawf.drawzfreq(zplane, ! spec.freq / spate)])
+		ELSE
+			easyguiA(&#x27;frequency&#x27;, [PLUGIN, 0, NEW drawf.drawzfreq(zplane, ! spec.lfreq / spec.rate, ! spec.hfreq / spec.rate)])
+		ENDIF
+	ENDSELECT
+#endif
+
+	NEW filter.filter(zplane)
+
+	NEW fxfilter.fxfilter(input, output, filter)
+
+	WHILE fxfilter.process() DO CtrlC() BUT count++
+
+EXCEPT DO
+
+	IF count THEN WriteF(&#x27;\d samples processed\n&#x27;, count)
+
+	END fxfilter
+	END filter
+	END zplane
+	END splane
+	END output
+	END input
+	END spec
+#ifdef PLOT
+	END draws
+	END drawz
+	END drawf
+#endif
+
+	oss_cleanup()
+
+	printerror(exception, exceptioninfo)
+
+ENDPROC IF exception THEN 5 ELSE 0
+
+/*-------------------------------------------------------------------------*/
+
+-&gt; catch exceptions from oss_output
+PROC setupoutput(from, to, in : PTR TO oss_input, volume) HANDLE
+	DEF out = NIL : PTR TO oss_output
+	NEW out.oss_output(to, volume)
+	IF from &lt;&gt; to
+		IF out.info.length &lt; in.info.length
+			END out
+			oss(&#x27;sa_changesize \d&#x27;, in.info.length)
+			NEW out.oss_output(to, volume)
+		ENDIF
+	ENDIF
+EXCEPT
+	IF exception = &quot;oss&quot;
+		END out
+		oss(&#x27;sa_changesize \d&#x27;, in.info.length)
+		NEW out.oss_output(to, volume)
+	ELSE
+		ReThrow()
+	ENDIF
+ENDPROC out
+
+/*-------------------------------------------------------------------------*/
+
+version:
+	CHAR &#x27;$VER: cha_filter 1.2 (1999.12.11) © Claude Heiland-Allen, &#x27;,
+	     &#x27;based on mkfilter © A. J. Fisher&#x27;,0
+
+/*--------------------------------------------------------------------------+
+| END: cha_filter.e                                                         |
++==========================================================================*/
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

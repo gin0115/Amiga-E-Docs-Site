@@ -1,0 +1,163 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>newwb.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-energy.html">energy</a> &rsaquo; newwb.e</div><h1>File: <code>newwb.e</code></h1><p class="meta">137 lines · project <a href="../examples/pkg-energy.html"><code>energy</code></a></p><p class="pathctx">energy/Energy/C2E/newwb.e</p><p class="prose">Nome del programma . . . WBench Creator ( NewWb.e ) Autore . . . . . . . . . Marco Talamelli Linguaggio . . . . . . . Amiga E Hardware . . . . . . . . Amiga in qualsiasi configurazione</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/types.html">exec/types</a></li></ul></div><h2>Source</h2><pre class="code">/*
+		Nome del programma . . . WBench Creator ( NewWb.e )
+		Autore . . . . . . . . . Marco Talamelli
+		Linguaggio . . . . . . . Amiga E
+		Hardware . . . . . . . . Amiga in qualsiasi configurazione
+*/
+
+MODULE 	&#x27;exec/types&#x27;,
+	&#x27;intuition/intuition&#x27;,
+	&#x27;dos/dos&#x27;,
+	&#x27;exec/ports&#x27;,
+	&#x27;intuition/iobsolete&#x27;,
+	&#x27;graphics/view&#x27;,
+	&#x27;intuition/screens&#x27;
+
+DEF	screen:PTR TO screen,scr:PTR TO screen,
+	window:PTR TO window,
+	newscr:ns,
+	newwin:nw,
+	view:PTR TO view,
+	vp:PTR TO viewport
+
+PROC main()
+
+DEF	c,s,a,w,o,n,l
+
+	/* Ricava la view */
+	view:=ViewAddress()
+
+        	SELECT arg
+			/* Uso */
+			CASE &#x27;?&#x27;
+				uso()
+				
+			/* Apre una finestra CLI */
+			CASE &#x27;s&#x27;
+				s:=1
+
+			/* Carica il Workbench */
+			CASE &#x27;w&#x27;
+				w:=1
+						
+			/* Rende attivo il nuovo workbench screen */
+			CASE &#x27;0&#x27; /* Chiude subito il vecchio workbench screen */
+				c:=1
+
+			CASE &#x27;1&#x27; /* Aspetta che l&#x27;utente chiuda il vecchio WB screen */
+				a:=1
+			
+			/* Interlacciato */
+			CASE &#x27;l&#x27;
+				newscr.viewmodes:=V_HIRES OR V_LACE
+				newscr.height:=512
+				l:=1
+				
+			/* 8 colori */
+			CASE &#x27;c&#x27;
+				newscr.depth:=3
+				
+			/* Screen NTSC  */
+			CASE &#x27;n&#x27;
+				newscr.height:=200
+				n:=1;
+				
+			/* Overscan */
+			CASE &#x27;o&#x27;
+				newscr.width:=704
+				newscr.height:=283
+				o:=1
+		ENDSELECT
+
+	/* Imposta le dimensioni dello schermo secondo le opzioni scelte */
+	IF (n AND l)	THEN  newscr.height:=400
+	IF (l AND o)	THEN  newscr.height:=566
+	IF (n AND o)	THEN  newscr.height:=241
+	IF (n AND l AND o)THEN  newscr.height:=482
+
+	/* Apre la window per chiudere lo screen sul vecchio screen */
+	IF (a) THEN window:=OpenWindow([485,0,100,10, 0,1,CLOSEWINDOW,
+	WINDOWCLOSE OR ACTIVATE,NIL,NIL,&#x27;Close WB&#x27;,NIL,NIL,
+	0,0,0,0,WBENCHSCREEN]:nw)
+
+	/* Apre il nuovo Workbench */
+	screen:=OpenScreen([0,0,640,256,2,0,1,V_HIRES,WBENCHSCREEN,NIL,
+	&#x27;WBench Creator 1.0 - by Marco Talamelli - &#x27;,NIL,NIL]:ns)
+
+	vp:=screen.viewport /* Ricava la viewport dello screen */
+
+/* Se si vuole uno screen overscan, il nuovo screen è centrato sul monitor */
+	IF (o)
+		view.dxoffset:=110
+		view.dyoffset:=27
+		RemakeDisplay()
+	ENDIF
+	
+	/* Se si sono usate le opzioni S o W vengono eseguiti i comandi 
+       Loadwb o newcli nel nuovo screen */
+	IF (w) THEN Execute(&#x27;Loadwb&#x27;,0,0)
+	IF (s) THEN Execute(&#x27;Newcli&#x27;,0,0)
+	
+	IF (arg&lt;&gt;a)
+		/* Puntatore allo screen in cui deve comparire la finestra */
+		newwin.screen:=screen
+		window:=OpenWindow([485,0,100,10, 0,1,CLOSEWINDOW,
+	WINDOWCLOSE OR ACTIVATE,NIL,NIL,&#x27;Close WB&#x27;,NIL,NIL,
+	0,0,0,0,WBENCHSCREEN]:nw) /* Apre la finestra */
+
+		/* Aspetta che l&#x27;utente selezioni il close gadget e chiude window
+           e screen */
+		Wait(Shl(1,window.userport.sigbit)) 
+		CloseWindow(window)
+		CloseScreen(screen)
+	ELSE
+		/* Chiude il vecchio screen aspettando che l&#x27;utente selezioni il 
+			close gadget se si è usata l&#x27;opzione 1 */
+		IF (arg&lt;&gt;c) THEN Wait(Shl(1,window.userport.sigbit))
+		scr:=window.wscreen
+		CloseWindow(window)
+		CloseScreen(scr)
+	ENDIF
+ENDPROC
+
+PROC uso()
+
+	WriteF(&#x27; Workbench Creator v1.0 - by Marco Talamelli. \n\n&#x27;)
+	WriteF(&#x27; Uso: \n\n&#x27;)
+	WriteF(&#x27;   NewWB s w 0 1 l c n o \n\n&#x27;)
+	WriteF(&#x27; s = NewCLI nel nuovo screen.\n&#x27;)
+	WriteF(&#x27; w = LoadWB nel nuovo screen.\n&#x27;)
+	WriteF(&#x27; 0 = Il nuovo screen è attivo e il vecchio è chiuso.\n&#x27;)
+	WriteF(&#x27; 1 = Il nuovo screen è attivo e il vecchio può essere chiuso dall\autente.\n&#x27;)
+	WriteF(&#x27; l = Nuovo screen interlacciato.\n&#x27;)
+	WriteF(&#x27; c = Nuovo screen 8 colori.\n&#x27;)
+	WriteF(&#x27; n = Nuovo screen NTSC.\n&#x27;)
+	WriteF(&#x27; o = Nuovo screen overscan.\n\n&#x27;)
+ENDPROC
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

@@ -1,0 +1,210 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Keymon.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-aepd12.html">AEPD12</a> &rsaquo; Keymon.e</div><h1>File: <code>Keymon.e</code></h1><p class="meta">184 lines · project <a href="../examples/pkg-aepd12.html"><code>AEPD12</code></a></p><p class="pathctx">AEPD12/EPD12/Amiga_E-Programme/Commodity/Keymon.e</p><p class="prose">Keyboard <a href="../modules/monitor.html">monitor</a> v1.0</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/commodities.html">commodities</a></li></ul></div><h2>Source</h2><pre class="code">/*
+	Keyboard monitor v1.0
+*/
+MODULE &#x27;commodities&#x27;,&#x27;libraries/commodities&#x27;,&#x27;exec/ports&#x27;,&#x27;dos/dos&#x27;,&#x27;devices/inputevent&#x27;,
+	&#x27;intuition/intuition&#x27;,&#x27;intuition/intuitionbase&#x27;,&#x27;intuition/screens&#x27;,
+	&#x27;workbench/startup&#x27;,&#x27;workbench/workbench&#x27;,&#x27;icon&#x27;,&#x27;keymap&#x27;
+ENUM NOERROR,ER_NOLIBRARY,ER_MESSAGEPORT
+CONST GOT_ONE=232
+
+DEF broker:PTR TO newbroker,messport:PTR TO mp,brokerobj,cxsigbit,filter,sender,
+	buff
+
+PROC main()
+	DEF wb:PTR TO wbstartup,wba:PTR TO wbarg,dobj:PTR TO diskobject,toolarray,
+	str,olddir=0,pri=0,read,rdargs,myargs[2]:LIST
+
+	/* Probably will run under V36, but who still has only V36? */
+	/* Besides, V36 sucks. */
+	IF (KickVersion(37))=FALSE
+		WriteF(&#x27;Sorry, requires Kick V37+\n&#x27;)
+		getout(0)
+	ENDIF
+	IF (cxbase:=OpenLibrary(&#x27;commodities.library&#x27;,37))=0
+		error(ER_NOLIBRARY,&#x27;commodities&#x27;)
+	ENDIF
+	IF (keymapbase:=OpenLibrary(&#x27;keymap.library&#x27;,37))=0
+		error(ER_NOLIBRARY,&#x27;keymap&#x27;)
+	ENDIF
+	IF (iconbase:=OpenLibrary(&#x27;icon.library&#x27;,37))=0
+		error(ER_NOLIBRARY,&#x27;icon&#x27;)
+	ENDIF
+	/*
+		This checks the tooltypes or command line arguments
+		for priority.
+	*/
+	IF wbmessage
+		wb:=wbmessage ; wba:=wb.arglist
+		IF (wba.lock&gt;0) AND (wba.name&gt;0)
+			olddir:=CurrentDir(wba.lock)
+		ENDIF
+		IF (dobj:=GetDiskObject(wba.name))&gt;0
+			toolarray:=dobj.tooltypes
+			IF (str:=FindToolType(toolarray,&#x27;CX_PRIORITY&#x27;))&gt;0
+				pri:=Val(str,read)
+				IF read=0
+					pri:=0
+				ENDIF
+			ENDIF
+			/* Add more checks here, before the freediskobject */
+			FreeDiskObject(dobj)
+		ENDIF
+		IF olddir&gt;0
+			CurrentDir(olddir)
+		ENDIF
+	ELSE
+		/*
+			If commodity accepts other commodity args, like CX_POPKEY, or CX_POPUP
+			or whatever it&#x27;s called, they&#x27;re put in the command line args as
+			/K types. (Like here)
+		*/
+		IF (rdargs:=ReadArgs(&#x27;CX_PRIORITY/N/K&#x27;,myargs,0))&gt;0
+			pri:=Long(myargs[0])
+			FreeArgs(rdargs)
+		ENDIF
+	ENDIF
+
+	broker:=[NB_VERSION,0,&#x27;KeyMon&#x27;,&#x27;Keyboard Input Monitor&#x27;,&#x27;Buffers keyboard input to a file.&#x27;,
+	NBU_UNIQUE OR NBU_NOTIFY,0,0,0,0]:newbroker
+	IF (messport:=CreateMsgPort())&gt;0
+		broker.port:=messport
+		IF (brokerobj:=CxBroker(broker,0))&gt;0
+			cxsigbit:=Shl(1,messport.sigbit)
+			IF (sender:=cxsender(messport,GOT_ONE))&gt;0
+				AttachCxObj(brokerobj,sender)
+				ActivateCxObj(brokerobj,1)
+				justdoit()
+			ENDIF
+			getout(0)
+		ENDIF
+	ELSE
+		error(ER_MESSAGEPORT,0)
+	ENDIF
+	getout(0)
+ENDPROC
+CHAR &#x27;$VER: Keymon v1.0 (C) 1994 Jason Maskell&#x27;,0
+
+PROC justdoit()
+	DEF msg:PTR TO mn,sigrcvd,msgid,msgtype,ievent:PTR TO inputevent,num
+	buff:=New(100)
+	LOOP
+		sigrcvd:=Wait(SIGBREAKF_CTRL_C OR cxsigbit)
+		WHILE (msg:=GetMsg(messport))
+			ievent:=CxMsgData(msg) ; msgtype:=CxMsgType(msg) ; ReplyMsg(msg)
+			SELECT msgtype
+				CASE CXM_IEVENT
+					IF ievent.class=IECLASS_RAWKEY
+							num:=MapRawKey(ievent,buff,100,0)
+						IF num=1
+							Write(stdout,buff,num)
+						ENDIF
+					ENDIF
+				CASE CXM_COMMAND
+					msgid:=CxMsgID(msg)
+					SELECT msgid
+						CASE CXCMD_DISABLE
+							ActivateCxObj(brokerobj,0)
+						CASE CXCMD_ENABLE
+							ActivateCxObj(brokerobj,1)
+						CASE CXCMD_KILL
+							RETURN 0
+						CASE CXCMD_UNIQUE
+							RETURN 0
+					ENDSELECT
+			ENDSELECT
+		ENDWHILE
+		IF (sigrcvd AND SIGBREAKF_CTRL_C)
+			RETURN 0
+		ENDIF
+	ENDLOOP
+ENDPROC
+/*
+	Commodities macros...
+*/
+PROC cxsender(port,id)
+ENDPROC CreateCxObj(CX_SEND,port,id)
+
+/*
+	These are the commodities macros taken from the includes.h files..
+	They allow you to use the rkm examples pretty easily.
+*/
+
+/*
+PROC cxfilter(d)
+ENDPROC CreateCxObj(CX_FILTER,d,0)
+PROC cxtypefilter(type)
+ENDPROC CreateCxObj(CX_TYPEFILTER,type,0)
+PROC cxsignal(task,sig)
+ENDPROC CreateCxObj(CX_SIGNAL,task,sig)
+PROC cxtranslate(ie)
+ENDPROC CreateCxObj(CX_TRANSLATE,ie,0)
+PROC cxdebug(id)
+ENDPROC CreateCxObj(CX_DEBUG,id,0)
+PROC cxcustom(action,id)
+ENDPROC CreateCxObj(CX_CUSTOM,action,id)
+*/
+PROC getout(retcode)
+	DEF msg:PTR TO mn
+
+	IF brokerobj
+		DeleteCxObjAll(brokerobj)
+	ENDIF
+	IF messport
+		WHILE (msg:=GetMsg(messport))
+			ReplyMsg(msg)
+		ENDWHILE
+		DeleteMsgPort(messport)
+	ENDIF
+	IF cxbase
+		CloseLibrary(cxbase)
+	ENDIF
+	IF keymapbase
+		CloseLibrary(keymapbase)
+	ENDIF
+	IF iconbase
+		CloseLibrary(iconbase)
+	ENDIF
+	CleanUp(retcode)
+ENDPROC
+
+PROC error(errnum,str)
+	DEF work[80]:STRING
+	SELECT errnum
+		CASE ER_NOLIBRARY
+			StringF(work,&#x27;Unable to open \s.library V37+&#x27;,str)
+		CASE ER_MESSAGEPORT
+			StringF(work,&#x27;Unable to create message port.&#x27;)
+		DEFAULT
+	ENDSELECT
+	request(work,&#x27;Ok&#x27;,0)
+	getout(11)
+ENDPROC
+PROC request(body,gadgets,args)
+ENDPROC EasyRequestArgs(0,[20,0,0,body,gadgets],0,args)
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

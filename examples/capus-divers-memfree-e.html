@@ -1,0 +1,446 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>MemFree.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-capus.html">capus</a> &rsaquo; MemFree.e</div><h1>File: <code>MemFree.e</code></h1><p class="meta">420 lines · project <a href="../examples/pkg-capus.html"><code>capus</code></a></p><p class="pathctx">capus/Divers/MemFree.e</p><p class="prose">MemFree inspriré de gadtoolsdemo.e et avail.e</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/execbase.html">exec/execbase</a></li><li><a href="../modules/text.html">graphics/text</a></li><li><a href="../modules/icon.html">icon</a></li><li><a href="../modules/intuition.html">intuition/intuition</a></li><li><a href="../modules/reqtools.html">reqtools</a></li><li><a href="../modules/rexxsyslib.html">rexxsyslib</a></li></ul></div><h2>Source</h2><pre class="code">/* MemFree inspriré de gadtoolsdemo.e et avail.e */
+/*************************************************/
+/* V0.0a - Version initiale			 */
+/* V0.0b - Ajout de Delay et Pubscreen		 */
+/* v0.0c - Ajout de Front			 */
+/* v0.0d - Ajout d&#x27;un port Arexx                 */
+/*	   Commandes Arexx:			 */
+/*	   - QUIT/BACK/FRONT/NOFRONT/YESFRONT/	 */
+/*	     FAST/CHIP/CHANGEPS &lt;nompubscreen&gt;/  */
+/*	     NEWDELAY &lt;delay&gt;/FASTCHIP/ZIP	 */
+/* v0.0e - Ajout de menus et utilisation de la	 */
+/*	   reqtools.library.			 */
+/*************************************************/
+
+ENUM NONE,ER_OPENLIB,ER_WB,ER_VISUAL,ER_CONTEXT,ER_GADGET,ER_WINDOW,ER_MENUS,
+     ER_BADARGS,ER_REXXPORT,ER_SIG
+ENUM ARG_DELAY,ARG_PS,ARG_FRONT,NUMARGS
+
+MODULE &#x27;intuition/intuition&#x27;, &#x27;gadtools&#x27;, &#x27;libraries/gadtools&#x27;,
+       &#x27;intuition/gadgetclass&#x27;, &#x27;exec/nodes&#x27;, &#x27;intuition/screens&#x27;
+MODULE &#x27;exec/execbase&#x27;,&#x27;exec/lists&#x27;,&#x27;workbench/startup&#x27;,
+       &#x27;exec/libraries&#x27;,&#x27;exec/tasks&#x27;, &#x27;exec/ports&#x27;,
+       &#x27;intuition/intuitionbase&#x27;
+MODULE &#x27;icon&#x27;,&#x27;wb&#x27;,&#x27;workbench/workbench&#x27;
+MODULE &#x27;rexxsyslib&#x27;,&#x27;rexx/storage&#x27;
+MODULE &#x27;reqtools&#x27;,&#x27;libraries/reqtools&#x27;,&#x27;utility/tagitem&#x27;
+
+MODULE &#x27;exec/execbase&#x27;
+MODULE &#x27;graphics/text&#x27;
+
+
+ENUM CHIP,FAST
+
+CONST GFXOFFSET=40, BUFSIZE=GADGETSIZE*5
+
+DEF scr=NIL:PTR TO screen,
+    visual=NIL,
+    wnd=NIL:PTR TO window,
+    wndmp:PTR TO mp,
+    glist=NIL,offy,g,
+    type,infos,menu,gad,def_gad
+
+DEF base:PTR TO execbase,x:PTR TO LONG
+
+DEF rdargs=NIL
+DEF wb:PTR TO wbstartup,wb_args:PTR TO wbarg
+DEF pubscreen[256]:STRING,delay,screen[256]:STRING
+DEF struc_diskobj:PTR TO diskobject,nom_prg[50]:STRING
+DEF version[50]:STRING,front
+DEF myport:PTR TO mp,data_port:PTR TO ln,test_port
+DEF zipped=FALSE,zip_piv
+DEF tattr
+PROC main()
+  DEF cli_args[NUMARGS]:LIST,templ,x,r_quit
+  DEF sig
+  StrCopy(version,&#x27;$VER:\e[;32mMemFree\e[;0m v0.0e \e[;32m(\e[;33mc\e[;32m) Na\e[;33msG\e[;0mûl (10-Nov-93).&#x27;,ALL)
+  base:=execbase  /* For Virus D */
+  IF (sig:=AllocSignal(-1))=NIL THEN checkerror(ER_SIG)
+  IF wbmessage=NIL
+      FOR x:=0 TO NUMARGS-1 DO cli_args[x]:=0
+      templ:=&#x27;D=DELAY,PS/K,FRONT/S&#x27;
+      rdargs:=ReadArgs(templ,cli_args,NIL)
+      IF rdargs=NIL THEN checkerror(ER_BADARGS)
+      delay:=Val(cli_args[ARG_DELAY],NIL)
+      IF delay=0 THEN delay:=10
+      front:=cli_args[ARG_FRONT]
+      IF cli_args[ARG_PS]
+	  StrCopy(pubscreen,cli_args[ARG_PS],ALL)
+      ELSE
+	  StrCopy(pubscreen,&#x27;Workbench&#x27;,ALL)
+      ENDIF
+  ELSE
+      IF (iconbase:=OpenLibrary(&#x27;icon.library&#x27;,37))=NIL THEN RETURN ER_OPENLIB
+      wb:=wbmessage
+      wb_args:=wb.arglist
+      CurrentDir(wb_args[0].lock)
+      StrCopy(nom_prg,wb_args[0].name,ALL)
+      struc_diskobj:=GetDiskObject(wb_args[0].name)
+      delay:=Val(FindToolType(struc_diskobj.tooltypes,&#x27;DELAY&#x27;),NIL)
+      IF delay=0 THEN delay:=10
+      screen:=FindToolType(struc_diskobj.tooltypes,&#x27;PS&#x27;)
+      IF screen=0
+	  StrCopy(pubscreen,&#x27;Workbench&#x27;,ALL)
+      ELSE
+	  StrCopy(pubscreen,screen,ALL)
+      ENDIF
+      front:=FindToolType(struc_diskobj.tooltypes,&#x27;FRONT&#x27;)
+      IF StrCmp(front,&#x27;TRUE&#x27;,ALL)
+	  front:=TRUE
+      ELSE
+	  front:=FALSE
+      ENDIF
+  ENDIF
+  checkerror(initinterface())
+  checkerror(openinterface())
+  REPEAT
+    wait4message()
+    IF type=IDCMP_CLOSEWINDOW
+	r_quit:=RtEZRequestA(&#x27;      (c) 1993 By NasGûl\n      ~~~~~~~~~~~~~~~~~~\nVoulez-vous vraiment Quitter ?&#x27;,&#x27;Oui|Non&#x27;,0,0,[RT_PUBSCRNAME,pubscreen,RTEZ_REQTITLE,&#x27;MemFree v0.0e&#x27;,TAG_DONE]:tagitem)
+	IF r_quit=1 THEN type:=IDCMP_CLOSEWINDOW ELSE type:=0
+    ENDIF
+  UNTIL type=IDCMP_CLOSEWINDOW
+  closeinterface()
+ENDPROC
+PROC initinterface()
+  DEF menu_toggle
+  IF (gadtoolsbase:=OpenLibrary(&#x27;gadtools.library&#x27;,37))=NIL THEN RETURN ER_OPENLIB
+  IF (intuitionbase:=OpenLibrary(&#x27;intuition.library&#x27;,37))=NIL THEN RETURN ER_OPENLIB
+  IF (reqtoolsbase:=OpenLibrary(&#x27;reqtools.library&#x27;,37))=NIL THEN RETURN ER_OPENLIB
+  IF (test_port:=FindPort(&#x27;MemFreePort&#x27;))&lt;&gt;0 THEN RETURN ER_REXXPORT
+  IF myport:=CreateMsgPort()
+	data_port:=myport.ln
+	data_port.name:=&#x27;MemFreePort&#x27;
+	AddPort(myport)
+  ENDIF
+  IF front=TRUE
+      menu_toggle:=$109
+  ELSE
+      menu_toggle:=$9
+  ENDIF
+  IF (menu:=CreateMenusA([1,0,&#x27; Options &#x27;,0,0,0,0,
+			  2,0,&#x27;  NewDelay&#x27;,&#x27;N&#x27;,0,0,0,
+			  2,0,&#x27;  ChangePs&#x27;,&#x27;P&#x27;,0,0,0,
+			  2,0,&#x27;  Quitter &#x27;,&#x27;Q&#x27;,0,0,0,
+			  1,0,&#x27; Mémoire  &#x27;,0,0,0,0,
+			  2,0,&#x27;  Fast    &#x27;,&#x27;F&#x27;,0,0,0,
+			  2,0,&#x27;  Chip    &#x27;,&#x27;C&#x27;,0,0,0,
+			  2,0,&#x27; Fast/Chip&#x27;,&#x27;V&#x27;,0,0,0,
+			  2,0,&#x27; Virus D  &#x27;,&#x27;D&#x27;,0,0,0,
+			  1,0,&#x27;  Fenêtre &#x27;,0,0,0,0,
+			  2,0,&#x27;  YesFront&#x27;,&#x27;T&#x27;,menu_toggle,0,0,
+			  0,0,0,0,0,0,0]:newmenu,NIL))=NIL THEN RETURN ER_MENUS
+ENDPROC
+PROC openinterface()
+  DEF rast
+  tattr:=[&#x27;topaz.font&#x27;,8,0,0]:textattr
+  gad:=&#x27;CHIP&#x27;
+  def_gad:=gad
+  IF (scr:=LockPubScreen(pubscreen))=NIL
+      RtEZRequestA(&#x27;Ecran public introuvable.&#x27;,&#x27;Ok&#x27;,0,0,[RT_PUBSCRNAME,pubscreen,RTEZ_REQTITLE,&#x27;MemFree v0.0e&#x27;,TAG_DONE]:tagitem)
+      IF (scr:=LockPubScreen(&#x27;Workbench&#x27;))=NIL THEN RETURN ER_WB
+  ENDIF
+  ScreenToFront(scr)
+  IF (visual:=GetVisualInfoA(scr,NIL))=NIL THEN RETURN ER_VISUAL
+  offy:=scr.wbortop+Int(scr.rastport+58)+1
+  IF (g:=CreateContext({glist}))=NIL THEN RETURN ER_CONTEXT
+  IF LayoutMenusA(menu,visual,NIL)=FALSE THEN RETURN ER_MENUS
+  IF (g:=CreateGadgetA(BUTTON_KIND,g,[scr.wborleft+6,offy+31,80,
+				     11,&#x27;   Chip   &#x27;,tattr,1,PLACETEXT_IN,visual,&#x27;CHIP&#x27;]:newgadget,
+				    [GTSC_TOP,2,GTSC_VISIBLE,3,
+				     GTSC_TOTAL,10,GTSC_ARROWS,22,
+				     PGA_FREEDOM,LORIENT_HORIZ,GA_RELVERIFY,
+				     GTLV_SELECTED,
+				     TRUE,GA_IMMEDIATE,TRUE,0]))=NIL THEN RETURN ER_GADGET
+  IF (g:=CreateGadgetA(BUTTON_KIND,g,[scr.wborleft+87,offy+31,80,
+				     11,&#x27;   Fast   &#x27;,tattr,1,PLACETEXT_IN,visual,&#x27;FAST&#x27;]:newgadget,
+				     [GTSC_TOP,2,GTSC_VISIBLE,3,
+				     GTSC_TOTAL,10,GTSC_ARROWS,22,
+				     PGA_FREEDOM,LORIENT_HORIZ,GA_RELVERIFY,
+				     GTLV_SELECTED,
+				     TRUE,GA_IMMEDIATE,TRUE,0]))=NIL THEN RETURN ER_GADGET
+  /*IF (wnd:=OpenW(scr.width-182,scr.height-46-offy,182,offy+46,$30C OR SCROOLERIDCMP,8+2+$1000,&#x27;MemFree v0.0e&#x27;,scr,2,glist))=NIL THEN RETURN ER_WINDOW*/
+  IF (wnd:=OpenW(scr.width-182,scr.height-46-offy,182,offy+46,$40032C+BUTTONIDCMP,$100A,&#x27;MemFree v0.0e&#x27;,scr,2,glist))=NIL THEN RETURN ER_WINDOW
+  wnd.screentitle:=&#x27;MemFree v0.0e (c) 1993 NasGûl&#x27;
+  wndmp:=wnd.userport
+  rast:=wnd.rport
+  SetTopaz(8)
+  IF SetMenuStrip(wnd,menu)=FALSE THEN RETURN ER_MENUS
+  Gt_RefreshWindow(wnd,NIL)
+  display(gad)
+ENDPROC
+
+PROC closeinterface()
+  IF wnd THEN ClearMenuStrip(wnd)
+  IF menu THEN FreeMenus(menu)
+  IF visual THEN FreeVisualInfo(visual)
+  IF wnd THEN CloseWindow(wnd)
+  IF glist THEN FreeGadgets(glist)
+  IF scr THEN UnlockPubScreen(NIL,scr)
+  IF gadtoolsbase THEN CloseLibrary(gadtoolsbase)
+  IF intuitionbase THEN CloseLibrary(intuitionbase)
+  IF reqtoolsbase THEN CloseLibrary(reqtoolsbase)
+  IF rdargs THEN FreeArgs(rdargs)
+  IF iconbase THEN CloseLibrary(iconbase)
+  IF struc_diskobj THEN FreeDiskObject(struc_diskobj)
+  IF myport THEN RemPort(myport)
+  IF myport THEN DeleteMsgPort(myport)
+ENDPROC
+
+PROC close_win()
+  IF wnd THEN ClearMenuStrip(wnd)
+  IF visual THEN FreeVisualInfo(visual)
+  IF wnd THEN CloseWindow(wnd)
+  IF glist THEN FreeGadgets(glist)
+  IF scr THEN UnlockPubScreen(NIL,scr)
+ENDPROC
+
+PROC checkerror(er)
+  DEF errors:PTR TO LONG
+  IF er&gt;0
+    closeinterface()
+    errors:=[&#x27;&#x27;,&#x27;Impossible d\aouvrir la\n &quot;gadtools.library&quot; v37&#x27;,
+		&#x27;Ecran public introuvable&#x27;,
+		&#x27;Erreur: visual infos&#x27;,
+		&#x27;Erreur: creation context&#x27;,
+		&#x27;Erreur: creation gadget&#x27;,
+		&#x27;Erreur : Ouverture fenêtre&#x27;,
+		&#x27;Erreur: allocation menus&#x27;,
+		&#x27;Erreur : Bad Args !&#x27;,
+		&#x27;Port Arexx existant&#x27;,
+		&#x27;Erreur : Allocation Signal&#x27;]
+    RtEZRequestA(errors[er],&#x27;Ok&#x27;,0,0,[RT_PUBSCRNAME,pubscreen,RTEZ_REQTITLE,&#x27;MemFree v0.0e&#x27;,TAG_DONE]:tagitem)
+    CleanUp(10)
+  ENDIF
+ENDPROC
+
+PROC wait4message()
+  DEF mes:PTR TO intuimessage,g:PTR TO gadget
+  DEF appmsg:PTR TO rexxmsg,com_rexx[50]:STRING
+  DEF rexx_args:PTR TO LONG,change_aff,change_id
+  DEF retour,val,str[80]:STRING
+  DEF req:PTR TO rtfilerequester,ch_pubsc=FALSE
+  DEF virus_action=0,item_adr:PTR TO menuitem
+  REPEAT
+    type:=0
+    IF mes:=Gt_GetIMsg(wnd.userport)
+	type:=mes.class
+	IF type=IDCMP_MENUPICK
+	  infos:=mes.code
+	  SELECT infos
+	      CASE $F800		     /* GET NEW DELAY */
+		  IF req:=RtAllocRequestA(RT_REQINFO,NIL)
+		      val:=delay
+		      retour:=RtGetLongA({val},&#x27;MemFree v0.0e&#x27;,NIL,
+					 [RT_PUBSCRNAME,pubscreen,
+					  RTGL_MIN,10,
+					  RTGL_MAX,3000,
+					  RTGL_TEXTFMT,&#x27;Nouveau Delay&#x27;,
+					  RTGL_GADFMT,&#x27;New|Cancel&#x27;,
+					  TAG_DONE]:tagitem)
+		      IF retour=1 THEN delay:=val
+		      RtFreeRequest(req)
+		  ENDIF
+	      CASE $F820		     /* GET NEW PUBSCREEN */
+		  IF req:=RtAllocRequestA(RT_REQINFO,NIL)
+			  retour:=RtGetStringA(str, 200,&#x27;MemFree v0.0e&#x27;,NIL,
+					       [RT_PUBSCRNAME,pubscreen,
+						RTGS_GADFMT,&#x27;Ok|Cancel&#x27;,
+						RTGS_TEXTFMT, &#x27;Choix d\aun nouveau Public screen.&#x27;,
+						TAG_DONE]:tagitem)
+		      IF retour=1
+			  ch_pubsc:=TRUE
+			  StrCopy(pubscreen,str,ALL)
+		      ENDIF
+		      RtFreeRequest(req)
+		  ENDIF
+	      CASE $F840		     /* QUITTER */
+		  type:=IDCMP_CLOSEWINDOW
+	      /******************************/
+	      CASE $F801		     /* MEM FAST */
+		  def_gad:=&#x27;FAST&#x27;
+		  change_aff:=FALSE
+	      CASE $F821		     /* MEM CHIP */
+		  def_gad:=&#x27;CHIP&#x27;
+		  change_aff:=FALSE
+	      CASE $F841		     /* FASTCHIP */
+		  change_aff:=TRUE
+	      CASE $F861		     /* Virus D  */
+		 IF check_exec() THEN virus_action:=RtEZRequestA(&#x27;Virus Détected.&#x27;,&#x27;ColdReboot|Gasp !!&#x27;,0,0,[RT_PUBSCRNAME,pubscreen,RTEZ_REQTITLE,&#x27;MemFree v0.0e&#x27;,TAG_DONE]:tagitem)
+		 IF virus_action=1 THEN ColdReboot()
+	      /******************************/
+	      CASE $F802		     /* Always Front */
+		  IF front=TRUE
+		      front:=FALSE
+		  ELSE
+		      front:=TRUE
+		  ENDIF
+	      DEFAULT;	  NOP
+	  ENDSELECT
+	ELSEIF (type=IDCMP_GADGETDOWN) OR (type=IDCMP_GADGETUP)
+	    g:=mes.iaddress
+	    infos:=g.gadgetid
+	    gad:=g.userdata
+	    def_gad:=gad
+	    display(gad)
+	    change_aff:=FALSE
+	ELSEIF type=IDCMP_REFRESHWINDOW
+	  Gt_BeginRefresh(wnd)
+	  Gt_EndRefresh(wnd,TRUE)
+	  type:=0
+	ELSEIF type&lt;&gt;IDCMP_CLOSEWINDOW
+	    type:=0
+	ENDIF
+	Gt_ReplyIMsg(mes)
+	IF ch_pubsc=TRUE
+	    ch_pubsc:=FALSE
+	    zipped:=FALSE
+	    close_win()
+	    checkerror(openinterface())
+	ENDIF
+    ELSE
+      IF appmsg:=GetMsg(myport)
+	  rexx_args:=appmsg.args
+	  StrCopy(com_rexx,rexx_args[0],ALL)
+	  IF StrCmp(com_rexx,&#x27;QUIT&#x27;,ALL)
+	      type:=IDCMP_CLOSEWINDOW
+	  ELSEIF StrCmp(com_rexx,&#x27;FRONT&#x27;,ALL)
+	      WindowToFront(wnd)
+	  ELSEIF StrCmp(com_rexx,&#x27;BACK&#x27;,ALL)
+	      WindowToBack(wnd)
+	  ELSEIF StrCmp(com_rexx,&#x27;CHIP&#x27;,ALL)
+	      change_aff:=FALSE
+	      def_gad:=&#x27;CHIP&#x27;
+	      display(def_gad)
+	  ELSEIF StrCmp(com_rexx,&#x27;FASTCHIP&#x27;,ALL)
+	      change_aff:=TRUE
+	      change_id:=0
+	  ELSEIF StrCmp(com_rexx,&#x27;FAST&#x27;,ALL)
+	      change_aff:=FALSE
+	      def_gad:=&#x27;FAST&#x27;
+	      display(def_gad)
+	  ELSEIF StrCmp(com_rexx,&#x27;NOFRONT&#x27;,ALL)
+	      item_adr:=ItemAddress(menu,$F802)
+	      front:=FALSE
+	      item_adr.flags:=$605F
+	  ELSEIF StrCmp(com_rexx,&#x27;YESFRONT&#x27;,ALL)
+	      item_adr:=ItemAddress(menu,$F802)
+	      front:=TRUE
+	      item_adr.flags:=$615F
+	  ELSEIF StrCmp(com_rexx,&#x27;CHANGEPS&#x27;,8)
+	      IF StrLen(com_rexx)=8
+		  StrCopy(pubscreen,&#x27;Workbench&#x27;,ALL)
+	      ELSE
+		  MidStr(pubscreen,com_rexx,9,ALL)
+	      ENDIF
+	      zipped:=FALSE
+	      close_win()
+	      checkerror(openinterface())
+	  ELSEIF StrCmp(com_rexx,&#x27;NEWDELAY&#x27;,8)
+	      MidStr(delay,com_rexx,9,ALL)
+	      delay:=Val(delay,NIL)
+	      IF delay&lt;10 THEN delay:=10
+	  ELSEIF StrCmp(com_rexx,&#x27;ZIP&#x27;,ALL)
+	      IF zipped=FALSE
+		  SizeWindow(wnd,0,-46)
+		  MoveWindow(wnd,0,46)
+		  zip_piv:=TRUE
+	      ELSEIF zipped=TRUE
+		  MoveWindow(wnd,0,-46)
+		  SizeWindow(wnd,0,46)
+		  zip_piv:=FALSE
+	      ENDIF
+	      zipped:=zip_piv
+	  ELSEIF StrCmp(com_rexx,&#x27;VD&#x27;,2)
+	     IF check_exec() THEN RtEZRequestA(&#x27;Virus Détected.&#x27;,&#x27;ColdReboot|Gasp !!&#x27;,0,0,[RT_PUBSCRNAME,pubscreen,RTEZ_REQTITLE,&#x27;MemFree v0.0e&#x27;,TAG_DONE]:tagitem)
+	     IF virus_action=1 THEN ColdReboot()
+	  ENDIF
+	  ReplyMsg(appmsg)
+      ENDIF
+      WHILE appmsg:=GetMsg(myport) DO ReplyMsg(appmsg)
+      IF (change_aff=TRUE) AND (change_id=0)
+	  def_gad:=&#x27;FAST&#x27;
+	  change_id:=-1
+      ELSEIF change_aff=TRUE
+	  def_gad:=&#x27;CHIP&#x27;
+	  change_id:=0
+      ENDIF
+      IF front=TRUE
+	  Forbid()
+	  Gt_BeginRefresh(wnd)
+	  WindowToFront(wnd)
+	  Gt_EndRefresh(wnd,TRUE)
+	  Permit()
+      ENDIF
+      display(def_gad)
+      /*Delay(delay)*/
+      Wait(Shl(1,wndmp.sigbit))
+    ENDIF
+  UNTIL type
+ENDPROC
+PROC display(gad)
+    DEF chip,fast,largest_chip,largest_fast
+    DEF total_chip,total_fast
+    chip:=AvailMem($2)
+    fast:=AvailMem($4)
+    largest_chip:=AvailMem($20002)
+    largest_fast:=AvailMem($20004)
+    total_chip:=AvailMem($80002)
+    total_fast:=AvailMem($80004)
+    IF StrCmp(gad,&#x27;CHIP&#x27;,ALL)
+	TextF(10,10+offy,&#x27;  Chip  :\d[9]&#x27;,chip)
+	TextF(10,10+offy+8,&#x27;  L Chip:\d[9]&#x27;,largest_chip)
+	TextF(10,10+offy+16,&#x27;  T Chip:\d[9]&#x27;,total_chip)
+    ELSEIF StrCmp(gad,&#x27;FAST&#x27;,ALL)
+	TextF(10,10+offy,&#x27;  Fast  :\d[9]&#x27;,fast)
+	TextF(10,10+offy+8,&#x27;  L Fast:\d[9]&#x27;,largest_fast)
+	TextF(10,10+offy+16,&#x27;  T Fast:\d[9]&#x27;,total_fast)
+    ENDIF
+ENDPROC
+/*******************************/
+/* Routines par EA van breemen */
+/*******************************/
+/* A small virus detector      */
+/* By EA van Breemen	       */
+/*******************************/
+/* Check procedure of execbase */
+PROC check_exec()
+    DEF test
+    RtEZRequestA(&#x27;  By EA van Breemen\n  ~~~~~~~~~~~~~~~~~\nColdCapture :\z\h[8]\nCoolCapture :\z\h[8]\nKickMemPtr  :\z\h[8]\nKickTagPtr  :\z\h[8]&#x27;,
+		&#x27;Ok&#x27;,
+		   0,
+		[base.coldcapture,base.coolcapture,
+		 base.kickmemptr,base.kicktagptr],
+		[RT_PUBSCRNAME,pubscreen,RTEZ_REQTITLE,&#x27;MemFree v0.0e&#x27;,TAG_DONE]:tagitem)
+test:=Exists({x},[[base.coldcapture,&#x27;ColdCapture&#x27;],[base.coolcapture,&#x27;CoolCapture&#x27;],
+		  [base.kickmemptr,&#x27;KickMemPtr&#x27;],[base.kicktagptr,&#x27;KickTagPtr&#x27;]],
+		  `x[0])
+
+ENDPROC test
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

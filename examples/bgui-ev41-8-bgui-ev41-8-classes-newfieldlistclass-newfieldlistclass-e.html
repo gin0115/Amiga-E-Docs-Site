@@ -1,0 +1,262 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>NewFieldListClass.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-bgui-ev41-8.html">BGUI_Ev41_8</a> &rsaquo; NewFieldListClass.e</div><h1>File: <code>NewFieldListClass.e</code></h1><p class="meta">236 lines · project <a href="../examples/pkg-bgui-ev41-8.html"><code>BGUI_Ev41_8</code></a></p><p class="pathctx">BGUI_Ev41_8/bgui_ev41_8/classes/newfieldlistclass/NewFieldListClass.e</p><p class="prose">-- --------------------------------------------------------------- -- * * -- Programname......: <a href="../modules/newfieldlistclass.html">NewFieldListClass</a>.e -- * * -- Description......: First this should be a simple conversion -- * * -- from the c-example but I&#x27;ve changed some -- * * -- things that I&#x27;ve found useful to demonstrate -- * * -</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/bgui.html">libraries/bgui</a></li><li><a href="../modules/utility.html">utility</a></li></ul></div><h2>Source</h2><pre class="code">/* -- --------------------------------------------------------------- -- *
+ * -- Programname......: NewFieldListClass.e                          -- *
+ * -- Description......: First this should be a simple conversion     -- *
+ * --                    from the c-example but I&#x27;ve changed some     -- *
+ * --                    things that I&#x27;ve found useful to demonstrate -- *
+ * --                    the DragNDrop-features of the &quot;bgui.library&quot; -- *
+ * --                                                                 -- *
+ * -- Author...........: Daniel Kasmeroglu (alias Deekah)             -- *
+ * -- E-Mail...........: raptor@cs.tu-berlin.de                       -- *
+ * -- Version..........: 1.0     (10.03.1997)                         -- *
+ * -- --------------------------------------------------------------- -- */
+
+     /* -- ------------------------------------------------- -- *
+      * --                   Compiler-Option&#x27;s               -- *
+      * -- ------------------------------------------------- -- */
+
+OPT REG = 5                -&gt; activate register-optimisation
+OPT PREPROCESS             -&gt; enable preprocessor
+OPT MODULE                 -&gt; generate e-module
+
+
+     /* -- ------------------------------------------------- -- *
+      * --                        E-Module                   -- *
+      * -- ------------------------------------------------- -- */
+
+MODULE &#x27;libraries/bgui&#x27;,
+       &#x27;libraries/bguim&#x27;,
+       &#x27;utility/tagitem&#x27;,
+       &#x27;utility/hooks&#x27;,
+       &#x27;exec/memory&#x27;,
+       &#x27;exec/lists&#x27;,
+       &#x27;exec/nodes&#x27;,
+       &#x27;graphics/text&#x27;,
+       &#x27;graphics/rastport&#x27;,
+       &#x27;devices/inputevent&#x27;,
+       &#x27;intuition/cghooks&#x27;,
+       &#x27;intuition/classusr&#x27;,
+       &#x27;intuition/screens&#x27;,
+       &#x27;intuition/classes&#x27;,
+       &#x27;intuition/gadgetclass&#x27;,
+       &#x27;intuition/intuition&#x27;,
+       &#x27;tools/installhook&#x27;,
+       &#x27;tools/boopsi&#x27;,
+       &#x27;amigalib/boopsi&#x27;,
+       &#x27;amigalib/lists&#x27;
+
+MODULE &#x27;utility&#x27;,
+       &#x27;bgui&#x27;
+
+
+     /* -- ------------------------------------------------- -- *
+      * --                      Constant&#x27;s                   -- *
+      * -- ------------------------------------------------- -- */
+
+EXPORT CONST FL_AcceptLV   = TAG_USER + $2000,      -&gt; IS---
+             FL_SortDrops  = TAG_USER + $2001       -&gt; IS---
+
+
+     /* -- ------------------------------------------------- -- *
+      * --                      Structure&#x27;s                  -- *
+      * -- ------------------------------------------------- -- */
+
+OBJECT fieldlistdata
+  fl_ListViews  : PTR TO LONG     -&gt; list of listview-objects
+  fl_SortDrops  : LONG            -&gt; auto-sort drops
+ENDOBJECT
+
+
+     /* -- ------------------------------------------------- -- *
+      * --                      Procedure&#x27;s                  -- *
+      * -- ------------------------------------------------- -- */
+
+EXPORT PROC fil_InitFLClass()
+DEF ini_super : PTR TO iclass
+DEF ini_class : PTR TO iclass
+
+  ini_class := NIL
+
+  -&gt; check if needed librarys are available
+  IF (bguibase &lt;&gt; NIL) AND (utilitybase &lt;&gt; NIL)
+
+    -&gt; subclass from the LISTVIEW_GADGET
+    ini_super := BgUI_GetClassPtr( BGUI_LISTVIEW_GADGET )
+    IF ini_super &lt;&gt; NIL
+
+      -&gt; normal installation stuff
+      ini_class := MakeClass( NIL, NIL, ini_super, SIZEOF fieldlistdata, 0 )
+      IF ini_class &lt;&gt; NIL THEN installhook( ini_class.dispatcher, {intern_Dispatcher} )
+ 
+    ENDIF 
+
+  ENDIF
+
+ENDPROC ini_class
+
+
+-&gt; use this version instead of the direct &quot;FreeClass()&quot; call
+EXPORT PROC fil_FreeFLClass( fre_cl ) IS FreeClass( fre_cl )
+
+
+-&gt; a simple procedure for the public
+EXPORT PROC hel_IsInList_HELP( isi_object, isi_list : PTR TO LONG )
+  WHILE (isi_object &lt;&gt; isi_list[]) AND (isi_list[] &lt;&gt; NIL) DO isi_list++
+ENDPROC IF isi_list[] = isi_object THEN TRUE ELSE FALSE
+
+
+     /* -- ------------------------------------------------- -- *
+      * --                       Dispatcher                  -- *
+      * -- ------------------------------------------------- -- */
+
+PROC intern_Dispatcher( dis_cl, dis_obj, dis_msg : PTR TO msg )
+DEF dis_mid
+
+  dis_mid := dis_msg.methodid
+
+  SELECT dis_mid
+  CASE OM_NEW         ; RETURN intern_Method_NEW(       dis_cl, dis_obj, dis_msg )
+  CASE OM_SET         ; RETURN intern_Method_SET(       dis_cl, dis_obj, dis_msg )
+  CASE BASE_DRAGQUERY ; RETURN intern_Method_DRAGQUERY( dis_cl, dis_obj, dis_msg )
+  CASE BASE_DROPPED   ; RETURN intern_Method_DROPPED(   dis_cl, dis_obj, dis_msg )
+  DEFAULT             ; RETURN doSuperMethodA(          dis_cl, dis_obj, dis_msg )
+  ENDSELECT
+
+ENDPROC
+
+
+     /* -- ------------------------------------------------- -- *
+      * --                        Method&#x27;s                   -- *
+      * -- ------------------------------------------------- -- */
+
+PROC intern_Method_NEW( new_cl : PTR TO iclass, new_obj, new_msg : PTR TO opnew )
+DEF new_data : PTR TO fieldlistdata
+DEF new_retval
+
+  -&gt; let the superclasses create all instances
+  new_retval := doSuperMethodA( new_cl, new_obj, new_msg )
+  IF new_retval &lt;&gt; NIL
+
+    -&gt; get instance and initialise
+    new_data               := INST_DATA( new_cl, new_retval )
+    new_data.fl_ListViews  := NIL
+    new_data.fl_SortDrops  := FALSE
+
+    -&gt; set attributes 
+    intern_SetFLAttrs_HELP( new_data, new_msg.attrlist )
+
+  ENDIF
+
+ENDPROC new_retval
+
+
+PROC intern_Method_SET( set_cl : PTR TO iclass, set_obj, set_msg : PTR TO opset )
+DEF set_data : PTR TO fieldlistdata
+DEF set_retval
+
+  -&gt; let the superclass work
+  set_retval := doSuperMethodA( set_cl, set_obj, set_msg )
+  set_data   := INST_DATA( set_cl, set_obj )
+
+  -&gt; set attributes
+  intern_SetFLAttrs_HELP( set_data, set_msg.attrlist )
+
+ENDPROC set_retval
+
+
+PROC intern_Method_DRAGQUERY( dra_cl : PTR TO iclass, dra_obj, dra_msg : PTR TO bmDragPoint )
+DEF dra_data : PTR TO fieldlistdata
+DEF dra_ibox : ibox
+
+  -&gt; let the superclass work
+  IF dra_msg.source = dra_obj THEN RETURN doSuperMethodA( dra_cl, dra_obj, dra_msg )
+
+  -&gt; get the instance-data
+  dra_data   := INST_DATA( dra_cl, dra_obj )
+
+  IF (dra_data.fl_ListViews &lt;&gt; NIL) AND (hel_IsInList_HELP( dra_msg.source, dra_data.fl_ListViews ) = TRUE)
+
+    GetAttr( LISTV_ViewBounds, dra_obj, {dra_ibox} )
+    IF dra_msg.mouseX &lt; dra_ibox.width THEN RETURN BQR_ACCEPT
+
+  ENDIF
+
+ENDPROC BQR_REJECT
+
+
+PROC intern_Method_DROPPED( dro_cl : PTR TO iclass, dro_obj, dro_msg : PTR TO bmDropped )
+DEF dro_data : PTR TO fieldlistdata
+DEF dro_spot,dro_entry
+
+  IF dro_msg.source = dro_obj THEN RETURN doSuperMethodA( dro_cl, dro_obj, dro_msg )
+
+  dro_data := INST_DATA( dro_cl, dro_obj )
+
+  IF (dro_data.fl_ListViews &lt;&gt; NIL) AND (hel_IsInList_HELP( dro_msg.source, dro_data.fl_ListViews ) = TRUE)
+
+    -&gt; // the dropped object was a listview-gadget
+
+    -&gt; get entry where the object were dropped
+    GetAttr( LISTV_DropSpot, dro_obj, {dro_spot} )
+
+    -&gt; run thru the whole list
+    WHILE (dro_entry := FirstSelected( dro_msg.source )) &lt;&gt; NIL
+
+      -&gt; insert it directly after the dropspot-entry or insert it
+      -&gt; and sort the whole list
+      IF dro_data.fl_SortDrops = FALSE
+        doMethodA( dro_obj, [ LVM_INSERTSINGLE, NIL, dro_spot, dro_entry, LVASF_SELECT ]:lvmInsertSingle )
+      ELSE
+        doMethodA( dro_obj, [ LVM_ADDSINGLE, NIL, dro_entry, LVAP_SORTED, LVASF_SELECT ]:lvmAddSingle )
+      ENDIF
+
+      -&gt; remove the entry from the source list
+      RemoveEntry( dro_msg.source, dro_entry )
+
+    ENDWHILE
+
+  ENDIF
+
+  -&gt; refresh the source and the destination
+  RefreshList( dro_msg.sourceWin, dro_obj        )
+  RefreshList( dro_msg.sourceWin, dro_msg.source )
+
+ENDPROC TRUE
+
+
+     /* -- ------------------------------------------------- -- *
+      * --                 Helping procedure&#x27;s               -- *
+      * -- ------------------------------------------------- -- */
+
+PROC intern_SetFLAttrs_HELP( set_data : PTR TO fieldlistdata, set_attrs : PTR TO tagitem )
+
+  set_data.fl_ListViews  := GetTagData( FL_AcceptLV,  set_data.fl_ListViews,  set_attrs )
+  set_data.fl_SortDrops  := GetTagData( FL_SortDrops, set_data.fl_SortDrops,  set_attrs )
+
+ENDPROC
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

@@ -1,0 +1,294 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>cPath_test.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-portable.html">PortablE</a> &rsaquo; cPath_test.e</div><h1>File: <code>cPath_test.e</code></h1><p class="meta">268 lines · project <a href="../examples/pkg-portable.html"><code>PortablE</code></a></p><p class="pathctx">PortablE/PortablE/PEmodules/std/cPath_test.e</p><p class="prose">Stress-test the read/write cache of cFile.</p><h2>Source</h2><pre class="code">/*
+Stress-test the read/write cache of cFile.
+*/
+
+OPT INLINE, PREPROCESS
+-&gt;MODULE &#x27;*cPath&#x27; -&gt;causes PE cache problem
+MODULE &#x27;std/cPath&#x27;, &#x27;std/pShell&#x27;
+
+CONST MIN_CHUNKS = 4
+CONST MIN_CHUNK_SIZE = SIZEOF LONG * 2
+CONST MAX_CHUNK_SIZE = CPATH_FILE_BUFFER_SIZE / MIN_CHUNKS
+CONST READ_ONLY   = FALSE	-&gt;don&#x27;t write into file (except for initially filling with random data)
+CONST AUTOEXTEND  = FALSE	-&gt;auto-extension prevents the file from being auto-filled, which is bad for testing reading, but good for testing auto-extension
+CONST DONOTCACHE  = FALSE	-&gt;test read()&#x27;s doNotCache parameter
+CONST PRECACHE    = FALSE	-&gt;test readPrecache()
+STATIC cachedPath = &#x27;cPath_test_cached&#x27;		-&gt;&#x27;RAM:/cPath_test_cached&#x27;
+STATIC directPath = &#x27;cPath_test_direct&#x27;		-&gt;&#x27;RAM:/cPath_test_direct&#x27;
+
+PROC main()
+	DEF seed, quit:BOOL
+	DEF direct:OWNS PTR TO cHostFile, cached:OWNS PTR TO cFile
+	DEF buffer:OWNS ARRAY OF BYTE, i, fileSize
+	DEF filePos :BIGVALUE, chunkSize, read:BOOL, length, offset, phase, bytesAccessed, chunkSizeAtZeroFilePos, temp, loopCount
+	DEF filePosD:BIGVALUE, padLostBytesD, bufferD:OWNS ARRAY OF BYTE
+	DEF filePosC:BIGVALUE, padLostBytesC, bufferC:OWNS ARRAY OF BYTE
+	
+	-&gt;specify test
+	Rnd(seed := -123)
+	Print(&#x27;Setting-up... (Rnd seed=\d)\n&#x27;, seed)
+	
+	-&gt;create test files
+	NEW direct.new()
+	NEW cached.new()
+	
+	DeletePath(directPath)
+	DeletePath(cachedPath)
+	
+	-&gt;simulate test to estimate max required file size
+	fileSize := 0
+	chunkSize := MIN_CHUNK_SIZE
+	REPEAT
+		fileSize := fileSize + (chunkSize + chunkSize)
+		chunkSize := chunkSize * 2
+	UNTIL chunkSize &gt; MAX_CHUNK_SIZE
+	
+	-&gt;create test files
+	NEW buffer[fileSize]
+	FOR i := 0 TO fileSize-1 DO buffer[i] := randByte()
+	
+	IF direct.create(cachedPath) = FALSE	-&gt;create it with cHostFile, so that chunk size is not affected
+		Print(&#x27;Failed to create &quot;\s&quot; because \s in \s.\n&#x27;, cachedPath, direct.infoFailureReason(), direct.infoFailureOrigin())
+		RETURN
+	ENDIF
+	IF AUTOEXTEND = FALSE THEN direct.write(buffer, fileSize)
+	direct.close()
+	IF cached.open(cachedPath) = FALSE THEN Throw(&quot;FILE&quot;, &#x27;Failed to re-open cached file&#x27;)
+	
+	IF direct.create(directPath) = FALSE
+		Print(&#x27;Failed to create &quot;\s&quot; because \s in \s.\n&#x27;, directPath, direct.infoFailureReason(), direct.infoFailureOrigin())
+		RETURN
+	ENDIF
+	IF AUTOEXTEND = FALSE THEN direct.write(buffer, fileSize)
+	direct.flush()
+	
+	-&gt;perform tests
+	loopCount := 1
+	-&gt;seed := $9e40ca06		-&gt;last test that was run (without autoextension)
+	-&gt;seed := $c513fc66 ; loopCount := 394		-&gt;last test that was run (with autoextension)
+	Rnd(seed)
+	Print(&#x27;Started tests (Rnd seed=\d). Press Ctrl-C to stop.\n&#x27;, seed)
+	quit := FALSE
+	NEW bufferD[fileSize], bufferC[fileSize]
+	chunkSize := infoChunkSize(cached)
+	phase := 1
+	filePos := 0
+	-&gt;offset := 0
+	bytesAccessed := 0
+	REPEAT
+		-&gt;calculate read/write length &amp; offset (from the current &quot;filePos&quot;)
+		IF phase = 1
+			-&gt;length := Rnd(chunkSize*2) + 1
+			-&gt;offset := Rnd(chunkSize)
+			
+			-&gt;offset := offset + Rnd(chunkSize/2)
+			-&gt;length := Rnd(Max(1, 2*chunkSize - offset)) + 1
+			
+			length := Rnd(chunkSize) + 1
+			temp := IF AUTOEXTEND = FALSE THEN chunkSize ELSE chunkSize*9/8
+			offset := (chunkSize - length) + ((bytesAccessed/temp)*temp)
+			bytesAccessed := bytesAccessed + length
+			
+		ELSE IF phase = 2
+			-&gt;length := Max(1, (chunkSize-4)/(12))	-&gt;needs to be /12 or larger divisor (although in theory anything above /6 should work)
+			-&gt;offset := offset+Max(8,chunkSize-4)	-&gt;NEEDS to be -4 or more negative, but overall jump must not go below 8
+			
+			length := 1 + Rnd((chunkSize-4)/6)
+			-&gt;offset := offset + Max(Min(length*8,262144 *0+16), chunkSize-4)
+			offset := offset + Max(Min(length*8,Rnd(262144-16)+16), chunkSize-4)
+			
+			-&gt;cFile_DEBUG := TRUE
+		ENDIF
+		
+		-&gt;perform read OR write, starting from filePos
+		IF length &gt; fileSize THEN Throw(&quot;BUG&quot;, &#x27;length&gt;fileSize&#x27;)
+		read := (Rnd(256) &gt;= 128)
+		IF read OR READ_ONLY
+			IF READ_ONLY THEN IF read = FALSE THEN FOR i := 0 TO length-1 DO randByte()		-&gt;ensure same behavior if READ_ONLY has been enabled, by calling randByte() same number of times as if had written
+			FOR i := 0 TO length-1 DO bufferD[i] := bufferC[i] := -1
+			filePosD, padLostBytesD := read(direct, filePos + offset, bufferD, length)
+			filePosC, padLostBytesC := read(cached, filePos + offset, bufferC, length)
+			
+			IF      filePosD &lt;&gt;      filePosC THEN error(&#x27;read() filePos&#x27;, filePosD!!VALUE, filePosC!!VALUE)
+			IF padLostBytesD &lt;&gt; padLostBytesC THEN error(&#x27;read() padLostBytes&#x27;, padLostBytesD, padLostBytesC)
+			FOR i := 0 TO length-1
+				IF bufferD[i] &lt;&gt; bufferC[i] ; error(&#x27;read() buffer&#x27;, bufferD[i], bufferC[i], i) ; #ifdef DEBUG_PROC cached.reportChunk(filePos + offset + i) #else Print(&#x27;Buffer index \d = File position \d\n&#x27;, i, filePos + offset + i !!VALUE) #endif ; ENDIF
+			ENDFOR IF errors &lt;&gt; 0
+		ELSE
+			FOR i := 0 TO length-1 DO buffer[i] := randByte()
+			filePosD, padLostBytesD := write(direct, filePos + offset, buffer, length)
+			filePosC, padLostBytesC := write(cached, filePos + offset, buffer, length)
+			
+			IF      filePosD &lt;&gt;      filePosC THEN error(&#x27;write() filePos&#x27;, filePosD!!VALUE, filePosC!!VALUE)
+			IF padLostBytesD &lt;&gt; padLostBytesC THEN error(&#x27;write() padLostBytes&#x27;, padLostBytesD, padLostBytesC)
+		ENDIF
+		IF CtrlC() THEN quit := TRUE
+		
+		-&gt;move filePos &amp; reset some variables, if the chunk size has changed (or have gone past the end of the file)
+		IF errors = 0
+			IF chunkSize = infoChunkSize(cached)
+				-&gt;(chunk size is unchanged)
+				IF phase = 2
+					IF (filePos + offset) &gt; fileSize
+						-&gt;(phase 2 has gone past end of file) so go back to the start
+						IF chunkSizeAtZeroFilePos = chunkSize THEN cached.sleep()
+						filePos := 0
+						chunkSizeAtZeroFilePos := chunkSize
+						offset := 0
+					ENDIF
+				ENDIF
+			ELSE
+				-&gt;(chunk size has changed)
+				chunkSize := infoChunkSize(cached)
+				Print(&#x27;Chunk size now \d, filePos=\d\n&#x27;, chunkSize, filePos!!VALUE)
+				
+				IF phase = 1
+					IF chunkSize &lt; MAX_CHUNK_SIZE
+						filePos := filePos + (2 * chunkSize)
+						bytesAccessed := 0
+					ELSE
+						-&gt;(reached max chunk size) so change to phase 2
+						phase := 2
+						filePos := 0
+						chunkSizeAtZeroFilePos := chunkSize
+						-&gt;bytesAccessed := 0
+						cached.sleep()		-&gt;get rid of existing cache chunks
+						Print(&#x27;Started phase 2.\n&#x27;)
+					ENDIF
+					-&gt;offset := 0
+					
+				ELSE IF phase = 2
+					filePos := filePos + offset -&gt; + ???
+					offset := 0
+					IF filePos &gt; fileSize
+						filePos := 0
+						chunkSizeAtZeroFilePos := chunkSize
+						cached.sleep()		-&gt;get rid of existing cache chunks
+					ENDIF
+					
+					IF chunkSize &lt;= MIN_CHUNK_SIZE
+						-&gt;(reached min chunk size) so change to phase 1
+						phase := 1
+						filePos := 0
+						bytesAccessed := 0
+						
+						-&gt;compare resultant files
+						compareFiles(direct, cached)
+						IF errors = 0
+							Rnd(seed := -Rnd($7FFFFFFF))
+							Print(&#x27;\nRestarting test.  (Rnd seed=$\h, loop count=\d)\n&#x27;, seed, loopCount++)
+						ENDIF
+						
+						cached.sleep()		-&gt;get rid of existing cache chunks
+					ENDIF
+				ENDIF
+				-&gt;end of (chunk size has changed)
+			ENDIF
+		ENDIF
+	UNTIL quit OR (errors &lt;&gt; 0)
+	
+	IF errors
+		Print(&#x27;Errors occured while filePos=\d, length=\d, offset=\d\n&#x27;, filePos!!VALUE, length, offset)
+	ENDIF
+	
+	Print(&#x27;Test finished with errors=\d, filePos=\d, chunkSize=\d, actual chunk size=\d, loopCount=\d\n&#x27;, errors, filePos!!VALUE, chunkSize, infoChunkSize(cached), loopCount)
+	
+	cached.close()
+	direct.close()
+	IF errors = 0
+		DeletePath(directPath)
+		DeletePath(cachedPath)
+	ENDIF
+	
+	Print(&#x27;Finished.\n&#x27;)
+FINALLY
+	PrintException()
+	END cached, direct
+	END buffer
+	END bufferD
+	END bufferC
+ENDPROC
+
+PROC randByte() IS Rnd(256) - 128 !!BYTE
+
+PROC bigMod(a:BIGVALUE, b) RETURNS c, d:BIGVALUE
+	d := a / b
+	c := a - (d * b) !!VALUE
+ENDPROC
+
+
+PROC infoChunkSize(self:PTR TO cFile) IS self.queryExtra(&quot;CSiz&quot;)
+
+DEF errors=0
+PROC error(what:ARRAY OF CHAR, valueD, valueC, at=-999)
+	errors++
+	Print(&#x27;ERROR: \s mismatch, where \d&lt;&gt;\d&#x27;, what, valueD, valueC)
+	IF at &lt;&gt; -999 THEN Print(&#x27; at \d&#x27;, at)
+	Print(&#x27;\n&#x27;)
+ENDPROC
+
+PROC read(file:PTR TO cHostFile, pos:BIGVALUE, buffer:ARRAY, length)
+	DEF padBytes
+	file.setPosition(pos)
+	IF file.IsOfClassType(TYPEOF cFile) = FALSE
+		pos, padBytes := file.read(buffer, length)
+	ELSE
+		IF PRECACHE THEN file::cFile.readPrecache(length, 0, /*isItemInList*/ FALSE)
+		pos, padBytes := file::cFile.read(buffer, length, 0, -1, DONOTCACHE)
+	ENDIF
+ENDPROC pos, padBytes
+
+PROC write(file:PTR TO cHostFile, pos:BIGVALUE, buffer:ARRAY, length)
+	DEF lostBytes
+	file.setPosition(pos)
+	pos, lostBytes := file.write(buffer, length, 0, NOT AUTOEXTEND)
+ENDPROC pos, lostBytes
+
+PROC compareFiles(direct:PTR TO cHostFile, cached:PTR TO cFile)
+	DEF i
+	DEF sizeD, bufferD:OWNS ARRAY OF BYTE
+	DEF sizeC, bufferC:OWNS ARRAY OF BYTE
+	
+	direct.flush() ; sizeD := direct.getSize() !!VALUE
+	cached.flush() ; sizeC := direct.getSize() !!VALUE
+	IF sizeC &lt;&gt; sizeD
+		error(&#x27;getFileSize()&#x27;, sizeD, sizeC)
+	ELSE
+		NEW bufferD[sizeD] ; read(direct, 0, bufferD, sizeD)
+		NEW bufferC[sizeC] ; read(cached, 0, bufferC, sizeC)
+		
+		FOR i := 0 TO sizeD-1
+			IF bufferD[i] &lt;&gt; bufferC[i] THEN error(&#x27;compare files&#x27;, bufferD[i], bufferC[i], i)
+		ENDFOR IF errors &lt;&gt; 0
+	ENDIF
+FINALLY
+	END bufferD
+	END bufferC
+ENDPROC
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

@@ -1,0 +1,1727 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>modesense.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-q-device-mos.html">q-device_mos</a> &rsaquo; modesense.e</div><h1>File: <code>modesense.e</code></h1><p class="meta">1701 lines · project <a href="../examples/pkg-q-device-mos.html"><code>q-device_mos</code></a></p><p class="pathctx">q-device_mos/qdevsrc/handlers/modesense.e</p><h2>Source</h2><pre class="code">OPT MODULE
+OPT EXPORT
+
+MODULE &#x27;*/listview/outlist&#x27;,
+       &#x27;*/scsi/headers&#x27;,
+       &#x27;*/scsi/params&#x27;
+
+DEF global_devtype
+
+/*
+** This procedure handles the data returned from a mode sense request
+** (ie Device Parameters). It is quite complex because the data is in the form
+** of many pages which have to be processed. In addition to that, a page type
+** may have to be processed differently, or have a different meaning depending
+** on the type of device queried. It&#x27;s the master procedure for mode sense data
+** and farms off the actual decoding to the specific page type handlers.
+*/
+PROC process_modesense(reply:PTR TO m_sense10, modesize)
+DEF reply2:PTR TO m_sense6,
+    page:PTR TO CHAR,
+    pagetype,    
+    datalen=0,
+    descriptor:PTR TO b_descriptor,
+    medium=0,
+    desclen=0,
+    devpar=0
+
+    reply2:=reply
+    
+    IF modesize = 10 
+        medium:=reply.medium
+        datalen:=reply.datalen
+        desclen:=reply.desclen
+        devpar:=reply.devpar AND %10000000
+        descriptor:=reply + SIZEOF m_sense10
+        page:= reply + SIZEOF m_sense10 + desclen
+        outlist(&#x27;\ebMode Sense Cmdsize:\en&#x27;, &#x27;10 bytes&#x27;)
+    ELSE
+        medium:=reply2.medium
+        datalen:=reply2.datalen
+        desclen:=reply2.desclen
+        devpar:=reply2.devpar AND %10000000
+        descriptor:=reply2 + SIZEOF m_sense6
+        page:= reply2 + SIZEOF m_sense6 + desclen
+        outlist(&#x27;\ebMode Sense Cmdsize:\en&#x27;, &#x27;6 bytes&#x27;)
+    ENDIF
+    
+    outlist_i(&#x27;\ebMode Data Length:\en&#x27;, datalen, &#x27; bytes&#x27;)
+        
+    SELECT $F OF global_devtype
+        CASE DEV_DIRECT
+            IF medium = $0
+                outlist(&#x27;\ebInserted Medium Type:\en&#x27;,&#x27;Default&#x27;)
+            ELSEIF medium = $1
+                outlist(&#x27;\ebInserted Medium Type:\en&#x27;,&#x27;Flexible disk, single-sided; unspecified medium&#x27;) 
+            ELSEIF medium = $2
+                outlist(&#x27;\ebInserted Medium Type:\en&#x27;,&#x27;Flexible disk, double-sided; unspecified medium&#x27;)
+            ELSEIF medium = $5
+                outlist(&#x27;\ebInserted Medium Type:\en&#x27;,&#x27;Diameter: 8&quot;, Bit Dens.: 6, TPI: 48, Sides: 1&#x27;)
+            ELSEIF medium = $6
+                outlist(&#x27;\ebInserted Medium Type:\en&#x27;,&#x27;Diameter: 8&quot;, Bit Dens.: 6, TPI: 48, Sides: 2&#x27;)
+            ELSEIF medium = $9
+                outlist(&#x27;\ebInserted Medium Type:\en&#x27;,&#x27;Diameter: 8&quot;, Bit Dens.: 13, TPI: 48, Sides: 1&#x27;)
+            ELSEIF medium = $A
+                outlist(&#x27;\ebInserted Medium Type:\en&#x27;,&#x27;Diameter: 8&quot;, Bit Dens.: 13, TPI: 48, Sides: 2&#x27;)
+            ELSEIF medium = $D
+                outlist(&#x27;\ebInserted Medium Type:\en&#x27;,&#x27;Diameter: 5.25&quot;, Bit Dens.: 13, TPI: 48, Sides: 1&#x27;)
+            ELSEIF medium = $12
+                outlist(&#x27;\ebInserted Medium Type:\en&#x27;,&#x27;Diameter: 5.25&quot;, Bit Dens.: 7, TPI: 48, Sides: 2&#x27;)
+            ELSEIF medium = $16
+                outlist(&#x27;\ebInserted Medium Type:\en&#x27;,&#x27;Diameter: 5.25&quot;, Bit Dens.: 7, TPI: 96, Sides: 2&#x27;)
+            ELSEIF medium = $1A
+                outlist(&#x27;\ebInserted Medium Type:\en&#x27;,&#x27;Diameter: 5.25&quot;, Bit Dens.: 13, TPI: 96, Sides: 2&#x27;)
+            ELSEIF medium = $1E
+                outlist(&#x27;\ebInserted Medium Type:\en&#x27;,&#x27;Diameter: 3.5&quot;, Bit Dens.: 7, TPI: 135, Sides: 2&#x27;)
+            ELSEIF medium = $40
+                outlist(&#x27;\ebInserted Medium Type:\en&#x27;,&#x27;Width: 0.25&quot;, Tracks 12, FTPI: 10,000&#x27;)
+            ELSEIF medium = $44
+                outlist(&#x27;\ebInserted Medium Type:\en&#x27;,&#x27;Width: 0.25&quot;, Tracks 24, FTPI: 10,000&#x27;)
+            ELSE
+                outlist(&#x27;\ebInserted Medium Type:\en&#x27;,&#x27;Reserved or vendor specific&#x27;)
+            ENDIF  
+        CASE DEV_WRITEONCE, DEV_OPTICAL  
+            IF medium = $0
+                outlist(&#x27;\ebInserted Medium Type:\en&#x27;,&#x27;Default&#x27;)
+            ELSEIF medium = $1
+                outlist(&#x27;\ebInserted Medium Type:\en&#x27;,&#x27;Optical Read Only Medium&#x27;) 
+            ELSEIF medium = $2
+                outlist(&#x27;\ebInserted Medium Type:\en&#x27;,&#x27;Optical Write Once Medium&#x27;)
+            ELSEIF medium = $3
+                outlist(&#x27;\ebInserted Medium Type:\en&#x27;,&#x27;Optical Reversible/Erasable Medium&#x27;)
+            ELSEIF medium = $4
+                outlist(&#x27;\ebInserted Medium Type:\en&#x27;,&#x27;Combination Read Only/Write Once&#x27;)
+            ELSEIF medium = $5
+                outlist(&#x27;\ebInserted Medium Type:\en&#x27;,&#x27;Combination Read Only/Write Once/Reversible/Erasable&#x27;)
+            ELSEIF medium = $6
+                outlist(&#x27;\ebInserted Medium Type:\en&#x27;,&#x27;Combination Write Once/Reversible/Erasable&#x27;)
+            ELSE
+                outlist(&#x27;\ebInserted Medium Type:\en&#x27;,&#x27;Reserved or vendor specific&#x27;)
+            ENDIF                  
+        CASE DEV_CDROM
+            IF medium = $0
+                outlist(&#x27;\ebInserted Medium Type:\en&#x27;,&#x27;Default&#x27;)
+            ELSEIF medium = $1
+                outlist(&#x27;\ebInserted Medium Type:\en&#x27;,&#x27;120 mm CD-ROM data only&#x27;) 
+            ELSEIF medium = $2
+                outlist(&#x27;\ebInserted Medium Type:\en&#x27;,&#x27;120 mm CD-DA audio only&#x27;)
+            ELSEIF medium = $3
+                outlist(&#x27;\ebInserted Medium Type:\en&#x27;,&#x27;120 mm CD-ROM data and audio combined&#x27;)
+            ELSEIF medium = $5
+                outlist(&#x27;\ebInserted Medium Type:\en&#x27;,&#x27;80 mm CD-ROM data only&#x27;)
+            ELSEIF medium = $6
+                outlist(&#x27;\ebInserted Medium Type:\en&#x27;,&#x27;80 mm CD-DA audio only&#x27;)
+            ELSEIF medium = $7
+                outlist(&#x27;\ebInserted Medium Type:\en&#x27;,&#x27;80 mm CD-ROM data and audio combined&#x27;)
+            ELSE
+                outlist(&#x27;\ebInserted Medium Type:\en&#x27;,&#x27;Reserved or vendor specific&#x27;)
+            ENDIF             
+        DEFAULT
+            outlist(&#x27;\ebInserted Medium Type:\en&#x27;,&#x27;Reserved or vendor specific&#x27;)         
+    ENDSELECT
+        
+    IF (devpar = 0) THEN outlist(&#x27;\ebWrite Protected:\en&#x27;, &#x27;No&#x27;) ELSE outlist(&#x27;\ebWrite Protected:\en&#x27;, &#x27;Yes&#x27;)
+    outlist_i(&#x27;\ebDescriptor Length:\en&#x27;, desclen, &#x27; bytes&#x27;)    
+    
+    WHILE (descriptor &lt; page ) 
+            
+        SELECT $F OF global_devtype 
+            CASE DEV_SEQUENTIAL
+                IF Shr((descriptor.blocks AND $FF000000), 24) = $0
+                    outlist(&#x27;\ebDensity Code:\en&#x27;,&#x27;Default&#x27;)   
+                ELSEIF Shr((descriptor.blocks AND $FF000000), 24) = $1
+                    outlist(&#x27;\ebDensity Code:\en&#x27;,&#x27;Width: 0.5&quot;, Tracks: 9, Density: 32, Code: NRZI, Type: Reel&#x27;)
+                ELSEIF Shr((descriptor.blocks AND $FF000000), 24) = $2    
+                    outlist(&#x27;\ebDensity Code:\en&#x27;,&#x27;Width: 0.5&quot;, Tracks: 9, Density: 63, Code: PE, Type: Reel&#x27;)
+                ELSEIF Shr((descriptor.blocks AND $FF000000), 24) = $3
+                    outlist(&#x27;\ebDensity Code:\en&#x27;,&#x27;Width: 0.5&quot;, Tracks: 9, Density: 246, Code: GCR, Type: Reel&#x27;)
+                ELSEIF Shr((descriptor.blocks AND $FF000000), 24) = $5    
+                    outlist(&#x27;\ebDensity Code:\en&#x27;,&#x27;Width: 0.25&quot;, Tracks: 4/9, Density: 315, Code: GCR, Type: Cartridge&#x27;)
+                ELSEIF Shr((descriptor.blocks AND $FF000000), 24) = $6   
+                    outlist(&#x27;\ebDensity Code:\en&#x27;,&#x27;Width: 0.5&quot;, Tracks: 9, Density: 126, Code: PE, Type: Reel&#x27;)
+                ELSEIF Shr((descriptor.blocks AND $FF000000), 24) = $7    
+                    outlist(&#x27;\ebDensity Code:\en&#x27;,&#x27;Width: 0.25&quot;, Tracks: 4, Density: 252, Code: IMFM, Type: Cartridge&#x27;)
+                ELSEIF Shr((descriptor.blocks AND $FF000000), 24) = $8
+                    outlist(&#x27;\ebDensity Code:\en&#x27;,&#x27;Width: 0.15&quot;, Tracks: 4, Density: 315, Code: GCR, Type: Cassette&#x27;)
+                ELSEIF Shr((descriptor.blocks AND $FF000000), 24) = $9    
+                    outlist(&#x27;\ebDensity Code:\en&#x27;,&#x27;Width: 0.5&quot;, Tracks: 18, Density: 1491, Code: GCR, Type: Cartridge&#x27;)
+                ELSEIF Shr((descriptor.blocks AND $FF000000), 24) = $A
+                    outlist(&#x27;\ebDensity Code:\en&#x27;,&#x27;Width: 0.5&quot;, Tracks: 22, Density: 262, Code: MFM, Type: Cartridge&#x27;)
+                ELSEIF Shr((descriptor.blocks AND $FF000000), 24) = $B
+                    outlist(&#x27;\ebDensity Code:\en&#x27;,&#x27;Width: 0.25&quot;, Tracks: 4, Density: 63, Code: PE, Type: Cartridge&#x27;)
+                ELSEIF Shr((descriptor.blocks AND $FF000000), 24) = $C
+                    outlist(&#x27;\ebDensity Code:\en&#x27;,&#x27;Width: 0.5&quot;, Tracks: 24, Density: 500, Code: GCR, Type: Cartridge&#x27;)
+                ELSEIF Shr((descriptor.blocks AND $FF000000), 24) = $D
+                    outlist(&#x27;\ebDensity Code:\en&#x27;,&#x27;Width: 0.5&quot;, Tracks: 4, Density: 999, Code: GCR, Type: Cartridge&#x27;)
+                ELSEIF Shr((descriptor.blocks AND $FF000000), 24) = $F
+                    outlist(&#x27;\ebDensity Code:\en&#x27;,&#x27;Width: 0.25&quot;, Tracks: 15, Density: 394, Code: GCR, Type: Cartridge&#x27;)
+                ELSEIF Shr((descriptor.blocks AND $FF000000), 24) = $10
+                    outlist(&#x27;\ebDensity Code:\en&#x27;,&#x27;Width: 0.25&quot;, Tracks: 18, Density: 394, Code: GCR, Type: Cartridge&#x27;)
+                ELSEIF Shr((descriptor.blocks AND $FF000000), 24) = $11
+                    outlist(&#x27;\ebDensity Code:\en&#x27;,&#x27;Width: 0.25&quot;, Tracks: 26, Density: 630, Code: GCR, Type: Cartridge&#x27;)
+                ELSEIF Shr((descriptor.blocks AND $FF000000), 24) = $12
+                    outlist(&#x27;\ebDensity Code:\en&#x27;,&#x27;Width: 0.25&quot;, Tracks: 30, Density: 2034, Code: RLL, Type: Cartridge&#x27;)
+                ELSEIF Shr((descriptor.blocks AND $FF000000), 24) = $13
+                    outlist(&#x27;\ebDensity Code:\en&#x27;,&#x27;Width: 0.15&quot;, Tracks: 1, Density: 2400, Code: DDS, Type: Cassette&#x27;)
+                ELSEIF Shr((descriptor.blocks AND $FF000000), 24) = $14
+                    outlist(&#x27;\ebDensity Code:\en&#x27;,&#x27;Width: 0.315&quot;, Tracks: 1, Density: 1703, Code: RLL, Type: Cassette&#x27;)
+                ELSEIF Shr((descriptor.blocks AND $FF000000), 24) = $15
+                    outlist(&#x27;\ebDensity Code:\en&#x27;,&#x27;Width: 0.315&quot;, Tracks: 1, Density: 1789, Code: RLL, Type: Cassette&#x27;)
+                ELSEIF Shr((descriptor.blocks AND $FF000000), 24) = $16
+                    outlist(&#x27;\ebDensity Code:\en&#x27;,&#x27;Width: 0.5&quot;, Tracks: 48, Density: 394, Code: MFM, Type: Cartridge&#x27;)
+                ELSEIF Shr((descriptor.blocks AND $FF000000), 24) = $17
+                    outlist(&#x27;\ebDensity Code:\en&#x27;,&#x27;Width: 0.5&quot;, Tracks: 48, Density: 1673, Code: MFM, Type: Cartridge&#x27;)
+                ELSE
+                    outlist(&#x27;\ebDensity Code:\en&#x27;,&#x27;Reserved or vendor specific&#x27;)
+                ENDIF    
+           CASE DEV_WRITEONCE, DEV_OPTICAL  
+                IF Shr((descriptor.blocks AND $FF000000), 24) = $0
+                    outlist(&#x27;\ebDensity Code:\en&#x27;,&#x27;Default&#x27;)   
+                ELSEIF Shr((descriptor.blocks AND $FF000000), 24) = $1
+                    outlist(&#x27;\ebDensity Code:\en&#x27;,&#x27;Diameter: 3.5&quot;, Type: Read/Write, Sector: 512/1024, Tracks: 12500, Sides: 1&#x27;)
+                ELSEIF Shr((descriptor.blocks AND $FF000000), 24) = $2    
+                    outlist(&#x27;\ebDensity Code:\en&#x27;,&#x27;Diameter: 3.5&quot;, Type: Read/Write, Sector: 512/1024, Tracks: 12500, Sides: 2&#x27;)
+                ELSEIF Shr((descriptor.blocks AND $FF000000), 24) = $3
+                    outlist(&#x27;\ebDensity Code:\en&#x27;,&#x27;Diameter: 5.25&quot;, Type: Read/Write, Sector: 512/1024, Tracks: 18750, Sides: 2&#x27;)
+                ELSEIF Shr((descriptor.blocks AND $FF000000), 24) = $4    
+                    outlist(&#x27;\ebDensity Code:\en&#x27;,&#x27;Diameter: 5.25&quot;, Type: Write Once, Sector: 512/1024, Tracks: 30000, Sides: 2&#x27;)
+                ELSEIF Shr((descriptor.blocks AND $FF000000), 24) = $5   
+                    outlist(&#x27;\ebDensity Code:\en&#x27;,&#x27;Diameter: 5.25&quot;, Type: Write Once, Sector: 512/1024, Tracks: 20000, Sides: 2&#x27;)
+                ELSEIF Shr((descriptor.blocks AND $FF000000), 24) = $6    
+                    outlist(&#x27;\ebDensity Code:\en&#x27;,&#x27;Diameter: 5.25&quot;, Type: Write Once, Sector: 512/1024, Tracks: 18750, Sides: 2&#x27;)
+                ELSEIF Shr((descriptor.blocks AND $FF000000), 24) = $7
+                    outlist(&#x27;\ebDensity Code:\en&#x27;,&#x27;Diameter: 8&quot;&#x27;)
+                ELSEIF Shr((descriptor.blocks AND $FF000000), 24) = $8    
+                    outlist(&#x27;\ebDensity Code:\en&#x27;,&#x27;Diameter: 12&quot;, Sector: 1024, Sides: 2&#x27;)
+                ELSEIF Shr((descriptor.blocks AND $FF000000), 24) = $9    
+                    outlist(&#x27;\ebDensity Code:\en&#x27;,&#x27;Diameter: 14&quot;, Sector: 1024, Tracks: 56350, Sides: 2&#x27;)
+                ELSE
+                    outlist(&#x27;\ebDensity Code:\en&#x27;,&#x27;Reserved or vendor specific&#x27;)
+                ENDIF             
+            CASE DEV_CDROM
+                IF Shr((descriptor.blocks AND $FF000000), 24) = $0
+                   outlist(&#x27;\ebDensity Code:\en&#x27;,&#x27;Default&#x27;)   
+                ELSEIF Shr((descriptor.blocks AND $FF000000), 24) = $1
+                    outlist(&#x27;\ebDensity Code:\en&#x27;,&#x27;User Data Only, Physical Sector: 2048&#x27;)
+                ELSEIF Shr((descriptor.blocks AND $FF000000), 24) = $2    
+                    outlist(&#x27;\ebDensity Code:\en&#x27;,&#x27;User and Auxiliary Data, Physical Sector: 2336&#x27;)
+                ELSEIF Shr((descriptor.blocks AND $FF000000), 24) = $3
+                    outlist(&#x27;\ebDensity Code:\en&#x27;,&#x27;4 Byte Tag, User and Auxiliary Data, Physical Sector: 2340&#x27;)
+                ELSEIF Shr((descriptor.blocks AND $FF000000), 24) = $4    
+                    outlist(&#x27;\ebDensity Code:\en&#x27;,&#x27;Audio Only&#x27;)
+                ELSE
+                    outlist(&#x27;\ebDensity Code:\en&#x27;,&#x27;Reserved or vendor specific&#x27;)
+                ENDIF 
+            DEFAULT
+                outlist(&#x27;\ebDensity Code:\en&#x27;,&#x27;Reserved or vendor specific&#x27;)
+        ENDSELECT
+            
+        outlist_i(&#x27;\ebNumber of Blocks:\en&#x27;, (descriptor.blocks AND $00FFFFFF),NIL)
+        outlist_i(&#x27;\ebBlock Length:\en&#x27;, (descriptor.blocklen AND $00FFFFFF), &#x27; bytes&#x27;)
+        descriptor:=descriptor + SIZEOF b_descriptor
+    ENDWHILE
+            
+    WHILE page &lt; (reply + datalen)
+        pagetype:=(Char(page) AND %00111111)
+        outlist(&#x27; &#x27;, &#x27; &#x27;)
+        SELECT pagetype
+            CASE $1
+                process_modesense_1(page)
+            CASE $2
+                process_modesense_2(page)
+            CASE $3
+                process_modesense_3(page)
+            CASE $4
+                process_modesense_4(page)
+            CASE $5
+                process_modesense_5(page)
+            CASE $6
+                process_modesense_6(page)    
+            CASE $7
+                process_modesense_7(page)
+            CASE $8
+                process_modesense_8(page)
+            CASE $9
+                process_modesense_9(page)
+            CASE $A
+                process_modesense_A(page)
+            CASE $B
+                process_modesense_B(page)
+            CASE $C
+                process_modesense_C(page)
+            CASE $D
+                process_modesense_D(page)
+            CASE $E
+                process_modesense_E(page)
+            CASE $F
+                process_modesense_F(page)
+            CASE $10
+                process_modesense_10(page)
+            CASE $11
+                process_modesense_11(page)
+            CASE $12
+                process_modesense_12(page)
+            CASE $13
+                process_modesense_13(page)
+            CASE $14
+                process_modesense_14(page)
+            CASE $18
+                process_modesense_18(page)
+            CASE $19
+                process_modesense_19(page)
+            CASE $1A
+                process_modesense_1A(page)
+            CASE $1C
+                process_modesense_1C(page)
+            CASE $1D
+                process_modesense_1D(page)  
+            CASE $1E
+                process_modesense_1E(page)      
+            CASE $1F
+                process_modesense_1F(page)    
+            CASE $20
+                process_modesense_20(page)
+            CASE $21
+                process_modesense_21(page)    
+            CASE $2A
+                process_modesense_2A(page)
+            CASE $2F
+                process_modesense_2F(page)    
+            CASE $39
+                process_modesense_39(page)
+            DEFAULT
+                outlist(&#x27;\ebInformation Page:\en&#x27;, &#x27;Vendor Specific&#x27;)
+                outlist_h(&#x27;\ebPage Code:\en&#x27;, pagetype , NIL)
+                outlist_i(&#x27;\ebPage Length:\en&#x27;, Char(page+1), &#x27; bytes&#x27;)
+        ENDSELECT
+
+        page:=(page + Char(page+1) +2)
+
+    ENDWHILE
+ENDPROC
+
+/*
+** Handler for a specific mode page
+*/
+PROC process_modesense_1(page) -&gt; DONE
+
+    SELECT $A OF global_devtype
+        CASE DEV_DIRECT, DEV_OPTICAL, DEV_WRITEONCE
+            outlist(&#x27;\ebInformation Page:\en&#x27;, &#x27;Read/Write Error Recovery&#x27;)
+            outlist(&#x27;\ebPage Code:\en&#x27;, &#x27;$1&#x27;)
+            IF ((Char(page) AND %10000000) = 0) THEN outlist(&#x27;\ebSave to NVRAM Supported:\en&#x27;, &#x27;No&#x27;) ELSE outlist(&#x27;\ebSave to NVRAM Supported:\en&#x27;, &#x27;Yes&#x27;)
+            outlist_i(&#x27;\ebPage Length:\en&#x27;, Char(page+1), &#x27; bytes&#x27;)
+            IF (Char(page+2) AND %10000000) = 0 THEN outlist(&#x27;\ebAutomatic Write Reallocation:\en&#x27;, &#x27;No&#x27;) ELSE  outlist(&#x27;\ebAutomatic Write Reallocation:\en&#x27;, &#x27;Yes&#x27;)
+            IF (Char(page+2) AND %01000000) = 0 THEN outlist(&#x27;\ebAutomatic Read Reallocation:\en&#x27;, &#x27;No&#x27;) ELSE outlist(&#x27;\ebAutomatic Read Reallocation:\en&#x27;, &#x27;Yes&#x27;)
+            IF (Char(page+2) AND %00100000) = 0 THEN outlist(&#x27;\ebTransfer Block (TB):\en&#x27;, &#x27;Don\at transfer erroneous block to initiator&#x27;) ELSE outlist(&#x27;\ebTransfer Block (TB):\en&#x27;, &#x27;Transfer erroneous block to initiator&#x27;)
+            IF (Char(page+2) AND %00010000) = 0 THEN outlist(&#x27;\ebRead Continuous (RC):\en&#x27;, &#x27;Tolerate error recovery delays&#x27;) ELSE outlist(&#x27;\ebRead Continuous (RC):\en&#x27;, &#x27;Don\at tolerate error recovery delays&#x27;)
+            IF (Char(page+2) AND %00001000) = 0 THEN outlist(&#x27;\ebEnable Early Recovery (EER):\en&#x27;, &#x27;Minimise risk of error mis-correction&#x27;) ELSE outlist(&#x27;\ebEnable Early Recovery (EER):\en&#x27;, &#x27;Always use fastest error recovery method&#x27;)
+            IF (Char(page+2) AND %00000100) = 0 THEN outlist(&#x27;\ebPost Recoverable Error (PER):\en&#x27;, &#x27;Don\at report recovered errors&#x27;) ELSE outlist(&#x27;\ebPost Recoverable Error (PER):\en&#x27;, &#x27;Report recovered errors&#x27;)
+            IF (Char(page+2) AND %00000010) = 0 THEN outlist(&#x27;\ebDisable Transfer on Error (DTE):\en&#x27;, &#x27;Don\at terminate data phase on error&#x27;) ELSE outlist(&#x27;\ebDisable Transfer on Error (DTE):\en&#x27;, &#x27;Terminate data phase on error&#x27;)
+            IF (Char(page+2) AND %00000001) = 0 THEN outlist(&#x27;\ebDisable Correction (DCR):\en&#x27;, &#x27;Use error correction codes&#x27;) ELSE outlist(&#x27;\ebDisable Correction (DCR):\en&#x27;, &#x27;Error correction codes not used&#x27;)
+            outlist_i(&#x27;\ebRetries on Read Error:\en&#x27;, Char(page+3), NIL)
+            outlist_i(&#x27;\ebCorrection Span:\en&#x27;, Char(page+4), &#x27; bits&#x27;)
+            outlist_i(&#x27;\ebHead Offset Count:\en&#x27;, Char(page+5), NIL)
+            outlist_i(&#x27;\ebData Strobe Offset Count:\en&#x27;, Char(page+6), NIL)
+            IF (Char(page+1) &gt; 6) -&gt; possible fix for zip drives only return 6 bytes
+                outlist_i(&#x27;\ebRetries on Write Error:\en&#x27;, Char(page+8), NIL)
+                outlist_i(&#x27;\ebRecovery Time Limit:\en&#x27;, Int(page+10), &#x27; ms&#x27;)
+            ENDIF
+        CASE DEV_SEQUENTIAL 
+            outlist(&#x27;\ebInformation Page:\en&#x27;, &#x27;Read/Write Error Recovery&#x27;)
+            outlist(&#x27;\ebPage Code:\en&#x27;, &#x27;$1&#x27;)
+            IF ((Char(page) AND %10000000) = 0) THEN outlist(&#x27;\ebSave to NVRAM Supported:\en&#x27;, &#x27;No&#x27;) ELSE outlist(&#x27;\ebSave to NVRAM Supported:\en&#x27;, &#x27;Yes&#x27;)
+            outlist_i(&#x27;\ebPage Length:\en&#x27;, Char(page+1), NIL)
+            IF (Char(page+2) AND %00100000) = 0 THEN outlist(&#x27;\ebTransfer Block (TB):\en&#x27;, &#x27;Don\at transfer erroneous block to initiator&#x27;) ELSE outlist(&#x27;\ebTransfer Block (TB):\en&#x27;, &#x27;Transfer erroneous block to initiator&#x27;)
+            IF (Char(page+2) AND %00001000) = 0 THEN outlist(&#x27;\ebEnable Early Recovery (EER):\en&#x27;, &#x27;Minimise risk of error mis-correction&#x27;) ELSE outlist(&#x27;\ebEnable Early Recovery (EER):\en&#x27;, &#x27;Always use fastest error recovery method&#x27;)
+            IF (Char(page+2) AND %00000100) = 0 THEN outlist(&#x27;\ebPost Recoverable Error (PER):\en&#x27;, &#x27;Don\at report recovered errors&#x27;) ELSE outlist(&#x27;\ebPost Recoverable Error (PER):\en&#x27;, &#x27;Report recovered errors&#x27;)
+            IF (Char(page+2) AND %00000010) = 0 THEN outlist(&#x27;\ebDisable Transfer on Error (DTE):\en&#x27;, &#x27;Don\at terminate data phase on error&#x27;) ELSE outlist(&#x27;\ebDisable Transfer on Error (DTE):\en&#x27;, &#x27;Terminate data phase on error&#x27;)
+            IF (Char(page+2) AND %00000001) = 0 THEN outlist(&#x27;\ebDisable Correction (DCR):\en&#x27;, &#x27;Use error correction codes&#x27;) ELSE outlist(&#x27;\ebDisable Correction (DCR):\en&#x27;, &#x27;Error correction codes not used&#x27;)
+            outlist_i(&#x27;\ebRetries on Read Error:\en&#x27;, Char(page+3), NIL)
+            outlist_i(&#x27;\ebRetries on Write Error:\en&#x27;, Char(page+8), NIL)
+        CASE DEV_CDROM            
+            outlist(&#x27;\ebInformation Page:\en&#x27;, &#x27;Read/Write Error Recovery&#x27;)
+            outlist(&#x27;\ebPage Code:\en&#x27;, &#x27;$1&#x27;)
+            IF ((Char(page) AND %10000000) = 0) THEN outlist(&#x27;\ebSave to NVRAM Supported:\en&#x27;, &#x27;No&#x27;) ELSE outlist(&#x27;\ebSave to NVRAM Supported:\en&#x27;, &#x27;Yes&#x27;)            
+            outlist_i(&#x27;\ebPage Length:\en&#x27;, Char(page+1), NIL)
+            IF (Char(page+2) AND %10000000) = 0 THEN outlist(&#x27;\ebAutomatic Write Reallocation:\en&#x27;, &#x27;No&#x27;) ELSE  outlist(&#x27;\ebAutomatic Write Reallocation:\en&#x27;, &#x27;Yes&#x27;)
+            IF (Char(page+2) AND %01000000) = 0 THEN outlist(&#x27;\ebAutomatic Read Reallocation:\en&#x27;, &#x27;No&#x27;) ELSE outlist(&#x27;\ebAutomatic Read Reallocation:\en&#x27;, &#x27;Yes&#x27;)
+            IF (Char(page+2) AND %00100000) = 0 THEN outlist(&#x27;\ebTransfer Block (TB):\en&#x27;, &#x27;Don\at transfer erroneous block to initiator&#x27;) ELSE outlist(&#x27;\ebTransfer Block (TB):\en&#x27;, &#x27;Transfer erroneous block to initiator&#x27;)
+            IF (Char(page+2) AND %00010000) = 0 THEN outlist(&#x27;\ebRead Continuous (RC):\en&#x27;, &#x27;Tolerate error recovery delays&#x27;) ELSE outlist(&#x27;\ebRead Continuous (RC):\en&#x27;, &#x27;Don\at tolerate error recovery delays&#x27;)
+            IF (Char(page+2) AND %00001000) = 0 THEN outlist(&#x27;\ebEnable Early Recovery (EER):\en&#x27;, &#x27;Minimise risk of error mis-correction&#x27;) ELSE outlist(&#x27;\ebEnable Early Recovery (EER):\en&#x27;, &#x27;Always use fastest error recovery method&#x27;)
+            IF (Char(page+2) AND %00000100) = 0 THEN outlist(&#x27;\ebPost Recoverable Error (PER):\en&#x27;, &#x27;Don\at report recovered errors&#x27;) ELSE outlist(&#x27;\ebPost Recoverable Error (PER):\en&#x27;, &#x27;Report recovered errors&#x27;)
+            IF (Char(page+2) AND %00000010) = 0 THEN outlist(&#x27;\ebDisable Transfer on Error (DTE):\en&#x27;, &#x27;Don\at terminate data phase on error&#x27;) ELSE outlist(&#x27;\ebDisable Transfer on Error (DTE):\en&#x27;, &#x27;Terminate data phase on error&#x27;)
+            IF (Char(page+2) AND %00000001) = 0 THEN outlist(&#x27;\ebDisable Correction (DCR):\en&#x27;, &#x27;Use error correction codes&#x27;) ELSE outlist(&#x27;\ebDisable Correction (DCR):\en&#x27;, &#x27;Error correction codes not used&#x27;)
+            outlist_i(&#x27;\ebRetries on Read Error:\en&#x27;, Char(page+3), NIL)
+        DEFAULT
+            outlist(&#x27;\ebInformation Page:\en&#x27;, &#x27;Unsupported or Reserved for this device class&#x27;)
+            outlist(&#x27;\ebPage Code:\en&#x27;, &#x27;$1&#x27;)
+    ENDSELECT
+
+ENDPROC
+
+
+/*
+** Handler for a specific mode page
+*/
+PROC process_modesense_2(page) -&gt;DONE
+
+    outlist(&#x27;\ebInformation Page:\en&#x27;, &#x27;Disconnection and Reconnection Parameters&#x27;)
+    outlist(&#x27;\ebPage Code:\en&#x27;, &#x27;$2&#x27;)
+    IF ((Char(page) AND %10000000) = 0) THEN outlist(&#x27;\ebSave to NVRAM Supported:\en&#x27;, &#x27;No&#x27;) ELSE outlist(&#x27;\ebSave to NVRAM Supported:\en&#x27;, &#x27;Yes&#x27;)    
+    outlist_i(&#x27;\ebPage Length:\en&#x27;, Char(page+1), &#x27; bytes&#x27;)
+    outlist_i(&#x27;\ebBuffer Full Ratio:\en&#x27;, Char(page+2), NIL)
+    outlist_i(&#x27;\ebBuffer Empty Ratio:\en&#x27;, Char(page+3), NIL)
+    outlist_i(&#x27;\ebBus Inactivity Limit:\en&#x27;, Int(page+4), &#x27; *100 us&#x27;)
+    outlist_i(&#x27;\ebDisconnect Time Limit:\en&#x27;, Int(page+6), &#x27; *100 us&#x27;)
+    outlist_i(&#x27;\ebConnect Time Limit:\en&#x27;, Int(page+8), &#x27; *100 us&#x27;)
+    outlist_i(&#x27;\ebMaximum Burst Size:\en&#x27;, Int(page+10), &#x27; *512 bytes&#x27;)
+    
+    IF ((Char(page+12) AND %00000011) = 0)
+        outlist(&#x27;\ebData Transfer Disconnect Control:\en&#x27;, &#x27;Not Used&#x27;)
+    ELSEIF ((Char(page+12) AND %00000011) = 1)
+        outlist(&#x27;\ebData Transfer Disconnect Control:\en&#x27;, &#x27;No disconnection until command and data transferred&#x27;)
+    ELSEIF ((Char(page+12) AND %00000011) = 2)    
+        outlist(&#x27;\ebData Transfer Disconnect Control:\en&#x27;, &#x27;Reserved&#x27;)
+    ELSE
+        outlist(&#x27;\ebData Transfer Disconnect Control:\en&#x27;, &#x27;No disconnection until command complete&#x27;)
+    ENDIF
+
+ENDPROC
+
+
+/*
+** Handler for a specific mode page
+*/
+PROC process_modesense_3(page) -&gt; DONE
+
+    IF global_devtype=DEV_DIRECT 
+        outlist(&#x27;\ebInformation Page:\en&#x27;, &#x27;Formatting Parameters&#x27;)
+        outlist(&#x27;\ebPage Code:\en&#x27;, &#x27;$3&#x27;)
+        IF ((Char(page) AND %10000000) = 0) THEN outlist(&#x27;\ebSave to NVRAM supported:\en&#x27;, &#x27;No&#x27;) ELSE outlist(&#x27;\ebSave to NVRAM supported:\en&#x27;, &#x27;Yes&#x27;)
+        outlist_i(&#x27;\ebPage Length:\en&#x27;, Char(page+1), &#x27; bytes&#x27;)
+        outlist_i(&#x27;\ebTracks Per Zone:\en&#x27;, Int(page+2), NIL)
+        outlist_i(&#x27;\ebAlternate Sectors Per Zone:\en&#x27;, Int(page+4), NIL)
+        outlist_i(&#x27;\ebAlternate Tracks Per Zone:\en&#x27;, Int(page+6), NIL)
+        outlist_i(&#x27;\ebAlternate Tracks Per Logical Unit:\en&#x27;, Int(page+8), NIL)
+        outlist_i(&#x27;\ebSectors Per Track:\en&#x27;, Int(page+10), NIL)
+        outlist_i(&#x27;\ebBytes Per Physical Sector:\en&#x27;, Int(page+12), NIL)
+        outlist_i(&#x27;\ebInterleave:\en&#x27;, Int(page+14), NIL)
+        outlist_i(&#x27;\ebTrack Skew Factor:\en&#x27;, Int(page+16), &#x27; sectors&#x27;)
+        outlist_i(&#x27;\ebCylinder Skew Factor:\en&#x27;, Int(page+18), &#x27; sectors&#x27;)
+        IF ((Char(page+20) AND %10000000) = 0) THEN outlist(&#x27;\ebSupports Soft Sector Formatting:\en&#x27;, &#x27;No&#x27;) ELSE outlist(&#x27;\ebSupports Soft Sector Formatting:\en&#x27;, &#x27;Yes&#x27;)
+        IF ((Char(page+20) AND %01000000) = 0) THEN outlist(&#x27;\ebSupports Hard Sector Formatting:\en&#x27;, &#x27;No&#x27;) ELSE outlist(&#x27;\ebSupports Hard Sector Formatting:\en&#x27;, &#x27;Yes&#x27;)
+        IF ((Char(page+20) AND %00100000) = 0) THEN outlist(&#x27;\ebSupports Removable Media:\en&#x27;, &#x27;No&#x27;) ELSE outlist(&#x27;\ebSupports Removable Media:\en&#x27;, &#x27;Yes&#x27;)
+        IF ((Char(page+20) AND %00010000) = 0) THEN outlist(&#x27;\ebSurface Bit:\en&#x27;, &#x27;Off&#x27;) ELSE outlist(&#x27;\ebSurface:\en&#x27;, &#x27;On&#x27;)       
+    ELSEIF global_devtype=DEV_SCANNER
+        outlist(&#x27;\ebInformation Page:\en&#x27;, &#x27;Measurement Units&#x27;)
+        outlist(&#x27;\ebPage Code:\en&#x27;, &#x27;$3&#x27;)
+        IF ((Char(page) AND %10000000) = 0) THEN outlist(&#x27;\ebSave to NVRAM supported:\en&#x27;, &#x27;No&#x27;) ELSE outlist(&#x27;\ebSave to NVRAM supported:\en&#x27;, &#x27;Yes&#x27;)                 
+        outlist_i(&#x27;\ebPage Length:\en&#x27;, Char(page+1), &#x27; bytes&#x27;)
+        
+        IF (Char(page+2) = 0 )
+            outlist(&#x27;\ebBasic Measurement Unit:\en&#x27;, &#x27;Inch&#x27;)
+        ELSEIF (Char(page+2) = 1 )
+            outlist(&#x27;\ebBasic Measurement Unit:\en&#x27;, &#x27;Millimetre&#x27;) 
+        ELSEIF (Char(page+2) = 1 )
+            outlist(&#x27;\ebBasic Measurement Unit:\en&#x27;, &#x27;Point&#x27;) 
+        ELSE
+            outlist(&#x27;\ebBasic Measurement Unit:\en&#x27;, &#x27;Reserved (Vendor Specific Unit)&#x27;)
+        ENDIF
+        
+        outlist_i(&#x27;\ebMeasurement Unit Divisor:\en&#x27;, Int(page+4), &#x27; units = 1 Basic Measurement Unit&#x27;)
+    ELSEIF global_devtype=DEV_PRINTER
+        outlist(&#x27;\ebInformation Page:\en&#x27;, &#x27;Parallel Printer Interface&#x27;)
+        outlist(&#x27;\ebPage Code:\en&#x27;, &#x27;$3&#x27;)
+        IF ((Char(page) AND %10000000) = 0) THEN outlist(&#x27;\ebSave to NVRAM supported:\en&#x27;, &#x27;No&#x27;) ELSE outlist(&#x27;\ebSave to NVRAM supported:\en&#x27;, &#x27;Yes&#x27;)
+        outlist_i(&#x27;\ebPage Length:\en&#x27;, Char(page+1), &#x27; bytes&#x27;)
+        
+        IF ( (Char(page+2) AND %11000000) = 192 )
+            outlist(&#x27;\ebParity Select:\en:&#x27;, &#x27;Reserved&#x27;)
+        ELSEIF ( (Char(page+2) AND %10000000) = 128 )
+            outlist(&#x27;\ebParity Select:\en:&#x27;, &#x27;Odd Parity&#x27;)
+        ELSEIF ( (Char(page+2) AND %01000000) = 64 )
+            outlist(&#x27;\ebParity Select:\en:&#x27;, &#x27;Even Parity&#x27;)
+        ELSE
+            outlist(&#x27;\ebParity Select:\en:&#x27;, &#x27;No Parity&#x27;)
+        ENDIF
+        
+        IF ( (Char(page+2) AND %00100000) = 32)
+            outlist(&#x27;\ebPaper Instruction Parity Check:\en&#x27;, &#x27;Included in parity generation&#x27;)
+        ELSE
+            outlist(&#x27;\ebPaper Instruction Parity Check:\en&#x27;, &#x27;Not included in parity generation&#x27;)
+        ENDIF
+        
+        IF ( (Char(page+2) AND %00001000) = 8)
+            outlist(&#x27;\ebVCBP:\en&#x27;, &#x27;On&#x27;)
+        ELSE
+            outlist(&#x27;\ebVCBP:\en&#x27;, &#x27;Off&#x27;)
+        ENDIF
+        
+        IF ( (Char(page+2) AND %00000100) = 4)
+            outlist(&#x27;\ebVCBS:\en&#x27;, &#x27;On&#x27;)
+        ELSE
+            outlist(&#x27;\ebVCBS:\en&#x27;, &#x27;Off&#x27;)
+        ENDIF
+        
+        IF ( (Char(page+2) AND %00000010) = 2)
+            outlist(&#x27;\ebVES:\en&#x27;, &#x27;On&#x27;)
+        ELSE
+            outlist(&#x27;\ebVES:\en&#x27;, &#x27;Off&#x27;)
+        ENDIF
+        
+        IF ( (Char(page+2) AND %00000001) = 1)
+            outlist(&#x27;\ebAutomatic Line Feed:\en&#x27;, &#x27;Assert Auto Line Feed Signal&#x27;)
+        ELSE
+           outlist(&#x27;\ebAutomatic Line Feed:\en&#x27;, &#x27;Negate Auto Line Feed Signal&#x27;) 
+        ENDIF
+        
+    ELSE
+        outlist(&#x27;\ebInformation Page:\en&#x27;, &#x27;Unsupported or Reserved for this device class&#x27;)
+        outlist(&#x27;\ebPage Code:\en&#x27;, &#x27;$3&#x27;)
+    ENDIF
+
+ENDPROC
+
+
+/*
+** Handler for a specific mode page
+*/
+PROC process_modesense_4(page) -&gt;DONE
+
+    IF global_devtype=DEV_DIRECT
+        outlist(&#x27;\ebInformation Page:\en&#x27;, &#x27;Rigid Disk Geometry Parameters&#x27;)
+        outlist(&#x27;\ebPage Code:\en&#x27;, &#x27;$4&#x27;)
+        IF ((Char(page) AND %10000000) = 0) THEN outlist(&#x27;\ebSave to NVRAM supported:\en&#x27;, &#x27;No&#x27;) ELSE outlist(&#x27;\ebSave to NVRAM supported:\en&#x27;, &#x27;Yes&#x27;)
+        outlist_i(&#x27;\ebPage Length:\en&#x27;, Char(page+1), &#x27; bytes&#x27;)
+        outlist_i(&#x27;\ebCylinders:\en&#x27;, And(Long(page+1), $00FFFFFF) , NIL)
+        outlist_i(&#x27;\ebHeads:\en&#x27;, Char(page+5), NIL)
+        outlist_i(&#x27;\ebStart Write PreComp:\en&#x27;, And(Long(page+5), $00FFFFFF), NIL)
+        outlist_i(&#x27;\ebStart Reduced Write:\en&#x27;, And(Long(page+8), $00FFFFFF), NIL)
+        IF (Int(page+12) = 0) THEN outlist(&#x27;\ebStep Rate:\en&#x27;, &#x27;Device Default&#x27;) ELSE outlist_i(&#x27;\ebStep Rate:\en&#x27;, Int(page+12), &#x27; *100 ns&#x27;)
+        outlist_i(&#x27;\ebLanding Cylinder:\en&#x27;, And(Long(page+13), $00FFFFFF), NIL)
+        outlist_i(&#x27;\ebRotational Offset:\en&#x27;, Char(page+18), NIL)
+        outlist_i(&#x27;\ebRotation Rate:\en&#x27;, Int(page+20), &#x27; rpm&#x27;)
+    ELSEIF global_devtype=DEV_PRINTER
+        outlist(&#x27;\ebInformation Page:\en&#x27;, &#x27;Serial Printer Interface&#x27;)
+        outlist(&#x27;\ebPage Code:\en&#x27;, &#x27;$4&#x27;)
+        IF ((Char(page) AND %10000000) = 0) THEN outlist(&#x27;\ebSave to NVRAM supported:\en&#x27;, &#x27;No&#x27;) ELSE outlist(&#x27;\ebSave to NVRAM supported:\en&#x27;, &#x27;Yes&#x27;)
+        outlist_i(&#x27;\ebPage Length:\en&#x27;, Char(page+1), &#x27; bytes&#x27;)
+        outlist_i(&#x27;\ebStop Bit Length:\en&#x27;, (Char(page+2) AND %00111111), &#x27; (1/16 bit)&#x27;)
+        
+        IF ( (Char(page+3) AND %11100000) = 0)
+            outlist(&#x27;\ebParity Selection:\en&#x27;, &#x27;None&#x27;)
+        ELSEIF ( (Char(page+3) AND %11100000) = 32)
+            outlist(&#x27;\ebParity Selection:\en&#x27;, &#x27;Mark&#x27;)
+        ELSEIF ( (Char(page+3) AND %11100000) = 64)    
+            outlist(&#x27;\ebParity Selection:\en&#x27;, &#x27;Space&#x27;)
+        ELSEIF ( (Char(page+3) AND %11100000) = 96)      
+            outlist(&#x27;\ebParity Selection:\en&#x27;, &#x27;Odd&#x27;)
+        ELSEIF ( (Char(page+3) AND %11100000) = 128)    
+            outlist(&#x27;\ebParity Selection:\en&#x27;, &#x27;Even&#x27;)
+        ELSE
+            outlist(&#x27;\ebParity Selection:\en&#x27;, &#x27;Reserved&#x27;)
+        ENDIF    
+        
+        outlist_i(&#x27;\ebBits Per Character:\en&#x27;, (Char(page+3) AND %00001111), &#x27; bits&#x27;)        
+        IF ( (Char(page+4) AND %10000000) = 0) THEN outlist(&#x27;\ebRequest To Send (RTS):\en&#x27;, &#x27;RTS on when power on&#x27;) ELSE outlist(&#x27;\ebRequest To Send (RTS):\en&#x27;, &#x27;Follows state of DTR signal&#x27;)      
+        IF ( (Char(page+4) AND %01000000) = 0) THEN outlist(&#x27;\ebClear To Send (CTS):\en&#x27;, &#x27;Ignored&#x27;) ELSE outlist(&#x27;\ebClear To Send (CTS):\en&#x27;, &#x27;Used&#x27;)
+        
+        IF ( (Char(page+4) AND %00001111) = 0)     
+            outlist(&#x27;\ebPacing Protocol:\en&#x27;, &#x27;None&#x27;)
+        ELSEIF  ( (Char(page+4) AND %00001111) = 1)
+            outlist(&#x27;\ebPacing Protocol:\en&#x27;, &#x27;XON/XOFF&#x27;)
+        ELSEIF  ( (Char(page+4) AND %00001111) = 2)
+           outlist(&#x27;\ebPacing Protocol:\en&#x27;, &#x27;ETX/ACK&#x27;) 
+        ELSEIF  ( (Char(page+4) AND %00001111) = 3)
+           outlist(&#x27;\ebPacing Protocol:\en&#x27;, &#x27;DTR&#x27;) 
+        ELSE
+           outlist(&#x27;\ebPacing Protocol:\en&#x27;, &#x27;Reserved or Vendor Specific&#x27;) 
+        ENDIF 
+        
+        outlist_i(&#x27;\ebBaud Rate:\en&#x27;, (Long(page+4) AND $FFFFFF) ,&#x27; bits per second&#x27;)   
+     
+    ELSE
+        outlist(&#x27;\ebInformation Page:\en&#x27;, &#x27;Unsupported or Reserved for this device class&#x27;)
+        outlist(&#x27;\ebPage Code:\en&#x27;, &#x27;$4&#x27;)
+    ENDIF
+
+ENDPROC
+
+
+/*
+** Handler for a specific mode page
+*/
+PROC process_modesense_5(page) -&gt; DONE
+
+    IF global_devtype=DEV_DIRECT 
+        outlist(&#x27;\ebInformation Page:\en&#x27;, &#x27;Flexible Disk Geometry&#x27;)
+        outlist(&#x27;\ebPage Code:\en&#x27;, &#x27;$5&#x27;)
+        IF ((Char(page) AND %10000000) = 0) THEN outlist(&#x27;\ebSave to NVRAM supported:\en&#x27;, &#x27;No&#x27;) ELSE outlist(&#x27;\ebSave to NVRAM supported:\en&#x27;, &#x27;Yes&#x27;)
+        outlist_i(&#x27;\ebPage Length:\en&#x27;, Char(page+1), &#x27; bytes&#x27;)
+        outlist_i(&#x27;\ebTransfer Rate\en&#x27;, (Int(page+2)/8), &#x27; K/sec&#x27;)
+        outlist_i(&#x27;\ebHeads\en:&#x27;, Char(page+4), NIL)
+        outlist_i(&#x27;\ebSectors Per Track:\en&#x27;, Char(page+5), NIL)
+        outlist_i(&#x27;\ebBytes Per Sector:\en&#x27;, Int(page+6), NIL)
+        outlist_i(&#x27;\ebCylinders:\en&#x27;, Int(page+8), NIL)
+        outlist_i(&#x27;\ebStarting Cylinder Write Pre-Compensation:\en:&#x27;, Int(page+10), NIL)
+        outlist_i(&#x27;\ebStarting Cylinder Reduced Write Current:\en:&#x27;, Int(page+12), NIL)        
+        IF Int(page+14) = 0 THEN outlist(&#x27;\ebStep Rate\en:&#x27;, &#x27;Device Default&#x27;) ELSE outlist_i(&#x27;\ebStep Rate:\en&#x27;, Int(page+14), &#x27; *100 us&#x27;)
+        outlist_i(&#x27;\ebDrive Step Pulse Width:\en:&#x27;, Char(page+16), &#x27; us&#x27;)
+        outlist_i(&#x27;\ebHead Settle Delay:\en:&#x27;, Int(page+17), &#x27; *100us&#x27;)
+        outlist_i(&#x27;\ebMotor On Delay:\en:&#x27;, Char(page+19), &#x27; 10ths of a second&#x27;)
+        outlist_i(&#x27;\ebMotor Off Delay:\en:&#x27;, Char(page+20), &#x27; 10ths of a second&#x27;)
+        IF ((Char(page+21) AND %10000000) = 0) THEN outlist(&#x27;\ebTrue Ready:\en&#x27;, &#x27;Does not use a ready signal&#x27;) ELSE outlist(&#x27;\ebTrue Ready:\en&#x27;, &#x27;Uses a ready signal&#x27;)
+        IF ((Char(page+21) AND %01000000) = 0) THEN outlist(&#x27;\ebStart Sector Number:\en&#x27;, &#x27;Sectors start from 0&#x27;) ELSE outlist(&#x27;\ebStart Sector Number:\en&#x27;, &#x27;Sectors start from 1&#x27;)
+        IF ((Char(page+21) AND %00100000) = 0) THEN outlist(&#x27;\ebMotor On:\en&#x27;, &#x27;Pin 16 asserted&#x27;) ELSE outlist(&#x27;\ebMotor On:\en&#x27;, &#x27;Pin 16 released&#x27;)
+        outlist_i(&#x27;\ebStep Pulse Per Cylinder:\en&#x27;, (Char(page+22) AND %00001111), NIL) 
+        outlist_i(&#x27;\ebWrite Compensation:\en:&#x27;, Char(page+23), NIL)
+        outlist_i(&#x27;\ebHead Load Delay:\en:&#x27;, Char(page+24), &#x27; ms&#x27;)
+        outlist_i(&#x27;\ebHead Unload Delay:\en:&#x27;, Char(page+25), &#x27; ms&#x27;)
+        IF ((Char(page+26) AND %10000000) = 0) THEN outlist(&#x27;\ebPin 34:\en&#x27;, &#x27;Active Low&#x27;) ELSE outlist(&#x27;\ebPin 34:\en&#x27;, &#x27;Active High&#x27;)
+        
+        IF ((Char(page+26) AND %01110000) = 0)
+            outlist(&#x27;\ebPin 34 Use:\en&#x27;, &#x27;Open&#x27;)
+        ELSEIF ((Char(page+26) AND %01110000) = 16)
+            outlist(&#x27;\ebPin 34 Use:\en&#x27;, &#x27;Ready Signal&#x27;)
+        ELSEIF ((Char(page+26) AND %01110000) = 32)
+            outlist(&#x27;\ebPin 34 Use:\en&#x27;, &#x27;Disk Change Signal&#x27;)
+        ELSE
+            outlist(&#x27;\ebPin 34 Use:\en&#x27;, &#x27;Reserved or Vendor-Specific&#x27;)
+        ENDIF        
+        
+        IF ((Char(page+26) AND %00000100) = 0) THEN outlist(&#x27;\ebPin 2:\en&#x27;, &#x27;Active Low&#x27;) ELSE outlist(&#x27;\ebPin 2:\en&#x27;, &#x27;Active High&#x27;)
+        outlist(&#x27;\ebPin 2 Use:\en&#x27;, &#x27;NOT DEFINED IN SCSI SPEC&#x27;)
+        IF ((Char(page+27) AND %10000000) = 0) THEN outlist(&#x27;\ebPin 4:\en&#x27;, &#x27;Active Low&#x27;) ELSE outlist(&#x27;\ebPin 4:\en&#x27;, &#x27;Active High&#x27;)
+        
+        IF ((Char(page+27) AND %01110000) = 0)
+            outlist(&#x27;\ebPin 4 Use:\en&#x27;, &#x27;Open&#x27;)
+        ELSEIF ((Char(page+27) AND %01110000) = 16)
+            outlist(&#x27;\ebPin 4 Use:\en&#x27;, &#x27;In Use Signal&#x27;)
+        ELSEIF ((Char(page+27) AND %01110000) = 32)
+            outlist(&#x27;\ebPin 4 Use:\en&#x27;, &#x27;Eject Signal&#x27;)
+        ELSEIF ((Char(page+27) AND %01110000) = 64)
+            outlist(&#x27;\ebPin 4 Use:\en&#x27;, &#x27;Head Load Signal&#x27;)       
+        ELSE
+            outlist(&#x27;\ebPin 4 Use:\en&#x27;, &#x27;Reserved or Vendor-Specific&#x27;)
+        ENDIF 
+        
+        IF ((Char(page+27) AND %00001000) = 0) THEN outlist(&#x27;\ebPin 1:\en&#x27;, &#x27;Active Low&#x27;) ELSE outlist(&#x27;\ebPin 1:\en&#x27;, &#x27;Active High&#x27;)
+  
+        IF ((Char(page+27) AND %00000111) = 0)
+            outlist(&#x27;\ebPin 1 Use:\en&#x27;, &#x27;Open&#x27;)
+        ELSEIF ((Char(page+27) AND %00000111) = 1)
+            outlist(&#x27;\ebPin 1 Use:\en&#x27;, &#x27;Disk Change Reset&#x27;)       
+        ELSE
+            outlist(&#x27;\ebPin 1 Use:\en&#x27;, &#x27;Reserved or Vendor-Specific&#x27;)
+        ENDIF        
+              
+        outlist_i(&#x27;\ebRotation Rate:\en&#x27;, Int(page+28), &#x27; rpm&#x27;)
+    ELSEIF global_devtype=DEV_PRINTER 
+        outlist(&#x27;\ebInformation Page:\en&#x27;, &#x27;Printer Options&#x27;)
+        outlist(&#x27;\ebPage Code:\en&#x27;, &#x27;$5&#x27;)
+        IF ((Char(page) AND %10000000) = 0) THEN outlist(&#x27;\ebSave to NVRAM supported:\en&#x27;, &#x27;No&#x27;) ELSE outlist(&#x27;\ebSave to NVRAM supported:\en&#x27;, &#x27;Yes&#x27;)
+        outlist_i(&#x27;\ebPage Length:\en&#x27;, Char(page+1), &#x27; bytes&#x27;)
+        IF ( (Char(page+2) AND %10000000) = 128) THEN outlist(&#x27;\ebElectronic Vertical Forms Unit (EVFU):\en&#x27;, &#x27;Yes&#x27;) ELSE outlist(&#x27;\ebElectronic Vertical Forms Unit (EVFU):\en&#x27;, &#x27;No (or disabled)&#x27;)
+        
+        IF ( (Char(page+2) AND %01111111) = 0)
+            outlist(&#x27;\ebFont Identification:\en&#x27;, &#x27;Default Printer Font&#x27;)
+        ELSEIF ( (Char(page+2) AND %01111111) = 1)
+            outlist(&#x27;\ebFont Identification:\en&#x27;, &#x27;Reserved&#x27;)
+        ELSEIF ( (Char(page+2) AND %01111111) = 2)
+            outlist(&#x27;\ebFont Identification:\en&#x27;, &#x27;Reserved&#x27;)        
+        ELSEIF ( (Char(page+2) AND %01111111) = 3)
+            outlist(&#x27;\ebFont Identification:\en&#x27;, &#x27;Reserved&#x27;)       
+        ELSE
+            outlist(&#x27;\ebFont Identification:\en&#x27;, &#x27;Vendor Specific Font&#x27;)
+        ENDIF 
+        
+        outlist_i(&#x27;\ebSlew Mode:\en&#x27;, (Char(page+2) AND %00110000), NIL)
+        
+        IF ( (Char(page+3) AND %00000010) = 0) THEN outlist(&#x27;\ebStep Count Truncate:\en&#x27;, &#x27;Disabled&#x27;) ELSE outlist(&#x27;\ebStep Count Truncate:\en&#x27;, &#x27;Enabled&#x27;)        
+        IF ( (Char(page+3) AND %00000001) = 0) THEN outlist(&#x27;\ebASCII Forms Control:\en&#x27;, &#x27;Not Supported&#x27;) ELSE outlist(&#x27;\ebASCII Forms Control:\en&#x27;, &#x27;Supported&#x27;)        
+        outlist_i(&#x27;\ebMaximum Line Length:\en&#x27;, Int(page+4), &#x27; bytes&#x27;)
+        outlist_i(&#x27;\ebEVFU Format Start Character:\en&#x27;, Char(page+6), &#x27; (ASCII Value)&#x27;)
+        outlist_i(&#x27;\ebEVFU Format Stop Character:\en&#x27;, Char(page+7), &#x27; (ASCII Value)&#x27;)
+        
+        IF ( (Char(page+8) AND %11110000) = 0)
+            outlist(&#x27;\ebLine Slew Option:\en&#x27;, &#x27;Not Implemented&#x27;)
+        ELSEIF ( (Char(page+8) AND %11110000) = 16)
+            outlist(&#x27;\ebLine Slew Option:\en&#x27;, &#x27;Carriage Return Character ($0D)&#x27;)
+        ELSEIF ( (Char(page+8) AND %11110000) = 32)   
+            outlist(&#x27;\ebLine Slew Option:\en&#x27;, &#x27;Line Feed Character ($0A)&#x27;)
+        ELSEIF ( (Char(page+8) AND %11110000) = 48)
+            outlist(&#x27;\ebLine Slew Option:\en&#x27;, &#x27;Carriage Return and Line Feed Character ($0D0A)&#x27;)
+        ELSE
+            outlist(&#x27;\ebLine Slew Option:\en&#x27;, &#x27;Reserved or Vendor Specific&#x27;)
+        ENDIF
+        
+        IF ( (Char(page+8) AND %00001111) = 0)
+            outlist(&#x27;\ebForm Slew Option:\en&#x27;, &#x27;Not Implemented&#x27;)
+        ELSEIF ( (Char(page+8) AND %00001111) = 1)
+            outlist(&#x27;\ebForm Slew Option:\en&#x27;, &#x27;Form Feed Character ($0C)&#x27;)
+        ELSEIF ( (Char(page+8) AND %00001111) = 2)
+            outlist(&#x27;\ebForm Slew Option:\en&#x27;, &#x27;Carriage Return and Form Feed Character ($0D0C)&#x27;)
+        ELSE
+            outlist(&#x27;\ebForm Slew Option:\en&#x27;, &#x27;Reserved or Vendor Specific&#x27;)
+        ENDIF
+        
+        IF ( (Char(page+9) AND %11110000) = 0)
+            outlist(&#x27;\ebData Termination:\en&#x27;, &#x27;Default Implementation&#x27;)
+        ELSEIF ( (Char(page+8) AND %11110000) = 16)
+            outlist(&#x27;\ebData Termination:\en&#x27;, &#x27;No Termination Sequence&#x27;)
+        ELSEIF ( (Char(page+8) AND %11110000) = 32)   
+            outlist(&#x27;\ebData Termination:\en&#x27;, &#x27;Carriage Return Character ($0D)&#x27;)
+        ELSEIF ( (Char(page+8) AND %11110000) = 48)
+            outlist(&#x27;\ebData Termination:\en&#x27;, &#x27;Line Feed Character ($0A)&#x27;)
+        ELSEIF ( (Char(page+8) AND %11110000) = 64)
+            outlist(&#x27;\ebData Termination:\en&#x27;, &#x27;Carriage Return and Line Feed Character ($0D0A)&#x27;)        
+        ELSEIF ( (Char(page+8) AND %11110000) = 80)
+            outlist(&#x27;\ebData Termination:\en&#x27;, &#x27;Form Feed Character ($0C)&#x27;)        
+        ELSEIF ( (Char(page+8) AND %11110000) = 96)
+            outlist(&#x27;\ebData Termination:\en&#x27;, &#x27;Carriage Return and Form Feed Character ($0D0C)&#x27;)         
+        ELSEIF ( (Char(page+8) AND %11110000) = 112)
+            outlist(&#x27;\ebData Termination:\en&#x27;, &#x27;Zero Line Slew Command&#x27;)        
+        ELSE
+            outlist(&#x27;\ebData Termination:\en&#x27;, &#x27;Reserved or Vendor Specific&#x27;)
+        ENDIF
+   
+    ELSE
+        outlist(&#x27;\ebInformation Page:\en&#x27;, &#x27;Unsupported or Reserved for this device class&#x27;)
+        outlist(&#x27;\ebPage Code:\en&#x27;, &#x27;$5&#x27;)
+    ENDIF
+
+ENDPROC
+
+
+/*
+** Handler for a specific mode page
+*/
+PROC process_modesense_6(page) -&gt; DONE
+
+    SELECT $A OF global_devtype
+        CASE DEV_WRITEONCE, DEV_OPTICAL
+            outlist(&#x27;\ebInformation Page:\en&#x27;, &#x27;Optical Memory&#x27;)
+            outlist(&#x27;\ebPage Code:\en&#x27;, &#x27;$6&#x27;)
+            IF ((Char(page) AND %10000000) = 0) THEN outlist(&#x27;\ebSave to NVRAM supported:\en&#x27;, &#x27;No&#x27;) ELSE outlist(&#x27;\ebSave to NVRAM supported:\en&#x27;, &#x27;Yes&#x27;)
+            outlist_i(&#x27;\ebPage Length:\en&#x27;, Char(page+1), &#x27; bytes&#x27;)
+            IF (Char(page+2) &gt; 0) THEN outlist(&#x27;\ebReport Updated Block Read\en&#x27;, &#x27;Yes&#x27;) ELSE outlist(&#x27;\ebReport Updated Block Read\en&#x27;, &#x27;No&#x27;)    
+        DEFAULT
+            outlist(&#x27;\ebInformation Page:\en&#x27;, &#x27;Unsupported or Reserved for this device class&#x27;)
+            outlist(&#x27;\ebPage Code:\en&#x27;, &#x27;$6&#x27;)
+    ENDSELECT
+
+ENDPROC
+
+/*
+** Handler for a specific mode page
+*/
+PROC process_modesense_7(page) -&gt; DONE
+
+    SELECT $A OF global_devtype
+        CASE DEV_DIRECT, DEV_OPTICAL, DEV_WRITEONCE 
+            outlist(&#x27;\ebInformation Page:\en&#x27;, &#x27;Verify Error Recovery&#x27;)
+            outlist(&#x27;\ebPage Code:\en&#x27;, &#x27;$7&#x27;)
+            IF ((Char(page) AND %10000000) = 0) THEN outlist(&#x27;\ebSave to NVRAM supported:\en&#x27;, &#x27;No&#x27;) ELSE outlist(&#x27;\ebSave to NVRAM supported:\en&#x27;, &#x27;Yes&#x27;)
+            outlist_i(&#x27;\ebPage Length:\en&#x27;, Char(page+1), &#x27; bytes&#x27;)
+            IF (Char(page+2) AND %00001000) = 0 THEN outlist(&#x27;\ebEnable Early Recovery (EER):\en&#x27;, &#x27;Minimise risk of error mis-correction&#x27;) ELSE outlist(&#x27;\ebEnable Early Recovery (EER):\en&#x27;, &#x27;Always use fastest error recovery method&#x27;)
+            IF (Char(page+2) AND %00000100) = 0 THEN outlist(&#x27;\ebPost Recoverable Error (PER):\en&#x27;, &#x27;Don\at report recovered errors&#x27;) ELSE outlist(&#x27;\ebPost Recoverable Error (PER):\en&#x27;, &#x27;Report recovered errors&#x27;)
+            IF (Char(page+2) AND %00000010) = 0 THEN outlist(&#x27;\ebDisable Transfer on Error (DTE):\en&#x27;, &#x27;Don\at terminate data phase on error&#x27;) ELSE outlist(&#x27;\ebDisable Transfer on Error (DTE):\en&#x27;, &#x27;Terminate data phase on error&#x27;)
+            IF (Char(page+2) AND %00000001) = 0 THEN outlist(&#x27;\ebDisable Correction (DCR):\en&#x27;, &#x27;Use error correction codes&#x27;) ELSE outlist(&#x27;\ebDisable Correction (DCR):\en&#x27;, &#x27;Error correction codes not used&#x27;)      
+            outlist_i(&#x27;\ebVerify Retries:\en&#x27;, Char(page+3), NIL)
+            outlist_i(&#x27;\ebVerify Correction Span:\en&#x27;, Char(page+4), &#x27; bits&#x27;)
+            outlist_i(&#x27;\ebVerify Recovery Time Limit:\en&#x27;, Int(page+10), &#x27; ms&#x27;)
+        CASE DEV_SEQUENTIAL 
+            outlist(&#x27;\ebInformation Page:\en&#x27;, &#x27;Verify Error Recovery&#x27;)
+            outlist(&#x27;\ebPage Code:\en&#x27;, &#x27;$7&#x27;)
+            IF ((Char(page) AND %10000000) = 0) THEN outlist(&#x27;\ebSave to NVRAM Supported:\en&#x27;, &#x27;No&#x27;) ELSE outlist(&#x27;\ebSave to NVRAM Supported:\en&#x27;, &#x27;Yes&#x27;)
+            outlist_i(&#x27;\ebPage Length:\en&#x27;, Char(page+1), NIL)
+            IF (Char(page+2) AND %00100000) = 0 THEN outlist(&#x27;\ebTransfer Block (TB):\en&#x27;, &#x27;Don\at transfer erroneous block to initiator&#x27;) ELSE outlist(&#x27;\ebTransfer Block (TB):\en&#x27;, &#x27;Transfer erroneous block to initiator&#x27;)
+            IF (Char(page+2) AND %00001000) = 0 THEN outlist(&#x27;\ebEnable Early Recovery (EER):\en&#x27;, &#x27;Minimise risk of error mis-correction&#x27;) ELSE outlist(&#x27;\ebEnable Early Recovery (EER):\en&#x27;, &#x27;Always use fastest error recovery method&#x27;)
+            IF (Char(page+2) AND %00000100) = 0 THEN outlist(&#x27;\ebPost Recoverable Error (PER):\en&#x27;, &#x27;Don\at report recovered errors&#x27;) ELSE outlist(&#x27;\ebPost Recoverable Error (PER):\en&#x27;, &#x27;Report recovered errors&#x27;)
+            IF (Char(page+2) AND %00000010) = 0 THEN outlist(&#x27;\ebDisable Transfer on Error (DTE):\en&#x27;, &#x27;Don\at terminate data phase on error&#x27;) ELSE outlist(&#x27;\ebDisable Transfer on Error (DTE):\en&#x27;, &#x27;Terminate data phase on error&#x27;)
+            IF (Char(page+2) AND %00000001) = 0 THEN outlist(&#x27;\ebDisable Correction (DCR):\en&#x27;, &#x27;Use error correction codes&#x27;) ELSE outlist(&#x27;\ebDisable Correction (DCR):\en&#x27;, &#x27;Error correction codes not used&#x27;)
+            outlist_i(&#x27;\ebRetries on Read Error:\en&#x27;, Char(page+3), NIL)
+            outlist_i(&#x27;\ebRetries on Write Error:\en&#x27;, Char(page+8), NIL)
+        CASE DEV_CDROM
+            outlist(&#x27;\ebInformation Page:\en&#x27;, &#x27;Verify Error Recovery Parameters&#x27;)
+            outlist(&#x27;\ebPage Code:\en&#x27;, &#x27;$7&#x27;)
+            IF ((Char(page) AND %10000000) = 0) THEN outlist(&#x27;\ebSave to NVRAM supported:\en&#x27;, &#x27;No&#x27;) ELSE outlist(&#x27;\ebSave to NVRAM supported:\en&#x27;, &#x27;Yes&#x27;)
+            outlist_i(&#x27;\ebPage Length:\en&#x27;, Char(page+1), &#x27; bytes&#x27;)
+            outlist_h(&#x27;\ebError Recovery Parameter:\en&#x27;, Char(page+2), NIL)
+            outlist_i(&#x27;\ebVerify Retries:\en&#x27;, Char(page+3), NIL)
+        DEFAULT
+            outlist(&#x27;\ebInformation Page:\en&#x27;, &#x27;Unsupported or Reserved for this device class&#x27;)
+            outlist(&#x27;\ebPage Code:\en&#x27;, &#x27;$7&#x27;)
+    ENDSELECT
+
+ENDPROC
+
+
+/*
+** Handler for a specific mode page
+*/
+PROC process_modesense_8(page) -&gt; DONE
+
+    SELECT $A OF global_devtype
+        CASE DEV_DIRECT, DEV_CDROM, DEV_WRITEONCE, DEV_OPTICAL
+            outlist(&#x27;\ebInformation Page:\en&#x27;, &#x27;Cache&#x27;)
+            outlist(&#x27;\ebPage Code:\en&#x27;, &#x27;$8&#x27;)
+            IF ((Char(page) AND %10000000) = 0) THEN outlist(&#x27;\ebSave to NVRAM supported:\en&#x27;, &#x27;No&#x27;) ELSE outlist(&#x27;\ebSave to NVRAM supported:\en&#x27;, &#x27;Yes&#x27;)
+            outlist_i(&#x27;\ebPage Length:\en&#x27;, Char(page+1), &#x27; bytes&#x27;)
+            IF (Char(page+2) AND %00000001) = 0 THEN outlist(&#x27;\ebRead Cache:\en&#x27;, &#x27;Enabled&#x27;) ELSE outlist(&#x27;\ebRead Cache:\en&#x27;, &#x27;Disabled or Unavailable&#x27;)
+            IF (Char(page+2) AND %00000010) = 0 THEN outlist(&#x27;\ebMultiplication Factor:\en&#x27;, &#x27;Min/Max pre-fetch in terms of logical blocks&#x27;) ELSE outlist(&#x27;\ebMultiplication Factor:\en&#x27;, &#x27;Min/Max pre-fetch as scalar&#x27;)
+            IF (Char(page+2) AND %00000100) = 4 THEN outlist(&#x27;\ebWrite Cache:\en&#x27;, &#x27;Enabled&#x27;) ELSE outlist(&#x27;\ebWrite Cache:\en&#x27;, &#x27;Disabled or Unavailable&#x27;)
+            outlist_i(&#x27;\ebDemand Read Retention Priority:\en&#x27;, Shr((Char(page+3) AND %11110000), 4), NIL)
+            outlist_i(&#x27;\ebWrite Retention Priority:\en&#x27;, (Char(page+3) AND %00001111), NIL)
+            outlist_i(&#x27;\ebDisable Pre-Fetch Transfer Length:\en&#x27;, Int(page+4), &#x27; blocks&#x27;)
+            outlist_i(&#x27;\ebMin Pre-Fetch:\en&#x27;, Int(page+6), &#x27; bytes/scalar&#x27;)
+            outlist_i(&#x27;\ebMax Pre-Fetch:\en&#x27;, Int(page+8), &#x27; bytes/scalar&#x27;)
+            outlist_i(&#x27;\ebMax Pre-Fetch Ceiling:\en&#x27;, Int(page+10), &#x27; blocks&#x27;)
+        DEFAULT
+            outlist(&#x27;\ebInformation Page:\en&#x27;, &#x27;Unsupported or Reserved for this device class&#x27;)
+            outlist(&#x27;\ebPage Code:\en&#x27;, &#x27;$8&#x27;)
+    ENDSELECT
+
+ENDPROC
+
+
+/*
+** Handler for a specific mode page
+*/
+PROC process_modesense_9(page) -&gt;DONE
+
+    outlist(&#x27;\ebInformation Page:\en&#x27;, &#x27;Interface Mode&#x27;)
+    outlist(&#x27;\ebPage Code:\en&#x27;, &#x27;$9&#x27;)
+    IF ((Char(page) AND %10000000) = 0) THEN outlist(&#x27;\ebSave to NVRAM supported:\en&#x27;, &#x27;No&#x27;) ELSE outlist(&#x27;\ebSave to NVRAM supported:\en&#x27;, &#x27;Yes&#x27;)
+    outlist_i(&#x27;\ebPage Length:\en&#x27;, Char(page+1), &#x27; bytes&#x27;)
+    
+    IF (Int(page+2)) = 0
+        outlist(&#x27;\ebInterface ID:\en&#x27;, &#x27;Small Computer Systems Interface (SCSI)&#x27;)
+    ELSEIF (Int(page+2))=1
+        outlist(&#x27;\ebInterface ID:\en&#x27;, &#x27;Storage Module Interface (SMI)&#x27;)
+    ELSEIF (Int(page+2))=2
+        outlist(&#x27;\ebInterface ID:\en&#x27;, &#x27;Enhanced Small Device Interface (ESDI)&#x27;)
+    ELSEIF (Int(page+2))=3
+        outlist(&#x27;\ebInterface ID:\en&#x27;, &#x27;Intelligent Peripheral Interface 2 (IPI-2)&#x27;)
+    ELSEIF (Int(page+2))=4
+        outlist(&#x27;\ebInterface ID:\en&#x27;, &#x27;Intelligent Peripheral Interface 3 (IPI-3)&#x27;)
+    ELSE
+        outlist(&#x27;\ebInterface ID:\en&#x27;, &#x27;Reserved or Vendor Specific&#x27;)
+    ENDIF
+
+ENDPROC
+
+
+/*
+** Handler for a specific mode page
+*/
+PROC process_modesense_A(page) -&gt;DONE
+
+    outlist(&#x27;\ebInformation Page:\en&#x27;, &#x27;Control Mode&#x27;)
+    outlist(&#x27;\ebPage Code:\en&#x27;, &#x27;$A&#x27;)
+    IF ((Char(page) AND %10000000) = 0) THEN outlist(&#x27;\ebSave to NVRAM supported:\en&#x27;, &#x27;No&#x27;) ELSE outlist(&#x27;\ebSave to NVRAM supported:\en&#x27;, &#x27;Yes&#x27;)
+    outlist_i(&#x27;\ebPage Length:\en&#x27;, Char(page+1), &#x27; bytes&#x27;)
+    IF (Char(page+2) AND %00000001)=0 THEN outlist(&#x27;\ebReport Log Exceptions:\en&#x27;, &#x27;No&#x27;) ELSE outlist(&#x27;\ebReport Log Exceptions:\en&#x27;, &#x27;Yes&#x27;)
+    
+    IF (Char(page+3) AND %11110000)=16
+        outlist(&#x27;\ebQueuing Algorithm:\en&#x27;, &#x27;Unrestricted reordering allowed&#x27;)
+    ELSEIF (Char(page+3) AND %11110000)=0
+        outlist(&#x27;\ebQueuing Algorithm:\en&#x27;, &#x27;Restricted reordering&#x27;)
+    ELSE
+        outlist(&#x27;\ebQueuing Algorithm:\en&#x27;, &#x27;Vendor Specific&#x27;)
+    ENDIF
+    
+    IF (Char(page+3) AND %00000010)=0 THEN outlist(&#x27;\ebQueue Error Management:\en&#x27;, &#x27;Resume after contingent allegiance&#x27;) ELSE outlist(&#x27;\ebQueue Error Management:\en&#x27;, &#x27;Abort after contingent allegiance&#x27;)  
+    IF (Char(page+3) AND %00000001)=0 THEN outlist(&#x27;\ebQueuing:\en&#x27;, &#x27;Enabled&#x27;) ELSE outlist(&#x27;\ebQueuing:\en&#x27;, &#x27;Disabled&#x27;)
+    IF (Char(page+4) AND %10000000) = 0 THEN outlist(&#x27;\ebExtended Contingent Allegiance:\en&#x27;, &#x27;Disabled&#x27;) ELSE outlist(&#x27;\ebExtended Contingent Allegiance:\en&#x27;, &#x27;Enabled&#x27;)
+    IF (Char(page+4) AND %00000100) = 0 THEN outlist(&#x27;\ebReady AEN Permission:\en&#x27;, &#x27;No AEN on init sequence completion&#x27;) ELSE outlist(&#x27;\ebReady AEN Permission:\en&#x27;, &#x27;AEN on init sequence completion&#x27;)
+    IF (Char(page+4) AND %00000010) = 0 THEN outlist(&#x27;\ebUnit Attention AEN Permission:\en&#x27;, &#x27;Will not issue AEN instead of UAC&#x27;) ELSE outlist(&#x27;\ebUnit Attention AEN Permission:\en&#x27;, &#x27;May issue AEN instead of UAC&#x27;)
+    IF (Char(page+4) AND %00000001) = 0 THEN outlist(&#x27;\ebError AEN Permission:\en&#x27;, &#x27;Will not issue AEN on DEC detection&#x27;) ELSE outlist(&#x27;\ebError AEN Permission:\en&#x27;, &#x27;May issue AEN on DEC detection&#x27;)
+    outlist_i(&#x27;\ebAEN Holdoff Period:\en&#x27;, Int(page+6), &#x27; ms&#x27;)
+
+ENDPROC
+
+
+/*
+** Handler for a specific mode page
+*/
+PROC process_modesense_B(page) -&gt; DONE
+
+    SELECT $A OF global_devtype
+        CASE DEV_DIRECT, DEV_OPTICAL, DEV_WRITEONCE
+            outlist(&#x27;\ebInformation Page:\en&#x27;, &#x27;Supported Media&#x27;)
+            outlist(&#x27;\ebPage Code:\en&#x27;, &#x27;$B&#x27;)
+            IF ((Char(page) AND %10000000) = 0) THEN outlist(&#x27;\ebSave to NVRAM supported:\en&#x27;, &#x27;No&#x27;) ELSE outlist(&#x27;\ebSave to NVRAM supported:\en&#x27;, &#x27;Yes&#x27;)
+            outlist_i(&#x27;\ebPage Length:\en&#x27;, Char(page+1), &#x27; bytes&#x27;)
+            outlist_i(&#x27;\ebSupported Medium Type 1:\en&#x27;, Char(page+4), NIL)
+            outlist_i(&#x27;\ebSupported Medium Type 2:\en&#x27;, Char(page+5), NIL)
+            outlist_i(&#x27;\ebSupported Medium Type 3:\en&#x27;, Char(page+6), NIL)
+            outlist_i(&#x27;\ebSupported Medium Type 4:\en&#x27;, Char(page+7), NIL)
+        CASE DEV_CDROM
+            outlist(&#x27;\ebInformation Page:\en&#x27;, &#x27;Supported Media&#x27;)
+            outlist(&#x27;\ebPage Code:\en&#x27;, &#x27;$B&#x27;)
+            IF ((Char(page) AND %10000000) = 0) THEN outlist(&#x27;\ebSave to NVRAM supported:\en&#x27;, &#x27;No&#x27;) ELSE outlist(&#x27;\ebSave to NVRAM supported:\en&#x27;, &#x27;Yes&#x27;)
+            outlist_i(&#x27;\ebPage Length:\en&#x27;, Char(page+1), &#x27; bytes&#x27;)
+
+            IF Char(page+4) = NIL
+                outlist(&#x27;\ebMedium Type 1:\en&#x27;, &#x27;Only the Default medium&#x27;)
+            ELSEIF Char(page+4) = 1
+                outlist(&#x27;\ebMedium Type 1:\en&#x27;, &#x27;120mm Data CD-ROM&#x27;)
+            ELSEIF Char(page+4) = 2
+                outlist(&#x27;\ebMedium Type 1:\en&#x27;, &#x27;120mm Audio CD-ROM&#x27;)
+            ELSEIF Char(page+4) = 3
+                outlist(&#x27;\ebMedium Type 1:\en&#x27;, &#x27;120mm Mixed Data &amp; Audio&#x27;)
+            ELSEIF Char(page+4) = 5
+                outlist(&#x27;\ebMedium Type 1:\en&#x27;, &#x27;80mm Data CD-ROM&#x27;)
+            ELSEIF Char(page+4) = 6
+                outlist(&#x27;\ebMedium Type 1:\en&#x27;, &#x27;80mm Audio CD-ROM&#x27;)
+            ELSEIF Char(page+4) = 7
+                outlist(&#x27;\ebMedium Type 1:\en&#x27;, &#x27;80mm Mixed Data &amp; Audio&#x27;)
+            ELSE
+                outlist(&#x27;\ebMedium Type 1:\en&#x27;, &#x27;Vendor Specific&#x27;)
+            ENDIF
+
+            IF Char(page+5) = NIL
+                outlist(&#x27;\ebMedium Type 2:\en&#x27;, &#x27;Only the Default medium&#x27;)
+            ELSEIF Char(page+5) = 1
+                outlist(&#x27;\ebMedium Type 2:\en&#x27;, &#x27;120mm Data CD-ROM&#x27;)
+            ELSEIF Char(page+5) = 2
+                outlist(&#x27;\ebMedium Type 2:\en&#x27;, &#x27;120mm Audio CD-ROM&#x27;)
+            ELSEIF Char(page+5) = 3
+                outlist(&#x27;\ebMedium Type 2:\en&#x27;, &#x27;120mm Mixed Data &amp; Audio&#x27;)
+            ELSEIF Char(page+5) = 5
+                outlist(&#x27;\ebMedium Type 2:\en&#x27;, &#x27;80mm Data CD-ROM&#x27;)
+            ELSEIF Char(page+5) = 6
+                outlist(&#x27;\ebMedium Type 2:\en&#x27;, &#x27;80mm Audio CD-ROM&#x27;)
+            ELSEIF Char(page+5) = 7
+                outlist(&#x27;\ebMedium Type 2:\en&#x27;, &#x27;80mm Mixed Data &amp; Audio&#x27;)
+            ELSE
+                outlist(&#x27;\ebMedium Type 2:\en&#x27;, &#x27;Vendor Specific&#x27;)
+            ENDIF
+
+            IF Char(page+6) = NIL
+                outlist(&#x27;\ebMedium Type 3:\en&#x27;, &#x27;Only the Default medium&#x27;)
+            ELSEIF Char(page+6) = 1
+                outlist(&#x27;\ebMedium Type 3:\en&#x27;, &#x27;120mm Data CD-ROM&#x27;)
+            ELSEIF Char(page+6) = 2
+                outlist(&#x27;\ebMedium Type 3:\en&#x27;, &#x27;120mm Audio CD-ROM&#x27;)
+            ELSEIF Char(page+6) = 3
+                outlist(&#x27;\ebMedium Type 3:\en&#x27;, &#x27;120mm Mixed Data &amp; Audio&#x27;)
+            ELSEIF Char(page+6) = 5
+                outlist(&#x27;\ebMedium Type 3:\en&#x27;, &#x27;80mm Data CD-ROM&#x27;)
+            ELSEIF Char(page+6) = 6
+                outlist(&#x27;\ebMedium Type 3:\en&#x27;, &#x27;80mm Audio CD-ROM&#x27;)
+            ELSEIF Char(page+6) = 7
+                outlist(&#x27;\ebMedium Type 3:\en&#x27;, &#x27;80mm Mixed Data &amp; Audio&#x27;)
+            ELSE
+                outlist(&#x27;\ebMedium Type 3:\en&#x27;, &#x27;Vendor Specific&#x27;)
+            ENDIF
+
+            IF Char(page+7) = NIL
+                outlist(&#x27;\ebMedium Type 4:\en&#x27;, &#x27;Only the Default medium&#x27;)
+            ELSEIF Char(page+7) = 1
+                outlist(&#x27;\ebMedium Type 4:\en&#x27;, &#x27;120mm Data CD-ROM&#x27;)
+            ELSEIF Char(page+7) = 2
+                outlist(&#x27;\ebMedium Type 4:\en&#x27;, &#x27;120mm Audio CD-ROM&#x27;)
+            ELSEIF Char(page+7) = 3
+                outlist(&#x27;\ebMedium Type 4:\en&#x27;, &#x27;120mm Mixed Data &amp; Audio&#x27;)
+            ELSEIF Char(page+7) = 5
+                outlist(&#x27;\ebMedium Type 4:\en&#x27;, &#x27;80mm Data CD-ROM&#x27;)
+            ELSEIF Char(page+7) = 6
+                outlist(&#x27;\ebMedium Type 4:\en&#x27;, &#x27;80mm Audio CD-ROM&#x27;)
+            ELSEIF Char(page+7) = 7
+                outlist(&#x27;\ebMedium Type 4:\en&#x27;, &#x27;80mm Mixed Data &amp; Audio&#x27;)
+            ELSE
+                outlist(&#x27;\ebMedium Type 4:\en&#x27;, &#x27;Vendor Specific&#x27;)
+            ENDIF
+        DEFAULT
+            outlist(&#x27;\ebInformation Page:\en&#x27;, &#x27;Unsupported or Reserved for this device class&#x27;)
+            outlist(&#x27;\ebPage Code:\en&#x27;, &#x27;$B&#x27;)
+    ENDSELECT
+
+ENDPROC
+
+
+/*
+** Handler for a specific mode page
+*/
+PROC process_modesense_C(page) -&gt; DONE
+DEF str[40]:STRING
+
+    IF global_devtype=DEV_DIRECT
+        outlist(&#x27;\ebInformation Page:\en&#x27;, &#x27;Notch Parameters&#x27;)
+        outlist(&#x27;\ebPage Code:\en&#x27;, &#x27;$C&#x27;)
+        IF ((Char(page) AND %10000000) = 0) THEN outlist(&#x27;\ebSave to NVRAM supported:\en&#x27;, &#x27;No&#x27;) ELSE outlist(&#x27;\ebSave to NVRAM supported:\en&#x27;, &#x27;Yes&#x27;)
+        outlist_i(&#x27;\ebPage Length:\en&#x27;, Char(page+1), &#x27; bytes&#x27;)
+        IF (Char(page+2) AND %10000000)=0 THEN outlist(&#x27;\ebNotched Drive:\en&#x27;, &#x27;No&#x27;) ELSE outlist(&#x27;\ebNotched Drive:\en&#x27;, &#x27;Yes&#x27;)
+        outlist_i(&#x27;\ebMaximum Notches:\en&#x27;, Int(page+4), NIL)
+        outlist_i(&#x27;\ebActive Notch:\en&#x27;, Int(page+6), NIL)
+        
+        IF (Char(page+2) AND %01000000)=0
+            outlist(&#x27;\ebNotch Boundary Type (LPN):\en&#x27;, &#x27;Physical&#x27;)
+            StringF(str, &#x27;Cylinder: \d, Head: \d&#x27;, Shr((Long(page+8) AND $FFFFFF00), 8), Char(page+11))
+            outlist(&#x27;\ebActive Notch Starting Boundary:\en&#x27;, str)
+            StringF(str, &#x27;Cylinder: \d, Head: \d&#x27;, Shr((Long(page+12) AND $FFFFFF00), 8), Char(page+15))
+            outlist(&#x27;\ebActive Notch Ending Boundary:\en&#x27;, str)
+        ELSE    
+            outlist(&#x27;\ebNotch Boundary Type:\en&#x27;, &#x27;Logical&#x27;)
+            outlist_i(&#x27;\ebActive Notch Starting Boundary:\en&#x27;, Long(page+8), &#x27; LBA&#x27;)
+            outlist_i(&#x27;\ebActive Notch Ending Boundary:\en&#x27;, Long(page+12), &#x27; LBA&#x27;)
+        ENDIF
+        
+        StringF(str, &#x27;$\h\h&#x27;, Long(page+16), Long(page+20))
+        outlist(&#x27;\ebPages Notched Bitmap (8 bytes):\en&#x27;, str)
+
+    ELSE
+        outlist(&#x27;\ebInformation Page:\en&#x27;, &#x27;Unsupported or Reserved for this device class&#x27;)
+        outlist(&#x27;\ebPage Code:\en&#x27;, &#x27;$C&#x27;)
+    ENDIF
+
+ENDPROC
+
+
+/*
+** Handler for a specific mode page
+*/
+PROC process_modesense_D(page) -&gt; DONE
+
+    IF global_devtype=DEV_CDROM
+        outlist(&#x27;\ebInformation Page:\en&#x27;, &#x27;CD-ROM Parameters&#x27;)
+        outlist(&#x27;\ebPage Code:\en&#x27;, &#x27;$D&#x27;)
+        IF ((Char(page) AND %10000000) = 0) THEN outlist(&#x27;\ebSave to NVRAM supported:\en&#x27;, &#x27;No&#x27;) ELSE outlist(&#x27;\ebSave to NVRAM supported:\en&#x27;, &#x27;Yes&#x27;)
+        outlist_i(&#x27;\ebPage Length:\en&#x27;, Char(page+1), &#x27; bytes&#x27;)
+        
+        IF (Char(page+3) AND %00001111) = 0
+            outlist(&#x27;\ebInactivity Multiplier:\en&#x27;, &#x27;Vendor specific&#x27;)
+        ELSEIF (Char(page+3) AND %00001111) = $1    
+            outlist(&#x27;\ebInactivity Multiplier:\en&#x27;, &#x27;125 ms&#x27;)   
+        ELSEIF (Char(page+3) AND %00001111) = $2    
+            outlist(&#x27;\ebInactivity Multiplier:\en&#x27;, &#x27;250 ms&#x27;)
+        ELSEIF (Char(page+3) AND %00001111) = $3    
+            outlist(&#x27;\ebInactivity Multiplier:\en&#x27;, &#x27;500 ms&#x27;)        
+        ELSEIF (Char(page+3) AND %00001111) = $4    
+            outlist(&#x27;\ebInactivity Multiplier:\en&#x27;, &#x27;1 second&#x27;)        
+        ELSEIF (Char(page+3) AND %00001111) = $5    
+            outlist(&#x27;\ebInactivity Multiplier:\en&#x27;, &#x27;2 seconds&#x27;)        
+        ELSEIF (Char(page+3) AND %00001111) = $6    
+            outlist(&#x27;\ebInactivity Multiplier:\en&#x27;, &#x27;4 seconds&#x27;)        
+        ELSEIF (Char(page+3) AND %00001111) = $7    
+            outlist(&#x27;\ebInactivity Multiplier:\en&#x27;, &#x27;8 seconds&#x27;)        
+        ELSEIF (Char(page+3) AND %00001111) = $8    
+            outlist(&#x27;\ebInactivity Multiplier:\en&#x27;, &#x27;16 seconds&#x27;)        
+        ELSEIF (Char(page+3) AND %00001111) = $9    
+            outlist(&#x27;\ebInactivity Multiplier:\en&#x27;, &#x27;32 seconds&#x27;)        
+        ELSEIF (Char(page+3) AND %00001111) = $A    
+            outlist(&#x27;\ebInactivity Multiplier:\en&#x27;, &#x27;1 minute&#x27;)        
+        ELSEIF (Char(page+3) AND %00001111) = $B    
+            outlist(&#x27;\ebInactivity Multiplier:\en&#x27;, &#x27;2 minutes&#x27;)        
+        ELSEIF (Char(page+3) AND %00001111) = $C    
+            outlist(&#x27;\ebInactivity Multiplier:\en&#x27;, &#x27;4 minutes&#x27;)            
+        ELSEIF (Char(page+3) AND %00001111) = $D    
+            outlist(&#x27;\ebInactivity Multiplier:\en&#x27;, &#x27;8 minutes&#x27;)            
+        ELSEIF (Char(page+3) AND %00001111) = $E    
+            outlist(&#x27;\ebInactivity Multiplier:\en&#x27;, &#x27;16 minutes&#x27;)            
+        ELSE 
+            outlist(&#x27;\ebInactivity Multiplier:\en&#x27;, &#x27;32 minutes&#x27;)            
+        ENDIF    
+
+        outlist_i(&#x27;\ebS Units per MSF:\en&#x27;, Int(page+4), NIL)
+        outlist_i(&#x27;\ebF Units per MSF:\en&#x27;, Int(page+6), NIL)
+    ELSEIF global_devtype=DEV_DIRECT
+        outlist(&#x27;\ebInformation Page:\en&#x27;, &#x27;Power Condition (Quantum)&#x27;)
+        outlist(&#x27;\ebWarning:\en&#x27;, &#x27;Page format may be device specific. Info may be incorrect&#x27;)
+        outlist(&#x27;\ebReference:\en&#x27;, &#x27;Quantum Fireball ST 2.1/3.2/4.3/6.4 GB S&#x27;)
+        outlist(&#x27;\ebPage Code:\en&#x27;, &#x27;$D&#x27;)
+        IF ((Char(page) AND %10000000) = 0) THEN outlist(&#x27;\ebSave to NVRAM supported:\en&#x27;, &#x27;No&#x27;) ELSE outlist(&#x27;\ebSave to NVRAM supported:\en&#x27;, &#x27;Yes&#x27;)
+        outlist_i(&#x27;\ebPage Length:\en&#x27;, Char(page+1), &#x27; bytes&#x27;)
+        IF (Char(page+3) AND %00000001) = 0 THEN outlist(&#x27;\ebStandby Support Enabled:\en&#x27;, &#x27;No&#x27;) ELSE outlist(&#x27;\ebStandby Support Enabled:\en&#x27;, &#x27;Yes&#x27;)
+        outlist_i(&#x27;\ebIdle Time to Enter Standby:\en&#x27;, Long(page+8), &#x27; *100 ms&#x27;)
+    ELSE
+        outlist(&#x27;\ebInformation Page:\en&#x27;, &#x27;Unsupported or Reserved for this device class&#x27;)
+        outlist(&#x27;\ebPage Code:\en&#x27;, &#x27;$D&#x27;)
+    ENDIF
+
+ENDPROC
+
+
+/*
+** Handler for a specific mode page
+*/
+PROC process_modesense_E(page) -&gt; DONE
+
+    IF global_devtype=DEV_CDROM
+        outlist(&#x27;\ebInformation Page:\en&#x27;, &#x27;CD-ROM Audio Control&#x27;)
+        outlist(&#x27;\ebPage Code:\en&#x27;, &#x27;$E&#x27;)
+        IF ((Char(page) AND %10000000) = 0) THEN outlist(&#x27;\ebSave to NVRAM supported:\en&#x27;, &#x27;No&#x27;) ELSE outlist(&#x27;\ebSave to NVRAM supported:\en&#x27;, &#x27;Yes&#x27;)
+        outlist_i(&#x27;\ebPage Length:\en&#x27;, Char(page+1), &#x27; bytes&#x27;)
+        IF (Char(page+2) AND %00000100) = 4 THEN outlist(&#x27;\ebAudio Completion Status:\en&#x27;, &#x27;On Audio Termination&#x27;) ELSE outlist(&#x27;\ebAudio Completion Status:\en&#x27;, &#x27;On Audio Playback&#x27;)
+        IF (Char(page+2) AND %00000010) = 2 THEN outlist(&#x27;\ebStop on Track Crossing:\en&#x27;, &#x27;When next track encountered&#x27;) ELSE outlist(&#x27;\ebStop on Track Crossing:\en&#x27;, &#x27;When transfer length satisfied&#x27;)
+        IF (Char(page+5) AND %10000000) = 0 THEN outlist(&#x27;\ebAudio Playback Rate Valid:\en&#x27;, &#x27;No&#x27;) ELSE outlist(&#x27;\ebAudio Playback Rate Valid:\en&#x27;, &#x27;Yes&#x27;)
+        
+        IF (Char(page+5) AND %00001111) = 0 
+            outlist(&#x27;\ebFormat of LBA/sec:\en&#x27;, &#x27;1 (multiplier for LBA/sec)&#x27;)
+        ELSEIF (Char(page+5) AND %00001111) = 8
+            outlist(&#x27;\ebFormat of LBA/sec:\en&#x27;, &#x27;8 (multiplier for LBA/sec)&#x27;)
+        ELSE
+            outlist(&#x27;\ebFormat of LBA/sec:\en&#x27;, &#x27;Reserved or vendor specific&#x27;)
+        ENDIF
+            
+        outlist_i(&#x27;\ebLBA/sec per audio:\en&#x27;, Int(page+6), &#x27; blocks&#x27;)
+        
+        IF (Char(page+8) AND %00001111) = 0
+            outlist(&#x27;\ebPort 0 Channel Selection:\en&#x27;, &#x27;Port Muted&#x27;)
+        ELSEIF (Char(page+8) AND %00001111) = 1 
+            outlist(&#x27;\ebPort 0 Channel Selection:\en&#x27;, &#x27;Connect audio channel 0 to this port&#x27;)  
+        ELSEIF (Char(page+8) AND %00001111) = 2 
+            outlist(&#x27;\ebPort 0 Channel Selection:\en&#x27;, &#x27;Connect audio channel 1 to this port&#x27;)
+        ELSEIF (Char(page+8) AND %00001111) = 4 
+            outlist(&#x27;\ebPort 0 Channel Selection:\en&#x27;, &#x27;Connect audio channel 2 to this port&#x27;)             
+        ELSEIF (Char(page+8) AND %00001111) = 8 
+            outlist(&#x27;\ebPort 0 Channel Selection:\en&#x27;, &#x27;Connect audio channel 3 to this port&#x27;)
+        ELSE
+            outlist(&#x27;\ebPort 0 Channel Selection:\en&#x27;, &#x27;Reserved or vendor specific&#x27;)
+        ENDIF                        
+                 
+        outlist_i(&#x27;\ebPort 0 Volume Level:\en&#x27;, Char(page+9), &#x27; (255 = Full Voume)&#x27;)
+        
+        IF (Char(page+10) AND %00001111) = 0
+            outlist(&#x27;\ebPort 1 Channel Selection:\en&#x27;, &#x27;Port Muted&#x27;)
+        ELSEIF (Char(page+10) AND %00001111) = 1 
+            outlist(&#x27;\ebPort 1 Channel Selection:\en&#x27;, &#x27;Connect audio channel 0 to this port&#x27;)  
+        ELSEIF (Char(page+10) AND %00001111) = 2 
+            outlist(&#x27;\ebPort 1 Channel Selection:\en&#x27;, &#x27;Connect audio channel 1 to this port&#x27;)
+        ELSEIF (Char(page+10) AND %00001111) = 4 
+            outlist(&#x27;\ebPort 1 Channel Selection:\en&#x27;, &#x27;Connect audio channel 2 to this port&#x27;)             
+        ELSEIF (Char(page+10) AND %00001111) = 8 
+            outlist(&#x27;\ebPort 1 Channel Selection:\en&#x27;, &#x27;Connect audio channel 3 to this port&#x27;)
+        ELSE
+            outlist(&#x27;\ebPort 1 Channel Selection:\en&#x27;, &#x27;Reserved or vendor specific&#x27;)
+        ENDIF         
+        
+        outlist_i(&#x27;\ebPort 1 Volume Level:\en&#x27;, Char(page+11), &#x27; (255 = Full Voume)&#x27;)
+        
+        IF (Char(page+12) AND %00001111) = 0
+            outlist(&#x27;\ebPort 2 Channel Selection:\en&#x27;, &#x27;Port Muted&#x27;)
+        ELSEIF (Char(page+12) AND %00001111) = 1 
+            outlist(&#x27;\ebPort 2 Channel Selection:\en&#x27;, &#x27;Connect audio channel 0 to this port&#x27;)  
+        ELSEIF (Char(page+12) AND %00001111) = 2 
+            outlist(&#x27;\ebPort 2 Channel Selection:\en&#x27;, &#x27;Connect audio channel 1 to this port&#x27;)
+        ELSEIF (Char(page+12) AND %00001111) = 4 
+            outlist(&#x27;\ebPort 2 Channel Selection:\en&#x27;, &#x27;Connect audio channel 2 to this port&#x27;)             
+        ELSEIF (Char(page+12) AND %00001111) = 8 
+            outlist(&#x27;\ebPort 2 Channel Selection:\en&#x27;, &#x27;Connect audio channel 3 to this port&#x27;)
+        ELSE
+            outlist(&#x27;\ebPort 2 Channel Selection:\en&#x27;, &#x27;Reserved or vendor specific&#x27;)
+        ENDIF         
+         
+        outlist_i(&#x27;\ebPort 2 Volume Level:\en&#x27;, Char(page+13), &#x27; (255 = Full Voume)&#x27;)
+        
+        IF (Char(page+14) AND %00001111) = 0
+            outlist(&#x27;\ebPort 3 Channel Selection:\en&#x27;, &#x27;Port Muted&#x27;)
+        ELSEIF (Char(page+14) AND %00001111) = 1 
+            outlist(&#x27;\ebPort 3 Channel Selection:\en&#x27;, &#x27;Connect audio channel 0 to this port&#x27;)  
+        ELSEIF (Char(page+14) AND %00001111) = 2 
+            outlist(&#x27;\ebPort 3 Channel Selection:\en&#x27;, &#x27;Connect audio channel 1 to this port&#x27;)
+        ELSEIF (Char(page+14) AND %00001111) = 4 
+            outlist(&#x27;\ebPort 3 Channel Selection:\en&#x27;, &#x27;Connect audio channel 2 to this port&#x27;)             
+        ELSEIF (Char(page+14) AND %00001111) = 8 
+            outlist(&#x27;\ebPort 3 Channel Selection:\en&#x27;, &#x27;Connect audio channel 3 to this port&#x27;)
+        ELSE
+            outlist(&#x27;\ebPort 3 Channel Selection:\en&#x27;, &#x27;Reserved or vendor specific&#x27;)
+        ENDIF        
+        
+        outlist_i(&#x27;\ebPort 3 Volume Level:\en&#x27;, Char(page+15),  &#x27; (255 = Full Voume)&#x27;)
+    ELSE
+        outlist(&#x27;\ebInformation Page:\en&#x27;, &#x27;Unsupported or Reserved for this device class&#x27;)
+        outlist(&#x27;\ebPage Code:\en&#x27;, &#x27;$E&#x27;)
+    ENDIF
+
+ENDPROC
+
+
+/*
+** Handler for a specific mode page
+*/
+PROC process_modesense_F(page)
+
+    IF global_devtype=DEV_SEQUENTIAL
+        outlist(&#x27;\ebInformation Page:\en&#x27;, &#x27;Data Compression Characteristics&#x27;)
+        outlist(&#x27;\ebWarning:\en&#x27;, &#x27;Page format may be device specific. Info may be incorrect&#x27;)
+        outlist(&#x27;\ebReference:\en&#x27;, &#x27;HP C1533A&#x27;)
+        outlist(&#x27;\ebPage Code:\en&#x27;, &#x27;$F&#x27;)
+        IF ((Char(page) AND %10000000) = 0) THEN outlist(&#x27;\ebSave to NVRAM supported:\en&#x27;, &#x27;No&#x27;) ELSE outlist(&#x27;\ebSave to NVRAM supported:\en&#x27;, &#x27;Yes&#x27;)
+        outlist_i(&#x27;\ebPage Length:\en&#x27;, Char(page+1), &#x27; bytes&#x27;)
+        IF (Char(page+2) AND %10000000)=128 THEN outlist(&#x27;\ebData Compression Enabled:\en&#x27;, &#x27;Yes&#x27;) ELSE outlist(&#x27;\ebData Compression Enabled:\en&#x27;, &#x27;No&#x27;)
+        IF (Char(page+2) AND %01000000)=64 THEN outlist(&#x27;\ebData Compression Supported:\en&#x27;, &#x27;Yes&#x27;) ELSE outlist(&#x27;\ebData Compression Supported:\en&#x27;, &#x27;No&#x27;)
+        IF (Char(page+3) AND %10000000)=128 THEN outlist(&#x27;\ebAttempt Decompression:\en&#x27;, &#x27;Yes&#x27;) ELSE outlist(&#x27;\ebAttempt Decompression:\en&#x27;, &#x27;No&#x27;)
+        outlist_i(&#x27;\ebCompression Algorithm:\en&#x27;, Long(page+4), NIL)
+        outlist_i(&#x27;\ebDecompression Algorithm:\en&#x27;, Long(page+8), NIL)
+    ELSE
+        outlist(&#x27;\ebInformation Page:\en&#x27;, &#x27;Unsupported or Reserved for this device class&#x27;)
+        outlist(&#x27;\ebPage Code:\en&#x27;, &#x27;$F&#x27;)
+    ENDIF
+
+ENDPROC
+
+
+/*
+** Handler for a specific mode page
+*/
+PROC process_modesense_10(page) -&gt;DONE
+
+    IF global_devtype=DEV_SEQUENTIAL
+        outlist(&#x27;\ebInformation Page:\en&#x27;, &#x27;Sequential Device Configuration&#x27;)
+        outlist(&#x27;\ebPage Code:\en&#x27;, &#x27;$10&#x27;)
+        IF ((Char(page) AND %10000000) = 0) THEN outlist(&#x27;\ebSave to NVRAM supported:\en&#x27;, &#x27;No&#x27;) ELSE outlist(&#x27;\ebSave to NVRAM supported:\en&#x27;, &#x27;Yes&#x27;)
+        outlist_i(&#x27;\ebPage Length:\en&#x27;, Char(page+1), &#x27; bytes&#x27;)
+        IF (Char(page+2) AND %01000000) = 0 THEN outlist(&#x27;\ebChange Active Partition:\en&#x27;, &#x27;No partition change specified&#x27;) ELSE outlist(&#x27;\ebChange Active Partition:\en&#x27;, &#x27;Change to active partition&#x27;)
+        IF (Char(page+2) AND %00100000) = 0 THEN outlist(&#x27;\ebChange Active Format:\en&#x27;, &#x27;No format change specified&#x27;) ELSE outlist(&#x27;\ebChange Active Format:\en&#x27;, &#x27;Change to active format&#x27;)
+        outlist_i(&#x27;\ebActive Recording Format:\en&#x27;, (Char(page+2) AND %00011111), &#x27; (All values vendor specific)&#x27;)
+        outlist_i(&#x27;\ebActive Logical Partition:\en&#x27;, Char(page+3), NIL)
+        outlist_i(&#x27;\ebWrite Buffer Full Ratio:\en&#x27;, Char(page+4), NIL)
+        outlist_i(&#x27;\ebRead Buffer Empty Ratio:\en&#x27;, Char(page+5), NIL)
+        outlist_i(&#x27;\ebWrite Delay:\en&#x27;, Int(page+6), &#x27; *100 ms&#x27;)
+        IF (Char(page+8) AND %10000000) = 0 THEN outlist(&#x27;\ebData Buffer Recovery:\en&#x27;, &#x27;Not supported&#x27;) ELSE outlist(&#x27;\ebData Buffer Recovery:\en&#x27;, &#x27;Supported&#x27;)
+        IF (Char(page+8) AND %01000000) = 0 THEN outlist(&#x27;\ebBlock Identifiers Supported:\en&#x27;, &#x27;Not supported on medium&#x27;) ELSE outlist(&#x27;\ebBlock Identifiers Supported:\en&#x27;, &#x27;Medium has recorded block IDs relative to partition&#x27;) 
+        IF (Char(page+8) AND %00100000) = 0 THEN outlist(&#x27;\ebSetMarks:\en&#x27;, &#x27;Don\at report setmarks&#x27;) ELSE outlist(&#x27;\ebSetMarks:\en&#x27;, &#x27;Recognise and report setmarks&#x27;)
+        IF (Char(page+8) AND %00010000) = 0 THEN outlist(&#x27;\ebAutomatic Velocity Control:\en&#x27;, &#x27;Use default speed&#x27;) ELSE outlist(&#x27;\ebAutomatic Velocity Control:\en&#x27;, &#x27;Use speed best for streaming&#x27;)
+        
+        IF (Char(page+8) AND %00001100) = 0
+            outlist(&#x27;\ebStop on Consecutive Filemarks:\en&#x27;, &#x27;Buffer with no regard to filemarks&#x27;)
+        ELSEIF (Char(page+8) AND %00001100) = 4
+            outlist(&#x27;\ebStop on Consecutive Filemarks:\en&#x27;, &#x27;Stop pre-read if 1 filemark detected&#x27;)
+        ELSEIF (Char(page+8) AND %00001100) = 8
+            outlist(&#x27;\ebStop on Consecutive Filemarks:\en&#x27;, &#x27;Stop pre-read if 2 filemarks detected&#x27;)
+        ELSE
+            outlist(&#x27;\ebStop on Consecutive Filemarks:\en&#x27;, &#x27;Stop pre-read if 3 filemarks detected&#x27;)
+        ENDIF
+        
+        IF (Char(page+8) AND %00000010) = 0 THEN outlist(&#x27;\ebRecovery Buffer Order:\en&#x27;, &#x27;FIFO&#x27;) ELSE outlist(&#x27;\ebRecovery Buffer Order:\en&#x27;, &#x27;LIFO Order&#x27;)
+        IF (Char(page+8) AND %00000001) = 0 THEN outlist(&#x27;\ebReport Early Warning:\en&#x27;, &#x27;No for read operations&#x27;) ELSE outlist(&#x27;\ebReport Early Warning:\en&#x27;, &#x27;Yes&#x27;)
+        
+        IF Char(page+9) = 0 THEN outlist(&#x27;\ebGap Size:\en&#x27;, &#x27;Device Default&#x27;) ELSE outlist_i(&#x27;\ebGap Size:\en&#x27;, Char(page+9), NIL)
+        
+        IF (Char(page+10) AND %11100000) = 0
+            outlist(&#x27;\ebEnd of Data:\en&#x27;, &#x27;Logical unit default&#x27;)
+        ELSEIF (Char(page+10) AND %11100000) = 32
+            outlist(&#x27;\ebEnd of Data:\en&#x27;, &#x27;Format defined erased area of medium&#x27;)
+        ELSEIF (Char(page+10) AND %11100000) = 64
+            outlist(&#x27;\ebEnd of Data:\en&#x27;, &#x27;As specified in SOCF field&#x27;)
+        ELSEIF (Char(page+10) AND %11100000) = 96
+            outlist(&#x27;\ebEnd of Data:\en&#x27;, &#x27;Not supported&#x27;)
+        ELSE
+            outlist(&#x27;\ebEnd of Data:\en&#x27;, &#x27;Reserved or vendor specific&#x27;)
+        ENDIF
+        
+        IF (Char(page+10) AND %00010000) = 0 THEN outlist(&#x27;\ebEnable EOD Generation:\en&#x27;, &#x27;Disabled&#x27;) ELSE outlist(&#x27;\ebEnable EOD Generation:\en&#x27;, &#x27;Enabled&#x27;)
+        IF (Char(page+10) AND %00001000) = 0 THEN outlist(&#x27;\ebSynchronise at Early Warning:\en&#x27;, &#x27;Disabled&#x27;) ELSE outlist(&#x27;\ebSynchronise at Early Warning:\en&#x27;, &#x27;Enabled&#x27;) 
+        outlist_i(&#x27;\ebBuffer Size at Early Warning:\en&#x27;, (Long(page+10) AND $00FFFFFF), &#x27; bytes&#x27;)        
+        IF Char(page+14) = 0 THEN outlist(&#x27;\ebCompression:\en&#x27;, &#x27;Disabled or not supported&#x27;) ELSE outlist(&#x27;\ebCompression:\en&#x27;, &#x27;Enabled&#x27;)
+
+    ELSE
+        outlist(&#x27;\ebInformation Page:\en&#x27;, &#x27;Unsupported or Reserved for this device class&#x27;)
+        outlist(&#x27;\ebPage Code:\en&#x27;, &#x27;$10&#x27;)
+    ENDIF
+
+ENDPROC
+
+
+/*
+** Handler for a specific mode page
+*/
+PROC process_modesense_11(page) -&gt;DONE
+DEF ptr:PTR TO CHAR
+
+    IF global_devtype=DEV_SEQUENTIAL
+        ptr:=(page+8)
+        outlist(&#x27;\ebInformation Page:\en&#x27;, &#x27;Medium Partition Page (1)&#x27;)
+        outlist(&#x27;\ebPage Code:\en&#x27;, &#x27;$11&#x27;)
+        IF ((Char(page) AND %10000000) = 0) THEN outlist(&#x27;\ebSave to NVRAM supported:\en&#x27;, &#x27;No&#x27;) ELSE outlist(&#x27;\ebSave to NVRAM supported:\en&#x27;, &#x27;Yes&#x27;)
+        outlist_i(&#x27;\ebPage Length:\en&#x27;, Char(page+1), &#x27; bytes&#x27;)
+        outlist_i(&#x27;\ebMax Additional Partitions:\en&#x27;, Char(page+2), NIL)
+        outlist_i(&#x27;\ebAdditional Partitions Defined:\en&#x27;, Char(page+3), NIL)
+        IF (Char(page+4) AND %10000000) = 0 THEN outlist(&#x27;\ebFixed Data Partitions:\en&#x27;, &#x27;No&#x27;) ELSE outlist(&#x27;\ebFixed Data Partitions:\en&#x27;, &#x27;Yes&#x27;)
+        IF (Char(page+4) AND %01000000) = 0 THEN outlist(&#x27;\ebSelect Data Partitions:\en&#x27;, &#x27;No&#x27;) ELSE outlist(&#x27;\ebSelect Data Partitions:\en&#x27;, &#x27;Yes&#x27;)
+        IF (Char(page+4) AND %00100000) = 0 THEN outlist(&#x27;\ebInitiator Defined Partitions:\en&#x27;, &#x27;No&#x27;) ELSE outlist(&#x27;\ebInitiator Defined Partitions:\en&#x27;, &#x27;Yes&#x27;)
+        
+        IF (Char(page+4) AND %00011000) = 0
+            outlist(&#x27;\ebPartition Unit of Measure:\en&#x27;, &#x27;Bytes&#x27;)
+        ELSEIF (Char(page+4) AND %00011000) = 1
+            outlist(&#x27;\ebPartition Unit of Measure:\en&#x27;, &#x27;KiloBytes&#x27;)
+        ELSEIF (Char(page+4) AND %00011000) = 2
+            outlist(&#x27;\ebPartition Unit of Measure:\en&#x27;, &#x27;MegaBytes&#x27;)
+        ELSE
+            outlist(&#x27;\ebPartition Unit of Measure:\en&#x27;, &#x27;Custom&#x27;)
+        ENDIF
+        
+        IF Char(page+5)=0
+            outlist(&#x27;\ebMedium Format Recognition:\en&#x27;, &#x27;Incapable of Format or Partition Recognition&#x27;)
+        ELSEIF Char(page+5)=1
+            outlist(&#x27;\ebMedium Format Recognition:\en&#x27;, &#x27;Format Recognition Only&#x27;)
+        ELSEIF Char(page+5)=2
+            outlist(&#x27;\ebMedium Format Recognition:\en&#x27;, &#x27;Partition Recognition Only&#x27;)
+        ELSEIF Char(page+5)=3
+            outlist(&#x27;\ebMedium Format Recognition:\en&#x27;, &#x27;Format and Partition Recognition&#x27;)
+        ELSE
+            outlist(&#x27;\ebMedium Format Recognition:\en&#x27;, &#x27;Reserved or vendor specific&#x27;)
+        ENDIF
+        
+        WHILE (ptr &lt; (page + Char(page+1) ) )
+            outlist_i(&#x27;\ebFound Partition Size:\en&#x27;, Int(ptr), NIL)
+            ptr:=ptr+2    
+        ENDWHILE
+        
+    ELSE
+        outlist(&#x27;\ebInformation Page:\en&#x27;, &#x27;Unsupported or Reserved for this device class&#x27;)
+        outlist(&#x27;\ebPage Code:\en&#x27;, &#x27;$11&#x27;)
+    ENDIF
+
+
+ENDPROC
+
+
+/*
+** Handler for a specific mode page
+*/
+PROC process_modesense_12(page) -&gt; DONE
+DEF ptr:PTR TO CHAR
+
+    IF global_devtype=DEV_SEQUENTIAL
+        ptr:=(page+2) 
+        outlist(&#x27;\ebInformation Page:\en&#x27;, &#x27;Medium Partition Page (2)&#x27;)
+        outlist(&#x27;\ebPage Code:\en&#x27;, &#x27;$12&#x27;)
+        IF ((Char(page) AND %10000000) = 0) THEN outlist(&#x27;\ebSave to NVRAM supported:\en&#x27;, &#x27;No&#x27;) ELSE outlist(&#x27;\ebSave to NVRAM supported:\en&#x27;, &#x27;Yes&#x27;)
+        outlist_i(&#x27;\ebPage Length:\en&#x27;, Char(page+1), &#x27; bytes&#x27;)
+        
+        WHILE (ptr &lt; (page + Char(page+1) ) )
+            outlist_i(&#x27;\ebFound Partition Size:\en&#x27;, Int(ptr), NIL)
+            ptr:=ptr+2    
+        ENDWHILE
+        
+    ELSE
+        outlist(&#x27;\ebInformation Page:\en&#x27;, &#x27;Unsupported or Reserved for this device class&#x27;)
+        outlist(&#x27;\ebPage Code:\en&#x27;, &#x27;$12&#x27;)
+    ENDIF
+
+ENDPROC
+
+
+/*
+** Handler for a specific mode page
+*/
+PROC process_modesense_13(page) -&gt;DONE
+DEF ptr:PTR TO CHAR
+
+    IF global_devtype=DEV_SEQUENTIAL
+        ptr:=(page+2)  
+        outlist(&#x27;\ebInformation Page:\en&#x27;, &#x27;Medium Partition Page (3)&#x27;)
+        outlist(&#x27;\ebPage Code:\en&#x27;, &#x27;$13&#x27;)
+        IF ((Char(page) AND %10000000) = 0) THEN outlist(&#x27;\ebSave to NVRAM supported:\en&#x27;, &#x27;No&#x27;) ELSE outlist(&#x27;\ebSave to NVRAM supported:\en&#x27;, &#x27;Yes&#x27;)
+        outlist_i(&#x27;\ebPage Length:\en&#x27;, Char(page+1), &#x27; bytes&#x27;)
+        
+        WHILE (ptr &lt; (page + Char(page+1) ) )
+            outlist_i(&#x27;\ebFound Partition Size:\en&#x27;, Int(ptr), NIL)
+            ptr:=ptr+2    
+        ENDWHILE
+        
+    ELSE
+        outlist(&#x27;\ebInformation Page:\en&#x27;, &#x27;Unsupported or Reserved for this device class&#x27;)
+        outlist(&#x27;\ebPage Code:\en&#x27;, &#x27;$13&#x27;)
+    ENDIF
+
+ENDPROC
+
+
+/*
+** Handler for a specific mode page
+*/
+PROC process_modesense_14(page) -&gt;DONE
+DEF ptr:PTR TO CHAR
+
+    IF global_devtype=DEV_SEQUENTIAL
+        ptr:=(page+2)   
+        outlist(&#x27;\ebInformation Page:\en&#x27;, &#x27;Medium Partition Page (4)&#x27;)
+        outlist(&#x27;\ebPage Code:\en&#x27;, &#x27;$14&#x27;)
+        IF ((Char(page) AND %10000000) = 0) THEN outlist(&#x27;\ebSave to NVRAM supported:\en&#x27;, &#x27;No&#x27;) ELSE outlist(&#x27;\ebSave to NVRAM supported:\en&#x27;, &#x27;Yes&#x27;)
+        outlist_i(&#x27;\ebPage Length:\en&#x27;, Char(page+1), &#x27; bytes&#x27;)
+        
+        WHILE (ptr &lt; (page + Char(page+1) ) )
+            outlist_i(&#x27;\ebFound Partition Size:\en&#x27;, Int(ptr), NIL)
+            ptr:=ptr+2    
+        ENDWHILE
+    ELSE
+        outlist(&#x27;\ebInformation Page:\en&#x27;, &#x27;Unsupported or Reserved for this device class&#x27;)
+        outlist(&#x27;\ebPage Code:\en&#x27;, &#x27;$14&#x27;)
+    ENDIF
+
+ENDPROC
+
+
+/*
+** Handler for a specific mode page
+*/
+PROC process_modesense_18(page)
+    outlist(&#x27;\ebInformation Page:\en&#x27;, &#x27;Protocol Specific LUN&#x27;)
+    outlist(&#x27;\ebPage Code:\en&#x27;, &#x27;$18&#x27;)
+    IF ((Char(page) AND %10000000) = 0) THEN outlist(&#x27;\ebSave to NVRAM supported:\en&#x27;, &#x27;No&#x27;) ELSE outlist(&#x27;\ebSave to NVRAM supported:\en&#x27;, &#x27;Yes&#x27;)
+    outlist_i(&#x27;\ebPage Length:\en&#x27;, Char(page+1), &#x27; bytes&#x27;)
+    IF (Char(page+2) AND %00001111) = 0
+        outlist(&#x27;\ebProtocol Identifier:\en&#x27;, &#x27;Fibre Channel&#x27;)
+    ELSEIF (Char(page+2) AND %00001111) = 1
+        outlist(&#x27;\ebProtocol Identifier:\en&#x27;, &#x27;Parallel SCSI&#x27;)
+    ELSEIF (Char(page+2) AND %00001111) = 2
+        outlist(&#x27;\ebProtocol Identifier:\en&#x27;, &#x27;SSA (S2P or S3P)&#x27;)
+    ELSEIF (Char(page+2) AND %00001111) = 1
+        outlist(&#x27;\ebProtocol Identifier:\en&#x27;, &#x27;IEEE 1394 (SBP-2/Firewire)&#x27;)
+    ELSE
+        outlist(&#x27;\ebProtocol Identifier:\en&#x27;, &#x27;Reserved&#x27;)
+    ENDIF
+ENDPROC
+
+
+/*
+** Handler for a specific mode page
+*/
+PROC process_modesense_19(page)
+    outlist(&#x27;\ebInformation Page:\en&#x27;, &#x27;Protocol Specifics&#x27;)
+    outlist(&#x27;\ebPage Code:\en&#x27;, &#x27;$19&#x27;)
+    IF ((Char(page) AND %10000000) = 0) THEN outlist(&#x27;\ebSave to NVRAM supported:\en&#x27;, &#x27;No&#x27;) ELSE outlist(&#x27;\ebSave to NVRAM supported:\en&#x27;, &#x27;Yes&#x27;)
+    outlist_i(&#x27;\ebPage Length:\en&#x27;, Char(page+1), &#x27; bytes&#x27;)
+    IF (Char(page+2) AND %00001111) = 0
+        outlist(&#x27;\ebProtocol Identifier:\en&#x27;, &#x27;Fibre Channel&#x27;)
+    ELSEIF (Char(page+2) AND %00001111) = 1
+        outlist(&#x27;\ebProtocol Identifier:\en&#x27;, &#x27;Parallel SCSI&#x27;)
+    ELSEIF (Char(page+2) AND %00001111) = 2
+        outlist(&#x27;\ebProtocol Identifier:\en&#x27;, &#x27;SSA (S2P or S3P)&#x27;)
+    ELSEIF (Char(page+2) AND %00001111) = 1
+        outlist(&#x27;\ebProtocol Identifier:\en&#x27;, &#x27;IEEE 1394 (SBP-2/Firewire)&#x27;)
+    ELSE
+        outlist(&#x27;\ebProtocol Identifier:\en&#x27;, &#x27;Reserved&#x27;)
+    ENDIF
+ENDPROC
+
+
+/*
+** Handler for a specific mode page
+*/
+PROC process_modesense_1A(page)
+
+    outlist(&#x27;\ebInformation Page:\en&#x27;, &#x27;Power Condition&#x27;)
+    outlist(&#x27;\ebPage Code:\en&#x27;, &#x27;$1A&#x27;)
+    IF ((Char(page) AND %10000000) = 0) THEN outlist(&#x27;\ebSave to NVRAM supported:\en&#x27;, &#x27;No&#x27;) ELSE outlist(&#x27;\ebSave to NVRAM supported:\en&#x27;, &#x27;Yes&#x27;)
+    outlist_i(&#x27;\ebPage Length:\en&#x27;, Char(page+1), &#x27; bytes&#x27;)
+    IF (Char(page+3) AND %00000001) = 1 THEN outlist(&#x27;\ebStandby Support Enabled:\en&#x27;, &#x27;Yes&#x27;) ELSE outlist(&#x27;\ebStandby Support Enabled:\en&#x27;, &#x27;No&#x27;)
+    outlist_i(&#x27;\ebIdle Time to enter Standby:\en&#x27;, Long(page+8), &#x27; *100 Ms&#x27;)
+
+ENDPROC
+
+
+/*
+** Handler for a specific mode page
+*/
+PROC process_modesense_1C(page) -&gt; DONE
+
+    outlist(&#x27;\ebInformation Page:\en&#x27;, &#x27;SCSI SMART Control&#x27;)
+    outlist(&#x27;\ebPage Code:\en&#x27;, &#x27;$1C&#x27;)
+    IF ((Char(page) AND %10000000) = 0) THEN outlist(&#x27;\ebSave to NVRAM supported:\en&#x27;, &#x27;No&#x27;) ELSE outlist(&#x27;\ebSave to NVRAM supported:\en&#x27;, &#x27;Yes&#x27;)
+    outlist_i(&#x27;\ebPage Length:\en&#x27;, Char(page+1), &#x27; bytes&#x27;)
+    IF (Char(page+2) AND %00000001) = 0 THEN outlist(&#x27;\ebLocation of Exception Logs:\en&#x27;, &#x27;Vendor specific location&#x27;) ELSE outlist(&#x27;\ebLocation of Exception Logs:\en&#x27;, &#x27;Firmware logs&#x27;)
+    IF (Char(page+2) AND %00001000) = 0 THEN outlist(&#x27;\ebException Control:\en&#x27;, &#x27;Information exceptions enabled&#x27;) ELSE outlist(&#x27;\ebException Control:\en&#x27;, &#x27;Information exceptions disabled&#x27;)
+    IF (Char(page+2) AND %10000000) = 0 THEN outlist(&#x27;\ebPerformance:\en&#x27;, &#x27;Delays due to IE acceptable&#x27;) ELSE outlist(&#x27;\ebPerformance:\en&#x27;, &#x27;Delays due to IE not allowed&#x27;)
+    IF (Char(page+2) AND %00000100) = 0 THEN outlist(&#x27;\ebTest:\en&#x27;, &#x27;False drive notifications disallowed&#x27;) ELSE outlist(&#x27;\ebTest:\en&#x27;, &#x27;False drive notifications allowed&#x27;)
+    
+    IF (Char(page+3) AND %00001111) = $0
+        outlist(&#x27;\ebReporting Type:\en&#x27;, &#x27;Information conditions not reported&#x27;)
+    ELSEIF (Char(page+3) AND %00001111) = $1
+        outlist(&#x27;\ebReporting Type:\en&#x27;, &#x27;Information conditions reported via AEN&#x27;)
+    ELSEIF (Char(page+3) AND %00001111) = $2
+        outlist(&#x27;\ebReporting Type:\en&#x27;, &#x27;Information conditions reported via Unit Attention&#x27;)
+    ELSEIF (Char(page+3) AND %00001111) = $3
+        outlist(&#x27;\ebReporting Type:\en&#x27;, &#x27;Conditionally generate recovered error&#x27;)
+    ELSEIF (Char(page+3) AND %00001111) = $4
+        outlist(&#x27;\ebReporting Type:\en&#x27;, &#x27;Unconditionally generate recovered error&#x27;)
+    ELSEIF (Char(page+3) AND %00001111) = $5
+        outlist(&#x27;\ebReporting Type:\en&#x27;, &#x27;Use &quot;No Sense&quot; and additional sense code&#x27;)
+    ELSEIF (Char(page+3) AND %00001111) = $6
+        outlist(&#x27;\ebReporting Type:\en&#x27;, &#x27;Preserve information conditions. Report on request.&#x27;)
+    ELSE
+        outlist(&#x27;\ebReporting Type:\en&#x27;, &#x27;Reserved or vendor specific&#x27;)
+    ENDIF
+    
+    outlist_i(&#x27;\ebInterval Timer:\en&#x27;, Long(page+4), NIL)
+    outlist_i(&#x27;\ebReport Count:\en&#x27;, Long(page+8), NIL)
+
+ENDPROC
+
+/*
+** Handler for a specific mode page
+*/
+PROC process_modesense_1D(page) -&gt;DONE
+
+    IF global_devtype=DEV_CHANGER    
+        outlist(&#x27;\ebInformation Page:\en&#x27;, &#x27;Element Address Assignment&#x27;)
+        outlist(&#x27;\ebPage Code:\en&#x27;, &#x27;$1D&#x27;)
+        IF ((Char(page) AND %10000000) = 0) THEN outlist(&#x27;\ebSave to NVRAM supported:\en&#x27;, &#x27;No&#x27;) ELSE outlist(&#x27;\ebSave to NVRAM supported:\en&#x27;, &#x27;Yes&#x27;)
+        outlist_i(&#x27;\ebPage Length:\en&#x27;, Char(page+1), &#x27; bytes&#x27;)
+        outlist_i(&#x27;\ebMedium Transport Element Address:\en&#x27;, Int(page+2), NIL)
+        outlist_i(&#x27;\ebNumber of Medium Transport Elements:\en&#x27;, Int(page+4), NIL)
+        outlist_i(&#x27;\ebFirst Storage Element Address:\en&#x27;, Int(page+6), NIL)
+        outlist_i(&#x27;\ebNumber of Storage Elements:\en&#x27;, Int(page+8), NIL)
+        outlist_i(&#x27;\ebFirst Import/Export Element Address:\en&#x27;, Int(page+10), NIL)
+        outlist_i(&#x27;\ebNumber of Import/Export Elements:\en&#x27;, Int(page+12), NIL)
+        outlist_i(&#x27;\ebFirst Data Transfer Element Address:\en&#x27;, Int(page+14), NIL)
+        outlist_i(&#x27;\ebNumber of Data Transfer Elements:\en&#x27;, Int(page+16), NIL)
+    ELSE
+        outlist(&#x27;\ebInformation Page:\en&#x27;, &#x27;Unsupported or Reserved for this device class&#x27;)
+        outlist(&#x27;\ebPage Code:\en&#x27;, &#x27;$1D&#x27;)
+    ENDIF
+
+ENDPROC
+
+
+/*
+** Handler for a specific mode page
+*/
+PROC process_modesense_1E(page) -&gt; DONE
+DEF ptr:PTR TO CHAR
+
+    IF global_devtype=DEV_CHANGER   
+        ptr:=(page+2) 
+        outlist(&#x27;\ebInformation Page:\en&#x27;, &#x27;Transport Geometry&#x27;)
+        outlist(&#x27;\ebPage Code:\en&#x27;, &#x27;$1E&#x27;)
+        IF ((Char(page) AND %10000000) = 0) THEN outlist(&#x27;\ebSave to NVRAM supported:\en&#x27;, &#x27;No&#x27;) ELSE outlist(&#x27;\ebSave to NVRAM supported:\en&#x27;, &#x27;Yes&#x27;)
+        outlist_i(&#x27;\ebPage Length:\en&#x27;, Char(page+1), &#x27; bytes&#x27;)
+        
+        WHILE (ptr &lt; (page + Char(page+1) ) )
+            IF (Char(ptr) AND %00000001) = 0 THEN outlist(&#x27;\ebMedia Rotation:\en&#x27;, &#x27;Doesn\at support media rotation&#x27;) ELSE outlist(&#x27;\ebMedia Rotation:\en&#x27;, &#x27;Support double sided media rotation&#x27;)
+            outlist_i(&#x27;\ebMember Number in Transport Element:\en&#x27;, Char(ptr+1), NIL)
+            ptr:=ptr+2    
+        ENDWHILE
+        
+    ELSE
+        outlist(&#x27;\ebInformation Page:\en&#x27;, &#x27;Unsupported or Reserved for this device class&#x27;)
+        outlist(&#x27;\ebPage Code:\en&#x27;, &#x27;$1E&#x27;)
+    ENDIF
+
+ENDPROC
+
+
+
+/*
+** Handler for a specific mode page
+*/
+PROC process_modesense_1F(page) -&gt; DONE
+
+    IF global_devtype=DEV_CHANGER    
+        outlist(&#x27;\ebInformation Page:\en&#x27;, &#x27;Medium Changer Device Capabilities&#x27;)
+        outlist(&#x27;\ebPage Code:\en&#x27;, &#x27;$1F&#x27;)
+        IF ((Char(page) AND %10000000) = 0) THEN outlist(&#x27;\ebSave to NVRAM supported:\en&#x27;, &#x27;No&#x27;) ELSE outlist(&#x27;\ebSave to NVRAM supported:\en&#x27;, &#x27;Yes&#x27;)
+        outlist_i(&#x27;\ebPage Length:\en&#x27;, Char(page+1), &#x27; bytes&#x27;)
+        outlist_i(&#x27;\ebStorDT Bit:\en&#x27;, (Char(page+2) AND %00001000), &#x27; (0=off, &gt;0 = On)&#x27;)
+        outlist_i(&#x27;\ebStorIE Bit:\en&#x27;, (Char(page+2) AND %00000100), &#x27; (0=off, &gt;0 = On)&#x27;)
+        outlist_i(&#x27;\ebStorST Bit:\en&#x27;, (Char(page+2) AND %00000010), &#x27; (0=off, &gt;0 = On)&#x27;)
+        outlist_i(&#x27;\ebStorMT Bit:\en&#x27;, (Char(page+2) AND %00000001), &#x27; (0=off, &gt;0 = On)&#x27;)
+        outlist_i(&#x27;\ebMT-&gt;DT Bit:\en&#x27;, (Char(page+4) AND %00001000), &#x27; (0=off, &gt;0 = On)&#x27;)
+        outlist_i(&#x27;\ebMT-&gt;IE Bit:\en&#x27;, (Char(page+4) AND %00000100), &#x27; (0=off, &gt;0 = On)&#x27;)
+        outlist_i(&#x27;\ebMT-&gt;ST Bit:\en&#x27;, (Char(page+4) AND %00000010), &#x27; (0=off, &gt;0 = On)&#x27;)
+        outlist_i(&#x27;\ebMT-&gt;MT Bit:\en&#x27;, (Char(page+4) AND %00000001), &#x27; (0=off, &gt;0 = On)&#x27;)        
+        outlist_i(&#x27;\ebST-&gt;DT Bit:\en&#x27;, (Char(page+5) AND %00001000), &#x27; (0=off, &gt;0 = On)&#x27;)
+        outlist_i(&#x27;\ebST-&gt;IE Bit:\en&#x27;, (Char(page+5) AND %00000100), &#x27; (0=off, &gt;0 = On)&#x27;)
+        outlist_i(&#x27;\ebST-&gt;ST Bit:\en&#x27;, (Char(page+5) AND %00000010), &#x27; (0=off, &gt;0 = On)&#x27;)
+        outlist_i(&#x27;\ebST-&gt;MT Bit:\en&#x27;, (Char(page+5) AND %00000001), &#x27; (0=off, &gt;0 = On)&#x27;)        
+        outlist_i(&#x27;\ebIE-&gt;DT Bit:\en&#x27;, (Char(page+6) AND %00001000), &#x27; (0=off, &gt;0 = On)&#x27;)
+        outlist_i(&#x27;\ebIE-&gt;IE Bit:\en&#x27;, (Char(page+6) AND %00000100), &#x27; (0=off, &gt;0 = On)&#x27;)
+        outlist_i(&#x27;\ebIE-&gt;ST Bit:\en&#x27;, (Char(page+6) AND %00000010), &#x27; (0=off, &gt;0 = On)&#x27;)
+        outlist_i(&#x27;\ebIE-&gt;MT Bit:\en&#x27;, (Char(page+6) AND %00000001), &#x27; (0=off, &gt;0 = On)&#x27;)        
+        outlist_i(&#x27;\ebDT-&gt;DT Bit:\en&#x27;, (Char(page+7) AND %00001000), &#x27; (0=off, &gt;0 = On)&#x27;)
+        outlist_i(&#x27;\ebDT-&gt;IE Bit:\en&#x27;, (Char(page+7) AND %00000100), &#x27; (0=off, &gt;0 = On)&#x27;)
+        outlist_i(&#x27;\ebDT-&gt;ST Bit:\en&#x27;, (Char(page+7) AND %00000010), &#x27; (0=off, &gt;0 = On)&#x27;)
+        outlist_i(&#x27;\ebDT-&gt;MT Bit:\en&#x27;, (Char(page+7) AND %00000001), &#x27; (0=off, &gt;0 = On)&#x27;)        
+        outlist_i(&#x27;\ebMT&lt;&gt;DT Bit:\en&#x27;, (Char(page+12) AND %00001000), &#x27; (0=off, &gt;0 = On)&#x27;)
+        outlist_i(&#x27;\ebMT&lt;&gt;IE Bit:\en&#x27;, (Char(page+12) AND %00000100), &#x27; (0=off, &gt;0 = On)&#x27;)
+        outlist_i(&#x27;\ebMT&lt;&gt;ST Bit:\en&#x27;, (Char(page+12) AND %00000010), &#x27; (0=off, &gt;0 = On)&#x27;)
+        outlist_i(&#x27;\ebMT&lt;&gt;MT Bit:\en&#x27;, (Char(page+12) AND %00000001), &#x27; (0=off, &gt;0 = On)&#x27;)        
+        outlist_i(&#x27;\ebST&lt;&gt;DT Bit:\en&#x27;, (Char(page+13) AND %00001000), &#x27; (0=off, &gt;0 = On)&#x27;)
+        outlist_i(&#x27;\ebST&lt;&gt;IE Bit:\en&#x27;, (Char(page+13) AND %00000100), &#x27; (0=off, &gt;0 = On)&#x27;)
+        outlist_i(&#x27;\ebST&lt;&gt;ST Bit:\en&#x27;, (Char(page+13) AND %00000010), &#x27; (0=off, &gt;0 = On)&#x27;)
+        outlist_i(&#x27;\ebST&lt;&gt;MT Bit:\en&#x27;, (Char(page+13) AND %00000001), &#x27; (0=off, &gt;0 = On)&#x27;)           
+        outlist_i(&#x27;\ebIE&lt;&gt;DT Bit:\en&#x27;, (Char(page+14) AND %00001000), &#x27; (0=off, &gt;0 = On)&#x27;)
+        outlist_i(&#x27;\ebIE&lt;&gt;IE Bit:\en&#x27;, (Char(page+14) AND %00000100), &#x27; (0=off, &gt;0 = On)&#x27;)
+        outlist_i(&#x27;\ebIE&lt;&gt;ST Bit:\en&#x27;, (Char(page+14) AND %00000010), &#x27; (0=off, &gt;0 = On)&#x27;)
+        outlist_i(&#x27;\ebIE&lt;&gt;MT Bit:\en&#x27;, (Char(page+14) AND %00000001), &#x27; (0=off, &gt;0 = On)&#x27;)        
+        outlist_i(&#x27;\ebDT&lt;&gt;DT Bit:\en&#x27;, (Char(page+15) AND %00001000), &#x27; (0=off, &gt;0 = On)&#x27;)
+        outlist_i(&#x27;\ebDT&lt;&gt;IE Bit:\en&#x27;, (Char(page+15) AND %00000100), &#x27; (0=off, &gt;0 = On)&#x27;)
+        outlist_i(&#x27;\ebDT&lt;&gt;ST Bit:\en&#x27;, (Char(page+15) AND %00000010), &#x27; (0=off, &gt;0 = On)&#x27;)
+        outlist_i(&#x27;\ebDT&lt;&gt;MT Bit:\en&#x27;, (Char(page+15) AND %00000001), &#x27; (0=off, &gt;0 = On)&#x27;)         
+    ELSE
+        outlist(&#x27;\ebInformation Page:\en&#x27;, &#x27;Unsupported or Reserved for this device class&#x27;)
+        outlist(&#x27;\ebPage Code:\en&#x27;, &#x27;$1F&#x27;)
+    ENDIF
+
+ENDPROC
+
+
+
+PROC process_modesense_20(page)
+   
+   IF global_devtype=DEV_OPTICAL
+        outlist(&#x27;\ebInformation Page:\en&#x27;, &#x27;Format Parameters (IBM)&#x27;)
+        outlist(&#x27;\ebWarning:\en&#x27;, &#x27;Page format may be device specific. Info may be incorrect&#x27;)
+        outlist(&#x27;\ebReference:\en&#x27;, &#x27;IBM 0632&#x27;)
+        outlist(&#x27;\ebPage Code:\en&#x27;, &#x27;$20&#x27;)
+        IF ((Char(page) AND %10000000) = 0) THEN outlist(&#x27;\ebSave to NVRAM supported:\en&#x27;, &#x27;No&#x27;) ELSE outlist(&#x27;\ebSave to NVRAM supported:\en&#x27;, &#x27;Yes&#x27;)
+        outlist_i(&#x27;\ebPage Length:\en&#x27;, Char(page+1), &#x27; bytes&#x27;)
+        outlist_i(&#x27;\ebNumber of Groups:\en&#x27;, Int(page+2), NIL)
+        outlist_i(&#x27;\ebData Blocks/Group (MSB):\en&#x27;, Shr((Long(page+4) AND $FFFFFF00), 8), NIL)
+        outlist_i(&#x27;\ebNumber of Spare Blocks/Group:\en&#x27;, Shr((Long(page+7) AND $FFFFFF00), 8), NIL)
+    ELSE
+        outlist(&#x27;\ebInformation Page:\en&#x27;, &#x27;Unsupported or Reserved for this device class&#x27;)
+        outlist(&#x27;\ebPage Code:\en&#x27;, &#x27;$20&#x27;)
+    ENDIF
+
+ENDPROC
+
+/*
+** Handler for a specific mode page
+*/
+PROC process_modesense_21(page)
+
+    IF global_devtype=DEV_DIRECT
+        outlist(&#x27;\ebInformation Page:\en&#x27;, &#x27;Extended Error Recovery&#x27;)
+        outlist(&#x27;\ebWarning:\en&#x27;, &#x27;Page format may be device specific. Info may be incorrect&#x27;)
+        outlist(&#x27;\ebReference:\en&#x27;, &#x27;FUJITSU MAB 3091SC, MAE 3182LC, MAG 3091L&#x27;)
+        outlist(&#x27;\ebPage Code:\en&#x27;, &#x27;$21&#x27;)
+        IF ((Char(page) AND %10000000) = 0) THEN outlist(&#x27;\ebSave to NVRAM supported:\en&#x27;, &#x27;No&#x27;) ELSE outlist(&#x27;\ebSave to NVRAM supported:\en&#x27;, &#x27;Yes&#x27;)
+        outlist_i(&#x27;\ebPage Length:\en&#x27;, Char(page+1), &#x27; bytes&#x27;)
+        outlist_i(&#x27;\ebRetry Count on Seek Error:\en&#x27;, Char(page+2), NIL)
+    ELSEIF global_devtype=DEV_OPTICAL
+        outlist(&#x27;\ebInformation Page:\en&#x27;, &#x27;Control Parameters (IBM)&#x27;)
+        outlist(&#x27;\ebWarning:\en&#x27;, &#x27;Page format may be device specific. Info may be incorrect&#x27;)
+        outlist(&#x27;\ebReference:\en&#x27;, &#x27;IBM 0632&#x27;)
+        outlist(&#x27;\ebPage Code:\en&#x27;, &#x27;$20&#x27;)
+        IF ((Char(page) AND %10000000) = 0) THEN outlist(&#x27;\ebSave to NVRAM supported:\en&#x27;, &#x27;No&#x27;) ELSE outlist(&#x27;\ebSave to NVRAM supported:\en&#x27;, &#x27;Yes&#x27;)
+        outlist_i(&#x27;\ebPage Length:\en&#x27;, Char(page+1), &#x27; bytes&#x27;)
+        outlist_i(&#x27;\ebLaser On Interval:\en&#x27;, Char(page+2), &#x27; minutes&#x27;)        
+        IF (Char(page+3) AND %10000000) = 128 THEN outlist(&#x27;Write Reordering:&#x27;, &#x27;Disabled&#x27;) ELSE outlist(&#x27;Write Reordering:&#x27;, &#x27;Enabled if Write Cache Enabled&#x27;)
+        IF (Char(page+3) AND %01000000) = 64 THEN outlist(&#x27;Application:&#x27;, &#x27;Switch A5 on&#x27;) ELSE outlist(&#x27;Application:&#x27;, &#x27;Switch A5 off&#x27;)
+        IF (Char(page+3) AND %01000000) = 16 THEN outlist(&#x27;Quick Disconnect:&#x27;, &#x27;Enabled&#x27;) ELSE outlist(&#x27;Quick Disconnect:&#x27;, &#x27;Disabled&#x27;)
+        IF (Char(page+3) AND %01000000) = 1 THEN outlist(&#x27;Direct Access Inquiry:&#x27;, &#x27;Device set as Direct Access&#x27;) ELSE outlist(&#x27;Device set as Optical:&#x27;, &#x27;Disabled&#x27;)    
+    ELSE
+        outlist(&#x27;\ebInformation Page:\en&#x27;, &#x27;Unsupported or Reserved for this device class&#x27;)
+        outlist(&#x27;\ebPage Code:\en&#x27;, &#x27;$21&#x27;)
+    ENDIF
+
+ENDPROC
+
+
+
+
+
+/*
+** Handler for a specific mode page
+*/
+PROC process_modesense_2A(page)
+
+    IF global_devtype=DEV_CDROM
+        outlist(&#x27;\ebInformation Page:\en&#x27;, &#x27;CDROM Capabilities and Mechanical Status&#x27;)
+        outlist(&#x27;\ebPage Code:\en&#x27;, &#x27;$2A&#x27;)
+        IF ((Char(page) AND %10000000) = 0) THEN outlist(&#x27;\ebSave to NVRAM supported:\en&#x27;, &#x27;No&#x27;) ELSE outlist(&#x27;\ebSave to NVRAM supported:\en&#x27;, &#x27;Yes&#x27;)
+        outlist_i(&#x27;\ebPage Length:\en&#x27;, Char(page+1), &#x27; bytes&#x27;)
+        outlist_i(&#x27;\ebMaximum Supported Speed:\en&#x27;, Int(page+8),&#x27; kbyte/sec&#x27;)
+        outlist_i(&#x27;\ebMinimum Supported Speed:\en&#x27;, Int(page+10), &#x27; kbyte/sec&#x27;)
+        outlist_i(&#x27;\ebBuffer Size:\en&#x27;, Int(page+12), &#x27; K&#x27;)
+        outlist_i(&#x27;\ebCurrent Selected Speed:\en&#x27;, Int(page+14), &#x27; kbyte/sec&#x27;)
+    ELSE
+        outlist(&#x27;\ebInformation Page:\en&#x27;, &#x27;Unsupported or Reserved for this device class&#x27;)
+        outlist(&#x27;\ebPage Code:\en&#x27;, &#x27;$2A&#x27;)
+    ENDIF
+
+ENDPROC
+
+
+/*
+** Handler for a specific mode page
+*/
+PROC process_modesense_2F(page)
+
+    IF global_devtype=DEV_DIRECT
+        outlist(&#x27;\ebInformation Page:\en&#x27;, &#x27;Spindown Timing&#x27;)
+        outlist(&#x27;\ebWarning:\en&#x27;, &#x27;Page format may be device specific. Info may be incorrect&#x27;)
+        outlist(&#x27;\ebReference:\en&#x27;, &#x27;Iomega ZIP Drive&#x27;)
+        outlist(&#x27;\ebPage Code:\en&#x27;, &#x27;$2F&#x27;)
+        IF ((Char(page) AND %10000000) = 0) THEN outlist(&#x27;\ebSave to NVRAM supported:\en&#x27;, &#x27;No&#x27;) ELSE outlist(&#x27;\ebSave to NVRAM supported:\en&#x27;, &#x27;Yes&#x27;)
+        outlist_i(&#x27;\ebPage Length:\en&#x27;, Char(page+1), &#x27; bytes&#x27;)
+        outlist_h(&#x27;\ebFlags:\en&#x27;, Char(page+2), NIL)
+        outlist_i(&#x27;\ebSpindown Delay:\en&#x27;, Char(page+3), &#x27; minutes&#x27;)
+        outlist_i(&#x27;\ebTimer 2:\en&#x27;, Char(page+4),  &#x27; minutes&#x27;)
+        outlist_i(&#x27;\ebTimer 3:\en&#x27;, Char(page+5),  &#x27; minutes&#x27;)
+    ELSE
+        outlist(&#x27;\ebInformation Page:\en&#x27;, &#x27;Unsupported or Reserved for this device class&#x27;)
+        outlist(&#x27;\ebPage Code:\en&#x27;, &#x27;$2F&#x27;)
+    ENDIF
+
+ENDPROC
+
+
+/*
+** Handler for a specific mode page
+*/
+PROC process_modesense_39(page) -&gt; DONE
+
+    IF global_devtype=DEV_DIRECT
+        outlist(&#x27;\ebInformation Page:\en&#x27;, &#x27;Quantum Unique Drive Control (Quantum)&#x27;)
+        outlist(&#x27;\ebWarning:\en&#x27;, &#x27;Page format may be device specific. Info may be incorrect&#x27;)
+        outlist(&#x27;\ebReference:\en&#x27;, &#x27;Quantum Fireball ST 2.1/3.2/4.3/6.4 GB S&#x27;)
+        outlist(&#x27;\ebPage Code:\en&#x27;, &#x27;$39&#x27;)
+        IF ((Char(page) AND %10000000) = 0) THEN outlist(&#x27;\ebSave to NVRAM supported:\en&#x27;, &#x27;No&#x27;) ELSE outlist(&#x27;\ebSave to NVRAM supported:\en&#x27;, &#x27;Yes&#x27;)
+        outlist_i(&#x27;\ebPage Length:\en&#x27;, Char(page+1), &#x27; bytes&#x27;)
+        IF (Char(page+2) AND %10000000) = 0 THEN outlist(&#x27;\ebIdentify Out:\en&#x27;, &#x27;Identify required to disconnect&#x27;) ELSE outlist(&#x27;\ebDisable Identify Out:\en&#x27;, &#x27;Identify not required to disconnect/reconnect&#x27;)
+        IF (Char(page+2) AND %01000000) = 0 THEN outlist(&#x27;\ebIdentify In:\en&#x27;, &#x27;Identify sent after reconnection&#x27;) ELSE outlist(&#x27;\ebDisable Identify In:\en&#x27;, &#x27;Identify not sent after reconnection&#x27;)
+        IF (Char(page+2) AND %00100000) = 0 THEN outlist(&#x27;\ebPreserve Synchronous Mode:\en&#x27;, &#x27;Reset will clear synchronous parameters&#x27;) ELSE outlist(&#x27;\ebPreserve Synchronous Mode:\en&#x27;, &#x27;Reset won\at clear synchronous parameters&#x27;)
+        IF (Char(page+2) AND %00010000) = 0 THEN outlist(&#x27;\ebReallocate Hard Errors:\en&#x27;, &#x27;No&#x27;) ELSE outlist(&#x27;\ebReallocate Hard Errors:\en&#x27;, &#x27;Yes&#x27;)
+        IF (Char(page+2) AND %00001000) = 0 THEN outlist(&#x27;\ebFill Data Pattern:\en&#x27;, &#x27;Disabled&#x27;) ELSE outlist(&#x27;\ebFill Data Pattern:\en&#x27;, &#x27;Enabled&#x27;)
+        IF (Char(page+2) AND %00000100) = 0 THEN outlist(&#x27;\ebSend Synchronous Message:\en&#x27;, &#x27;No&#x27;) ELSE outlist(&#x27;\ebSend Synchronous Message:\en&#x27;, &#x27;Yes&#x27;)
+        IF (Char(page+2) AND %00000010) = 0 THEN outlist(&#x27;\ebDisable Unit Attention:\en&#x27;, &#x27;No&#x27;) ELSE outlist(&#x27;\ebDisable Unit Attention:\en&#x27;, &#x27;Yes&#x27;)
+        IF (Char(page+2) AND %00000001) = 0 THEN outlist(&#x27;\ebDisable Reselection Timeout:\en&#x27;, &#x27;No&#x27;) ELSE outlist(&#x27;\ebDisable Reselection Timeout:\en&#x27;, &#x27;Yes&#x27;)
+        IF (Char(page+3) AND %10000000) = 0 THEN outlist(&#x27;\ebDisable Disconnection:\en&#x27;, &#x27;No&#x27;) ELSE outlist(&#x27;\ebDisable Disconnection:\en&#x27;, &#x27;Yes&#x27;)
+        IF (Char(page+3) AND %00001000) = 0 THEN outlist(&#x27;\ebSoftware Selectable SCSI ID:\en&#x27;, &#x27;ID assigned by jumpers&#x27;) ELSE outlist(&#x27;\ebSoftware Selectable SCSI ID:\en&#x27;, &#x27;ID assigned by software (jumpers ignored)&#x27;)
+        outlist_i(&#x27;\ebSoftware SCSI ID:\en&#x27;, (Char(page+3) AND %00000111), NIL)
+        IF (Char(page+4) AND %00010000) = 0 THEN outlist(&#x27;\ebPlug n Play SCSI:\en&#x27;, &#x27;Enabled&#x27;)  ELSE outlist(&#x27;\ebPlug n Play SCSI:\en&#x27;, &#x27;Disabled&#x27;)
+        IF (Char(page+4) AND %00001000) = 0 THEN outlist(&#x27;\ebUse Motor Delay Time:\en&#x27;, &#x27;No&#x27;) ELSE outlist(&#x27;\ebUse Motor Delay Time:\en&#x27;, &#x27;Yes&#x27;)
+        IF (Char(page+4) AND %00000010) = 0 THEN outlist(&#x27;\ebParity Control:\en&#x27;, &#x27;Disabled&#x27;) ELSE outlist(&#x27;\ebDisable Parity Control:\en&#x27;, &#x27;Enabled&#x27;)
+        IF (Char(page+4) AND %00000001) = 0 THEN outlist(&#x27;\ebPerform Wait/Spin:\en&#x27;, &#x27;No&#x27;) ELSE outlist(&#x27;\ebPerform Wait/Spin:\en&#x27;, &#x27;Yes&#x27;)
+        outlist_i(&#x27;\ebMotor Delay Time:\en&#x27;, Char(page+5), &#x27; *10 ms&#x27;)
+    ELSE
+        outlist(&#x27;\ebInformation Page:\en&#x27;, &#x27;Unsupported or Reserved for this device class&#x27;)
+        outlist(&#x27;\ebPage Code:\en&#x27;, &#x27;$39&#x27;)
+    ENDIF
+
+ENDPROC
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

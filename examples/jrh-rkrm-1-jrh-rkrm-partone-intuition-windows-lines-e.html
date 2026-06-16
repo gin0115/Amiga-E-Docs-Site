@@ -1,0 +1,321 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>lines.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-jrh-rkrm-1.html">JRH-RKRM-1</a> &rsaquo; lines.e</div><h1>File: <code>lines.e</code></h1><p class="meta">295 lines · project <a href="../examples/pkg-jrh-rkrm-1.html"><code>JRH-RKRM-1</code></a></p><p class="pathctx">JRH-RKRM-1/JRH-RKRM-PartOne/Intuition/Windows/lines.e</p><p class="prose">lines.e -- implements a superbitmap with scroll <a href="../modules/gadgets.html">gadgets</a> This program requires V37, as it uses calls to OpenWindowTags(), <a href="../modules/intuition.html#fn-lockpubscreen">LockPubScreen</a>().</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/layers.html">layers</a></li></ul></div><h2>Source</h2><pre class="code">-&gt; lines.e -- implements a superbitmap with scroll gadgets
+-&gt; This program requires V37, as it uses calls to OpenWindowTags(),
+-&gt; LockPubScreen().
+
+OPT PREPROCESS  -&gt; E-Note: enable use of macros
+
+MODULE &#x27;layers&#x27;,  -&gt; We are going to use the Layers library
+       &#x27;intuition/intuition&#x27;, -&gt; Intuition data structures and tags
+       &#x27;intuition/screens&#x27;,   -&gt; Screen data structures and tags
+       &#x27;graphics/rastport&#x27;,   -&gt; RastPort and other structures
+       &#x27;graphics/clip&#x27;,       -&gt; Layer and other structures
+       &#x27;graphics/gfx&#x27;,        -&gt; BitMap and other structures
+       &#x27;graphics/text&#x27;,       -&gt; TextFont and other structures
+       &#x27;exec/memory&#x27;          -&gt; Memory flags
+
+ENUM ERR_NONE, ERR_LIB, ERR_KICK, ERR_PUB, ERR_RAST, ERR_WIN
+
+RAISE ERR_LIB  IF OpenLibrary()=NIL,
+      ERR_PUB  IF LockPubScreen()=NIL,
+      ERR_RAST IF AllocRaster()=NIL,
+      ERR_WIN  IF OpenWindowTagList()=NIL
+
+CONST WIDTH_SUPER=800, HEIGHT_SUPER=600,
+      UP_DOWN_GADGET=0, LEFT_RIGHT_GADGET=1, NO_GADGET=2
+-&gt; E-Note: MAXPOT and MAXBODY should be used instead of MAXPROPVAL
+
+#define LAYERXOFFSET(x) (x.rport.layer.scroll_x)
+#define LAYERYOFFSET(x) (x.rport.layer.scroll_y)
+
+-&gt; E-Note: need objects like botGad to be zeroed, so use pointers here
+DEF win=NIL:PTR TO window, botGadInfo=NIL:PTR TO propinfo,
+    botGadImage=NIL:PTR TO image, botGad=NIL:PTR TO gadget,
+    sideGadInfo=NIL:PTR TO propinfo, sideGadImage=NIL:PTR TO image,
+    sideGad=NIL:PTR TO gadget
+
+PROC main() HANDLE
+  DEF myscreen=NIL
+  IF KickVersion(37)=FALSE THEN Raise(ERR_KICK)
+
+  -&gt; E-Note: E automatically opens the Intuition and Graphics libraries
+  -&gt; Open the Layers library for the program.
+  -&gt; E-Note: automatically error-checked (automatic exception)
+  layersbase:=OpenLibrary(&#x27;layers.library&#x27;, 33)
+
+  -&gt; LockPubScreen()/UnlockPubScreen is only available under V36 and later.  Use
+  -&gt; GetScreenData() under V34 systems to get a copy of the screen structure...
+  -&gt; E-Note: automatically error-checked (automatic exception)
+  myscreen:=LockPubScreen(NIL)
+
+  superWindow(myscreen)
+
+  -&gt; E-Note: exit and clean up via handler
+EXCEPT DO
+  IF myscreen THEN UnlockPubScreen(NIL, myscreen)
+  IF layersbase THEN CloseLibrary(layersbase)
+  -&gt; E-Note: we can print a minimal error message
+  SELECT exception
+  CASE ERR_KICK; WriteF(&#x27;Error: Needs Kickstart V37+\n&#x27;)
+  CASE ERR_LIB;  WriteF(&#x27;Error: Could not open layers.library\n&#x27;)
+  CASE ERR_PUB;  WriteF(&#x27;Error: Could not lock public screen\n&#x27;)
+  CASE ERR_RAST; WriteF(&#x27;Error: Ran out of memory in AllocRaster\n&#x27;)
+  CASE ERR_WIN;  WriteF(&#x27;Error: Failed to open window\n&#x27;)
+  CASE &quot;MEM&quot;;    WriteF(&#x27;Error: Ran out of memory\n&#x27;)
+  ENDSELECT
+ENDPROC
+
+-&gt; A string with this format will be found by the version command supplied by
+-&gt; Commodore.  This will allow users to give version numbers with error reports.
+-&gt; E-Note: labels can only be used after the first PROC line...
+vers: CHAR &#x27;$VER: lines 37.2&#x27;,0
+
+-&gt; Create, initialise and process the super bitmap window. Cleanup if any error.
+PROC superWindow(myscreen:PTR TO screen) HANDLE
+  DEF bigBitMap=NIL:PTR TO bitmap, planeNum, mydepth
+
+  -&gt; Set-up the border prop gadgets for the OpenWindow() call.
+  initBorderProps(myscreen)
+
+  -&gt; The code relies on the allocation of the BitMap structure with the
+  -&gt; MEMF_CLEAR flag.  This allows the assumption that all of the bitmap
+  -&gt; pointers are NIL, except those successfully allocated by the program.
+  -&gt; E-Note: NewM raises an exception if it fails
+  bigBitMap:=NewM(SIZEOF bitmap, MEMF_PUBLIC OR MEMF_CLEAR)
+
+  mydepth:=myscreen.bitmap.depth
+  InitBitMap(bigBitMap, mydepth, WIDTH_SUPER, HEIGHT_SUPER)
+
+  -&gt; E-Note: we handle errors with exceptions
+  FOR planeNum:=0 TO mydepth-1
+    bigBitMap.planes[planeNum]:=AllocRaster(WIDTH_SUPER, HEIGHT_SUPER)
+  ENDFOR
+
+  -&gt; Only open the window if the bitplanes were successfully allocated.  Fail
+  -&gt; via exception if they were not.
+
+  -&gt; OpenWindowTags() and OpenWindowTagList() are only available when the
+  -&gt; library version is at least V36.  Under earlier versions of Intuition, use
+  -&gt; OpenWindow() with a NewWindow structure.
+  win:=OpenWindowTagList(NIL,
+       [WA_WIDTH,  150,
+        WA_HEIGHT, (4*(myscreen.wbortop+myscreen.font.ysize+1)),
+        WA_MAXWIDTH,  WIDTH_SUPER,
+        WA_MAXHEIGHT, HEIGHT_SUPER,
+        WA_IDCMP, IDCMP_GADGETUP OR IDCMP_GADGETDOWN OR
+                  IDCMP_NEWSIZE  OR IDCMP_INTUITICKS OR IDCMP_CLOSEWINDOW,
+        WA_FLAGS, WFLG_SIZEGADGET OR WFLG_SIZEBRIGHT  OR WFLG_SIZEBBOTTOM OR
+                  WFLG_DRAGBAR    OR WFLG_DEPTHGADGET OR WFLG_CLOSEGADGET OR
+                  WFLG_SUPER_BITMAP OR WFLG_GIMMEZEROZERO OR WFLG_NOCAREREFRESH,
+        WA_GADGETS,     sideGad,
+        WA_TITLE,       {vers}+6,  -&gt; Take title from version string
+        WA_PUBSCREEN,   myscreen,
+        WA_SUPERBITMAP, bigBitMap,
+        NIL])
+
+  -&gt; Set-up the window display
+  SetRast(win.rport, 0)  -&gt; Clear the bitplanes
+  SetDrMd(win.rport, RP_JAM1)
+
+  doNewSize()  -&gt; Adjust props to represent portion visible
+  doDrawStuff()
+
+  -&gt; Process the window, return on IDCMP_CLOSEWINDOW
+  doMsgLoop()
+
+  -&gt; E-Note: exit and clean up via handler
+EXCEPT DO
+  IF win THEN CloseWindow(win)
+  IF bigBitMap
+    FOR planeNum:=0 TO mydepth-1
+      -&gt; Free only the bitplanes actually allocated...
+      IF bigBitMap.planes[planeNum]
+        FreeRaster(bigBitMap.planes[planeNum], WIDTH_SUPER, HEIGHT_SUPER)
+      ENDIF
+    ENDFOR
+    Dispose(bigBitMap)
+  ENDIF
+  ReThrow()  -&gt; E-Note: pass exception on if it was an error
+ENDPROC
+
+-&gt; Set-up the prop gadgets -- initialise them to values that fit into the
+-&gt; window border.  The height of the prop gadget on the side of the window
+-&gt; takes the height of the title bar into account in its set-up.  Note the
+-&gt; initialisation assumes a fixed size &quot;sizing&quot; gadget.
+-&gt;
+-&gt; Note also, that the size of the sizing gadget is dependent on the screen
+-&gt; resolution.  The numbers given here are only valid if the screen is NOT
+-&gt; lo-res.  These values must be re-worked slightly for lo-res screens.
+-&gt;
+-&gt; The PROPNEWLOOK flag is ignored by 1.3.
+PROC initBorderProps(myscreen:PTR TO screen)
+  DEF top  -&gt; E-Note: temp variable for top calc
+  -&gt; Initialises the two prop gadgets.
+  -&gt;
+  -&gt; Note where the PROPNEWLOOK flag goes.  Adding this flag requires no extra
+  -&gt; storage, but tells the system that our program is expecting the new-look
+  -&gt; prop gadgets under 2.0.
+  -&gt; E-Note: we initialise using typed lists and NEW, so that we do not need
+  -&gt;         to fill in every field (NEW will zero the trailing ones).
+  -&gt;         Without NEW only a partial structure would be allocated...
+  -&gt; E-Note: allocate zeroed images
+  NEW botGadImage, sideGadImage
+
+  botGadInfo:=NEW [AUTOKNOB OR FREEHORIZ OR PROPNEWLOOK,
+                   0, 0, -1, -1]:propinfo
+
+  botGad:=NEW [NIL, 3, -7, -23, 6,
+               GFLG_RELBOTTOM OR GFLG_RELWIDTH,
+               GACT_RELVERIFY OR GACT_IMMEDIATE OR GACT_BOTTOMBORDER,
+               GTYP_PROPGADGET OR GTYP_GZZGADGET,
+               botGadImage, NIL, NIL, NIL,
+               botGadInfo, LEFT_RIGHT_GADGET]:gadget
+
+  sideGadInfo:=NEW [AUTOKNOB OR FREEVERT OR PROPNEWLOOK,
+                    0, 0, -1, -1]:propinfo
+
+  -&gt; NOTE the TopEdge adjustment for the border and the font for V36.
+  top:=myscreen.wbortop+myscreen.font.ysize+2
+  sideGad:=NEW [botGad, -14, top, 12, -top-11,
+                GFLG_RELRIGHT OR GFLG_RELHEIGHT,
+                GACT_RELVERIFY OR GACT_IMMEDIATE OR GACT_RIGHTBORDER,
+                GTYP_PROPGADGET OR GTYP_GZZGADGET,
+                sideGadImage, NIL, NIL, NIL,
+                sideGadInfo, UP_DOWN_GADGET]:gadget
+ENDPROC
+
+-&gt; This function does all the work of drawing the lines
+PROC doDrawStuff()
+  DEF x1, y1, x2, y2, pen, ncolors, deltx, delty
+
+  ncolors:=Shl(1, win.wscreen.bitmap.depth)
+  -&gt; E-Note: Rnd could be seeded using VbeamPos...
+  deltx:=Rnd(6)+2
+  delty:=Rnd(6)+2
+
+  pen:=Rnd(ncolors-1)+1
+  SetAPen(win.rport, pen)
+  x1:=0; y1:=0; x2:=WIDTH_SUPER-1; y2:=HEIGHT_SUPER-1
+  WHILE x1 &lt; WIDTH_SUPER
+    Move(win.rport, x1, y1)
+    Draw(win.rport, x2, y2)
+    x1:=x1+deltx
+    x2:=x2-deltx
+  ENDWHILE
+
+  pen:=Rnd(ncolors-1)+1
+  SetAPen(win.rport, pen)
+  x1:=0; y1:=0; x2:=WIDTH_SUPER-1; y2:=HEIGHT_SUPER-1
+  WHILE y1 &lt; HEIGHT_SUPER
+    Move(win.rport, x1, y1)
+    Draw(win.rport, x2, y2)
+    y1:=y1+delty
+    y2:=y2-delty
+  ENDWHILE
+ENDPROC
+
+-&gt; This function provides a simple interface to ScrollLayer
+PROC slideBitMap(dx, dy)
+  ScrollLayer(0, win.rport.layer, dx, dy)
+ENDPROC
+
+-&gt; E-Note: define macros to compute fraction of Pot and Body
+-&gt; E-Note: use Mul() and Div() since definitely over 16-bits
+#define FRACTIONPOT(n,d)  (Div(Mul(n, MAXPOT), d))
+#define FRACTIONBODY(n,d) (Div(Mul(n, MAXBODY), d))
+
+-&gt; Update the prop gadgets and bitmap positioning when the size changes.
+PROC doNewSize()
+  DEF tmp
+  tmp:=LAYERXOFFSET(win) + win.gzzwidth
+  IF tmp&gt;=WIDTH_SUPER THEN slideBitMap(WIDTH_SUPER-tmp, 0)
+
+  NewModifyProp(botGad, win, NIL, AUTOKNOB OR FREEHORIZ,
+      FRACTIONPOT(LAYERXOFFSET(win), WIDTH_SUPER - win.gzzwidth),
+      NIL,
+      FRACTIONBODY(win.gzzwidth, WIDTH_SUPER),
+      MAXBODY,
+      1)
+
+  tmp:=LAYERYOFFSET(win) + win.gzzheight
+  IF tmp&gt;=HEIGHT_SUPER THEN slideBitMap(0, HEIGHT_SUPER-tmp)
+
+  NewModifyProp(sideGad, win, NIL, AUTOKNOB OR FREEVERT,
+      NIL,
+      FRACTIONPOT(LAYERYOFFSET(win), HEIGHT_SUPER - win.gzzheight),
+      MAXBODY,
+      FRACTIONBODY(win.gzzheight, HEIGHT_SUPER),
+      1)
+ENDPROC
+
+-&gt; E-Note: convert signed INT from a Pot to unsigned for calculations
+#define UNSIGNED(x) (x AND $FFFF)
+-&gt; E-Note: define macro to compute layer offset from Pot value
+-&gt; E-Note: use Mul() and Div() since definitely over 16-bits
+#define CALCOFFSET(size, pot) (Div(Mul(size, UNSIGNED(pot)), MAXPOT))
+
+-&gt; Process the currently selected gadget.  This is called from IDCMP_INTUITICKS
+-&gt; and when the gadget is released IDCMP_GADGETUP.
+PROC checkGadget(gadgetID)
+  DEF tmp, dx=0, dy=0
+
+  SELECT gadgetID
+  CASE UP_DOWN_GADGET
+    tmp:=CALCOFFSET(HEIGHT_SUPER-win.gzzheight, sideGadInfo.vertpot)
+    dy:=tmp - LAYERYOFFSET(win)
+  CASE LEFT_RIGHT_GADGET
+    tmp:=CALCOFFSET(WIDTH_SUPER-win.gzzwidth, botGadInfo.horizpot)
+    dx:=tmp - LAYERXOFFSET(win)
+  ENDSELECT
+
+  IF dx OR dy THEN slideBitMap(dx, dy)
+ENDPROC
+
+-&gt; Main message loop for the window.
+-&gt; E-Note: E version is simpler, since we use WaitIMessage
+PROC doMsgLoop()
+  DEF class, currentGadget=NO_GADGET, g:PTR TO gadget
+  -&gt; E-Note: g is used to cast the type of MsgIaddr()
+  REPEAT
+    class:=WaitIMessage(win)
+    SELECT class
+    CASE IDCMP_NEWSIZE
+      doNewSize()
+      doDrawStuff()
+    CASE IDCMP_GADGETDOWN
+      g:=MsgIaddr()
+      currentGadget:=g.gadgetid
+    CASE IDCMP_GADGETUP
+      checkGadget(currentGadget)
+      currentGadget:=NO_GADGET
+    CASE IDCMP_INTUITICKS
+      checkGadget(currentGadget)
+    ENDSELECT
+  UNTIL class=IDCMP_CLOSEWINDOW
+ENDPROC
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

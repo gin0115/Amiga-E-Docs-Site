@@ -1,0 +1,1096 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>bguidemo.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-energy.html">energy</a> &rsaquo; bguidemo.e</div><h1>File: <code>bguidemo.e</code></h1><p class="meta">1070 lines · project <a href="../examples/pkg-energy.html"><code>energy</code></a></p><p class="pathctx">energy/Energy/C2E/BGUI/bguidemo.e</p><p class="prose">* BGUIDEMO.E * * (C) Copyright 1995 Jaba Development. * (C) Copyright 1995 Jan van den Baard. * All Rights Reserved.</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/bgui.html">libraries/bgui</a></li></ul></div><h2>Source</h2><pre class="code">/*
+ *	BGUIDEMO.E
+ *
+ *	(C) Copyright 1995 Jaba Development.
+ *	(C) Copyright 1995 Jan van den Baard.
+ *	    All Rights Reserved.
+ */
+
+OPT OSVERSION=37
+OPT PREPROCESS
+
+MODULE 	&#x27;libraries/bgui&#x27;,
+       	&#x27;libraries/bgui_macros&#x27;,
+       	&#x27;libraries/gadtools&#x27;,
+       	&#x27;bgui&#x27;,
+	&#x27;workbench/workbench&#x27;,
+	&#x27;workbench/startup&#x27;,
+       	&#x27;tools/boopsi&#x27;,
+	&#x27;utility/hooks&#x27;,
+       	&#x27;utility/tagitem&#x27;,
+	&#x27;devices/inputevent&#x27;,
+	&#x27;exec/ports&#x27;,
+	&#x27;exec/memory&#x27;,
+	&#x27;intuition/screens&#x27;,
+	&#x27;intuition/intuition&#x27;,
+       	&#x27;intuition/classes&#x27;,
+       	&#x27;intuition/classusr&#x27;,
+       	&#x27;intuition/gadgetclass&#x27;
+
+/*
+**	Window objects.
+**/
+DEF	wa_main , wa_groups , wa_notif , wa_info , wa_image , wa_bfill, wa_pages,
+
+/*
+**	Gadget objects from the main window.
+**/
+	bt_groups, bt_notif, bt_quit, bt_info, bt_images, bt_bfill,
+	bt_pages, bt_icondone, bt_iconquit, lv_iconlist, pg_pager,
+
+/*
+**	One, shared, message port for all
+**	demo windows.
+**/
+	sharedport:PTR TO mp
+
+/*
+**	Menus &amp; gadget ID&#x27;s.
+**/
+#define ID_ABOUT		1
+#define ID_QUIT                 2
+
+/*
+**	Put up a simple requester.
+**/
+PROC req( win:PTR TO window, gadgets, body:PTR TO CHAR )
+
+DEF	req:bguirequest
+
+	req.gadgetformat:= gadgets
+	req.textformat	:= body
+	req.flags	:= BREQF_CENTERWINDOW OR BREQF_XEN_BUTTONS OR BREQF_AUTO_ASPECT
+
+ENDPROC BgUI_RequestA( win, {req}, ( {body} + 1 ))
+
+/*
+**	Main window button ID&#x27;s.
+**/
+#define ID_MAIN_GROUPS		3
+#define ID_MAIN_NOTIF		4
+#define ID_MAIN_INFO		5
+#define ID_MAIN_IMAGE		6
+#define ID_MAIN_BFILL		7
+#define ID_MAIN_PAGES		8
+#define ID_MAIN_ICON_CONT	9
+
+/*
+**	Open main window.
+**/
+PROC openmainwindow( appmask )
+
+DEF	window:PTR TO window,mainhelp:PTR TO CHAR
+
+	mainhelp := &#x27;\ecBGUI is a shared library which offers a set of\n&#x27;+
+		&#x27;BOOPSI classes to allow for easy and flexible GUI creation.\n\n&#x27;+
+		&#x27;The main window is also an AppWindow. Drop some icons\n&#x27;+
+		&#x27;on it and see what happens.\n\n&#x27;+
+		&#x27;All windows also detect the aspect ratio of the screen they are\n&#x27;+
+		&#x27;located on and adjust frame thickness accoording to this.\n\n&#x27;+
+		&#x27;All other windows in this demo also have online-help. To access\n&#x27;+
+		&#x27;this help press the \eb&quot;HELP&quot;\en key when the window is active.&#x27;
+
+	wa_main := WindowObject,
+		WINDOW_TITLE,		&#x27;BGUIDemo - (C) Jaba Development.&#x27;,
+		WINDOW_SCREENTITLE,	&#x27;BGUIDemo - (C) Copyright 1993-1995 Jaba Development.&#x27;,
+		/*WINDOW_MENUSTRIP,    [  NM_TITLE,0,&#x27;Project&#x27;, NIL, 0, 0, NIL,
+					NM_ITEM, 0,&#x27;About...&#x27;,&#x27;?&#x27;, 0, 0, ID_ABOUT,
+					NM_ITEM, 0,NM_BARLABEL, NIL, 0, 0, NIL,
+					NM_ITEM, 0,&#x27;Quit&#x27;,&#x27;Q&#x27;, 0, 0, ID_QUIT,
+					NM_END,  0,NIL, NIL, 0, 0, NIL]newmenu,*/
+		WINDOW_SMARTREFRESH,	TRUE,
+		WINDOW_APPWINDOW,	TRUE,
+		WINDOW_SIZEGADGET,	FALSE,
+		WINDOW_HELPTEXT,	mainhelp,
+		WINDOW_AUTOASPECT,	TRUE,
+		WINDOW_SHAREDPORT,	sharedport,
+		WINDOW_MASTERGROUP,
+			VGroupObject, HOffset( 4 ), VOffset( 4 ), Spacing( 4 ), GROUP_BACKFILL, SHINE_RASTER,
+				StartMember,
+					pg_pager := PageObject,
+						/*
+						**	Main page.
+						**/
+						PageMember,
+							VGroupObject, Spacing( 4 ), GROUP_BACKFILL, SHINE_RASTER,
+								StartMember,
+									InfoObject,
+										INFO_TEXTFORMAT,	&#x27;\ecBGUIDemo\n\ed8\eb(C) Copyright 1993-1995 Jaba Development\ed2\en\n\nPress the HELP key for more info.&#x27;,
+										INFO_FIXTEXTWIDTH,	TRUE,
+										INFO_MINLINES,		4,
+										INFO_HORIZOFFSET,	13,
+										FRM_TYPE,		FRTYPE_NEXT,
+									EndObject,
+								EndMember,
+								StartMember,
+									HGroupObject, Spacing( 4 ),
+										StartMember,
+											VGroupObject, Spacing( 4 ),
+												StartMember, bt_groups := XenKeyButton( &#x27;_Groups&#x27;,       ID_MAIN_GROUPS ), EndMember,
+												StartMember, bt_notif  := XenKeyButton( &#x27;_Notification&#x27;, ID_MAIN_NOTIF  ), EndMember,
+												VarSpace( DEFAULT_WEIGHT ),
+											EndObject,
+										EndMember,
+										StartMember,
+											VGroupObject, Spacing( 4 ),
+												StartMember, bt_images := XenKeyButton( &#x27;_Images&#x27;,       ID_MAIN_IMAGE  ), EndMember,
+												StartMember, bt_bfill  := XenKeyButton( &#x27;_BackFill&#x27;,     ID_MAIN_BFILL  ), EndMember,
+												StartMember, bt_quit   := XenKeyButton( &#x27;_Quit&#x27;,         ID_QUIT        ), EndMember,
+											EndObject,
+										EndMember,
+										StartMember,
+											VGroupObject, Spacing( 4 ),
+												StartMember, bt_pages  := XenKeyButton( &#x27;_Pages&#x27;,        ID_MAIN_PAGES  ), EndMember,
+												StartMember, bt_info   := XenKeyButton( &#x27;Info_Class&#x27;,    ID_MAIN_INFO   ), EndMember,
+												VarSpace( DEFAULT_WEIGHT ),
+											EndObject,
+										EndMember,
+									EndObject, FixMinHeight,
+								EndMember,
+							EndObject,
+						/*
+						**	Icon-drop list page.
+						**/
+						PageMember,
+							VGroupObject, Spacing( 4 ), GROUP_BACKFILL, SHINE_RASTER,
+								StartMember,
+									InfoObject,
+										INFO_TEXTFORMAT,	&#x27;\ecThe following icons where dropped\nin the window.&#x27;,
+										INFO_FIXTEXTWIDTH,	TRUE,
+										INFO_MINLINES,		2,
+										INFO_HORIZOFFSET,	13,
+										FRM_TYPE,		FRTYPE_BUTTON,
+										FRM_RECESSED,		TRUE,
+									EndObject, FixMinHeight,
+								EndMember,
+								StartMember,
+									lv_iconlist := ListviewObject,
+										LISTV_READONLY,         TRUE,
+									EndObject,
+								EndMember,
+								StartMember,
+									HGroupObject,
+										StartMember, bt_icondone := XenKeyButton( &#x27;_Continue&#x27;, ID_MAIN_ICON_CONT ), EndMember,
+										VarSpace( DEFAULT_WEIGHT ),
+										StartMember, bt_iconquit := XenKeyButton( &#x27;_Quit&#x27;,     ID_QUIT ), EndMember,
+									EndObject, FixMinHeight,
+								EndMember,
+							EndObject,
+					EndObject,
+				EndMember,
+			EndObject,
+	EndObject
+
+	/*
+	**	Object created OK?
+	**/
+	IF wa_main
+		/*
+		**	Add keys to the buttons.
+		**/
+		GadgetKey( wa_main, bt_groups,	 &#x27;g&#x27; )
+		GadgetKey( wa_main, bt_notif,	 &#x27;n&#x27; )
+		GadgetKey( wa_main, bt_info,	 &#x27;c&#x27; )
+		GadgetKey( wa_main, bt_images,	 &#x27;i&#x27; )
+		GadgetKey( wa_main, bt_bfill,	 &#x27;b&#x27; )
+		GadgetKey( wa_main, bt_pages,	 &#x27;p&#x27; )
+		GadgetKey( wa_main, bt_quit,	 &#x27;q&#x27; )
+		GadgetKey( wa_main, bt_icondone, &#x27;c&#x27; )
+		GadgetKey( wa_main, bt_iconquit, &#x27;q&#x27; )
+		/*
+		**	Open the window.
+		**/
+		IF window := WindowOpen( wa_main )
+			/*
+			**	Obtain appwindow signal mask.
+			**/
+			GetAttr( WINDOW_APPMASK, wa_main, appmask )
+		ENDIF
+	ENDIF
+
+ENDPROC window
+
+/*
+**	Macros for the group objects. GObj() creates
+**	a simple infoclass object with some text in
+**	it. TObj() creates a simple groupclass object
+**	with a button frame.
+**/
+#define GObj(t)	InfoObject,INFO_TEXTFORMAT,t,INFO_FIXTEXTWIDTH,	TRUE,INFO_HORIZOFFSET,4,INFO_VERTOFFSET,3,ButtonFrame,FRM_FLAGS,FRF_RECESSED,EndObject
+
+#define TObj  HGroupObject, HOffset( 3 ), VOffset( 2 ),ButtonFrame,FRM_FLAGS,FRF_RECESSED,EndObject
+
+/*
+**	Open up the groups window.
+**/
+PROC opengroupswindow()
+
+DEF	window:PTR TO window,groupshelp:PTR TO CHAR
+
+	groupshelp:= 	&#x27;\ecThe BGUI layout engine is encapsulated in the groupclass.\n&#x27;+
+			&#x27;The groupclass will layout all of it\as members into a specific area.\n&#x27;+
+			&#x27;You can pass layout specific attributes to all group members\n&#x27;+
+			&#x27;which allows for flexible and powerful layout capabilities.&#x27;
+
+	/*
+	**	If the object has not been created
+	**	already we build it.
+	**/
+	IF wa_groups=NIL
+		wa_groups := WindowObject,
+			WINDOW_TITLE,		&#x27;BGUI Groups&#x27;,
+			WINDOW_RMBTRAP,         TRUE,
+			WINDOW_SMARTREFRESH,	TRUE,
+			WINDOW_HELPTEXT,	groupshelp,
+			WINDOW_AUTOASPECT,	TRUE,
+			WINDOW_SHAREDPORT,	sharedport,
+			WINDOW_MASTERGROUP,
+				VGroupObject, HOffset( 4 ), VOffset( 4 ), Spacing( 4 ),
+					StartMember,
+						HGroupObject, Spacing( 4 ),
+							StartMember,
+								HGroupObject, NeXTFrame, FrameTitle( &#x27;Horizontal&#x27; ), HOffset( 8 ), TOffset( 4 ), BOffset( 6 ), Spacing( 4 ),
+									StartMember, TObj, EndMember,
+									StartMember, TObj, EndMember,
+									StartMember, TObj, EndMember,
+								EndObject,
+							EndMember,
+							StartMember,
+								VGroupObject, NeXTFrame, FrameTitle( &#x27;Vertical&#x27; ), HOffset( 8 ), TOffset( 4 ), BOffset( 6 ), Spacing( 4 ),
+									StartMember, TObj, EndMember,
+									StartMember, TObj, EndMember,
+									StartMember, TObj, EndMember,
+								EndObject,
+							EndMember,
+							StartMember,
+								VGroupObject, NeXTFrame, FrameTitle( &#x27;Grid&#x27; ), HOffset( 8 ), TOffset( 4 ), BOffset( 6 ), Spacing( 4 ),
+									StartMember,
+										HGroupObject, Spacing( 4 ),
+											StartMember, TObj, EndMember,
+											StartMember, TObj, EndMember,
+											StartMember, TObj, EndMember,
+										EndObject,
+									EndMember,
+									StartMember,
+										HGroupObject, Spacing( 4 ),
+											StartMember, TObj, EndMember,
+											StartMember, TObj, EndMember,
+											StartMember, TObj, EndMember,
+										EndObject,
+									EndMember,
+									StartMember,
+										HGroupObject, Spacing( 4 ),
+											StartMember, TObj, EndMember,
+											StartMember, TObj, EndMember,
+											StartMember, TObj, EndMember,
+										EndObject,
+									EndMember,
+								EndObject,
+							EndMember,
+						EndObject,
+					EndMember,
+					StartMember,
+						VGroupObject, Spacing( 4 ),
+							StartMember, TitleSeperator( &#x27;Free, Fixed and Weight sizes.&#x27; ), EndMember,
+							StartMember,
+								HGroupObject, Spacing( 4 ),
+									StartMember, GObj( &#x27;\ec25Kg&#x27;  ), Weight( 25  ), EndMember,
+									StartMember, GObj( &#x27;\ec50Kg&#x27;  ), Weight( 50  ), EndMember,
+									StartMember, GObj( &#x27;\ec75Kg&#x27;  ), Weight( 75  ), EndMember,
+									StartMember, GObj( &#x27;\ec100Kg&#x27; ), Weight( 100 ), EndMember,
+								EndObject,
+							EndMember,
+							StartMember,
+								HGroupObject, Spacing( 4 ),
+									StartMember, GObj( &#x27;\ecFree&#x27;  ), EndMember,
+									StartMember, GObj( &#x27;\ec\ebFixed&#x27; ), FixMinWidth, EndMember,
+									StartMember, GObj( &#x27;\ecFree&#x27;  ), EndMember,
+									StartMember, GObj( &#x27;\ec\ebFixed&#x27; ), FixMinWidth, EndMember,
+								EndObject,
+							EndMember,
+						EndObject, FixMinHeight,
+					EndMember,
+				EndObject,
+		EndObject
+	ENDIF
+
+	/*
+	**	Object OK?
+	**/
+	IF wa_groups
+		/*
+		**	Open the window.
+		**/
+		window := WindowOpen( wa_groups )
+	ENDIF
+
+ENDPROC window
+
+/*
+**	Open the notification window.
+**/
+PROC opennotifwindow()
+
+DEF	window:PTR TO window,notifhelp:PTR TO CHAR,
+	c, b, p1, p2, s1, s2, p, i1, i2
+
+	notifhelp:= &#x27;\ecNotification can be used to let an object keep one or\n&#x27;+
+		&#x27;more other objects informed about it\as status. BGUI offers several\n&#x27;+
+		&#x27;kinds of notification of which two (conditional and map-list) are\n&#x27;+
+		&#x27;shown in this demonstration.&#x27;
+
+	/*
+	**	Not created yet? Create it now!
+	**/
+	IF wa_notif=NIL
+		wa_notif := WindowObject,
+			WINDOW_TITLE,		&#x27;BGUI notification&#x27;,
+			WINDOW_RMBTRAP,         TRUE,
+			WINDOW_SMARTREFRESH,	TRUE,
+			WINDOW_HELPTEXT,	notifhelp,
+			WINDOW_AUTOASPECT,	TRUE,
+			WINDOW_SHAREDPORT,	sharedport,
+			WINDOW_MASTERGROUP,
+				VGroupObject, HOffset( 4 ), VOffset( 4 ), Spacing( 4 ),
+					StartMember, TitleSeperator( &#x27;Conditional&#x27; ), EndMember,
+					StartMember,
+						HGroupObject, Spacing( 4 ),
+							StartMember, c := XenCycle( NIL, [ &#x27;Enabled--&gt;&#x27;, &#x27;Disabled--&gt;&#x27;, &#x27;Still Disabled--&gt;&#x27;, NIL ], 0, 0 ), EndMember,
+							StartMember, b := XenButton( &#x27;Target&#x27;, 0 ), EndMember,
+						EndObject, FixMinHeight,
+					EndMember,
+					StartMember, TitleSeperator( &#x27;Map-List&#x27; ), EndMember,
+					StartMember,
+						HGroupObject, Spacing( 4 ),
+							StartMember,
+								VGroupObject, Spacing( 4 ),
+									StartMember, i1 := IndicatorFormat( 0, 100, 0, IDJ_CENTER, &#x27;\d%%&#x27; ), FixMinHeight, EndMember,
+									StartMember, p1 := HorizProgress( NIL, 0, 100, 0 ), EndMember,
+								EndObject,
+							EndMember,
+							StartMember, s1 := VertSlider(	NIL, 0, 100, 0, 0 ), FixWidth( 16 ), EndMember,
+							StartMember, p	:= VertScroller( NIL, 0, 101, 1, 0 ), FixWidth( 16 ), EndMember,
+							StartMember, s2 := VertSlider(	NIL, 0, 100, 0, 0 ), FixWidth( 16 ), EndMember,
+							StartMember,
+								VGroupObject, Spacing( 4 ),
+									StartMember, i2 := IndicatorFormat( 0, 100, 0, IDJ_CENTER, &#x27;\d%%&#x27; ), FixMinHeight, EndMember,
+									StartMember, p2 := VertProgress( NIL, 0, 100, 0 ), EndMember,
+								EndObject,
+							EndMember,
+						EndObject,
+					EndMember,
+				EndObject,
+		EndObject
+
+		IF wa_notif
+			/*
+			**	Connect the cycle object with the button.
+			**/
+			AddCondit( c, b, CYC_ACTIVE, 0, GA_DISABLED, FALSE, GA_DISABLED, TRUE )
+			/*
+			**	Connect sliders, prop, progression and indicators.
+			**/
+			AddMap( s1, p1, [ SLIDER_LEVEL,  PROGRESS_DONE, TAG_END ] )
+			AddMap( s2, p2, [ SLIDER_LEVEL,  PROGRESS_DONE, TAG_END ] )
+			AddMap( p,  s1, [ PGA_TOP,	 SLIDER_LEVEL,  TAG_END ] )
+			AddMap( p,  s2, [ PGA_TOP,	 SLIDER_LEVEL,  TAG_END ] )
+			AddMap( p1, i1, [ PROGRESS_DONE, INDIC_LEVEL,   TAG_END ] )
+			AddMap( p2, i2, [ PROGRESS_DONE, INDIC_LEVEL,   TAG_END ] )
+		ENDIF
+	ENDIF
+
+	/*
+	**	Object OK?
+	**/
+	IF wa_notif
+		/*
+		**	Open window.
+		**/
+		window := WindowOpen( wa_notif )
+	ENDIF
+
+ENDPROC window
+
+/*
+**	Open infoclass window.
+**/
+PROC openinfowindow()
+
+DEF	window:PTR TO window,infohelp:PTR TO CHAR,text:PTR TO CHAR,
+	args[2]:ARRAY
+
+	infohelp:= &#x27;\ecNot much more can be said about the BGUI infoclass than\n&#x27;+
+		&#x27;is said in this window. Except maybe that this text is shown in an\n&#x27;+
+		&#x27;infoclass object as are all body texts from a BGUI requester.&#x27;
+
+	text:=  &#x27;\ecBGUI offers the InfoClass.\n&#x27;+
+		&#x27;This class is a text display class which\n&#x27;+
+		&#x27;allows things like:\n\n\ed3&quot;C&quot;\ed4&quot;o&quot;\ed5&quot;l&quot;\ed6&quot;o&quot;\ed8&quot;r&quot;\ed2s\n\n&#x27;+
+		&#x27;\elLeft Aligned...\n\erRight Aligned...\n&#x27;+
+		&#x27;\ecCentered...\n\n\ebBold...\n\en&#x27;+
+		&#x27;\eiItalic...\n\en\euUnderlined...\n\n&#x27;+
+		&#x27;\eb\eiAnd combinations!\n\n&#x27;+
+		&#x27;\enFree CHIP:\ed3 \d \ed2 Free FAST: \ed3 \d\n&#x27;
+	/*
+	**	Setup arguments for the
+	**	infoclass object.
+	**/
+	args[0] := AvailMem( MEMF_CHIP )
+	args[1] := AvailMem( MEMF_FAST )
+
+	/*
+	**	Not created already?
+	**/
+	IF wa_info=NIL
+		wa_info := WindowObject,
+			WINDOW_TITLE,		&#x27;BGUI information class&#x27;,
+			WINDOW_RMBTRAP,         TRUE,
+			WINDOW_SMARTREFRESH,	TRUE,
+			WINDOW_HELPTEXT,	infohelp,
+			WINDOW_AUTOASPECT,	TRUE,
+			WINDOW_SHAREDPORT,	sharedport,
+			WINDOW_MASTERGROUP,
+				VGroupObject, HOffset( 4 ), VOffset( 4 ),
+					StartMember,
+						InfoFixed( NIL,text, args[ 0 ], 17 ),
+					EndMember,
+				EndObject,
+		EndObject
+	ENDIF
+
+	/*
+	**	Object OK?
+	**/
+	IF wa_info
+		/*
+		**	Open window.
+		**/
+		window := WindowOpen( wa_info )
+	ENDIF
+
+ENDPROC window
+
+/*
+**	Open images window.
+**/
+PROC openimagewindow()
+
+DEF	window:PTR TO window,imagehelp:PTR TO CHAR
+
+	imagehelp := 	&#x27;\ecThis window shows you the built-in images that BGUI has\n&#x27;+
+			&#x27;to offer. Ofcourse these images are all scalable and it is possible\n&#x27;+
+			&#x27;to create your own, scalable, imagery with the BGUI vectorclass.&#x27;
+
+	/*
+	**	Not yet created?
+	**/
+	IF wa_image=NIL
+		wa_image := WindowObject,
+			WINDOW_TITLE,		&#x27;BGUI images&#x27;,
+			WINDOW_RMBTRAP,         TRUE,
+			WINDOW_SMARTREFRESH,	TRUE,
+			WINDOW_HELPTEXT,	imagehelp,
+			WINDOW_AUTOASPECT,	TRUE,
+			WINDOW_SHAREDPORT,	sharedport,
+			WINDOW_MASTERGROUP,
+				VGroupObject, HOffset( 4 ), VOffset( 4 ),
+					StartMember,
+						HGroupObject, NeXTFrame, FrameTitle( &#x27;Fixed size&#x27; ), HOffset( 8 ), TOffset( 4 ), BOffset( 6 ), Spacing( 4 ),
+							VarSpace( DEFAULT_WEIGHT ),
+							StartMember, ButtonObject, VIT_BUILTIN, BUILTIN_GETPATH,     ButtonFrame, EndObject, FixWidth( GETPATH_WIDTH	 ), FixHeight( GETPATH_HEIGHT	  ), EndMember,
+							StartMember, ButtonObject, VIT_BUILTIN, BUILTIN_GETFILE,     ButtonFrame, EndObject, FixWidth( GETFILE_WIDTH	 ), FixHeight( GETFILE_HEIGHT	  ), EndMember,
+							StartMember, ButtonObject, VIT_BUILTIN, BUILTIN_CHECKMARK,   ButtonFrame, EndObject, FixWidth( CHECKMARK_WIDTH	 ), FixHeight( CHECKMARK_HEIGHT   ), EndMember,
+							StartMember, ButtonObject, VIT_BUILTIN, BUILTIN_POPUP,	     ButtonFrame, EndObject, FixWidth( POPUP_WIDTH	 ), FixHeight( POPUP_HEIGHT	  ), EndMember,
+							StartMember, ButtonObject, VIT_BUILTIN, BUILTIN_ARROW_UP,    ButtonFrame, EndObject, FixWidth( ARROW_UP_WIDTH	 ), FixHeight( ARROW_UP_HEIGHT	  ), EndMember,
+							StartMember, ButtonObject, VIT_BUILTIN, BUILTIN_ARROW_DOWN,  ButtonFrame, EndObject, FixWidth( ARROW_DOWN_WIDTH  ), FixHeight( ARROW_DOWN_HEIGHT  ), EndMember,
+							StartMember, ButtonObject, VIT_BUILTIN, BUILTIN_ARROW_LEFT,  ButtonFrame, EndObject, FixWidth( ARROW_LEFT_WIDTH  ), FixHeight( ARROW_LEFT_HEIGHT  ), EndMember,
+							StartMember, ButtonObject, VIT_BUILTIN, BUILTIN_ARROW_RIGHT, ButtonFrame, EndObject, FixWidth( ARROW_RIGHT_WIDTH ), FixHeight( ARROW_RIGHT_HEIGHT ), EndMember,
+							VarSpace( DEFAULT_WEIGHT ),
+						EndObject, FixMinHeight,
+					EndMember,
+					StartMember,
+						HGroupObject, NeXTFrame, FrameTitle( &#x27;Free size&#x27; ), HOffset( 8 ), TOffset( 4 ), BOffset( 6 ), Spacing( 4 ),
+							StartMember, ButtonObject, VIT_BUILTIN, BUILTIN_GETPATH,     ButtonFrame, EndObject, EndMember,
+							StartMember, ButtonObject, VIT_BUILTIN, BUILTIN_GETFILE,     ButtonFrame, EndObject, EndMember,
+							StartMember, ButtonObject, VIT_BUILTIN, BUILTIN_CHECKMARK,   ButtonFrame, EndObject, EndMember,
+							StartMember, ButtonObject, VIT_BUILTIN, BUILTIN_POPUP,	     ButtonFrame, EndObject, EndMember,
+							StartMember, ButtonObject, VIT_BUILTIN, BUILTIN_ARROW_UP,    ButtonFrame, EndObject, EndMember,
+							StartMember, ButtonObject, VIT_BUILTIN, BUILTIN_ARROW_DOWN,  ButtonFrame, EndObject, EndMember,
+							StartMember, ButtonObject, VIT_BUILTIN, BUILTIN_ARROW_LEFT,  ButtonFrame, EndObject, EndMember,
+							StartMember, ButtonObject, VIT_BUILTIN, BUILTIN_ARROW_RIGHT, ButtonFrame, EndObject, EndMember,
+						EndObject,
+					EndMember,
+				EndObject,
+		EndObject
+	ENDIF
+
+	/*
+	**	Object OK?
+	**/
+	IF wa_image
+		/*
+		**	Open the window.
+		**/
+		window := WindowOpen( wa_image )
+	ENDIF
+
+ENDPROC window
+/*
+/*
+**	The BackFill hook to show custom backfills.
+**	Renders a pattern from the WBPattern preferences
+**	editor as back-fill.
+**/
+SAVEDS ASM ULONG BackFillHook( REG(a0) struct Hook *hook, REG(a2) Object *imo, REG(a1) struct FrameDrawMsg *fdm )
+{
+	UWORD	pat[] = { 0x0000, 0x0000, 0x0002, 0x0002, 0x000A, 0x000A, 0x002A, 0x002A,
+			  0x00AA, 0x002A, 0x03EA, 0x000A, 0x0FFA, 0x0002, 0x3FFE, 0x0000,
+			  0x0000, 0x7FFC, 0x4000, 0x5FF0, 0x5000, 0x57C0, 0x5400, 0x5500,
+			  0x5400, 0x5400, 0x5000, 0x5000, 0x4000, 0x4000, 0x0000, 0x0000,
+			  0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000,
+			  0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000 };
+
+	SetAfPt( fdm-&gt;fdm_RPort, pat, -4 );
+	SetAPen( fdm-&gt;fdm_RPort, ( 1 &lt;&lt; fdm-&gt;fdm_DrawInfo-&gt;dri_Depth ) - 1 );
+	RectFill( fdm-&gt;fdm_RPort, fdm-&gt;fdm_Bounds-&gt;MinX, fdm-&gt;fdm_Bounds-&gt;MinY,
+				  fdm-&gt;fdm_Bounds-&gt;MaxX, fdm-&gt;fdm_Bounds-&gt;MaxY );
+	SetAfPt( fdm-&gt;fdm_RPort, NULL, 0 );
+
+	return( FRC_OK );
+}
+
+*/
+
+/*
+**	Open back-fill window.
+**/
+PROC openfillwindow()
+
+DEF	window:PTR TO window,backfillhelp:PTR TO CHAR,pat:PTR TO hook
+
+	backfillhelp := &#x27;\ecHere you see the built-in backfill patterns BGUI supports.\n&#x27;+
+			&#x27;These backfill patterns can all be used in groups and frames.\n&#x27;+
+			&#x27;The frameclass also offers you the possibility to add hooks for\n&#x27;+
+			&#x27;custom backfills and frame rendering.\n\n&#x27;+
+			&#x27;The bottom frame shows you a custom backfill hook which renders a\n&#x27;+
+			&#x27;simple pattern known from the WBPattern prefs editor as background.&#x27;
+
+pat.data := 		[ $0000, $0000, $0002, $0002, $000A, $000A, $002A, $002A,
+			  $00AA, $002A, $03EA, $000A, $0FFA, $0002, $3FFE, $0000,
+			  $0000, $7FFC, $4000, $5FF0, $5000, $57C0, $5400, $5500,
+			  $5400, $5400, $5000, $5000, $4000, $4000, $0000, $0000,
+			  $0000, $0000, $0000, $0000, $0000, $0000, $0000, $0000,
+			  $0000, $0000, $0000, $0000, $0000, $0000, $0000, $0000 ]:INT
+	/*
+	**	Not yet created?
+	**/
+	IF wa_bfill=NIL
+		wa_bfill := WindowObject,
+			WINDOW_TITLE,		&#x27;BGUI back fill patterns&#x27;,
+			WINDOW_RMBTRAP,         TRUE,
+			WINDOW_SMARTREFRESH,	TRUE,
+			WINDOW_HELPTEXT,	backfillhelp,
+			WINDOW_SCALEWIDTH,	50,
+			WINDOW_SCALEHEIGHT,	50,
+			WINDOW_AUTOASPECT,	TRUE,
+			WINDOW_SHAREDPORT,	sharedport,
+			WINDOW_MASTERGROUP,
+				VGroupObject, HOffset( 4 ), VOffset( 4 ), Spacing( 4 ),
+					StartMember,
+						HGroupObject, Spacing( 4 ),
+							StartMember, InfoObject, ButtonFrame, ShineRaster,  EndObject, EndMember,
+							StartMember, InfoObject, ButtonFrame, ShadowRaster, EndObject, EndMember,
+						EndObject,
+					EndMember,
+					StartMember,
+						HGroupObject, Spacing( 4 ),
+							StartMember, InfoObject, ButtonFrame, ShineShadowRaster, EndObject, EndMember,
+							StartMember, InfoObject, ButtonFrame, FillRaster,	 EndObject, EndMember,
+						EndObject,
+					EndMember,
+					StartMember,
+						HGroupObject, Spacing( 4 ),
+							StartMember, InfoObject, ButtonFrame, ShineFillRaster,	EndObject, EndMember,
+							StartMember, InfoObject, ButtonFrame, ShadowFillRaster, EndObject, EndMember,
+						EndObject,
+					EndMember,
+					StartMember,
+						HGroupObject, Spacing( 4 ),
+							StartMember, InfoObject, ButtonFrame, ShineBlock,  EndObject, EndMember,
+							StartMember, InfoObject, ButtonFrame, ShadowBlock, EndObject, EndMember,
+						EndObject,
+					EndMember,
+					StartMember, HorizSeperator, EndMember,
+					StartMember, InfoObject, ButtonFrame, FRM_BACKFILLHOOK, pat, EndObject, Weight( 200 ), EndMember,
+				EndObject,
+		EndObject
+	ENDIF
+
+	/*
+	**	Object OK?
+	**/
+	IF wa_bfill
+		/*
+		**	Open window.
+		**/
+		window := WindowOpen( wa_bfill )
+	ENDIF
+
+ENDPROC window
+
+
+/*
+**	Tabs-key control of the tabs gadget.
+**/
+
+PROC tabhookfunc( hook:PTR TO hook, obj, msg:PTR TO intuimessage )
+
+DEF	window:PTR TO window,
+	mx_obj,pos
+
+mx_obj := hook.data
+	/*
+	**	Obtain window pointer and
+	**	current tab position.
+	**/
+	GetAttr( WINDOW_WINDOW, obj,{window} )
+	GetAttr( MX_ACTIVE,	mx_obj, {pos} )
+
+	/*
+	**	What key is pressed?
+	**/
+	IF ( msg.code = $42 )
+		IF ( msg.qualifier AND ( IEQUALIFIER_LSHIFT OR IEQUALIFIER_RSHIFT ))
+		 DEC pos
+		ELSE
+		 INC pos
+		ENDIF
+		SetGadgetAttrsA(mx_obj, window, NIL, [MX_ACTIVE, pos, TAG_END] )
+	ENDIF
+
+ENDPROC
+
+#define String(label,contents,maxchars,id)\
+	StringObject,\
+		LAB_LABEL,		label,\
+		RidgeFrame,\
+		STRINGA_TEXTVAL,	contents,\
+		STRINGA_MAXCHARS,	maxchars,\
+		GA_ID,			id,\
+	EndObject
+
+/*
+**	Open pages window.
+**/
+PROC openpageswindow()
+
+DEF	c, p, m, s1, s2, s3,
+	window:PTR TO window,pageshelp:PTR TO CHAR,tabhook:PTR TO hook
+
+	pageshelp :=    &#x27;\ecThe pageclass allows you to setup a set of pages containing\n&#x27;+
+			&#x27;BGUI gadgets or groups. This will give you the oppertunity to\n&#x27;+
+			&#x27;have several set\as of gadgets in a single window.\n\n&#x27;+
+			&#x27;This window has a IDCMP-hook installed which allows you to\n&#x27;+
+			 &#x27;control the Tabs object with your TAB key.&#x27;
+
+
+	/*
+	**	Not yet created?
+	**/
+	IF wa_pages=NIL
+		/*
+		**	Create tabs-object.
+		**/
+		c := MxObject,
+			MX_TABSOBJECT,		TRUE,
+			LAB_LABEL,		NIL,
+			MX_LABELS,		[&#x27;Buttons&#x27;, &#x27;Strings&#x27;, &#x27;CheckBoxes&#x27;, &#x27;Radio-Buttons&#x27;, NIL ],
+			MX_ACTIVE,		NIL,
+			GA_ID,			NIL,
+		     EndObject
+
+		/*
+		**	Put it in the hook data.
+		**/
+		tabhook.data := c
+		tabhook.entry := {tabhookfunc}
+
+		wa_pages := WindowObject,
+			WINDOW_TITLE,		&#x27;BGUI pages&#x27;,
+			WINDOW_RMBTRAP,         TRUE,
+			WINDOW_SMARTREFRESH,	TRUE,
+			WINDOW_HELPTEXT,	pageshelp,
+			WINDOW_AUTOASPECT,	TRUE,
+			WINDOW_IDCMPHOOKBITS,	IDCMP_RAWKEY,
+			WINDOW_IDCMPHOOK,	tabhook,
+			WINDOW_SHAREDPORT,	sharedport,
+			WINDOW_MASTERGROUP,
+				VGroupObject, HOffset( 4 ), VOffset( 4 ), Spacing( 4 ),
+					StartMember, c, FixMinHeight, EndMember,
+					StartMember,
+						p := PageObject,
+							/*
+							**	Button page.
+							**/
+							PageMember,
+								VGroupObject, Spacing(4),
+									VarSpace( DEFAULT_WEIGHT ),
+									StartMember, XenButton( &#x27;Button #1&#x27;, 0 ), FixMinHeight, EndMember,
+									StartMember, XenButton( &#x27;Button #2&#x27;, 0 ), FixMinHeight, EndMember,
+									StartMember, XenButton( &#x27;Button #3&#x27;, 0 ), FixMinHeight, EndMember,
+									VarSpace( DEFAULT_WEIGHT ),
+								EndObject,
+							/*
+							**	String page.
+							**/
+							PageMember,
+								VGroupObject, Spacing(4),
+									VarSpace( DEFAULT_WEIGHT ),
+									StartMember, s1 := String( &#x27;String #1&#x27;, &#x27;&#x27;, 256, 0 ), FixMinHeight, EndMember,
+									StartMember, s2 := String( &#x27;String #2&#x27;, &#x27;&#x27;, 256, 0 ), FixMinHeight, EndMember,
+									StartMember, s3 := String( &#x27;String #3&#x27;, &#x27;&#x27;, 256, 0 ), FixMinHeight, EndMember,
+									VarSpace( DEFAULT_WEIGHT ),
+								EndObject,
+							/*
+							**	CheckBox page.
+							**/
+							PageMember,
+								VGroupObject, Spacing(4),
+									StartMember,
+										HGroupObject, Spacing( 4 ),
+											VarSpace( DEFAULT_WEIGHT ),
+											StartMember,
+												VGroupObject, Spacing( 4 ),
+													VarSpace( DEFAULT_WEIGHT ),
+													StartMember, CheckBox( &#x27;CheckBox #1&#x27;, FALSE, 0 ), EndMember,
+													StartMember, CheckBox( &#x27;CheckBox #2&#x27;, FALSE, 0 ), EndMember,
+													StartMember, CheckBox( &#x27;CheckBox #3&#x27;, FALSE, 0 ), EndMember,
+													VarSpace( DEFAULT_WEIGHT ),
+												EndObject, FixMinWidth,
+											EndMember,
+											VarSpace( DEFAULT_WEIGHT ),
+										EndObject,
+									EndMember,
+								EndObject,
+							/*
+							**	Mx page.
+							**/
+							PageMember,
+								VGroupObject, Spacing(4),
+									VarSpace( DEFAULT_WEIGHT ),
+									StartMember,
+										HGroupObject,
+											VarSpace( DEFAULT_WEIGHT ),
+											StartMember, m := MxObject,
+													GROUP_STYLE,GRSTYLE_VERTICAL,
+													LAB_LABEL,&#x27;_Mx Object&#x27;,
+													LAB_PLACE,PLACE_ABOVE,
+													LAB_UNDERSCORE,&quot;_&quot;,
+													LAB_HIGHLIGHT,TRUE,
+													MX_LABELS,[ &#x27;MX #1&#x27;, &#x27;MX #2&#x27;, &#x27;MX #3&#x27;, &#x27;MX #4&#x27;, NIL ],
+													MX_LABELPLACE,PLACE_LEFT,
+														EndObject, FixMinSize,
+											EndMember,
+											VarSpace( DEFAULT_WEIGHT ),
+										EndObject, FixMinHeight,
+									EndMember,
+									VarSpace( DEFAULT_WEIGHT ),
+								EndObject,
+						EndObject,
+					EndMember,
+				EndObject,
+		EndObject
+
+		/*
+		**	Object OK?
+		**/
+		IF wa_pages
+			/*
+			**	Add key for the MX object.
+			**/
+			GadgetKey( wa_pages, m, &#x27;m&#x27; )
+			/*
+			**	Connect the cycle to the page.
+			**/
+			AddMap( c, p, [ MX_ACTIVE, PAGE_ACTIVE, TAG_END ] )
+			/*
+			**	Set tab-cycling order.
+			**/
+			domethod( wa_pages, [WM_TABCYCLE_ORDER, s1, s2, s3, NIL] )
+		ENDIF
+	ENDIF
+
+	/*
+	**	Object OK?
+	**/
+	IF wa_pages
+		/*
+		**	Open the window.
+		**/
+		window := WindowOpen( wa_pages )
+	ENDIF
+
+ENDPROC window
+
+/*
+**	Main entry.
+**/
+PROC main()
+
+DEF	main=NIL:PTR TO window, groups=NIL:PTR TO window, notif=NIL:PTR TO window,
+	info=NIL:PTR TO window,	image=NIL:PTR TO window, bfill=NIL:PTR TO window,
+	 pages=NIL:PTR TO window, sigwin = -1,
+	apm:PTR TO appmessage,
+	ap:PTR TO wbarg,
+	sigmask = 0, sigrec, rc, appsig = 0,
+	running = FALSE,
+	name[ 256 ]:STRING
+
+        /*
+        **      Open the library.
+        **/
+        IF bguibase := OpenLibrary( &#x27;bgui.library&#x27;, 37 )
+
+	/*
+	**	Create the shared message port.
+	**/
+	IF sharedport := CreateMsgPort()
+		/*
+		**	Open the main window.
+		**/
+		IF main := openmainwindow( {appsig} )
+			/*
+			**	OR signal masks.
+			**/
+			sigmask :=sigmask OR ( appsig OR Shl( 1,sharedport.sigbit ))
+			/*
+			**	Loop...
+			**/
+			REPEAT
+				/*
+				**	Wait for the signals to come.
+				**/
+				sigrec := Wait( sigmask )
+
+				/*
+				**	AppWindow signal?
+				**/
+				IF ( sigrec AND appsig )
+					/*
+					**	Obtain AppWindow messages.
+					**/
+					WHILE apm := GetAppMsg( wa_main )
+						/*
+						**	Get all dropped icons.
+						**/
+						FOR ap := apm.arglist TO apm.numargs-1
+							/*
+							**	Build fully qualified name.
+							**/
+							NameFromLock( ap.lock, name, 256 )
+							AddPart( name, ap.name, 256 )
+							/*
+							**	Add it to the listview.
+							**/
+							AddEntry( main, lv_iconlist, name, LVAP_SORTED )
+						ENDFOR
+						/*
+						**	Important! We must reply the message!
+						**/
+						ReplyMsg( apm )
+					ENDWHILE
+					/*
+					**	Switch to the Icon page.
+					**/
+					SetGadgetAttrsA(pg_pager, main, NIL,[ PAGE_ACTIVE, 1, TAG_END] )
+				ENDIF
+
+				/*
+				**	Find out the which window signalled us.
+				**/
+				IF ( sigrec AND Shl( 1,sharedport.sigbit ))
+					WHILE sigwin := domethod( wa_main,[ WM_GET_SIGNAL_WINDOW] )
+
+						/*
+						**	Main window signal?
+						**/
+						IF sigwin = main
+							/*
+							**	Call the main-window event handler.
+							**/
+							WHILE ( rc := HandleEvent( wa_main )) &lt;&gt; WMHI_NOMORE
+								SELECT rc
+
+									CASE	WMHI_CLOSEWINDOW
+										running := TRUE
+									CASE	ID_QUIT
+										running := TRUE
+
+									CASE	ID_ABOUT
+										req( main, &#x27;OK&#x27;, &#x27;\ec\eb\\ed8BGUIDemo\en\ed2\n(C) Copyright 1993-1995 Jaba Development&#x27; )
+
+									CASE	ID_MAIN_GROUPS
+										/*
+										**	Open groups window.
+										**/
+										 IF groups=NIL THEN groups := opengroupswindow()
+
+									CASE	ID_MAIN_NOTIF
+										/*
+										**	Open notification window.
+										**/
+										 IF notif=NIL THEN notif := opennotifwindow()
+
+									CASE	ID_MAIN_INFO
+										/*
+										**	Open infoclass window.
+										**/
+										 IF info=NIL THEN info := openinfowindow()
+
+									CASE	ID_MAIN_IMAGE
+										/*
+										**	Open images window.
+										**/
+										 IF image=NIL THEN image := openimagewindow()
+
+									CASE	ID_MAIN_BFILL
+										/*
+										**	Open backfill window.
+										**/
+										 IF bfill=NIL THEN bfill := openfillwindow()
+
+									CASE	ID_MAIN_PAGES
+										/*
+										**	Open pages window.
+										**/
+										IF pages=NIL THEN pages := openpageswindow()
+
+									CASE	ID_MAIN_ICON_CONT
+										/*
+										**	Switch back to the main page.
+										**/
+										SetGadgetAttrsA(pg_pager, main, NIL,[ PAGE_ACTIVE, 0, TAG_END] )
+										/*
+										**	Clear all entries from the listview.
+										**/
+										ClearList( main, lv_iconlist )
+								ENDSELECT
+							ENDWHILE
+						ENDIF
+
+						/*
+						**	The code below will close the
+						**	specific window.
+						**/
+						IF ( sigwin = groups )
+							WHILE ( rc := HandleEvent( wa_groups )) &lt;&gt; WMHI_NOMORE
+								SELECT rc
+									CASE	WMHI_CLOSEWINDOW
+										WindowClose( wa_groups )
+										groups := NIL
+								ENDSELECT
+							ENDWHILE
+						ENDIF
+
+						IF ( sigwin = notif )
+							WHILE ( rc := HandleEvent( wa_notif )) &lt;&gt; WMHI_NOMORE
+								SELECT rc
+									CASE	WMHI_CLOSEWINDOW
+										WindowClose( wa_notif )
+										notif := NIL
+								ENDSELECT
+							ENDWHILE
+						ENDIF
+
+						IF ( sigwin = info )
+							WHILE ( rc := HandleEvent( wa_info )) &lt;&gt; WMHI_NOMORE
+								SELECT rc
+									CASE	WMHI_CLOSEWINDOW
+										WindowClose( wa_info )
+										info := NIL
+								ENDSELECT
+							ENDWHILE
+						ENDIF
+
+						IF ( sigwin = image )
+							WHILE ( rc := HandleEvent( wa_image )) &lt;&gt; WMHI_NOMORE
+								SELECT rc
+									CASE	WMHI_CLOSEWINDOW
+										WindowClose( wa_image )
+										image := NIL
+								ENDSELECT
+							ENDWHILE
+						ENDIF
+
+						IF ( sigwin = bfill )
+							WHILE ( rc := HandleEvent( wa_bfill )) &lt;&gt; WMHI_NOMORE
+								SELECT rc
+									CASE	WMHI_CLOSEWINDOW
+										WindowClose( wa_bfill )
+										bfill := NIL
+								ENDSELECT
+							ENDWHILE
+						ENDIF
+
+						IF ( sigwin = pages )
+							WHILE ( rc := HandleEvent( wa_pages )) &lt;&gt; WMHI_NOMORE
+								SELECT rc
+									CASE	WMHI_CLOSEWINDOW
+										WindowClose( wa_pages )
+										pages := NIL
+								ENDSELECT
+							ENDWHILE
+						ENDIF
+					ENDWHILE
+				ENDIF
+			UNTIL running
+		ENDIF
+		/*
+		**	Dispose of all window objects.
+		**/
+		IF ( wa_pages )   THEN      DisposeObject( wa_pages )
+		IF ( wa_bfill )   THEN      DisposeObject( wa_bfill )
+		IF ( wa_image )   THEN      DisposeObject( wa_image )
+		IF ( wa_info )	  THEN	    DisposeObject( wa_info )
+		IF ( wa_notif )   THEN      DisposeObject( wa_notif )
+		IF ( wa_groups )  THEN      DisposeObject( wa_groups )
+		IF ( wa_main )	  THEN      DisposeObject( wa_main )
+		/*
+		**	Delete the shared message port.
+		**/
+		DeleteMsgPort( sharedport )
+	ELSE
+		WriteF( &#x27;Unable to create a message port.\n&#x27; )
+	ENDIF
+	CloseLibrary( bguibase )
+	ELSE
+		WriteF(&#x27;Could not open the bgui.library\n&#x27;)
+	ENDIF
+ENDPROC
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

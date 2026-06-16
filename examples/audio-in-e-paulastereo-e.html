@@ -1,0 +1,263 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>paulastereo.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-audio-in-e.html">audio_in_e</a> &rsaquo; paulastereo.e</div><h1>File: <code>paulastereo.e</code></h1><p class="meta">237 lines · project <a href="../examples/pkg-audio-in-e.html"><code>audio_in_e</code></a></p><p class="pathctx">audio_in_e/paulastereo.e</p><p class="prose">**************************************************************************** * * * paulastereo.e V1.0 21.11.2020 by Rainer &quot;No.3&quot; Müller * * * * an example how to use <a href="../modules/audio.html">audio</a>-<a href="../modules/device.html">device</a> with the Amiga E Language * * * * this is a stereo double buffering example, it also replays short <a href="../modules/samples.html">samples</a> * * i.e. shor</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/io.html">amigalib/io</a></li></ul></div><h2>Source</h2><pre class="code">/*****************************************************************************
+*                                                                            *
+*       paulastereo.e  V1.0  21.11.2020  by Rainer &quot;No.3&quot; Müller             *
+*                                                                            *
+*  an example how to use audio-device with the Amiga E Language              *
+*                                                                            *
+*  this is a stereo double buffering example, it also replays short samples  *
+*  i.e. short and long ones are replayed with the same algorithm!            *                        *
+*                                                                            *
+*  compile: ec paulastereo                                                   *
+*                                                                            *
+*  use: paulastereo name    name = name of the file you want to replay       *
+*                                                                            *
+*  note: same data is played on the left and the right                       *
+*        for real stereo playback separate data needs to be provided         *
+*        see appropriate comments below, lines 158-160 and 188-189           *
+*                                                                            *
+*  new in:                                                                   *
+*                                                                            *
+*    V1.0  21.11.2020  first version                                         *
+*                                                                            *
+*****************************************************************************/
+
+MODULE &#x27;amigalib/io&#x27;,
+        &#x27;devices/audio&#x27;,
+            &#x27;dos/dos&#x27;,     &#x27;dos/rdargs&#x27;,
+           &#x27;exec/io&#x27;,     &#x27;exec/memory&#x27;, &#x27;exec/nodes&#x27;, &#x27;exec/ports&#x27;,
+       &#x27;graphics/gfxbase&#x27;
+
+ENUM ER_NONE, ER_NOOPEN, ER_NOMEM, ER_NOPORT, ER_NOIOREQ, ER_NODEVICE, ER_NOLOAD, ER_BADARGS, ER_KICK
+
+CONST NTSC_CLOCK=3579545,
+       PAL_CLOCK=3546895
+
+DEF clock
+
+
+PROC main() HANDLE
+DEF fileptr=NIL
+DEF dataptr=NIL:PTR TO CHAR
+DEF datalen=NIL
+DEF  rdargs=NIL:PTR TO rdargs
+DEF  myargs
+DEF     gfx    :PTR TO gfxbase
+
+   gfx:=gfxbase
+
+   IF KickVersion(39)
+      IF gfx.displayflags AND REALLY_PAL  THEN clock:=PAL_CLOCK  ELSE clock:=NTSC_CLOCK
+   ELSE
+      IF gfx.displayflags AND PAL         THEN clock:=PAL_CLOCK  ELSE clock:=NTSC_CLOCK
+      IF KickVersion(37)=FALSE THEN Raise(ER_KICK)
+   ENDIF
+
+   IF ( rdargs:=ReadArgs(&#x27;File/A&#x27;, {myargs},NIL))=NIL THEN Raise(ER_BADARGS)
+
+   IF (fileptr:=Open(myargs,  MODE_OLDFILE))     =NIL THEN Raise(ER_NOOPEN)
+       datalen:=FileLength(myargs)
+   IF (dataptr:=AllocVec(datalen,MEMF_ANY))      =NIL THEN Raise(ER_NOMEM)
+   IF Read(fileptr, dataptr,  datalen)&lt;&gt;datalen       THEN Raise(ER_NOLOAD)
+
+   playSample(dataptr, datalen)
+
+EXCEPT DO
+   IF dataptr THEN FreeVec (dataptr)
+   IF fileptr THEN Close   (fileptr)
+   IF rdargs  THEN FreeArgs(rdargs)
+   SELECT exception
+      CASE ER_KICK;    WriteF(&#x27;Kickstart V37+ required\n&#x27;)
+      CASE ER_BADARGS; WriteF(&#x27;bad args\n&#x27;)
+      CASE ER_NOOPEN;  WriteF(&#x27;could not open file\n&#x27;)
+      CASE ER_NOMEM;   WriteF(&#x27;no memory\n&#x27;)
+      CASE ER_NOLOAD;  WriteF(&#x27;problems while loading\n&#x27;)
+      CASE ER_NONE;    WriteF(&#x27;all OK\n&#x27;)
+   ENDSELECT
+ENDPROC
+
+
+
+PROC playSample(ptr,length) HANDLE
+DEF arequestl1=NIL:PTR TO ioaudio,  chipbufl1=NIL:PTR TO CHAR
+DEF arequestl2    :       ioaudio,  chipbufl2=NIL:PTR TO CHAR
+DEF arequestr1    :       ioaudio,  chipbufr1=NIL:PTR TO CHAR
+DEF arequestr2    :       ioaudio,  chipbufr2=NIL:PTR TO CHAR
+DEF      ioal =NIL:PTR TO ioaudio,    replyl =NIL:PTR TO mp
+DEF      ioar =NIL:PTR TO ioaudio,    replyr =NIL:PTR TO mp
+DEF deviceerror=1
+DEF allocchannel=0, channelleft, channelright
+DEF offset, togo
+DEF samplerate=22000, volume=64
+DEF buflen=8192
+
+   IF Odd(length) THEN DEC length               -&gt; the play length has to be even
+
+   IF buflen&gt;=length                            -&gt; ok, no double buffering needed
+      togo  :=0
+      buflen:=length
+   ELSE                                         -&gt; prepare some data for double buffering
+      togo  :=length - buflen
+      offset:=buflen
+   ENDIF
+
+
+   IF (   replyl :=CreateMsgPort())=NIL THEN Raise(ER_NOPORT)
+   IF (   replyr :=CreateMsgPort())=NIL THEN Raise(ER_NOPORT)
+   IF (arequestl1:=CreateIORequest(replyl, SIZEOF ioaudio))=NIL THEN Raise(ER_NOIOREQ)
+
+   arequestl1.io.command  :=ADCMD_ALLOCATE      -&gt; command for allocating audio channels
+   arequestl1.io.flags    :=ADIOF_NOWAIT        -&gt; if allocation fails return an error instead of waiting for success
+   arequestl1.io.mn.ln.pri:=ADALLOC_MAXPREC     -&gt; allocate with maximum priority
+   arequestl1.allockey    :=0                   -&gt; 0 = generate new allocation key
+   arequestl1.data        :=[3,5,10,12]:CHAR    -&gt; array of stereo channel combinations
+   arequestl1.length      :=4                   -&gt; array length
+   IF deviceerror:=OpenDevice(&#x27;audio.device&#x27;, 0, arequestl1, 0) THEN Raise(ER_NODEVICE)
+
+   allocchannel:=arequestl1.io.unit             -&gt; the channels we got allocated
+   channelleft :=allocchannel AND %1001         -&gt; left channel we got
+   channelright:=allocchannel AND %0110         -&gt; right channel we got
+
+
+   arequestl1.io.command:=CMD_STOP              -&gt; &quot;stop&quot; all channels
+   arequestl1.io.unit   :=allocchannel
+   beginIO(arequestl1)
+    WaitIO(arequestl1)
+
+
+   arequestl1.io.unit   :=channelleft           -&gt; assign appropriate channel
+   arequestl1.io.command:=CMD_WRITE             -&gt; command for writing data to an audio channel
+   arequestl1.io.flags  :=ADIOF_PERVOL          -&gt; set volume und period
+   arequestl1.length    :=buflen                -&gt; set bufferlength
+   arequestl1.period    :=clock / samplerate    -&gt; translate samplerate to period
+   arequestl1.volume    :=volume                -&gt; Paula&#x27;s volume range is from 0 (=no volume) to 64 (max volume)
+   arequestl1.cycles    :=1                     -&gt; play the buffer sent to paula 1 time (max 65535, 0 = for ever until stopped)
+
+
+   CopyMem(arequestl1,arequestr1, SIZEOF ioaudio)       -&gt; copy iorequest for stereo channels
+   arequestr1.io.mn.replyport:=replyr                   -&gt; set the appropriate reply port for the right side
+   arequestr1.io.unit        :=channelright             -&gt; assign appropriate channel for the right side
+
+   CopyMem(arequestl1,arequestl2, SIZEOF ioaudio)       -&gt; copy left  iorequest for double buffered operation
+   CopyMem(arequestr1,arequestr2, SIZEOF ioaudio)       -&gt; copy right iorequest for double buffered operation
+
+
+   IF (chipbufl1:=AllocVec(buflen, MEMF_CHIP+MEMF_PUBLIC))=NIL THEN Raise(ER_NOMEM)
+   IF (chipbufl2:=AllocVec(buflen, MEMF_CHIP+MEMF_PUBLIC))=NIL THEN Raise(ER_NOMEM)
+   IF (chipbufr1:=AllocVec(buflen, MEMF_CHIP+MEMF_PUBLIC))=NIL THEN Raise(ER_NOMEM)
+   IF (chipbufr2:=AllocVec(buflen, MEMF_CHIP+MEMF_PUBLIC))=NIL THEN Raise(ER_NOMEM)
+
+   arequestl1.data:=chipbufl1                   -&gt; set pointer to first  left  chip mem buffer
+   arequestl2.data:=chipbufl2                   -&gt; set pointer to second left  chip buffer
+   arequestr1.data:=chipbufr1                   -&gt; set pointer to first  right chip mem buffer
+   arequestr2.data:=chipbufr2                   -&gt; set pointer to second right chip buffer
+
+
+   CopyMem(ptr, chipbufl1, buflen)              -&gt; copy left data into chip-ram
+   CopyMem(ptr, chipbufr1, buflen)              -&gt; use the left data for the right side in order to play a mono sample left and right
+                                                -&gt; for real stereo playback separate data for the right data needs to be provided
+
+   beginIO(arequestl1)                          -&gt; queue start rocking
+   beginIO(arequestr1)                          -&gt; queue start rocking
+
+
+   arequestl1.io.command:=CMD_START             -&gt; &quot;start&quot;
+   arequestl1.io.unit   :=allocchannel          -&gt; all channels
+   beginIO(arequestl1)                          -&gt; at once
+    WaitIO(arequestl1)
+
+
+   arequestl1.io.command:=CMD_WRITE             -&gt; set audiorequest command back to CMD_WRITE
+   arequestl1.io.unit   :=channelleft           -&gt; assign appropriate channel to arequest1
+
+
+   ioal:=arequestl2                             -&gt; arequest2 is next to be filled
+   ioar:=arequestr2
+
+
+   WHILE (togo &gt; 0)
+      IF buflen&gt;=togo                           -&gt; ok, end of double buffering reached
+         buflen:=togo
+         togo  :=0
+         ioal.length:=buflen                    -&gt; adapt the arequest.length to the remaining length
+         ioar.length:=buflen
+      ENDIF
+
+      CopyMem(ptr+offset, ioal.data, buflen)    -&gt; fill next buffer
+      CopyMem(ptr+offset, ioar.data, buflen)    -&gt; use same data for left and right,
+                                                -&gt; for real stereo playback separate data for the right data needs to be provided
+      beginIO(ioal)                             -&gt; keep on rocking
+      beginIO(ioar)
+      offset:=offset + buflen
+      togo  :=togo   - buflen
+
+      IF ioal =arequestl1
+         ioal:=arequestl2                       -&gt; arequest2 next to be filled
+         ioar:=arequestr2
+      ELSE
+         ioal:=arequestl1                       -&gt; arequest1 next to be filled
+         ioar:=arequestr1
+      ENDIF
+
+      WaitIO(ioal)                              -&gt; the arequest next to be filled is still
+      WaitIO(ioar)                              -&gt; playing, so we have to wait for it
+   ENDWHILE
+
+
+   IF ioal =arequestl1                          -&gt; ioal points to the second last arequest
+      ioal:=arequestl2                          -&gt; now it points to the last arequest which is still playing
+      ioar:=arequestr2
+   ELSE
+      ioal:=arequestl1
+      ioar:=arequestr1
+   ENDIF
+
+   WaitIO(ioal)                                 -&gt; wait for the final arequest to finish
+   WaitIO(ioar)
+
+
+EXCEPT DO
+   IF chipbufr2     THEN FreeVec        (chipbufr2)
+   IF chipbufr1     THEN FreeVec        (chipbufr1)
+   IF chipbufl2     THEN FreeVec        (chipbufl2)
+   IF chipbufl1     THEN FreeVec        (chipbufl1)
+   IF deviceerror=0 THEN CloseDevice    (arequestl1)
+   IF arequestl1    THEN DeleteIORequest(arequestl1)
+   IF replyr        THEN DeleteMsgPort  (replyr)
+   IF replyl        THEN DeleteMsgPort  (replyl)
+   SELECT exception
+      CASE ER_NOMEM   ; WriteF(&#x27;no memory\n&#x27;)
+      CASE ER_NOPORT  ; WriteF(&#x27;could not create port\n&#x27;)
+      CASE ER_NOIOREQ ; WriteF(&#x27;could not create iorequest\n&#x27;)
+      CASE ER_NODEVICE; WriteF(&#x27;could not open audio-device\n&#x27;)
+      CASE ER_NONE    ; WriteF(&#x27;all OK\n&#x27;)
+   ENDSELECT
+ENDPROC
+
+
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

@@ -1,0 +1,201 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>time.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-portable.html">PortablE</a> &rsaquo; time.e</div><h1>File: <code>time.e</code></h1><p class="meta">175 lines · project <a href="../examples/pkg-portable.html"><code>PortablE</code></a></p><p class="pathctx">PortablE/PortablE/PEmodules/target/CPP_Linux/x86_64-linux-gnu/sys/time.e</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/types.html">target/x86_64-linux-gnu/bits/types</a></li><li><a href="../modules/select.html">target/x86_64-linux-gnu/sys/select</a></li></ul></div><h2>Source</h2><pre class="code">OPT NATIVE
+MODULE &#x27;target/x86_64-linux-gnu/bits/types/struct_timespec&#x27;	-&gt;guessed
+MODULE &#x27;target/features&#x27;
+MODULE &#x27;target/x86_64-linux-gnu/bits/types&#x27;
+MODULE &#x27;target/x86_64-linux-gnu/bits/types/time_t&#x27;
+PUBLIC MODULE &#x27;target/x86_64-linux-gnu/bits/types/struct_timeval&#x27;
+MODULE &#x27;target/x86_64-linux-gnu/sys/select&#x27;
+{#include &lt;x86_64-linux-gnu/sys/time.h&gt;}
+/* Copyright (C) 1991-2020 Free Software Foundation, Inc.
+   This file is part of the GNU C Library.
+
+   The GNU C Library is free software; you can redistribute it and/or
+   modify it under the terms of the GNU Lesser General Public
+   License as published by the Free Software Foundation; either
+   version 2.1 of the License, or (at your option) any later version.
+
+   The GNU C Library is distributed in the hope that it will be useful,
+   but WITHOUT ANY WARRANTY; without even the implied warranty of
+   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+   Lesser General Public License for more details.
+
+   You should have received a copy of the GNU Lesser General Public
+   License along with the GNU C Library; if not, see
+   &lt;https://www.gnu.org/licenses/&gt;.  */
+
+NATIVE {_SYS_TIME_H}	CONST -&gt;_SYS_TIME_H	= 1
+
+
+-&gt;NATIVE {suseconds_t} OBJECT
+-&gt;TYPE suseconds_t IS NATIVE {suseconds_t} SUSECONDS_T__
+ -&gt;NATIVE {__suseconds_t_defined} DEF
+
+
+/* Macros for converting between `struct timeval&#x27; and `struct timespec&#x27;.  */
+NATIVE {TIMEVAL_TO_TIMESPEC} CONST
+PROC _TIMEVAL_TO_TIMESPEC(tv:PTR TO timeval, ts:PTR TO timespec)
+	ts.sec  := tv.sec
+	ts.nsec := tv.usec * 1000
+ENDPROC
+-&gt;#define TIMEVAL_TO_TIMESPEC(tv, ts) _TIMEVAL_TO_TIMESPEC(tv, ts)
+
+NATIVE {TIMESPEC_TO_TIMEVAL} CONST
+PROC _TIMESPEC_TO_TIMEVAL(tv:PTR TO timeval, ts:PTR TO timespec)
+	tv.sec  := ts.sec
+	tv.usec := ts.nsec / 1000
+ENDPROC
+-&gt;#define TIMESPEC_TO_TIMEVAL(tv, ts) _TIMESPEC_TO_TIMEVAL(tv, ts)
+
+
+/* Structure crudely representing a timezone.
+   This is obsolete and should never be used.  */
+NATIVE {timezone} OBJECT timezone
+    {tz_minuteswest}	minuteswest	:VALUE		/* Minutes west of GMT.  */
+    {tz_dsttime}	dsttime	:VALUE		/* Nonzero if DST is ever in effect.  */
+  ENDOBJECT
+
+/* Get the current time of day, putting it into *TV.
+   If TZ is not null, *TZ must be a struct timezone, and both fields
+   will be set to zero.
+   Calling this function with a non-null TZ is obsolete;
+   use localtime etc. instead.
+   This function itself is semi-obsolete;
+   most callers should use time or clock_gettime instead. */
+NATIVE {gettimeofday} PROC
+PROC gettimeofday(__tv:PTR TO timeval,
+			 __tz:PTR) IS NATIVE {gettimeofday(} __tv {,} __tz {)} ENDNATIVE !!VALUE
+
+/* Set the current time of day and timezone information.
+   This call is restricted to the super-user.
+   Setting the timezone in this way is obsolete, but we don&#x27;t yet
+   warn about it because it still has some uses for which there is
+   no alternative.  */
+NATIVE {settimeofday} PROC
+PROC settimeofday(__tv:PTR TO timeval,
+			 __tz:PTR TO timezone) IS NATIVE {settimeofday(} __tv {,} __tz {)} ENDNATIVE !!VALUE
+
+/* Adjust the current time of day by the amount in DELTA.
+   If OLDDELTA is not NULL, it is filled in with the amount
+   of time adjustment remaining to be done from the last `adjtime&#x27; call.
+   This call is restricted to the super-user.  */
+NATIVE {adjtime} PROC
+PROC adjtime(__delta:PTR TO timeval,
+		    __olddelta:PTR TO timeval) IS NATIVE {adjtime(} __delta {,} __olddelta {)} ENDNATIVE !!VALUE
+
+
+/* Values for the first argument to `getitimer&#x27; and `setitimer&#x27;.  */
+-&gt;NATIVE {__itimer_which} DEF
+NATIVE {ITIMER_REAL} CONST ITIMER_REAL = 0
+-&gt;#define ITIMER_REAL ITIMER_REAL
+    /* Timers run only when the process is executing.  */
+    NATIVE {ITIMER_VIRTUAL} CONST ITIMER_VIRTUAL = 1
+-&gt;#define ITIMER_VIRTUAL ITIMER_VIRTUAL
+    /* Timers run when the process is executing and when
+       the system is executing on behalf of the process.  */
+    NATIVE {ITIMER_PROF} CONST ITIMER_PROF = 2
+-&gt;#define ITIMER_PROF ITIMER_PROF
+  
+
+/* Type of the second argument to `getitimer&#x27; and
+   the second and third arguments `setitimer&#x27;.  */
+NATIVE {itimerval} OBJECT itimerval
+    /* Value to put into `it_value&#x27; when the timer expires.  */
+    {it_interval}	interval	:timeval
+    /* Time to the next timer expiration.  */
+    {it_value}	value	:timeval
+  ENDOBJECT
+
+/* Use the nicer parameter type only in GNU mode and not for C++ since the
+   strict C++ rules prevent the automatic promotion.  */
+TYPE ITIMER_WHICH_T__ IS NATIVE {__itimer_which_t} VALUE
+
+/* Set *VALUE to the current setting of timer WHICH.
+   Return 0 on success, -1 on errors.  */
+NATIVE {getitimer} PROC
+PROC getitimer(__which:ITIMER_WHICH_T__,
+		      __value:PTR TO itimerval) IS NATIVE {getitimer(} __which {,} __value {)} ENDNATIVE !!VALUE
+
+/* Set the timer WHICH to *NEW.  If OLD is not NULL,
+   set *OLD to the old value of timer WHICH.
+   Returns 0 on success, -1 on errors.  */
+NATIVE {setitimer} PROC
+PROC setitimer(__which:ITIMER_WHICH_T__,
+		      __new:PTR TO itimerval,
+		      __old:PTR TO itimerval) IS NATIVE {setitimer(} __which {,} __new {,} __old {)} ENDNATIVE !!VALUE
+
+/* Change the access time of FILE to TVP[0] and the modification time of
+   FILE to TVP[1].  If TVP is a null pointer, use the current time instead.
+   Returns 0 on success, -1 on errors.  */
+NATIVE {utimes} PROC
+PROC utimes(__file:ARRAY OF CHAR, __tvp:ARRAY OF timeval) IS NATIVE {utimes(} __file {,} __tvp {)} ENDNATIVE !!VALUE
+
+/* Same as `utimes&#x27;, but does not follow symbolic links.  */
+NATIVE {lutimes} PROC
+PROC lutimes(__file:ARRAY OF CHAR, __tvp:ARRAY OF timeval) IS NATIVE {lutimes(} __file {,} __tvp {)} ENDNATIVE !!VALUE
+
+/* Same as `utimes&#x27;, but takes an open file descriptor instead of a name.  */
+NATIVE {futimes} PROC
+PROC futimes(__fd:VALUE, __tvp:ARRAY OF timeval) IS NATIVE {futimes( (int) } __fd {,} __tvp {)} ENDNATIVE !!VALUE
+
+/* Change the access time of FILE relative to FD to TVP[0] and the
+   modification time of FILE to TVP[1].  If TVP is a null pointer, use
+   the current time instead.  Returns 0 on success, -1 on errors.  */
+NATIVE {futimesat} PROC
+PROC futimesat(__fd:VALUE, __file:ARRAY OF CHAR,
+		      __tvp:ARRAY OF timeval) IS NATIVE {futimesat( (int) } __fd {,} __file {,} __tvp {)} ENDNATIVE !!VALUE
+
+
+/* Convenience macros for operations on timevals.
+   NOTE: `timercmp&#x27; does not work for &gt;= or &lt;=.  */
+ NATIVE {timerisset} PROC	-&gt;define timerisset(tvp)	((tvp)-&gt;tv_sec || (tvp)-&gt;tv_usec)
+ NATIVE {timerclear} PROC	-&gt;define timerclear(tvp)	((tvp)-&gt;tv_sec = (tvp)-&gt;tv_usec = 0)
+ NATIVE {timercmp} PROC	-&gt;define timercmp(a, b, CMP) 	( ((a)-&gt;tv_sec == (b)-&gt;tv_sec) ? ((a)-&gt;tv_usec CMP (b)-&gt;tv_usec) : ((a)-&gt;tv_sec CMP (b)-&gt;tv_sec) )
+
+ NATIVE {timeradd} PROC	/*define timeradd(a, b, result) \
+  do {									                \
+    (result)-&gt;tv_sec = (a)-&gt;tv_sec + (b)-&gt;tv_sec;		\
+    (result)-&gt;tv_usec = (a)-&gt;tv_usec + (b)-&gt;tv_usec;	\
+    if ((result)-&gt;tv_usec &gt;= 1000000)					\
+      {									                \
+	++(result)-&gt;tv_sec;						            \
+	(result)-&gt;tv_usec -= 1000000;					    \
+      }									                \
+  } while (0)
+  */
+NATIVE {timersub} PROC	/*define timersub(a, b, result)	\
+  do {									                \
+    (result)-&gt;tv_sec = (a)-&gt;tv_sec - (b)-&gt;tv_sec;		\
+    (result)-&gt;tv_usec = (a)-&gt;tv_usec - (b)-&gt;tv_usec;	\
+    if ((result)-&gt;tv_usec &lt; 0) {					    \
+      --(result)-&gt;tv_sec;						        \
+      (result)-&gt;tv_usec += 1000000;					    \
+    }									                \
+  } while (0)
+  */
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

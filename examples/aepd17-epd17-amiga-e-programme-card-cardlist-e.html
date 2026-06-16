@@ -1,0 +1,184 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>cardlist.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-aepd17.html">AEPD17</a> &rsaquo; cardlist.e</div><h1>File: <code>cardlist.e</code></h1><p class="meta">158 lines · project <a href="../examples/pkg-aepd17.html"><code>AEPD17</code></a></p><p class="pathctx">AEPD17/EPD17/Amiga_E-Programme/Card/cardlist.e</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/startup.html">workbench/startup</a></li></ul></div><h2>Source</h2><pre class="code">MODULE &#x27;workbench/startup&#x27;, &#x27;workbench/workbench&#x27;, &#x27;icon&#x27;
+
+CONST MEMSTART=$600000, BLOCKSIZE=$100, FILEINFOSIZE=$20, MAGIC=$2000
+CONST HEADEROFF=2*BLOCKSIZE, BLKPTRSIZE=2, FILELEN=13
+CONST FREEOFF=HEADEROFF+BLOCKSIZE, HEADER=HEADEROFF+MEMSTART
+CONST FREEBLOCKS=FREEOFF+MEMSTART, EOFB=$FFFE, EOC=$FFFF, DEL=0, START=0
+CONST VERB_COLS=2, NOVERB_COLS=3
+
+ENUM NO_ERR, BAD_CARD, NO_FREE, OPEN_LIB
+
+OBJECT fileinfo
+  file, next
+ENDOBJECT
+
+RAISE OPEN_LIB IF OpenLibrary()=NIL
+
+/* lastinfo is a block pointer with MAGIC, e.g., $213A (not $13A) */
+DEF thefiles:PTR TO fileinfo, lastfile:PTR TO fileinfo, lastinfo
+
+PROC main() HANDLE
+  DEF f:PTR TO fileinfo, i=0, verbose=FALSE, startup:PTR TO wbstartup,
+      args=FALSE, rdargs=NIL, templ, wargs:PTR TO wbarg, oldlock=NIL,
+      dobj:PTR TO diskobject
+  iconbase:=OpenLibrary(&#x27;icon.library&#x27;, 33)
+  IF startup:=wbmessage
+    IF startup.numargs&gt;=1
+      wargs:=startup.arglist
+      IF wargs.lock THEN oldlock:=CurrentDir(wargs.lock)
+      IF wargs.name
+        IF dobj:=GetDiskObject(wargs.name)
+          verbose:=FindToolType(dobj.tooltypes, &#x27;VERBOSE&#x27;)
+          FreeDiskObject(dobj)
+        ENDIF
+      ENDIF
+      IF oldlock THEN CurrentDir(oldlock)
+    ENDIF
+  ELSE
+    templ:=&#x27;V=VERBOSE/S&#x27;
+    rdargs:=ReadArgs(templ,{args},NIL)
+    IF rdargs THEN verbose:=args
+  ENDIF
+  getinfo()
+  f:=thefiles.next
+  WHILE f
+    printfile(f.file, {i}, verbose)
+    f:=f.next
+  ENDWHILE
+  printfile(NIL, {i}, verbose)  /* Trailing linefeed? */
+  Raise(NO_ERR)
+EXCEPT
+  IF rdargs THEN FreeArgs(rdargs)
+  IF iconbase THEN CloseLibrary(iconbase)
+  SELECT exception
+  CASE OPEN_LIB
+    WriteF(&#x27;Could not open icon library\n&#x27;)
+  CASE BAD_CARD
+    WriteF(&#x27;No PCMCIA card, or not from Notepad\n&#x27;)
+  CASE NO_FREE
+    WriteF(&#x27;No more free blocks -- card is full\n&#x27;)
+  ENDSELECT
+ENDPROC
+
+PROC printfile(file, count, verbose)
+  IF file
+    IF deleted(file)=FALSE
+      ^count:=^count+1
+      IF verbose
+        WriteF(&#x27;\l\s[12]  \r\d[5]&#x27;, filename(file), filesize(file))
+        printdate(file)
+        WriteF(IF Mod(^count, VERB_COLS)=0 THEN &#x27;\n&#x27; ELSE &#x27;   &#x27;)
+      ELSE
+        WriteF(&#x27;\l\s[12]  \r\d[5]\s&#x27;, filename(file), filesize(file),
+               IF Mod(^count, NOVERB_COLS)=0 THEN &#x27;\n&#x27; ELSE &#x27;   &#x27;)
+      ENDIF
+    ENDIF
+  ELSE
+    IF Mod(^count, IF verbose THEN VERB_COLS ELSE NOVERB_COLS)&lt;&gt;0
+      WriteF(&#x27;\n&#x27;)
+    ENDIF
+  ENDIF
+ENDPROC
+
+PROC printdate(file)
+  DEF date, year, month, day, hour, min
+  date:=filedate(file)
+  year:=Mod(90+Shr(date, 25), 100)
+  month:=Shr(date AND $1FFFFFF, 21)
+  IF (month&gt;12) OR (month&lt;1) THEN month:=0
+  day:=Shr(date AND $1FFFFF, 16)
+  hour:=Shr(date AND $FFFF, 11)
+  min:=Shr(date AND $7FF, 5)
+  WriteF(&#x27; \r\d[2]-\s-\z\d[2] \r\d[2]:\z\d[2]&#x27;, day,
+         ListItem([&#x27;XXX&#x27;, &#x27;Jan&#x27;, &#x27;Feb&#x27;, &#x27;Mar&#x27;, &#x27;Apr&#x27;, &#x27;May&#x27;, &#x27;Jun&#x27;, &#x27;Jul&#x27;,
+                   &#x27;Aug&#x27;, &#x27;Sep&#x27;, &#x27;Oct&#x27;, &#x27;Nov&#x27;, &#x27;Dec&#x27;], month),
+         year, hour, min)
+ENDPROC
+
+PROC getinfo()
+  DEF info, nofiles=FALSE, atend=FALSE, file
+  file:=HEADER
+  lastinfo:=firstblock(file)
+  thefiles:=lastfile:=newfile(file)
+  IF validate(file)
+    file:=file+FILEINFOSIZE
+    REPEAT   /* for all info blocks */
+      REPEAT /* for all files */
+        IF blank(file)
+          nofiles:=TRUE
+        ELSE
+          lastfile.next:=newfile(file)
+          lastfile:=lastfile.next
+          file:=file+FILEINFOSIZE
+          IF Mod(file, BLOCKSIZE)=0 THEN atend:=TRUE
+        ENDIF
+      UNTIL atend OR nofiles
+      IF atend
+        info:=follow(lastinfo)
+	IF (info&lt;&gt;EOC) AND (info&lt;&gt;DEL)
+          lastinfo:=info
+          file:=address(lastinfo)
+          atend:=FALSE
+        ELSE
+          nofiles:=TRUE
+        ENDIF
+      ENDIF
+    UNTIL nofiles
+  ELSE
+    Raise(BAD_CARD)
+  ENDIF
+ENDPROC
+
+PROC follow(block) RETURN int(blockaddr(block))
+PROC blockaddr(block) RETURN (block-MAGIC)*BLKPTRSIZE+FREEBLOCKS
+PROC address(block) RETURN (block-MAGIC)*BLOCKSIZE+MEMSTART
+
+PROC validate(file)
+  RETURN StrCmp(filename(file), &#x27;NC&#x27;, 2) AND
+        (firstblock(file)=HEADEROFF+MAGIC)
+ENDPROC
+
+PROC blank(file)
+  DEF n
+  FOR n:=0 TO FILEINFOSIZE-1 DO IF file[]++&lt;&gt;0 THEN RETURN FALSE
+ENDPROC TRUE
+
+PROC filename(file) RETURN file
+PROC filesize(file) RETURN int(file+14)
+PROC filedate(file) RETURN long(file+16)
+PROC firstblock(file) RETURN int(file+20)
+PROC deleted(file) RETURN file[]=0
+PROC int(p) RETURN p[]++ OR Shl(p[],8)
+PROC long(p) RETURN p[]++ OR Shl(p[]++,8) OR Shl(p[]++,16) OR Shl(p[],24)
+
+PROC newfile(ptr)
+  DEF p
+  CopyMem([ptr, NIL]:fileinfo, p:=New(SIZEOF fileinfo), SIZEOF fileinfo)
+ENDPROC p
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

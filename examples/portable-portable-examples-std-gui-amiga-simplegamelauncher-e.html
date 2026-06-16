@@ -1,0 +1,239 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>SimpleGameLauncher.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-portable.html">PortablE</a> &rsaquo; SimpleGameLauncher.e</div><h1>File: <code>SimpleGameLauncher.e</code></h1><p class="meta">213 lines · project <a href="../examples/pkg-portable.html"><code>PortablE</code></a></p><p class="pathctx">PortablE/PortablE/Examples/std/GUI/Amiga/SimpleGameLauncher.e</p><p class="prose">SimpleGameLauncher.e 06-04-2013 by Chris Handley</p><h2>Source</h2><pre class="code">/* SimpleGameLauncher.e 06-04-2013 by Chris Handley
+*/
+OPT PREPROCESS
+MODULE &#x27;std/cGUI&#x27;, &#x27;std/cPath&#x27;, &#x27;std/pBox&#x27;, &#x27;std/pShell&#x27;
+MODULE &#x27;CSH/pFile&#x27;		-&gt;for readLines() &amp; writeLines()
+MODULE &#x27;CSH/pGeneral&#x27;	-&gt;for LinkReplace() &amp; LinkAppend()
+
+STATIC app_name  = &#x27;SimpleGameLauncher&#x27;
+STATIC app_prefs = &#x27;SimpleGameLauncher.list&#x27;
+
+PROC main()
+	DEF win:PTR TO cGuiWindow, guiList:PTR TO cGuiList, guiRename:PTR TO cGuiButton, guiRemove:PTR TO cGuiButton
+	DEF quit:BOOL, item:PTR TO cGuiItem
+	DEF droppedFile:ARRAY OF CHAR
+	DEF path:STRING, name:STRING, head:STRING, node:STRING, next:STRING
+	DEF hostPath:STRING, oldName:ARRAY OF CHAR
+	
+	-&gt;describe our app
+	CreateApp(app_name).build()
+	
+	-&gt;load list of games (as a list of linked e-strings)
+	head := readLines(app_prefs)
+	IF head
+		-&gt;check file format version, and get to first entry
+		IF StrCmp(head, &#x27;1&#x27;)
+			node := LinkReplace(head, NILS)
+		ELSE
+			END head
+		ENDIF
+	ENDIF
+	
+	-&gt;build the GUI
+	win := CreateGuiWindow(app_name).initAllowDropFiles().initSaveID(&quot;MAIN&quot;)
+	win.beginGroupVertical()
+		guiList := win.beginList().initSelectableEntries()
+		guiList.setPopupHint(&#x27;Drop a game here to add it to the list&#x27;)
+		guiList.setSortByColumn(0)
+			-&gt;step through the e-string list of games, adding them to the GUI list
+			WHILE node
+				-&gt;extract next game from e-string list
+				next := LinkReplace(node, NILS) ; name := node ; node := next ; IF node = NIL THEN Throw(&quot;list&quot;, &#x27;simpleGameLauncher.list ended unexpectedly&#x27;)
+				next := LinkReplace(node, NILS) ; path := node ; node := next ; IF node = NIL THEN Throw(&quot;list&quot;, &#x27;simpleGameLauncher.list ended unexpectedly&#x27;)
+				
+				IF StrCmp(node, &#x27;&#x27;) = FALSE THEN Throw(&quot;list&quot;, &#x27;simpleGameLauncher.list is corrupt&#x27;)
+				next := LinkReplace(node, NILS) ;     END node ; node := next
+				
+				-&gt;add game to GUI list
+				addGame(guiList, name, ImportFilePath(path)) ; END path
+			ENDWHILE
+		win.endList()
+		
+		win.beginGroupHorizontal()
+			guiRename := win.addButton(&#x27;Rename entry&#x27;).initPic(&#x27;tbimages:/rename&#x27;)	-&gt;uses an AISS image (if present)
+			guiRemove := win.addButton(&#x27;Remove entry&#x27;).initPic(&#x27;tbimages:/delete&#x27;)
+		win.endGroup()
+		
+	win.endGroup()
+	win.build()
+	
+	-&gt;just in case an entry is (not) already selected on some GUI systems
+	IF guiList.infoSelectionCount() = 0
+		guiRename.setGhosted(TRUE)
+		guiRemove.setGhosted(TRUE)
+	ENDIF
+	
+	-&gt;handle user interaction with GUI
+	quit := FALSE
+	REPEAT
+		item := WaitForChangedGuiItem()
+		IF item = NIL
+			IF win.getCloseRequest() THEN quit := TRUE
+			IF win.getQuitRequest()  THEN quit := TRUE
+			
+			IF droppedFile := win.getDroppedFile()
+				-&gt;(a file or folder was dropped on the window)
+				IF IsFile(droppedFile)
+					addGame(guiList, StrJoin(FindName(droppedFile)), StrJoin(droppedFile), /*moveCursorToEntry*/ TRUE)
+					guiList.cursor_setState(TRUE)
+				ENDIF
+			ENDIF
+			
+		ELSE IF item = guiRename
+			-&gt;(the Rename button was clicked)
+			IF guiList.cursor_gotoFirstSelected()
+				win.setBusy(TRUE)
+				
+				oldName := guiList.cursor_getLabel()
+				IF name := requestString(app_name, &#x27;Rename entry:&#x27;, oldName)
+					guiList.cursor_setLabel(name)
+					END name
+				ENDIF
+				
+				win.setBusy(FALSE)
+			ENDIF
+			
+		ELSE IF item = guiRemove
+			-&gt;(the Remove button was clicked)
+			IF guiList.cursor_gotoFirstSelected() THEN guiList.cursor_destroy()
+			
+		ELSE IF item = guiList
+			-&gt;(one or more things changed on the list) so handle all possibilities
+			
+			IF guiList.getEventSelectionChanged()
+				-&gt;(the user (de)selected an entry in the list) so enable/disable buttons according to whether anything is selected or not
+				guiRename.setGhosted(guiList.infoSelectionCount() = 0)
+				guiRemove.setGhosted(guiList.infoSelectionCount() = 0)
+			ENDIF
+			
+			IF guiList.getEventDoubleClickedEntry(/*moveCursorToEntry*/ TRUE)
+				-&gt;(user double-clicked on an entry in the list) so run the relevant game
+				hostPath := ExportPath(UnboxSTRING(guiList.cursor_getDataBox()))		-&gt;the path string is retrieved from dataBox by &#x27;unboxing&#x27; it
+				wbRun(hostPath)
+				END hostPath
+			ENDIF
+		ENDIF
+	UNTIL quit
+	
+	-&gt;save list of games
+	saveList(guiList)
+	
+	win.close()
+FINALLY
+	PrintException()
+	
+	END head
+ENDPROC
+
+-&gt;adds the named game to the given GUI list, and optionally moving the list&#x27;s cursor to the added game entry
+PROC addGame(guiList:PTR TO cGuiList, name:STRING, path:STRING, moveCursorToEntry=FALSE:BOOL)
+	guiList.addEntry(name, FALSE, FALSE, 0, /*dataBox*/ BoxSTRING(path), moveCursorToEntry)		-&gt;the path string is stored in dataBox by &#x27;boxing&#x27; it
+ENDPROC
+
+-&gt;saves the GUI list of games to a file
+PROC saveList(guiList:PTR TO cGuiList) RETURNS success:BOOL
+	DEF head:STRING, tail:STRING, path:STRING, name:STRING
+	
+	-&gt;create a list of linked e-strings from the GUI list of games
+	head := NEW &#x27;1&#x27;	-&gt;file format version
+	tail := head
+	IF guiList.cursor_gotoStart()
+		-&gt;(list is not empty) 
+		REPEAT
+			path := ExportPath(UnboxSTRING(guiList.cursor_getDataBox()))
+			name := StrJoin(guiList.cursor_getLabel())
+			tail := LinkAppend(tail, name)
+			tail := LinkAppend(tail, path)
+			tail := LinkAppend(tail, NEW &#x27;&#x27;)	-&gt;marks end of entry, in case we later add more lines to an entry
+		UNTIL guiList.cursor_gotoNext() = 0
+	ENDIF
+	
+	-&gt;write that list of e-strings to a file
+	success := writeLines(app_prefs, head)
+FINALLY
+	END head
+ENDPROC
+
+-&gt;use the Amiga &quot;WbRun&quot; command to asynchronously start a game
+PROC wbRun(hostPath:ARRAY OF CHAR)
+	DEF wbRun:ARRAY OF CHAR, command:STRING
+	
+	wbRun := #ifdef pe_TargetOS_AROS &#x27;Open&#x27; #else &#x27;WbRun&#x27; #endif	-&gt;AROS has Open instead of the WbRun command used on AmigaOS4 &amp; MorphOS
+	command := StrJoin(wbRun, &#x27; &quot;&#x27;, hostPath, &#x27;&quot;&#x27;)
+	ExecuteCommand(command)
+FINALLY
+	END command
+ENDPROC
+
+-&gt;get the user to enter a string, optionally with a default string already supplied
+PROC requestString(title:ARRAY OF CHAR, message:ARRAY OF CHAR, defString=NILA:ARRAY OF CHAR) RETURNS result:STRING
+	DEF win:PTR TO cGuiWindow, guiString:PTR TO cGuiString
+	DEF guiOK, guiCancel
+	DEF done:BOOL, item:PTR TO cGuiItem
+	
+	-&gt;create GUI
+	win := CreateGuiWindow(title)
+	win.beginGroupVertical()
+		guiString := win.addString(message)
+		IF defString THEN guiString.setState(defString)
+		
+		win.beginGroupHorizontal()
+			guiOK     := win.addButton(&#x27;OK&#x27;)
+			guiCancel := win.addButton(&#x27;Cancel&#x27;)
+		win.endGroup()
+	win.endGroup()
+	win.build()
+	
+	-&gt;handle GUI events
+	done := FALSE
+	REPEAT
+		item := WaitForChangedGuiItem()
+		IF item = NIL
+			IF win.getCloseRequest() THEN done := TRUE	-&gt;(the window&#x27;s close button was clicked)
+			
+		ELSE IF item = guiOK
+			-&gt;(the OK button was clicked)
+			result := StrJoin(guiString.getState())
+			IF EstrLen(result) = 0		-&gt;reject empty strings
+				END result
+			ELSE
+				done := TRUE
+			ENDIF
+			
+		ELSE IF item = guiCancel
+			-&gt;(the Cancel button was clicked)
+			done := TRUE
+		ENDIF
+	UNTIL done
+	
+	win.close()
+FINALLY
+	DestroyGuiWindow(win)
+ENDPROC
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

@@ -1,0 +1,750 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>WhatView.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-capus.html">capus</a> &rsaquo; WhatView.e</div><h1>File: <code>WhatView.e</code></h1><p class="meta">724 lines · project <a href="../examples/pkg-capus.html"><code>capus</code></a></p><p class="pathctx">capus/WhatView/WhatView.e</p><p class="prose">*****************************************************************************************</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/intuition.html">intuition/intuition</a></li></ul></div><h2>Source</h2><pre class="code">/*******************************************************************************************/
+/* Source code generate by Gui2E v0.1 © 1994 NasGûl                                        */
+/*******************************************************************************************/
+/********************************************************************************
+ * &lt;&lt; EUTILS HEADER &gt;&gt;
+ ********************************************************************************
+ ED               &quot;EDG&quot;
+ EC               &quot;EC&quot;
+ PREPRO           &quot;EPP -t&quot;
+ SOURCE           &quot;WV.e&quot;
+ EPPDEST          &quot;WV_EPP.e&quot;
+ EXEC             &quot;WhatView&quot;
+ ISOURCE          &quot;WVPrefs.i&quot;
+ HSOURCE          &quot; &quot;
+ ERROREC          &quot; &quot;
+ ERROREPP         &quot; &quot;
+ VERSION          &quot;0&quot;
+ REVISION         &quot;12&quot;
+ NAMEPRG          &quot;WhatView&quot;
+ NAMEAUTHOR       &quot;NasGûl&quot;
+ ********************************************************************************
+ * HISTORY :
+ *******************************************************************************/
+
+OPT OSVERSION=37
+
+MODULE &#x27;intuition/intuition&#x27;,&#x27;gadtools&#x27;,&#x27;libraries/gadtools&#x27;,
+       &#x27;intuition/gadgetclass&#x27;,&#x27;intuition/screens&#x27;,
+       &#x27;graphics/text&#x27;,&#x27;exec/lists&#x27;,&#x27;exec/nodes&#x27;,
+       &#x27;exec/ports&#x27;,&#x27;eropenlib&#x27;,&#x27;utility/tagitem&#x27;,
+       &#x27;wvprefs&#x27;,&#x27;whatis&#x27;,&#x27;reqtools&#x27;,&#x27;libraries/reqtools&#x27;,
+       &#x27;wb&#x27;,&#x27;utility&#x27;,&#x27;workbench/workbench&#x27;,&#x27;icon&#x27;,&#x27;rexxsyslib&#x27;,&#x27;workbench/startup&#x27;,
+       &#x27;dos/dos&#x27;,&#x27;wbmessage&#x27;,&#x27;dos/dostags&#x27;,&#x27;dos/dosextens&#x27;,&#x27;dos/notify&#x27;,&#x27;dos/datetime&#x27;,
+       &#x27;exec/libraries&#x27;
+
+ENUM ER_NONE,ER_LOCKSCREEN,ER_VISUAL,ER_CONTEXT,ER_MENUS,ER_GADGET,ER_WINDOW,
+     ER_NOICON,ER_BADARGS,ER_PORT,ER_APPWIN,ER_NOPREFS,ER_APPITEM,ER_PORTEXIST,
+     ER_SIG
+
+CONST WI_DEEP=$800000CB,WI_BUFFER=$800000CC,WI_BUFLEN=$800000CD
+ENUM ACT_WHATVIEW,ACT_INFO,ACT_ADDICON,ACT_EXECUTE
+CONST DEBUG=FALSE
+DEF screen:PTR TO screen,visual=NIL,tattr:PTR TO textattr,reelquit=FALSE,offy
+/****************************************
+ * wv Definitions
+ ****************************************/
+DEF wv_window=NIL:PTR TO window
+DEF wv_glist=NIL
+/* Gadgets */
+ENUM GA_G_WHATVIEW,GA_G_INFO,GA_G_ADDICON,GA_G_EXECUTE,GA_G_PREFS,GA_G_QUIT
+/* Gadgets labels of wv */
+DEF g_whatview,g_info,g_addicon,g_execute,g_prefs,g_quit
+/*********************************/
+/* Application def               */
+/*********************************/
+DEF myw=NIL:PTR TO wvbase
+DEF wvdisk:PTR TO diskobject
+DEF prgport=NIL:PTR TO mp
+DEF dummyport=NIL:PTR TO mp
+DEF publicport=NIL:PTR TO mp
+DEF appicon=NIL,appitem=NIL,appwindow=NIL,baselock
+DEF addicondir[256]:STRING,defprefsdir[256]:STRING,defaultdir[256]:STRING
+DEF wb_handle
+DEF nreqsig=-1
+DEF prgsig=NIL
+DEF nreq:PTR TO notifyrequest
+DEF maxarg=10
+DEF winx=10,winy=10
+PMODULE &#x27;WVDATA&#x27;
+/*********************************/
+/* Message proc                  */
+/*********************************/
+PROC p_LookAllMessage() HANDLE /*&quot;p_LookAllMessage()&quot;*/
+    DEF sigreturn
+    DEF wvport:PTR TO mp
+    IF wv_window THEN wvport:=wv_window.userport ELSE wvport:=NIL
+    dWriteF([&#x27;p_LookAllMessage()\n&#x27;],0)
+    sigreturn:=Wait(Shl(1,wvport.sigbit) OR
+                    Shl(1,prgport.sigbit) OR Shl(1,nreqsig) OR Shl(1,publicport.sigbit) OR $F000)
+    IF (sigreturn AND Shl(1,wvport.sigbit))
+        IF p_LookwvMessage()=TRUE THEN p_CloseWindow()
+    ENDIF
+    IF (sigreturn AND Shl(1,prgport.sigbit))
+        p_LookAppMessage()
+        IF wv_window=NIL THEN Raise(p_OpenWindow())
+    ENDIF
+    IF (sigreturn AND Shl(1,nreqsig))
+        p_ReadPrefsFile(&#x27;Env:Whatview.prefs&#x27;)
+    ENDIF
+    IF (sigreturn AND Shl(1,publicport.sigbit))
+        p_LookPublicMessage()
+    ENDIF
+    IF (sigreturn AND $F000)
+        reelquit:=TRUE
+    ENDIF
+    Raise(ER_NONE)
+EXCEPT
+    RETURN exception
+ENDPROC
+PROC p_LookPublicMessage() /*&quot;p_LookPublicMessage()&quot;*/
+    DEF mymsg:PTR TO wvmsg
+    DEF stract[256]:STRING
+    DEF doit=-1
+    IF mymsg:=GetMsg(publicport)
+        StringF(stract,&#x27;\s&#x27;,mymsg.name)
+        IF mymsg.lock=0
+            IF StrCmp(stract,&#x27;WHATVIEW&#x27;,8) THEN doit:=ACT_WHATVIEW
+            IF StrCmp(stract,&#x27;INFO&#x27;,4) THEN doit:=ACT_INFO
+            IF StrCmp(stract,&#x27;ADDICON&#x27;,7) THEN doit:=ACT_ADDICON
+            IF StrCmp(stract,&#x27;EXECUTE&#x27;,7) THEN doit:=ACT_EXECUTE
+            IF StrCmp(stract,&#x27;QUIT&#x27;,4) THEN reelquit:=TRUE
+            IF StrCmp(stract,&#x27;FLUSH&#x27;,5)
+                p_FlushWhatis()
+                JUMP allok
+            ENDIF
+            IF StrCmp(stract,&#x27;PREFS&#x27;,5)
+                p_CLIRun(&#x27;WVprefs&#x27;,defprefsdir,4000,0)
+                JUMP allok
+            ENDIF
+        ENDIF
+        IF doit&lt;&gt;-1
+            IF p_EmptyList(myw.adremptylist)&lt;&gt;-1
+                p_WriteFArgList(myw.adremptylist,doit)
+            ELSE
+                IF p_WVFileRequester()
+                    p_WriteFArgList(myw.adremptylist,doit)
+                ENDIF
+            ENDIF
+            p_RemoveArgList(myw.adremptylist,FALSE)
+            p_CleanArgActionList(myw.adractionlist)
+            JUMP allok
+        ELSE
+            p_AjouteArgNode(myw.adremptylist,mymsg.name,mymsg.lock)
+        ENDIF
+        allok:
+        ReplyMsg(mymsg)
+    ENDIF
+ENDPROC
+PROC p_LookAppMessage() HANDLE /*&quot;p_LookAppMessage()&quot;*/
+/********************************************************************************
+ * Para         : NONE
+ * Return       : NONE
+ * Description  : Parse Msg on App.
+ *******************************************************************************/
+    DEF appmsg:PTR TO appmessage
+    DEF b
+    DEF apparg:PTR TO wbarg
+    IF appmsg:=GetMsg(prgport)
+        apparg:=appmsg.arglist
+        FOR b:=0 TO appmsg.numargs-1
+            p_AjouteArgNode(myw.adremptylist,apparg[b].name,apparg[b].lock)
+        ENDFOR
+        ReplyMsg(appmsg)
+    ENDIF
+    Raise(ER_NONE)
+EXCEPT
+    RETURN exception
+ENDPROC
+PROC p_LookwvMessage() /*&quot;p_LookwvMessage()&quot;*/
+   DEF mes:PTR TO intuimessage
+   DEF g:PTR TO gadget
+   DEF type=0,infos=NIL,ret=FALSE
+   /*DEF pv[256]:STRING*/
+   WHILE (mes:=Gt_GetIMsg(wv_window.userport))
+   /*IF mes:=Gt_GetIMsg(wv_window.userport)*/
+       type:=mes.class
+       SELECT type
+           CASE IDCMP_MENUPICK
+              infos:=mes.code
+              SELECT infos
+              ENDSELECT
+           CASE IDCMP_CLOSEWINDOW
+              ret:=TRUE
+           CASE IDCMP_GADGETUP
+              g:=mes.iaddress
+              infos:=g.gadgetid
+              SELECT infos
+                  CASE GA_G_WHATVIEW
+                      ret:=TRUE
+                      IF p_EmptyList(myw.adremptylist)&lt;&gt;-1
+                          p_WriteFArgList(myw.adremptylist,ACT_WHATVIEW)
+                      ELSE
+                          IF p_WVFileRequester()
+                              p_WriteFArgList(myw.adremptylist,ACT_WHATVIEW)
+                          ENDIF
+                      ENDIF
+                      p_RemoveArgList(myw.adremptylist,FALSE)
+                      p_CleanArgActionList(myw.adractionlist)
+                  CASE GA_G_INFO
+                      ret:=TRUE
+                      IF p_EmptyList(myw.adremptylist)&lt;&gt;-1
+                          p_WriteFArgList(myw.adremptylist,ACT_INFO)
+                      ELSE
+                          IF p_WVFileRequester()
+                              p_WriteFArgList(myw.adremptylist,ACT_INFO)
+                          ENDIF
+                      ENDIF
+                      p_RemoveArgList(myw.adremptylist,FALSE)
+                      p_CleanArgActionList(myw.adractionlist)
+                  CASE GA_G_ADDICON
+                      ret:=TRUE
+                      IF p_EmptyList(myw.adremptylist)&lt;&gt;-1
+                          p_WriteFArgList(myw.adremptylist,ACT_ADDICON)
+                      ELSE
+                          IF p_WVFileRequester()
+                              p_WriteFArgList(myw.adremptylist,ACT_ADDICON)
+                          ENDIF
+                      ENDIF
+                      p_RemoveArgList(myw.adremptylist,FALSE)
+                      p_CleanArgActionList(myw.adractionlist)
+                  CASE GA_G_EXECUTE
+                      ret:=TRUE
+                      IF p_EmptyList(myw.adremptylist)&lt;&gt;-1
+                          p_WriteFArgList(myw.adremptylist,ACT_EXECUTE)
+                      ELSE
+                          IF p_WVFileRequester()
+                              p_WriteFArgList(myw.adremptylist,ACT_EXECUTE)
+                          ENDIF
+                      ENDIF
+                      p_RemoveArgList(myw.adremptylist,FALSE)
+                      p_CleanArgActionList(myw.adractionlist)
+                  CASE GA_G_PREFS
+                      ret:=TRUE
+                      p_CLIRun(&#x27;WVprefs&#x27;,defprefsdir,4000,0)
+                  CASE GA_G_QUIT
+                      ret:=TRUE
+                      reelquit:=TRUE
+              ENDSELECT
+       ENDSELECT
+       Gt_ReplyIMsg(mes)
+   ENDWHILE
+   /*ENDIF*/
+   WHILE (mes:=Gt_GetIMsg(wv_window.userport)) DO Gt_ReplyIMsg(mes)
+   RETURN ret
+ENDPROC
+/*********************************/
+/* Application proc              */
+/*********************************/
+PROC p_InitWVAPP() HANDLE /*&quot;p_InitWVAPP()&quot;*/
+    dWriteF([&#x27;p_InitWVAPP()\n&#x27;],0)
+    IF (prgsig:=AllocSignal(-1))=NIL THEN Raise(ER_SIG)
+    myw:=New(SIZEOF wvbase)
+    myw.adremptylist:=p_InitList()
+    myw.adractionlist:=p_InitList()
+    IF (prgport:=CreateMsgPort())=NIL THEN Raise(ER_PORT)
+    IF (dummyport:=CreateMsgPort())=NIL THEN Raise(ER_PORT)
+    IF (publicport:=p_CreatePublicPort(&#x27;WhatViewPort&#x27;,0))=NIL THEN Raise(ER_PORT)
+    p_InitPositionIcon(wvdisk)
+    IF (appitem:=AddAppMenuItemA(0,0,&#x27;WhatView&#x27;,prgport,[MTYPE_APPMENUITEM,TAG_DONE]))=NIL THEN Raise(ER_APPITEM)
+    IF (appicon:=AddAppIconA(0,0,&#x27;WhatView&#x27;,prgport,NIL,wvdisk,
+                             [MTYPE_APPICON,MTYPE_ICONPUT,wvdisk,TAG_DONE,0]))=NIL THEN Raise(ER_NOICON)
+    IF wvdisk THEN FreeDiskObject(wvdisk)
+    p_InitLockConfigFile()
+    Raise(ER_NONE)
+EXCEPT
+    RETURN exception
+ENDPROC
+PROC p_RemWVAPP() /*&quot;p_RemWVAPP()&quot;*/
+    dWriteF([&#x27;p_RemWVAPP()\n&#x27;],0)
+    p_RemLockConfigFile()
+    IF appicon THEN RemoveAppIcon(appicon)
+    IF appitem THEN RemoveAppMenuItem(appitem)
+    IF publicport THEN p_DeletePublicPort(publicport)
+    IF dummyport THEN DeleteMsgPort(dummyport)
+    IF prgport THEN DeleteMsgPort(prgport)
+    IF myw.adremptylist THEN p_RemoveArgList(myw.adremptylist,TRUE)
+    IF myw.adractionlist THEN p_RemoveActionList(myw.adractionlist,TRUE)
+    IF myw THEN Dispose(myw)
+    IF prgsig THEN FreeSignal(prgsig)
+ENDPROC
+PROC p_CreatePublicPort(name,priority) /*&quot;p_CreatePublicPort(name,priority)&quot;*/
+/********************************************************************************
+ * Para         : name (STRING),pri.
+ * Return       : address of the port if ok,else NIL
+ * Description  : Create a Public Message Port.
+ *******************************************************************************/
+    DEF p_node:PTR TO ln
+    DEF myport:PTR TO mp
+    dWriteF([&#x27;p_CreatePublicPort()\n&#x27;],0)
+    myport:=CreateMsgPort()
+    IF myport=0 THEN RETURN NIL
+    p_node:=myport.ln
+    p_node.name:=name
+    p_node.pri:=priority
+    p_node.type:=NT_MSGPORT
+    myport.flags:=PA_SIGNAL
+    AddPort(myport)
+    RETURN myport
+ENDPROC
+PROC p_DeletePublicPort(adr_port:PTR TO mp) /*&quot;p_DeletePublicPort(adr_port)&quot;*/
+/********************************************************************************
+ * Para         : Address of a public port.
+ * Return       : NONE
+ * Description  : Delete a public message port.
+ *******************************************************************************/
+    dWriteF([&#x27;p_DeletePublicPort()\n&#x27;],0)
+    IF adr_port THEN RemPort(adr_port)
+    IF adr_port THEN DeleteMsgPort(adr_port)
+ENDPROC
+PROC p_ReadPrefsFile(source) /*&quot;p_ReadPrefsFile(source)&quot;*/
+    DEF len,a,adr,buf,handle,flen=TRUE,pos
+    DEF chunk
+    DEF pv[256]:STRING
+    DEF node:PTR TO ln
+    DEF addact:PTR TO actionnode
+    DEF list:PTR TO lh,nn=NIL
+    dWriteF([&#x27;p_ReadPrefsFile()\n&#x27;],0)
+    IF (flen:=FileLength(source))=-1 THEN RETURN FALSE
+    IF (buf:=New(flen+1))=NIL THEN RETURN FALSE
+    IF (handle:=Open(source,1005))=NIL THEN RETURN FALSE
+    len:=Read(handle,buf,flen)
+    Close(handle)
+    IF len&lt;1 THEN RETURN FALSE
+    adr:=buf
+    chunk:=Long(adr)
+    IF chunk&lt;&gt;ID_WVPR
+        Dispose(buf)
+        RETURN FALSE
+    ENDIF
+    p_RemoveActionList(myw.adractionlist,FALSE)
+    FOR a:=0 TO len-1
+        pos:=adr++
+        chunk:=Long(pos)
+        SELECT chunk
+            CASE ID_WVAC
+                pos:=pos+4
+                node:=New(SIZEOF ln)
+                addact:=New(SIZEOF actionnode)
+                addact.exectype:=Int(pos)
+                addact.stack:=Long(pos+2)
+                addact.priority:=Int(pos+6)
+                StringF(pv,&#x27;\s&#x27;,pos+8)
+                node.name:=String(EstrLen(pv))
+                node.succ:=0
+                StrCopy(node.name,pv,ALL)
+                pos:=pos+8+EstrLen(pv)+1
+                StringF(pv,&#x27;\s&#x27;,pos)
+                addact.command:=String(EstrLen(pv))
+                StrCopy(addact.command,pv,ALL)
+                pos:=pos+EstrLen(pv)+1
+                StringF(pv,&#x27;\s&#x27;,pos)
+                addact.currentdir:=String(EstrLen(pv))
+                StrCopy(addact.currentdir,pv,ALL)
+                pos:=pos+EstrLen(pv)+1
+                CopyMem(node,addact.node,SIZEOF ln)
+                AddTail(myw.adractionlist,addact.node)
+                nn:=p_GetNumNode(myw.adractionlist,addact.node)
+                IF nn=0
+                    list:=myw.adractionlist
+                    list.head:=addact.node
+                    node.pred:=0
+                ENDIF
+                addact.numarg:=0
+                addact.cmd:=0
+                IF node THEN Dispose(node)
+        ENDSELECT
+    ENDFOR
+    Dispose(buf)
+    RETURN TRUE
+ENDPROC
+PROC p_InitLockConfigFile() /*&quot;p_InitLockConfigFile()&quot;*/
+    dWriteF([&#x27;p_InitLockConfig()\n&#x27;],0)
+    nreq:=New(SIZEOF notifyrequest)
+    nreq.name:=&#x27;Env:WhatView.prefs&#x27;
+    nreq.flags:=NRF_SEND_SIGNAL
+    nreq.port:=FindTask(0)
+    nreq.signalnum:=AllocSignal(nreqsig)
+    nreqsig:=nreq.signalnum
+    StartNotify(nreq)
+ENDPROC
+PROC p_RemLockConfigFile() /*&quot;p_RemLockConfigFile()&quot;*/
+    dWriteF([&#x27;p_RemLockConfig()\n&#x27;],0)
+    IF nreqsig THEN FreeSignal(nreqsig)
+    EndNotify(nreq)
+ENDPROC
+PROC p_StartCli() HANDLE /*&quot;p_StartCli()&quot;*/
+/********************************************************************************
+ * Para         : NONE
+ * Return       : ER_NONE if ok,else the error.
+ * Description  : Get .info and lock the currentdir.
+ *******************************************************************************/
+    DEF myargs:PTR TO LONG,rdargs=NIL
+    DEF prgname[256]:STRING
+    DEF pro:PTR TO process
+    dWriteF([&#x27;p_StartCli()\n&#x27;],0)
+    myargs:=[0]
+    IF rdargs:=ReadArgs(&#x27;ICON&#x27;,myargs,NIL)
+        IF myargs[0] THEN StrCopy(prgname,myargs[0],ALL) ELSE GetProgramName(prgname,256)
+        IF (wvdisk:=GetDiskObject(prgname))=NIL THEN Raise(ER_NOICON)
+        pro:=FindTask(0)
+        baselock:=CurrentDir(pro.currentdir)
+    ELSE
+        Raise(ER_BADARGS)
+    ENDIF
+    Raise(ER_NONE)
+EXCEPT
+    IF rdargs THEN FreeArgs(rdargs)
+    RETURN exception
+ENDPROC
+PROC p_StartWb() HANDLE /*&quot;p_StartWb()&quot;*/
+/********************************************************************************
+ * Para         : NONE
+ * Return       : ER_NONE if ok,else the error.
+ * Description  : Get .info and lock cureentdir.
+ *******************************************************************************/
+    DEF wb:PTR TO wbstartup
+    DEF args:PTR TO wbarg
+    DEF prgname[256]:STRING
+    dWriteF([&#x27;p_StartWb()\n&#x27;],0)
+    wb:=wbmessage
+    args:=wb.arglist
+    FindTask(0)
+    StrCopy(prgname,args[0].name,ALL)
+    baselock:=CurrentDir(args[0].lock)
+    IF (wvdisk:=GetDiskObject(prgname))=NIL THEN Raise(ER_NOICON)
+    Raise(ER_NONE)
+EXCEPT
+    RETURN exception
+ENDPROC
+PROC p_InitPositionIcon(s_d_o:PTR TO diskobject) /*&quot;p_InitPositionIcon(s_d_o)&quot;*/
+/********************************************************************************
+ * Para         : address of a diskobject structure
+ * Return       : NONE
+ * Description  : Look for POSX/POSY and DEFDIR (for icons) tooltypes.
+ *******************************************************************************/
+    DEF defdir[256]:STRING
+    DEF max
+    dWriteF([&#x27;p_InitPositionIcon()\n&#x27;],0)
+    s_d_o.currentx:=Val(FindToolType(s_d_o.tooltypes,&#x27;POSX&#x27;),NIL)
+    s_d_o.currenty:=Val(FindToolType(s_d_o.tooltypes,&#x27;POSY&#x27;),NIL)
+    IF defdir:=FindToolType(s_d_o.tooltypes,&#x27;DEFDIR&#x27;)
+        IF defdir THEN StrCopy(addicondir,defdir,ALL)
+    ENDIF
+    IF defdir:=FindToolType(s_d_o.tooltypes,&#x27;DEFPREFSDIR&#x27;)
+        IF defdir THEN StrCopy(defprefsdir,defdir,ALL)
+    ENDIF
+    IF max:=FindToolType(s_d_o.tooltypes,&#x27;MAXARG&#x27;)
+        IF max THEN maxarg:=Val(max,NIL)
+        IF maxarg&gt;20 THEN maxarg:=20
+    ENDIF
+ENDPROC
+PROC p_WBRun(com,dir,st,pr,num_arg,arg_list:PTR TO LONG) HANDLE /*&quot;p_WBRun(com,di,st,pr,num_arg,arg_list)&quot;*/
+    DEF execmsg:PTR TO mn
+    DEF wbsm:wbstartmsg
+    DEF rc=FALSE
+    DEF node:PTR TO ln
+    DEF oldcd
+    wbsm:=New(SIZEOF wbstartmsg)
+    execmsg:=wbsm
+    node:=execmsg
+    node.type:=NT_MESSAGE
+    node.pri:=0
+    execmsg.replyport:=dummyport
+    wbsm.name:=com
+    wbsm.dirlock:=Lock(dir,-2)
+    wbsm.stack:=st
+    wbsm.prio:=pr
+    wbsm.numargs:=num_arg
+    wbsm.arglist:=arg_list
+    oldcd:=CurrentDir(wbsm.dirlock)
+    Forbid()
+    IF wb_handle
+        PutMsg(wb_handle,wbsm)
+    ENDIF
+    Permit()
+    IF wb_handle
+        WaitPort(dummyport)
+        GetMsg(dummyport)
+        rc:=wbsm.stack
+    ENDIF
+    IF rc=0 THEN p_MakeWVRequest(&#x27;WBRun Failed.&#x27;,&#x27;Ok&#x27;,NIL)
+    Raise(ER_NONE)
+EXCEPT
+    CurrentDir(oldcd)
+    IF wbsm.dirlock THEN UnLock(wbsm.dirlock)
+    IF wbsm THEN Dispose(wbsm)
+    RETURN exception
+ENDPROC
+PROC p_CLIRun(cmd,dir,sta,pp) HANDLE /*&quot;p_CLIRun(cmd,dir,sta,pp)&quot;*/
+    DEF ofh:PTR TO filehandle
+    DEF ifh:PTR TO filehandle
+    DEF newct=NIL:PTR TO mp
+    DEF oldct:PTR TO mp
+    DEF oldcd
+    DEF newcd
+    IF ofh:=Open(&#x27;NIL:&#x27;,1006)
+        IF IsInteractive(ofh)
+            newct:=ofh.type
+            oldct:=SetConsoleTask(newct)
+            ifh:=Open(&#x27;CONSOLE:&#x27;,1005)
+            SetConsoleTask(oldct)
+        ELSE
+            ifh:=Open(&#x27;NIL:&#x27;,1005)
+        ENDIF
+    ENDIF
+    newcd:=Lock(dir,-2)
+    oldcd:=CurrentDir(newcd)
+    IF SystemTagList(cmd,[SYS_OUTPUT,NIL,
+                         SYS_INPUT,NIL,
+                         SYS_ASYNCH,TRUE,
+                         SYS_USERSHELL,TRUE,
+                         NP_STACKSIZE,sta,
+                         NP_PRIORITY,pp,
+                         NP_PATH,NIL,
+                         NP_CONSOLETASK,newct,
+                         0])
+    ENDIF
+    CurrentDir(oldcd)
+    IF newcd THEN UnLock(newcd)
+    IF ofh THEN Close(ofh)
+    IF ifh THEN Close(ifh)
+    Raise(ER_NONE)
+EXCEPT
+    RETURN exception
+ENDPROC
+PROC p_InitWBHandler() HANDLE /*&quot;p_InitWBHandler()&quot;*/
+    DEF ifh
+    DEF ofh
+    DEF wbh
+    dWriteF([&#x27;p_InitWBHandler()\n&#x27;],0)
+    IF (ifh:=Open(&#x27;NIL:&#x27;,1006))=NIL THEN Raise(NIL)
+    IF (ofh:=Open(&#x27;NIL:&#x27;,1005))=NIL THEN Raise(NIL)
+    SystemTagList(&#x27;L:WBStart-Handler&#x27;,[SYS_INPUT,ifh,
+                                      SYS_OUTPUT,ofh,
+                                      SYS_ASYNCH,TRUE,
+                                      SYS_USERSHELL,TRUE,
+                                      NP_CONSOLETASK,NIL,
+                                      NP_WINDOWPTR,NIL])
+    Delay(25)
+    wbh:=FindPort(&#x27;WBStart-Handler Port&#x27;)
+    Raise(wbh)
+EXCEPT
+    IF Not(wbh)
+        IF ifh THEN Close(ifh)
+        IF ofh THEN Close(ofh)
+    ENDIF
+    RETURN wbh
+ENDPROC
+PROC p_MakeWVRequest(bodytext,gadgettext,the_arg) /*&quot;p_MakeWVRequest(bodytext,gadgettext,the_arg)&quot;*/
+/********************************************************************************
+ * Para         : text (STRING), gadget (STRING), arg PTR TO LONG
+ * Return       : FALSE if cancel selected,else TRUE
+ * Description  : PopUp a Requester.
+ *******************************************************************************/
+    DEF ret
+    DEF taglist
+    IF wv_window&lt;&gt;NIL
+        taglist:=[RT_WINDOW,wv_window,RT_LOCKWINDOW,TRUE,RTEZ_REQTITLE,&#x27;WhatView v0.15 © NasGûl&#x27;,RT_UNDERSCORE,&quot;_&quot;,0]
+    ELSE
+        taglist:=[RTEZ_REQTITLE,&#x27;WhatView v0.15 © NasGûl&#x27;,RT_UNDERSCORE,&quot;_&quot;,0]
+    ENDIF
+    ret:=RtEZRequestA(bodytext,gadgettext,0,the_arg,taglist)
+    RETURN ret
+ENDPROC
+PROC p_MakeWVStringReq(t_reelname,t_idstr,t_size) /*&quot;p_MakeWVStringReq(t_reelname,t_idstr,t_size)&quot;*/
+/********************************************************************************
+ * Para         : reelname (STRING),id string (STRING) ,size (LONG)
+ * Return       : The result string of the request or NIL if cancel selected.
+ * Description  : PopUp a StringRequester to choose a command for a file.
+ *******************************************************************************/
+    DEF my_sreq:PTR TO rtfilerequester
+    DEF bodyreq[256]:STRING
+    DEF buffer[256]:STRING
+    DEF return_string[256]:STRING
+    DEF ret,taglist
+    StringF(bodyreq,&#x27;Execution d\aune commande pour:\nFichier :\s\nType    :\s\nSize    :\d&#x27;,t_reelname,t_idstr,t_size)
+    StrCopy(buffer,&#x27;&#x27;,ALL)
+    IF wv_window&lt;&gt;NIL
+        taglist:=[RT_WINDOW,wv_window,RT_LOCKWINDOW,TRUE,RTEZ_REQTITLE,&#x27;WhatView v0.15 © NasGûl&#x27;,RTGS_GADFMT,&#x27;_Execute|_Cancel&#x27;,RTGS_TEXTFMT,bodyreq,RT_UNDERSCORE,&quot;_&quot;,0]
+    ELSE
+        taglist:=[RTEZ_REQTITLE,&#x27;WhatView v0.15 © NasGûl&#x27;,RTGS_GADFMT,&#x27;_Execute|_Cancel&#x27;,RTGS_TEXTFMT,bodyreq,RT_UNDERSCORE,&quot;_&quot;,0]
+    ENDIF
+    IF my_sreq:=RtAllocRequestA(RT_REQINFO,NIL)
+        ret:=RtGetStringA(buffer,200,&#x27;WhatView v0.12&#x27;,my_sreq,taglist)
+        IF ret
+            NOP
+        ELSE
+            buffer:=NIL
+        ENDIF
+        StringF(return_string,&#x27;\s&#x27;,buffer)
+        IF my_sreq THEN RtFreeRequest(my_sreq)
+    ELSE
+        RETURN NIL
+    ENDIF
+    RETURN return_string
+ENDPROC
+PROC p_WVFileRequester() /*&quot;p_WVFileRequester()&quot;*/
+/********************************************************************************
+ * Para         : NONE
+ * Return       : FALSE if Cancel selected.
+ * Description  : PopUp a MultiFileRequester,Build the Wv_Arglist.
+ *******************************************************************************/
+    DEF reqfile:PTR TO rtfilerequester
+    DEF liste:PTR TO rtfilelist
+    DEF buffer[120]:STRING
+    DEF add_liste
+    DEF ret=TRUE
+    DEF the_reelname[256]:STRING
+    DEF lock
+    IF reqfile:=RtAllocRequestA(RT_FILEREQ,NIL)
+        buffer[0]:=0
+        RtChangeReqAttrA(reqfile,[RTFI_DIR,defaultdir])
+        add_liste:=RtFileRequestA(reqfile,buffer,&#x27;Whatview v0.15 © NasGûl&#x27;,
+                                  [RTFI_FLAGS,FREQF_MULTISELECT,RTFI_OKTEXT,&#x27;_Whatview&#x27;,RTFI_HEIGHT,200,
+                                   RT_UNDERSCORE,&quot;_&quot;,TAG_DONE,0])
+        StrCopy(defaultdir,reqfile.dir,ALL)
+        IF reqfile THEN RtFreeRequest(reqfile)
+    ELSE
+        ret:=FALSE
+    ENDIF
+    liste:=add_liste
+    IF buffer[0]&lt;&gt;0
+        WHILE liste
+            StringF(the_reelname,&#x27;\s&#x27;,liste.name)
+            IF lock:=Lock(defaultdir,-2)
+                p_AjouteArgNode(myw.adremptylist,the_reelname,lock)
+                UnLock(lock)
+            ENDIF
+            liste:=liste.next
+        ENDWHILE
+        IF add_liste THEN RtFreeFileList(add_liste)
+    ELSE
+        ret:=FALSE
+    ENDIF
+    RETURN ret
+ENDPROC
+PROC p_AddIcon(t_fullname,t_reelname,t_size,t_idstr) /*&quot;p_AddIcon(t_fullname,t_reelname,t_lock,t_size,t_idstr)&quot;*/
+/********************************************************************************
+ * Para         : fullname,reelname,id string,size.
+ * Return       : NONE
+ * Description  : Add a def icon to files or dirs.
+ *******************************************************************************/
+    DEF id_type
+    DEF id_icon[80]:STRING
+    DEF piv_str[256]:STRING
+    DEF fichier_source[256]:STRING
+    DEF fichier_destin[256]:STRING
+    DEF csdo:PTR TO diskobject
+    StrCopy(piv_str,addicondir,ALL)
+    id_type:=WhatIs(t_fullname,[WI_DEEP,1])
+    id_icon:=GetIconName(id_type)
+    AddPart(piv_str,id_icon,256)
+    StringF(fichier_source,&#x27;\s&#x27;,piv_str)
+    IF id_icon&lt;&gt;NIL
+        StringF(fichier_destin,&#x27;\s&#x27;,t_fullname)
+        csdo:=GetDiskObject(fichier_source)
+        IF csdo
+            PutDiskObject(fichier_destin,csdo)
+            IF csdo THEN FreeDiskObject(csdo)
+        ELSE
+            p_MakeWVRequest(&#x27;Pas d\aicone par défaut pour:\nFichier :\s\nType    :\s\nSize    :\d&#x27;,&#x27;_Merci&#x27;,[t_reelname,t_idstr,t_size])
+        ENDIF
+    ELSE
+        p_MakeWVRequest(&#x27;Pas d\aicone par défaut pour:\nFichier :\s\nType    :\s\nSize    :\d&#x27;,&#x27;_Merci&#x27;,[t_reelname,t_idstr,t_size])
+    ENDIF
+ENDPROC
+PROC p_FlushWhatis() /*&quot;p_FlushWhatis()&quot;*/
+/********************************************************************************
+ * Para         : NONE
+ * Return       : NONE
+ * Description  : Close/Open/Flush.
+ *******************************************************************************/
+    DEF library:PTR TO lib
+    IF whatisbase
+        library:=whatisbase
+        CloseLibrary(whatisbase)
+        IF library.opencnt&gt;0
+            p_MakeWVRequest(&#x27;Flush impossible \d programme(s)\nutilise(nt) la WhatIs.library&#x27;,&#x27;_Merci&#x27;,[library.opencnt])
+        ELSE
+            p_MakeWVRequest(&#x27;Flush de la WhatIs.library ok.&#x27;,&#x27;_Merci&#x27;,NIL)
+        ENDIF
+        whatisbase:=OpenLibrary(&#x27;whatis.library&#x27;,3)
+    ENDIF
+    AskReparse($01)
+ENDPROC
+/*********************************/
+/* Main proc                     */
+/*********************************/
+PROC main() HANDLE /*&quot;main()&quot;*/
+    DEF testmain
+    tattr:=[&#x27;topaz.font&#x27;,8,0,0]:textattr
+    VOID &#x27;$VER:WhatView v0.15 © NasGûl (15/04/94)&#x27;
+    IF (testmain:=p_OpenLibraries())&lt;&gt;ER_NONE THEN Raise(testmain)
+    IF wbmessage&lt;&gt;NIL
+        IF (testmain:=p_StartWb())&lt;&gt;ER_NONE THEN Raise(testmain)
+    ELSE
+        IF (testmain:=p_StartCli())&lt;&gt;ER_NONE THEN Raise(testmain)
+    ENDIF
+    Forbid()
+    testmain:=FindPort(&#x27;WhatViewPort&#x27;) 
+    Permit()
+    IF testmain THEN Raise(ER_PORTEXIST)
+    Forbid()
+    wb_handle:=FindPort(&#x27;WBStart-Handler Port&#x27;)
+    Permit()
+    IF wb_handle=0 THEN wb_handle:=p_InitWBHandler()
+    IF (testmain:=p_InitWVAPP())&lt;&gt;ER_NONE THEN Raise(testmain)
+    IF p_ReadPrefsFile(&#x27;Env:WhatView.prefs&#x27;)=FALSE THEN Raise(ER_NOPREFS)
+    REPEAT
+        IF (testmain:=p_LookAllMessage())&lt;&gt;ER_NONE THEN Raise(testmain)
+    UNTIL reelquit=TRUE
+    Raise(ER_NONE)
+EXCEPT
+    IF myw THEN p_RemWVAPP()
+    CurrentDir(baselock)
+    p_CloseLibraries()
+    SELECT exception
+        CASE ER_LOCKSCREEN; WriteF(&#x27;Lock Screen Failed.\n&#x27;)
+        CASE ER_VISUAL;     WriteF(&#x27;Error Visual.\n&#x27;)
+        CASE ER_CONTEXT;    WriteF(&#x27;Error Context.\n&#x27;)
+        CASE ER_MENUS;      WriteF(&#x27;Error Menus.\n&#x27;)
+        CASE ER_GADGET;     WriteF(&#x27;Error Gadget.\n&#x27;)
+        CASE ER_WINDOW;     WriteF(&#x27;Error Window.\n&#x27;)
+        CASE ER_NOICON;     WriteF(&#x27;no icon.\n&#x27;)
+        CASE ER_BADARGS;    WriteF(&#x27;Bad Args.\n&#x27;)
+        CASE ER_NOPREFS;    WriteF(&#x27;env:whatview.prefs ?\n&#x27;)
+        CASE ER_APPWIN;     WriteF(&#x27;Error AppWinidow.\n&#x27;)
+        CASE ER_APPITEM;    WriteF(&#x27;Error AppItem.\n&#x27;)
+        CASE ER_PORT;       WriteF(&#x27;Error Public port.\n&#x27;)
+        CASE ER_PORTEXIST;  WriteF(&#x27;WhatViewPort exist.\n&#x27;)
+        CASE ER_SIG;        WriteF(&#x27;Error Alloc signal.\n&#x27;)
+    ENDSELECT
+ENDPROC
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

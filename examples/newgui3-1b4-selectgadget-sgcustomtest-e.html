@@ -1,0 +1,218 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>SGCustomTest.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-newgui3-1b4.html">NewGUI3_1b4</a> &rsaquo; SGCustomTest.e</div><h1>File: <code>SGCustomTest.e</code></h1><p class="meta">192 lines · project <a href="../examples/pkg-newgui3-1b4.html"><code>NewGUI3_1b4</code></a></p><p class="pathctx">NewGUI3_1b4/SelectGadget/SGCustomTest.e</p><p class="prose">Select.gadget test 2 (25.5.98)</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/ports.html">exec/ports</a></li><li><a href="../modules/select.html">gadgets/select</a></li><li><a href="../modules/gadtools.html">gadtools</a></li><li><a href="../modules/rastport.html">graphics/rastport</a></li><li><a href="../modules/text.html">graphics/text</a></li><li><a href="../modules/gadgetclass.html">intuition/gadgetclass</a></li><li><a href="../modules/intuition.html">intuition/intuition</a></li><li><a href="../modules/screens.html">intuition/screens</a></li><li><a href="../modules/gadtools.html">libraries/gadtools</a></li><li><a href="../modules/selectgadget.html">selectgadget</a></li></ul></div><h2>Source</h2><pre class="code">/*  Select.gadget test 2 (25.5.98)              */
+/*  Originally Written for SAS/C                */
+/*  Compile: SC LINK SGCustomTest               */
+/*  © 1998 Massimo Tantignone                   */
+/*  Translated (30.05.98) to AmigaE by:         */
+/*  THE DARK FRONTIER Softwareentwicklungen     */
+/*  Grundler Mathias                            */
+/*  frontier@starbase.inka.de                   */
+
+MODULE  &#x27;exec/ports&#x27;
+MODULE  &#x27;graphics/text&#x27;
+MODULE  &#x27;graphics/rastport&#x27;
+MODULE  &#x27;intuition/intuition&#x27;
+MODULE  &#x27;intuition/screens&#x27;
+MODULE  &#x27;intuition/gadgetclass&#x27;
+MODULE  &#x27;libraries/gadtools&#x27;
+MODULE  &#x27;gadtools&#x27;
+MODULE  &#x27;gadgets/select&#x27;
+MODULE  &#x27;selectgadget&#x27;
+
+ENUM    ERR_GADTOOLS=1,
+        ERR_GADGET,
+        ERR_WIN
+
+PROC main()     HANDLE
+ DEF    scr=NIL:PTR TO screen,
+        win=NIL:PTR TO window,
+        imsg=NIL:PTR TO intuimessage,
+        dri=NIL:PTR TO drawinfo,
+        vi=NIL,
+        class,
+        code,
+        fine=FALSE,
+        width=640,
+        height=200,
+        one=FALSE,
+        two=FALSE,
+        ng:newgadget,           -&gt; staticly created!!!
+        gad1=NIL:PTR TO gadget,
+        gad2=NIL:PTR TO gadget,
+        glist=NIL:PTR TO gadget,
+        iaddress=NIL:PTR TO gadget,
+        labels1=NIL,
+        labels2=NIL
+
+   labels1:=[   &#x27;First option&#x27;,
+                &#x27;Second option&#x27;,
+                &#x27;Third option&#x27;,
+                &#x27;Fourth option&#x27;,
+                NIL]
+   labels2:=[  &#x27;This is a&#x27;,
+               &#x27;GadTools gadget&#x27;,
+               &#x27;which was made&#x27;,
+               &#x27;pop-up&#x27;,
+               &#x27;by the support&#x27;,
+               &#x27;functions of&#x27;,
+               &#x27;the select.gadget&#x27;,
+               &#x27;library.&#x27;,
+               NIL]
+
+-&gt; The original Source doesn`t open the GadTools-Library !!!
+
+  IF (gadtoolsbase:=OpenLibrary(&#x27;gadtools.library&#x27;,37))=NIL THEN Raise(ERR_GADTOOLS)
+   selectgadgetbase:=OpenLibrary(&#x27;select.gadget&#x27;,40)
+   IF (selectgadgetbase=NIL) THEN selectgadgetbase := OpenLibrary(&#x27;Gadgets/select.gadget&#x27;,40)
+   IF (selectgadgetbase=NIL) THEN selectgadgetbase := OpenLibrary(&#x27;Classes/Gadgets/select.gadget&#x27;,40)
+
+   IF (selectgadgetbase=NIL) THEN Raise(ERR_GADGET)
+
+   IF (scr := LockPubScreen(NIL))
+    width := scr.width
+     height := scr.height
+    UnlockPubScreen(NIL,scr)
+   ENDIF
+
+   IF (win := OpenWindowTagList(NIL,[WA_LEFT,(width - 500) / 2,
+                                 WA_TOP,(height - 160) / 2,
+                                 WA_WIDTH,500,WA_HEIGHT,160,
+                                 WA_MINWIDTH,100,WA_MINHEIGHT,100,
+                                 WA_CLOSEGADGET,TRUE,
+                                 WA_SIZEGADGET,TRUE,
+                                 WA_DEPTHGADGET,TRUE,
+                                 WA_DRAGBAR,TRUE,
+                                 WA_SIMPLEREFRESH,TRUE,
+                                 WA_ACTIVATE,TRUE,
+                                 WA_TITLE,&#x27;select.gadget custom gadget test in E&#x27;,
+                                 WA_IDCMP,IDCMP_CLOSEWINDOW OR
+                                          IDCMP_GADGETUP OR
+                                          IDCMP_REFRESHWINDOW,
+                                 NIL,NIL]))
+      IF (dri := GetScreenDrawInfo(win.wscreen))
+
+         IF (vi := GetVisualInfoA(win.wscreen,NIL))
+
+            glist := CreateContext({glist}) -&gt; Importat! Take care of the {}!!!
+
+            ng.leftedge := 40;
+            ng.topedge  := win.bordertop + 40
+            ng.width    := (win.wscreen.rastport.font.xsize * 18) + 30
+            ng.height   := win.wscreen.font.ysize + 6
+            ng.gadgettext := &#x27;G_adTools 1&#x27;
+            ng.textattr := win.wscreen.font
+            ng.gadgetid := 1
+            ng.flags    := NIL
+            ng.visualinfo := vi
+
+-&gt; The original Source makes use of the Arg-Version and not of the Tag-Version from
+-&gt; CreateGadget!!
+
+            gad1 := CreateGadgetA(GENERIC_KIND,glist,ng,[GT_UNDERSCORE,&#x27;_&#x27;,NIL,NIL])
+
+            ng.leftedge := win.width - 40 - ng.width
+            ng.topedge  := ng.topedge + 40
+            ng.gadgettext := &#x27;Ga_dTools 2&#x27;
+            ng.gadgetid := 2
+
+            gad2 := CreateGadgetA(GENERIC_KIND,gad1,ng,[GT_UNDERSCORE,&#x27;_&#x27;,NIL,NIL])
+
+            IF (gad2)
+               one := InitSelectGadgetA(gad1,NIL,[GA_DRAWINFO,  dri,
+                                              SGA_TEXTPLACE,    PLACETEXT_RIGHT,
+                                              SGA_LABELS,       labels1,
+                                              SGA_DROPSHADOW,   TRUE,
+                                              SGA_FOLLOWMODE,   SGFM_KEEP,
+                                              NIL,NIL])
+
+               two := InitSelectGadgetA(gad2,NIL,[GA_DRAWINFO,  dri,
+                                              SGA_TEXTPLACE,    PLACETEXT_LEFT,
+                                              SGA_LABELS,       labels2,
+                                              SGA_ACTIVE,       3,
+                                              SGA_ITEMSPACING,  2,
+                                              SGA_POPUPPOS,     SGPOS_BELOW,
+                                              SGA_SYMBOLWIDTH,  -21,
+                                              NIL,NIL])
+               AddGList(win,glist,-1,-1,NIL)
+               RefreshGList(glist,win,NIL,-1)
+               Gt_RefreshWindow(win,NIL)
+            ENDIF
+
+            WHILE (fine=0)
+               Wait(Shl(1,win.userport.sigbit))
+
+               WHILE (imsg := Gt_GetIMsg(win.userport))
+                class := imsg.class
+                code  := imsg.code
+                iaddress := imsg.iaddress
+                 Gt_ReplyIMsg(imsg)
+
+-&gt; The original Source uses a lot of IF`s, i use SELECT for a cleaner Source!
+
+                  SELECT        class
+                    CASE        IDCMP_CLOSEWINDOW
+                        fine := TRUE
+                    CASE        IDCMP_GADGETUP
+                        WriteF(&#x27;Gadget: \d, Item: \d\n&#x27;,iaddress.gadgetid,code)
+                    CASE        IDCMP_REFRESHWINDOW
+                     Gt_BeginRefresh(win)
+                     Gt_EndRefresh(win,TRUE)
+                  ENDSELECT
+               ENDWHILE
+            ENDWHILE
+
+            IF (gad2) THEN RemoveGList(win,glist,-1)
+
+            IF (one) THEN ClearSelectGadget(gad1)
+            IF (two) THEN ClearSelectGadget(gad2)
+
+            FreeGadgets(glist)
+
+            FreeVisualInfo(vi);
+         ENDIF
+
+         FreeScreenDrawInfo(win.wscreen,dri)
+      ENDIF
+
+      CloseWindow(win)
+   ELSE
+    Raise(ERR_WIN)
+   ENDIF
+
+-&gt; E-Note! I use Exception-Handling for Error-Parsing, instead of pure
+-&gt; IF`s and RETURN-Values!
+
+EXCEPT DO
+ IF (selectgadgetbase&lt;&gt;NIL) THEN CloseLibrary(selectgadgetbase)
+
+-&gt; Now close the gadtools.library again, the original Source doesn`t do this!
+
+ IF (gadtoolsbase&lt;&gt;NIL)     THEN CloseLibrary(gadtoolsbase)
+ CleanUp(exception)     -&gt; Leave with exception as Returncode
+ENDPROC
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

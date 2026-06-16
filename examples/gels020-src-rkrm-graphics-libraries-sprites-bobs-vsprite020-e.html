@@ -1,0 +1,182 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>vsprite020.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-gels020.html">Gels020</a> &rsaquo; vsprite020.e</div><h1>File: <code>vsprite020.e</code></h1><p class="meta">156 lines · project <a href="../examples/pkg-gels020.html"><code>Gels020</code></a></p><p class="pathctx">Gels020/src/Rkrm/Graphics_Libraries/Sprites_Bobs/vsprite020.e</p><p class="prose">vsprite.e - Virtual Sprite example</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/dos.html">dos/dos</a></li></ul></div><h2>Source</h2><pre class="code">-&gt; vsprite.e - Virtual Sprite example
+
+-&gt;&gt;&gt; Header (globals)
+MODULE &#x27;dos/dos&#x27;,
+       &#x27;exec/memory&#x27;,
+       &#x27;exec/ports&#x27;,
+       &#x27;graphics/collide&#x27;,
+       &#x27;graphics/gels&#x27;,
+       &#x27;graphics/rastport&#x27;,
+       &#x27;intuition/intuition&#x27;,
+       &#x27;intuition/screens&#x27;,
+       &#x27;other/ecode&#x27;,
+       &#x27;*animtools020&#x27;
+
+ENUM ERR_NONE, ERR_KICK, ERR_WIN
+
+RAISE ERR_KICK IF KickVersion()=FALSE,
+      ERR_WIN  IF OpenWindow()=NIL
+
+CONST GEL_SIZE=4
+
+-&gt; VSprite data - there are two sets that are alternated between.  Note that
+-&gt; this data is always displayed as low resolution.
+DEF vsprite_data1, vsprite_data2, mySpriteColours, mySpriteAltColours
+-&gt;&gt;&gt;
+
+-&gt;&gt;&gt; PROC vspriteDrawGList(win, myRPort)
+-&gt; Basic VSprite display subroutine
+PROC vspriteDrawGList(win, myRPort)
+  SortGList(myRPort)
+  DrawGList(myRPort, ViewPortAddress(win))
+  RethinkDisplay()
+ENDPROC
+-&gt;&gt;&gt;
+
+-&gt;&gt;&gt; PROC borderCheck(hitVSprite:PTR TO vs, borderflags)
+-&gt; Collision routine for vsprite hitting border.  Note that when the collision
+-&gt; is VSprite to VSprite (or Bob to Bob, Bob to AnimOb, etc.), then the
+-&gt; parameters are both pointers to a VSprite.
+PROC borderCheck(hitVSprite:PTR TO vs, borderflags)
+  IF borderflags AND RIGHTHIT
+    hitVSprite.sprcolors:=mySpriteAltColours
+    hitVSprite.vuserext:=-40
+  ENDIF
+  IF borderflags AND LEFTHIT
+    hitVSprite.sprcolors:=mySpriteColours
+    hitVSprite.vuserext:=20
+  ENDIF
+ENDPROC
+-&gt;&gt;&gt;
+
+-&gt;&gt;&gt; PROC process_window(win:PTR TO window, myRPort, myVSprite:PTR TO vs)
+-&gt; Process window and dynamically change vsprite.  Get messages.  Go away on
+-&gt; CLOSEWINDOW.  Update and redisplay vsprite on INTUITICKS.  Wait for more
+-&gt; messages.
+PROC process_window(win:PTR TO window, myRPort, myVSprite:PTR TO vs)
+  DEF msg:PTR TO intuimessage
+  LOOP
+    Wait(Shl(1, win.userport.sigbit))
+    WHILE NIL&lt;&gt;(msg:=GetMsg(win.userport))
+      -&gt; Only IDCMP_CLOSEWINDOW and IDCMP_INTUITICKS are active
+      IF msg.class=IDCMP_CLOSEWINDOW
+        ReplyMsg(msg)
+        RETURN
+      ENDIF
+      -&gt; Must be an INTUITICKS:  change x and y values on the fly.  Note offset
+      -&gt; by window left and top edge--sprite is relative to the screen, not
+      -&gt; window.  Divide the MouseY in half to adjust for Lores movement
+      -&gt; increments on a Hires screen.
+      myVSprite.x:=win.leftedge+msg.mousex+myVSprite.vuserext
+      myVSprite.y:=win.topedge+(msg.mousey/2)+1
+      ReplyMsg(msg)
+    ENDWHILE
+    -&gt; Got a message, change image data on the fly
+    myVSprite.imagedata:=IF myVSprite.imagedata=vsprite_data1 THEN
+                            vsprite_data2 ELSE vsprite_data1
+    SortGList(myRPort)
+    DoCollision(myRPort)
+    vspriteDrawGList(win, myRPort)
+  ENDLOOP
+ENDPROC
+-&gt;&gt;&gt;
+
+-&gt;&gt;&gt; PROC do_VSprite(win, myRPort:PTR TO rastport) HANDLE
+-&gt; Working with the VSprite.  Setup the GEL system and get a new VSprite
+-&gt; (makeVSprite()).  Add VSprite to the system and display.  Use the vsprite.
+-&gt; When done, remove VSprite and update the display without the VSprite.
+-&gt; Cleanup everything.
+PROC do_VSprite(win, myRPort:PTR TO rastport) HANDLE
+  DEF myVSprite=NIL:PTR TO vs, my_ginfo=NIL
+  my_ginfo:=setupGelSys(myRPort, $FC)
+  myVSprite:=makeVSprite(
+            -&gt; Image data, sprite colour array, word width (1 for true VSprite)
+           [vsprite_data1, mySpriteColours, 1,
+            -&gt; Line height, image depth (2 for true VSprite), x, y position
+            GEL_SIZE, 2, 160, 100,
+            -&gt; Flags (VSF_VSPRITE for true VSprite), hit mask and me mask
+            VSF_VSPRITE, Shl(1, BORDERHIT), 0]:newVSprite)
+  AddVSprite(myVSprite, myRPort)
+  vspriteDrawGList(win, myRPort)
+  myVSprite.vuserext:=20
+  -&gt; E-Note: wrap borderCheck function for use as collision routine
+  SetCollision(BORDERHIT, eCodeCollision({borderCheck}), myRPort.gelsinfo)
+  process_window(win, myRPort, myVSprite)
+  RemVSprite(myVSprite)
+EXCEPT DO
+  IF myVSprite THEN freeVSprite(myVSprite)
+  IF my_ginfo
+    vspriteDrawGList(win, myRPort)
+    cleanupGelSys(my_ginfo, myRPort)
+  ENDIF
+  ReThrow()
+ENDPROC
+-&gt;&gt;&gt;
+
+-&gt;&gt;&gt; PROC main() HANDLE
+-&gt; Example VSprite program.  First open a window.
+PROC main() HANDLE
+  DEF win=NIL:PTR TO window, myRPort=NIL:PTR TO rastport
+  KickVersion(37)
+  NEW myRPort  -&gt; E-Note: allocate a zeroed rastport
+  -&gt; E-Note: set-up global data
+  vsprite_data1:=copyListToChip([$7FFE80FF, $7C3E803F, $7C3E803F, $7FFE80FF, 0])
+  vsprite_data2:=copyListToChip([$7FFEFF01, $7C3EFC01, $7C3EFC01, $7FFEFF01, 0])
+  mySpriteColours:=[$0000, $00F0, $0F00]:INT
+  mySpriteAltColours:=[$000F, $0F00, $0FF0]:INT
+  win:=OpenWindow([80, 20, 400, 150, -1, -1,
+                   IDCMP_CLOSEWINDOW OR IDCMP_INTUITICKS,
+                   WFLG_ACTIVATE OR WFLG_CLOSEGADGET OR WFLG_DEPTHGADGET OR
+                       WFLG_RMBTRAP OR WFLG_DRAGBAR,
+                   NIL, NIL, &#x27;VSprite&#x27;, NIL, NIL, 0, 0, 0, 0, WBENCHSCREEN]:nw)
+  InitRastPort(myRPort)
+  -&gt; Copy the window rastport
+  CopyMem(win.wscreen.rastport, myRPort, SIZEOF rastport)
+  do_VSprite(win, myRPort)
+EXCEPT DO
+  IF win THEN CloseWindow(win)
+  END myRPort
+  SELECT exception
+  CASE ERR_KICK;  WriteF(&#x27;Error: requires V37\n&#x27;)
+  CASE ERR_WIN;   WriteF(&#x27;Error: could not open window\n&#x27;)
+  CASE &quot;MEM&quot;;     WriteF(&#x27;Error: ran out of memory\n&#x27;)
+  ENDSELECT
+ENDPROC IF exception&lt;&gt;ERR_NONE THEN RETURN_FAIL ELSE RETURN_OK
+-&gt;&gt;&gt;
+
+-&gt;&gt;&gt; PROC copyListToChip(data)
+-&gt; E-Note: get some Chip memory and copy list (quick, since LONG aligned)
+PROC copyListToChip(data)
+  DEF size, mem
+  size:=ListLen(data)*SIZEOF LONG
+  mem:=NewM(size, MEMF_CHIP)
+  CopyMemQuick(data, mem, size)
+ENDPROC mem
+-&gt;&gt;&gt;
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

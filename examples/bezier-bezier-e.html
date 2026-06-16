@@ -1,0 +1,376 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>bezier.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-bezier.html">Bezier</a> &rsaquo; bezier.e</div><h1>File: <code>bezier.e</code></h1><p class="meta">350 lines · project <a href="../examples/pkg-bezier.html"><code>Bezier</code></a></p><p class="pathctx">Bezier/bezier.e</p><p class="prose">***** teaching/bezier ******************************************* * * NAME * bezier -- draw moving Bézier spline. * * SYNOPSIS * bezier * * <a href="../modules/muserexx.html#const-function">FUNCTION</a> * Draws an animated Bézier spline on the screen. * Demonstrates with 4 rebounding points on screen, A B C and D. * You should see that the spline runs </p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/asl.html">asl</a></li></ul></div><h2>Source</h2><pre class="code">/****** teaching/bezier *******************************************
+* 
+*   NAME
+*       bezier -- draw moving Bézier spline.
+*
+*   SYNOPSIS
+*       bezier
+*
+*   FUNCTION
+*       Draws an animated Bézier spline on the screen.
+*       Demonstrates with 4 rebounding points on screen, A B C and D.
+*       You should see that the spline runs from A to D, heading to B
+*       from point A, and ending facing away from C at point D. If that
+*       didn&#x27;t make sense, just run it :)
+*
+*       Working example to accompany tutorial in Defy 4 from Cydonia :)
+*
+*   RESULT
+*       Demonstrates the following topics:
+*       - ASL ScreenMode requester
+*       - Intuition double-buffering
+*       - Use of fixed-point math. (fixed.m)
+*       - Basic 680x0 instructions
+*       - Recursive subdivision
+*
+*   EXAMPLES
+*       As an exercise for the reader, possible extensions include:
+*       - Multiple splines - trails, joined shapes, screen blankers
+*       - Automated decisions on how many subdivisions to make, and whether
+*         to use points or lines.
+*       - User influence on movement
+*
+*   NOTE
+*       You should be able to see two levels of abstraction here. The main
+*       loop is concerned with the screen buffering, timing and user input,
+*       whereas init()/done() and draw() only know of a &#x27;virtual&#x27; screen
+*       whose boundaries are given in init, and they may only write using
+*       stdrast and graphics functions.
+*
+*       We use &#x27;fixed point&#x27; arithmetic - basically, add 16 bits of extra
+*       significance, work with it, then take it away when finished
+*       calculating.
+*
+*       We use a very complicated line of code in the double-buffering code:
+*       IF sig THEN
+*         WHILE m:=GetMsg(port) DO status[1-Long(m+SIZEOF mn)]:=OK_REDRAW
+*
+*       Basically, on the first run we are allowed to draw into either buffer
+*       then &#x27;swap it in&#x27;. When we swap it in, we ask the system to send us
+*       a message to say it has been swapped in, therefore the other buffer
+*       has been swapped out. We know that it will use the message in the
+*       DBufInfo structure, and right after this is the UserData1 long.
+*       So we can access the long directly after the message we get from
+*       GetMsg(), &#x27;Long(m + SIZEOF mn)&#x27;, and say that the other buffer
+*       &#x27;1-&#x27;, is ok to redraw into: &#x27;status[...]:=OK_REDRAW&#x27;
+*
+*   SEE ALSO
+*       bezier.txt
+*
+****************************************************************************
+*
+*
+*/
+
+OPT PREPROCESS
+OPT OSVERSION=39
+
+MODULE &#x27;asl&#x27;, &#x27;exec/ports&#x27;, &#x27;graphics/displayinfo&#x27;, &#x27;graphics/rastport&#x27;,
+       &#x27;graphics/view&#x27;, &#x27;intuition/intuition&#x27;, &#x27;intuition/screens&#x27;,
+       &#x27;libraries/asl&#x27;, &#x27;utility/tagitem&#x27;, &#x27;*fixed&#x27;
+
+-&gt; the left/top/right/bottom edges of our screen
+DEF lft, top, rgt, bot
+
+-&gt;--------------------------------------------------------------------------
+
+-&gt; A B C and D are vectors - points on the screen with a direction.
+OBJECT vector
+   x,  y
+   dx, dy
+ENDOBJECT
+
+DEF a:PTR TO vector,
+    b:PTR TO vector,
+    c:PTR TO vector,
+    d:PTR TO vector
+
+PROC rand() OF vector
+  -&gt; create new vector with random position/movement (within screen limits)
+
+  self.x  := Rnd(rgt-lft) + lft
+  self.y  := Rnd(bot-top) + top
+  self.dx := (Rnd(10)-5) OR 1  -&gt; between -5 and 5 but not 0
+  self.dy := (Rnd(10)-5) OR 1
+ENDPROC
+
+PROC move() OF vector
+  -&gt; move and bounce around the limits of the screen (l/r/t/b)
+
+  IF self.x &lt;= lft THEN self.dx :=  (Rnd(5) OR 1)
+  IF self.x &gt;= rgt THEN self.dx := -(Rnd(5) OR 1)
+  IF self.y &lt;= top THEN self.dy :=  (Rnd(5) OR 1)
+  IF self.y &gt;= bot THEN self.dy := -(Rnd(5) OR 1)
+
+  self.x:=Bounds(self.x+self.dx, lft, rgt)
+  self.y:=Bounds(self.y+self.dy, top, bot)
+ENDPROC
+
+-&gt;--------------------------------------------------------------------------
+
+PROC init(leftedge, topedge, width, height)
+  -&gt; This is called once at the start from the main program, with
+  -&gt; leftedge/topedge and width/height of the screen we&#x27;ll be rendering on
+
+  -&gt; make a quite (!!) random seed
+  DEF bla; CurrentTime({bla},{bla}); Rnd(-Abs(Mul({arg},bla)))
+
+  -&gt; we set up the edges of our &#x27;screen&#x27; appropriately
+  lft := leftedge
+  rgt := leftedge + width  - 1
+  top := topedge
+  bot := topedge  + height - 1
+
+  -&gt; create and give random positions and directions to our vectors
+  NEW a.rand()
+  NEW b.rand()
+  NEW c.rand()
+  NEW d.rand()
+ENDPROC
+
+PROC done()
+  END a; END b; END c; END d
+ENDPROC
+
+PROC draw()
+  -&gt; called once per frame from the main loop. We should draw whatever to
+  -&gt; stdrast.
+
+  -&gt; clear screen
+  SetAPen(stdrast, 0)
+  RectFill(stdrast, lft, top, rgt, bot)
+
+  -&gt; move vectors a, b, c and d.
+  a.move(); b.move(); c.move(); d.move()
+
+  -&gt; draw b to a to d to c in white
+  SetAPen(stdrast, 2)
+  Move(stdrast, b.x, b.y)
+  Draw(stdrast, a.x, a.y)
+  Draw(stdrast, d.x, d.y)
+  Draw(stdrast, c.x, c.y)
+
+  -&gt; draw bézier curve in black
+  SetAPen(stdrast, 1)
+  bezier(
+   inttofixed(a.x), inttofixed(a.y),
+   inttofixed(b.x), inttofixed(b.y),
+   inttofixed(c.x), inttofixed(c.y),
+   inttofixed(d.x), inttofixed(d.y)
+  )
+ENDPROC
+
+-&gt;--------------------------------------------------------------------------
+
+PROC bezier(p1_x,p1_y, p2_x,p2_y, p3_x,p3_y, p4_x,p4_y, level=0)
+  -&gt;  with thanks to Storm/Cydonia
+
+  -&gt; All  we  do  is  divide the curve into two seperate curves, and repeat
+  -&gt; this  division  until we have many curves in which case we have enough
+  -&gt; accuracy to get away with drawing these tiny curves as straight lines.
+
+  -&gt; P1  is  the start point of the curve (or curve segment). P4 is the end
+  -&gt; point. P2 and P3 are the control points of it. We divide the &#x27;P&#x27; curve
+  -&gt; into  two  curves,  the  &#x27;L&#x27;  curve  (L1/L2/L3/L4)  and  the &#x27;R&#x27; curve
+  -&gt; (R1/R2/R3/R4).  The  L curve goes from the start point to the midpoint
+  -&gt; of the P curve. The R curve goes from the midpoint to the end point of
+  -&gt; the P curve.
+
+  -&gt; we do this 5 times, and end up with 2^5 parts = 32 line segments
+
+  -&gt; note that we take in and calculate with &#x27;fixed point&#x27; coordinates
+  -&gt; and turn them back into normal integers to draw the line segments.
+
+  DEF l1_x,l1_y, l2_x,l2_y, l3_x,l3_y, l4_x,l4_y,
+      r1_x,r1_y, r2_x,r2_y, r3_x,r3_y, r4_x,r4_y,
+      h_x, h_y
+
+  IF level&gt;4
+    Move(stdrast, fixedtoint(p1_x), fixedtoint(p1_y))
+    Draw(stdrast, fixedtoint(p4_x), fixedtoint(p4_y))
+    RETURN
+  ENDIF
+
+  -&gt; register D1 = constant 1 (to speed up the LSR command)
+  MOVEQ   #1,D1
+
+  -&gt; L1 = P1
+  MOVE.L  p1_x,l1_x
+  MOVE.L  p1_y,l1_y
+
+  -&gt; R4 = P4
+  MOVE.L  p4_x,r4_x
+  MOVE.L  p4_y,r4_y
+
+  -&gt; L2 = average(P1, P2)
+  MOVE.L p1_x,D0; ADD.L p2_x,D0; LSR.L D1,D0; MOVE.L D0,l2_x
+  MOVE.L p1_y,D0; ADD.L p2_y,D0; LSR.L D1,D0; MOVE.L D0,l2_y
+
+  -&gt; R3 = average(P3, P4)
+  MOVE.L p3_x,D0; ADD.L p4_x,D0; LSR.L D1,D0; MOVE.L D0,r3_x
+  MOVE.L p3_y,D0; ADD.L p4_y,D0; LSR.L D1,D0; MOVE.L D0,r3_y
+
+  -&gt; H = average(P2, P3)
+  MOVE.L p2_x,D0; ADD.L p3_x,D0; LSR.L D1,D0; MOVE.L D0,h_x
+  MOVE.L p2_y,D0; ADD.L p3_y,D0; LSR.L D1,D0; MOVE.L D0,h_y
+
+  -&gt; L3 = average(L2, H)
+  MOVE.L l2_x,D0; ADD.L h_x,D0; LSR.L D1,D0; MOVE.L D0,l3_x
+  MOVE.L l2_y,D0; ADD.L h_y,D0; LSR.L D1,D0; MOVE.L D0,l3_y
+
+  -&gt; R2 = average(R3, H)
+  MOVE.L r3_x,D0; ADD.L h_x,D0; LSR.L D1,D0; MOVE.L D0,r2_x
+  MOVE.L r3_y,D0; ADD.L h_y,D0; LSR.L D1,D0; MOVE.L D0,r2_y
+
+  -&gt; L4 = average(L3, R2)
+  MOVE.L l3_x,D0; ADD.L r2_x,D0; LSR.L D1,D0; MOVE.L D0,l4_x
+  MOVE.L l3_y,D0; ADD.L r2_y,D0; LSR.L D1,D0; MOVE.L D0,l4_y
+
+  -&gt; R1 = L4
+  MOVE.L  l4_x,r1_x
+  MOVE.L  l4_y,r1_y
+
+  -&gt; and subdivide again...
+  bezier(l1_x,l1_y, l2_x,l2_y, l3_x,l3_y, l4_x,l4_y, level+1)
+  bezier(r1_x,r1_y, r2_x,r2_y, r3_x,r3_y, r4_x,r4_y, level+1)
+ENDPROC
+
+-&gt;--------------------------------------------------------------------------
+
+ENUM OK_NONE,OK_REDRAW,OK_SWAPIN
+
+PROC main() HANDLE
+  -&gt; the main program - handle allocations, buffers, input, etc
+
+  DEF s=NIL:PTR TO screen, w=NIL:PTR TO window, m:PTR TO intuimessage,
+
+      sb:PTR TO screenbuffer, rp[2]:ARRAY OF rastport,
+      status[2]:ARRAY OF LONG, sbuf[2]:ARRAY OF LONG,
+      port=NIL:PTR TO mp,
+      held_off=FALSE, sigs=0, buf_current=0, buf_nextdraw=1, buf_nextswap=1
+
+  sbuf:=[NIL, NIL]
+  status:=[OK_REDRAW, OK_REDRAW]
+  InitRastPort(rp[0])
+  InitRastPort(rp[1])
+
+  IF (port:=CreateMsgPort())=NIL THEN Raise()
+
+  -&gt; open the screen
+  s := OpenScreenTagList(NIL, [
+    SA_DEPTH,     2,
+    SA_DISPLAYID, asl_modereq(),
+    SA_TITLE,     &#x27;Bézier spline demo&#x27;,
+    SA_PENS,      [-1]:INT,
+    TAG_DONE
+  ])
+  IF s=NIL THEN Raise()
+
+  sbuf[0]:=AllocScreenBuffer(s, NIL, SB_SCREEN_BITMAP)
+  sbuf[1]:=AllocScreenBuffer(s, NIL, SB_COPY_BITMAP)
+
+  IF (sbuf[0] AND sbuf[1])=NIL THEN Raise()
+
+  sb:=sbuf[0]; sb.dbufinfo.userdata1:=0; rp[0].bitmap:=sb.bitmap
+  sb:=sbuf[1]; sb.dbufinfo.userdata1:=1; rp[1].bitmap:=sb.bitmap
+
+  -&gt; open a window to recieve input on the screen
+  w := OpenWindowTagList(NIL, [
+    WA_CUSTOMSCREEN, s,
+    WA_FLAGS,        WFLG_BORDERLESS OR WFLG_RMBTRAP,
+    WA_IDCMP,        IDCMP_VANILLAKEY OR IDCMP_MOUSEBUTTONS,
+    WA_BACKDROP,     TRUE,
+    WA_BORDERLESS,   TRUE,
+    WA_ACTIVATE,     TRUE,
+    TAG_DONE
+  ])
+  IF w=NIL THEN Raise()
+
+  init(0, s.barheight+1, s.width, s.height-s.barheight-1)
+
+  REPEAT
+    IF sigs THEN WHILE m:=GetMsg(port) DO status[1-Long(m+SIZEOF mn)]:=OK_REDRAW
+
+    held_off:=FALSE
+
+    IF status[buf_nextdraw]=OK_REDRAW
+      stdrast:=rp[buf_nextdraw]
+      draw()
+      WaitBlit()
+      status[buf_nextdraw]:=OK_SWAPIN
+      buf_nextdraw:=1-buf_nextdraw
+    ENDIF
+
+    IF status[buf_nextswap]=OK_SWAPIN
+      sb:=sbuf[buf_nextswap]
+      sb.dbufinfo.safemessage.replyport:=port
+      IF ChangeScreenBuffer(s, sb)
+        status[buf_nextswap]:=OK_NONE
+        buf_current:=buf_nextswap
+        buf_nextswap:=1-buf_nextswap
+      ELSE
+        held_off:=TRUE
+      ENDIF
+    ENDIF
+
+    IF held_off THEN WaitTOF() ELSE sigs:=Wait(Shl(1,port.sigbit))
+  UNTIL CtrlC() OR (IF m:=GetMsg(w.userport) THEN ReplyMsg(m) BUT 1 ELSE 0)
+
+  done()
+
+EXCEPT DO
+  IF w       THEN CloseWindow(w)
+  IF sbuf[1] THEN FreeScreenBuffer(s, sbuf[1])
+  IF sbuf[0] THEN FreeScreenBuffer(s, sbuf[0])
+  IF s       THEN CloseScreen(s)
+  IF port    THEN DeleteMsgPort(port)
+ENDPROC
+
+-&gt;--------------------------------------------------------------------------
+
+PROC asl_modereq()
+  -&gt; a little moderequester
+  -&gt; will return modeid of chosen mode if user successfully
+  -&gt; chose a screenmode, otherwise will Raise()
+
+  DEF req:PTR TO screenmoderequester, modeid, result=0
+
+  IF aslbase := OpenLibrary(&#x27;asl.library&#x27;,37)
+    IF req := AllocAslRequest(ASL_SCREENMODEREQUEST, NIL)
+      result := AslRequest(req, NIL)
+      modeid := req.displayid
+      FreeAslRequest(req)
+    ENDIF
+    CloseLibrary(aslbase)
+  ENDIF
+
+  IF result=0 THEN Raise() -&gt; if user actually chose &#x27;Cancel&#x27;
+
+ENDPROC modeid
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

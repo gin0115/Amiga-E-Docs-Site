@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>systemcheck.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-aepd34.html">AEPD34</a> &rsaquo; systemcheck.e</div><h1>File: <code>systemcheck.e</code></h1><p class="meta">110 lines · project <a href="../examples/pkg-aepd34.html"><code>AEPD34</code></a></p><p class="pathctx">AEPD34/EPD34/Programme/systemcheck/systemcheck.e</p><p class="prose">** Produck...: <a href="../modules/systemcheck.html">systemcheck</a>.e ** Version...: 0.1 (13.03.95) ** Author....: Jørgen &#x27;Da&#x27; Larsen (Posse Pro. DK) ** Note......: Remember to read the documentation!!! ** Tabs......: 4 ** ** History...: Version 0.1 ** o First release **</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/execbase.html">exec/execbase</a></li></ul></div><h2>Source</h2><pre class="code">/*
+** Produck...: systemcheck.e
+** Version...: 0.1 (13.03.95)
+** Author....: Jørgen &#x27;Da&#x27; Larsen (Posse Pro. DK)
+** Note......: Remember to read the documentation!!!
+** Tabs......: 4
+**
+** History...: Version 0.1
+**              o First release
+**
+*/
+
+
+/********************************* Options **********************************/
+OPT MODULE, REG=5
+
+
+/********************************* Modules **********************************/
+MODULE &#x27;exec/execbase&#x27;, &#x27;exec/libraries&#x27;
+
+
+/********************************* systemcheck Object ***********************/
+EXPORT OBJECT systemcheck
+ base : PTR TO execbase
+ENDOBJECT
+
+
+/********************************* systemcheck.init() ***********************/
+-&gt;PROC init() OF systemcheck IS EMPTY
+
+
+/********************************* systemcheck.new() ************************/
+PROC new() OF systemcheck
+ self.base := execbase
+ENDPROC
+
+
+/********************************* systemcheck.end **************************/
+PROC end() OF systemcheck IS EMPTY
+-&gt; Dispose(self.base)
+-&gt;ENDPROC
+
+
+/********************************* systemcheck.getkickstartversion **********/
+PROC getkickstartversion() OF systemcheck IS self.base.lib.version
+
+
+/********************************* systemcheck.getkickstartrevision() *******/
+PROC getkickstartrevision() OF systemcheck IS self.base.softver
+
+
+/********************************* systemcheck.getvblankfrequency() *********/
+PROC getvblankfrequency() OF systemcheck IS self.base.vblankfrequency
+
+
+/********************************* systemcheck.getfpunumber() ***************/
+PROC getfpunumber() OF systemcheck
+ DEF attnflag, fpu
+ attnflag := self.base.attnflags
+ IF (attnflag AND AFF_68881)
+	fpu := 68881
+ ELSEIF (attnflag AND AFF_68882)
+	fpu := 68882
+ ELSEIF (attnflag AND AFF_FPU40)
+	fpu := 68040
+ ELSE
+	fpu := FALSE
+ ENDIF
+ENDPROC fpu
+
+
+/********************************* systemcheck.getcpunumber() ***************/
+PROC getcpunumber() OF systemcheck
+ DEF attnflag, cpu
+ attnflag := self.base.attnflags
+ IF (attnflag AND AFF_68040)
+	cpu := 68040
+ ELSEIF (attnflag AND AFF_68030)
+	cpu := 68030
+ ELSEIF (attnflag AND AFF_68020)
+	cpu := 68020
+ ELSEIF (attnflag AND AFF_68010)
+	cpu := 68010
+ ELSE
+	cpu := 68000
+ ENDIF
+ENDPROC cpu
+
+
+/********************************* systemcheck.checkaga() *******************/
+PROC checkaga() OF systemcheck
+ -&gt; Orginal asm source from &#x27;The AGA doc (V2.5) for AGA CODERS&#x27;
+ -&gt; by RANDY of COMAX
+ LEA     $DFF000,A3
+ MOVE.W  $7C(A3),D0            ;-&gt; DeniseID or LisaID in AGA
+ MOVEQ   #30,D2                ;-&gt; Check 30 times ( prevents old denise random)
+ ANDI.W  #%000000011111111,D0  ;-&gt; low byte only
+denloop:
+ MOVE.W  $7C(A3),D1            ;-&gt; Denise ID (LisaID on AGA)
+ ANDI.W  #%000000011111111,D1  ;-&gt; low byte only
+ CMP.B   D0,D1                 ;-&gt; same value?
+ BNE.S   notaga                ;-&gt; Not the same value, then OCS Denise!
+ DBRA    D2,denloop            ;-&gt; (THANX TO DDT/HBT FOR MULTICHECK HINT)
+ ORI.B   #%11110000,D0         ;-&gt; MASK AGA REVISION (will work on new aga)
+ CMPI.B  #%11111000,D0         ;-&gt; BIT 3=AGA (this bit will be=0 in AAA!)
+ BNE.S   notaga                ;-&gt; IS THE AGA CHIPSET PRESENT?
+ RETURN  TRUE                  ;-&gt; AGA -&gt; Return TRUE
+notaga:                        ;-&gt; NOT AGA, BUT IS POSSIBLE AN AAA MACHINE!!
+ENDPROC FALSE
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

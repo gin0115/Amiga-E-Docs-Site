@@ -1,0 +1,340 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>AG2TXT13.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-aepd24.html">AEPD24</a> &rsaquo; AG2TXT13.e</div><h1>File: <code>AG2TXT13.e</code></h1><p class="meta">314 lines · project <a href="../examples/pkg-aepd24.html"><code>AEPD24</code></a></p><p class="pathctx">AEPD24/EPD24/Amiga_E-Programme/AG2TXT/AG2TXT13.e</p><p class="prose">AmigaGuide to Text converter (v2). Copyright (c) 1994, Jason R. Hulance</p><h2>Source</h2><pre class="code">/* AmigaGuide to Text converter (v2). Copyright (c) 1994, Jason R. Hulance */
+/* E version.  For AmigaDos 1.3 or before (?).  Very slow because it lacks */
+/* buffering on the I/O, and it&#x27;s not likely to be added by me, either :-) */
+
+ENUM N_INIT, N_OUT, N_IN, NODE_STATES
+ENUM L_INIT, L_QUOTED, L_SPACED, LINE_STATES
+ENUM A_INIT, A_AT, A_BRAC, A_IGNORE, A_END, AT_STATES
+ENUM NO_ERR, ERR_FILE, ERR_DATA, ERR_BRK, NUM_ERRS
+
+CONST MAX_LINE_LEN=1024, MAX_WIDTH=120, CMP_EQUAL=0, CMP_UNEQUAL=1
+
+DEF in[MAX_LINE_LEN]:STRING, outh=NIL
+
+ENUM        BOLD,     ITALIC,     F_LINK,       TITLE,  HIGHLIGHT,  OTHER
+
+PROC write_ansi(type, on=TRUE)
+  DEF ansi:PTR TO LONG
+  /*        BOLD      ITALIC      F_LINK        TITLE   HIGHLIGHT   OTHER */
+  IF on
+    ansi:=[&#x27;\e[1m&#x27;,  &#x27;\e[3m&#x27;,  &#x27;\e[1m\e[3m&#x27;,   &#x27;\e[7m&#x27;,  &#x27;\e[1m&#x27;,  &#x27;\e[1m&#x27;]
+  ELSE
+    ansi:=[&#x27;\e[22m&#x27;, &#x27;\e[23m&#x27;, &#x27;\e[23m\e[22m&#x27;, &#x27;\e[0m&#x27;, &#x27;\e[22m&#x27;, &#x27;\e[22m&#x27;]
+  ENDIF
+  fputs(outh, ansi[type])
+ENDPROC
+
+PROC fputc(fh, c) IS Out(fh, c)
+PROC fputs(fh, s) IS Write(fh, s, StrLen(s))
+
+PROC toupper(c) IS IF (c&lt;&quot;a&quot;) OR (c&gt;&quot;z&quot;) THEN c ELSE c-32
+
+PROC stricmp(s1, s2, all=TRUE)
+  WHILE (s2[]&lt;&gt;0) AND (s1[]&lt;&gt;0)
+    IF toupper(s1[]++)&lt;&gt;s2[]++ THEN RETURN CMP_UNEQUAL
+  ENDWHILE
+  IF all
+    RETURN IF (s1[] OR s2[]) THEN CMP_UNEQUAL ELSE CMP_EQUAL
+  ELSE
+    RETURN IF s2[] THEN CMP_UNEQUAL ELSE CMP_EQUAL
+  ENDIF
+ENDPROC
+
+PROC main() HANDLE
+  DEF fh, status=N_INIT, s, title[MAX_WIDTH]:STRING,
+      empty=TRUE, top, bot, ownout=TRUE, err
+  s, arg:=get_word(arg)
+  IF (fh:=Open(s, OLDFILE))=NIL THEN Raise(ERR_FILE)
+  IF arg[]
+    s:=get_word(arg)
+    IF s[]
+      outh:=Open(s, NEWFILE)
+    ENDIF
+  ENDIF
+  IF outh=NIL
+    WriteF(&#x27;&#x27;)
+    outh:=stdout
+    ownout:=FALSE
+  ENDIF
+  top:=&#x27;\n--------------------------------------&#x27; +
+       &#x27;--------------------------------------\n&#x27;
+  bot:=&#x27;======================================&#x27; +
+       &#x27;======================================\n&#x27;
+  REPEAT
+    err:=ReadStr(fh, in)
+    SELECT NODE_STATES OF status
+    CASE N_INIT
+      IF stricmp(in, &#x27;@DATABASE&#x27;, FALSE)&lt;&gt;CMP_EQUAL
+        Raise(ERR_DATA)
+      ELSE
+        status:=N_OUT
+      ENDIF
+    CASE N_OUT
+      IF stricmp(in, &#x27;@NODE &#x27;, FALSE)=CMP_EQUAL
+        status:=N_IN
+	parse_node_line(in+STRLEN, title)
+        empty:=TRUE
+      ENDIF
+    CASE N_IN
+      IF empty AND (stricmp(in, &#x27;@TITLE&#x27;, FALSE)=CMP_EQUAL)
+	parse_title_line(in+STRLEN, title)
+      ELSEIF stricmp(in, &#x27;@ENDNODE&#x27;, FALSE)=CMP_EQUAL
+        fputs(outh, bot)
+	status:=N_OUT
+      ELSE
+        IF CtrlC() THEN Raise(ERR_BRK)
+        s:=TrimStr(in)
+        IF Not(empty AND (s[]=0))
+          IF empty
+            write_ansi(TITLE)
+            fputs(outh, title)
+            write_ansi(TITLE, FALSE)
+            fputs(outh, top)
+            empty:=FALSE
+          ENDIF
+          output(in)
+        ENDIF
+      ENDIF
+    ENDSELECT
+  UNTIL err=-1
+EXCEPT DO
+  SELECT NUM_ERRS OF exception
+  CASE ERR_FILE
+    WriteF(&#x27;Could not open file &quot;\s&quot;\n&#x27;, s)
+  CASE ERR_DATA
+    WriteF(&#x27;&quot;\s&quot; is not an AmigaGuide file\n&#x27;)
+  CASE ERR_BRK
+    WriteF(&#x27;User aborted\n&#x27;)
+  ENDSELECT
+  IF ownout AND outh THEN Close(outh)
+  IF fh THEN Close(fh)
+ENDPROC
+
+PROC output(line)
+  DEF status=A_INIT, gotbrac, c
+  IF line[]=&quot;@&quot; THEN IF line[1]&lt;&gt;&quot;{&quot; THEN RETURN
+  WHILE c:=line[]
+    SELECT c
+    CASE &quot;\\&quot;
+      IF status=A_INIT
+        status:=A_IGNORE
+      ELSE
+        statecopy(status)
+        fputc(outh, c)
+        status:=A_INIT
+      ENDIF
+      line++
+    CASE &quot;@&quot;
+      IF status=A_INIT
+        status:=A_AT
+      ELSE
+        IF status&lt;&gt;A_IGNORE THEN statecopy(status)
+        fputc(outh, c)
+        status:=A_INIT
+      ENDIF
+      line++
+    CASE &quot;{&quot;
+      IF status=A_AT
+        status:=A_BRAC
+      ELSE
+        statecopy(status)
+        fputc(outh, c)
+        status:=A_INIT
+      ENDIF
+      line++
+    CASE &quot;}&quot;
+      SELECT AT_STATES OF status
+      CASE A_BRAC, A_END
+      DEFAULT
+        statecopy(status)
+        fputc(outh, c)
+      ENDSELECT
+      status:=A_INIT
+      line++
+    DEFAULT
+      SELECT AT_STATES OF status
+      CASE A_BRAC
+        line,gotbrac:=parse_at_line(line)
+        status:=IF gotbrac THEN A_INIT ELSE A_END
+      CASE A_END
+        line++
+      DEFAULT
+        statecopy(status)
+        fputc(outh, c)
+        status:=A_INIT
+        line++
+      ENDSELECT
+    ENDSELECT
+  ENDWHILE
+  fputc(outh, &quot;\n&quot;)
+ENDPROC
+
+PROC statecopy(state)
+  SELECT AT_STATES OF state
+  CASE A_IGNORE
+    fputc(outh, &quot;\\&quot;)
+  CASE A_AT
+    fputc(outh, &quot;@&quot;)
+  CASE A_BRAC
+    fputs(outh, &#x27;@{&#x27;)
+  ENDSELECT
+ENDPROC
+
+PROC parse_at_line(line)
+  DEF first, second, third, gotbrac, i=0, on=TRUE, c
+  first,line,gotbrac:=get_word(line, TRUE)
+  IF first[]
+    i:=1
+    IF gotbrac=FALSE
+      second,line,gotbrac:=get_word(line, TRUE)
+      IF second[]
+        i:=2
+        IF gotbrac=FALSE
+          third,line,gotbrac:=get_word(line, TRUE)
+          IF third[] THEN i:=3
+        ENDIF
+      ENDIF
+    ENDIF
+  ENDIF
+  SELECT 4 OF i
+  CASE 1
+    IF toupper(first[])=&quot;U&quot;
+      on:=FALSE
+      first++
+    ENDIF
+    c:=toupper(first[])
+    SELECT c
+    CASE &quot;B&quot;
+      write_ansi(BOLD, on)
+    CASE &quot;I&quot;
+      write_ansi(ITALIC, on)
+    ENDSELECT
+  CASE 2
+    IF stricmp(first, &#x27;FG&#x27;)=CMP_EQUAL
+      IF stricmp(second, &#x27;HIGHLIGHT&#x27;)=CMP_EQUAL
+        write_ansi(HIGHLIGHT)
+      ELSEIF stricmp(second, &#x27;TEXT&#x27;)=CMP_EQUAL
+        write_ansi(HIGHLIGHT, FALSE)
+      ENDIF
+    ELSEIF (stricmp(second, &#x27;CLOSE&#x27;)=CMP_EQUAL) OR
+           (stricmp(second, &#x27;QUIT&#x27;)=CMP_EQUAL)
+      write_ansi(OTHER)
+      fputs(outh, first)
+      write_ansi(OTHER, FALSE)
+    ENDIF
+  CASE 3
+    IF (stricmp(second, &#x27;LINK&#x27;)=CMP_EQUAL) OR
+       (stricmp(second, &#x27;ALINK&#x27;)=CMP_EQUAL)
+      write_ansi(F_LINK)
+      fputs(outh, first)
+      write_ansi(F_LINK, FALSE)
+    ELSE
+      write_ansi(OTHER)
+      fputs(outh, first)
+      write_ansi(OTHER, FALSE)
+    ENDIF
+  ENDSELECT
+ENDPROC line,gotbrac
+
+PROC parse_node_line(line, title)
+  DEF first, second
+  first,line:=get_word(line)
+  second,line:=get_word(line)
+  IF first[]
+    IF second[]
+      StrCopy(title, second)
+    ELSE
+      StrCopy(title, first)
+    ENDIF
+  ENDIF
+ENDPROC
+
+PROC parse_title_line(line, title)
+  DEF first
+  first,line:=get_word(line)
+  IF first[]
+    StrCopy(title, first)
+  ENDIF
+ENDPROC
+
+CONST L_SIZE=35
+
+PROC get_word(line, chkbrac=FALSE)
+  DEF status=L_INIT, noword=TRUE, foundbrac=FALSE,
+      t=NIL, to, special=FALSE
+  to:=line
+  WHILE line[] AND noword
+    IF to&lt;&gt;line THEN to[]:=line[]
+    SELECT L_SIZE OF line[]
+    CASE &quot;\q&quot;
+      IF special
+        to++
+      ELSE
+        SELECT LINE_STATES OF status
+        CASE L_INIT
+          status:=L_QUOTED
+          t:=line+1
+          to++
+        CASE L_QUOTED
+          to[]:=0
+          noword:=FALSE
+        DEFAULT
+          to++
+        ENDSELECT
+      ENDIF
+    CASE &quot;\n&quot;, &quot;\t&quot;, &quot; &quot;
+      IF status=L_SPACED
+        to[]:=0
+        noword:=FALSE
+      ELSE
+        to++
+      ENDIF
+    DEFAULT
+      IF chkbrac AND (line[]=&quot;}&quot;)
+        to[]:=0
+        noword:=FALSE
+        foundbrac:=TRUE
+      ELSE
+        IF status=L_INIT
+          t:=line
+          status:=L_SPACED
+        ENDIF
+        to++
+      ENDIF
+    ENDSELECT
+    IF special
+      special:=FALSE
+    ELSEIF line[]=&quot;\\&quot;
+      special:=TRUE
+      to--
+    ENDIF
+    line++
+  ENDWHILE
+ENDPROC t,line,foundbrac
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

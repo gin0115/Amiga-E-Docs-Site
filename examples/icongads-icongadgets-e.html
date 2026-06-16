@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>IconGadgets.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-icongads.html">icongads</a> &rsaquo; IconGadgets.e</div><h1>File: <code>IconGadgets.e</code></h1><p class="meta">87 lines · project <a href="../examples/pkg-icongads.html"><code>icongads</code></a></p><p class="pathctx">icongads/IconGadgets.e</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/icon.html">icon</a></li></ul></div><h2>Source</h2><pre class="code">;/*
+
+	flushcache
+	ec icongadgets
+	iconsASgads.e
+	quit
+
+*/
+
+
+OPT MODULE
+
+MODULE &#x27;icon&#x27;, 
+		 &#x27;intuition/intuition&#x27;,
+		 &#x27;workbench/workbench&#x27;,
+		 &#x27;*gadgetinfo&#x27;
+
+CONST MAX_ICONGADGETS=20
+
+/*- (because for some reason you can&#x27;t do icon.diskobj[n]:=thingy in E) -*/
+OBJECT fixbugdiskobject
+	diskobj:PTR TO diskobject
+ENDOBJECT
+
+EXPORT OBJECT icongadgets
+	/* for icon gadgets */
+	diskobj[MAX_ICONGADGETS]:ARRAY OF fixbugdiskobject	/* the icons */
+	max																/* how many gadgets we have */
+	win:PTR TO window												/* the window we are connected to */
+ENDOBJECT
+
+EXPORT DEF icon:PTR TO icongadgets
+
+
+EXPORT PROC init_icongadgets(win:PTR TO window)
+	DEF n
+	
+	/*- allocate some memory, and check whether it has done so -*/
+	NEW icon
+	IF icon=0 THEN Throw(&quot;MEM&quot;, &#x27;init_icongadgets: Could not allocate object&#x27;)
+	
+	/*- Make sure that all values are initialised -*/
+	icon.max:=0
+	icon.win:=win
+	FOR n:=1 TO MAX_ICONGADGETS-1
+		icon.diskobj[n].diskobj:=0
+	ENDFOR
+ENDPROC
+
+
+EXPORT PROC end_icongadgets()
+	DEF n
+	IF icon
+		FOR n:=1 TO MAX_ICONGADGETS-1
+			IF icon.diskobj[n].diskobj THEN FreeDiskObject(icon.diskobj[n].diskobj)
+		ENDFOR
+		
+		END icon
+	ENDIF
+ENDPROC
+
+EXPORT PROC add_icongadget(id, file, text, x, y)
+	/*- do some simple idiot checking -*/
+	IF (id=0) OR (id&gt;=MAX_ICONGADGETS) THEN Throw(&quot;icon&quot;, &#x27;add_icongadget: id out of range&#x27;)
+	
+	/*- have we already used this index? -*/
+	IF icon.diskobj[id].diskobj THEN Throw(&quot;icon&quot;, &#x27;add_icongadget: id index already used&#x27;)
+	
+	/*- get diskobject -*/
+	icon.diskobj[id].diskobj:=GetDiskObject(file)
+	IF icon.diskobj[id].diskobj=NIL THEN Throw(&quot;icon&quot;, &#x27;add_icongadget: Could not GetGiskObject&#x27;)
+	
+	/*- modify gadget -*/
+	icon.diskobj[id].diskobj.gadget.leftedge:=x
+	icon.diskobj[id].diskobj.gadget.topedge:=y
+	icon.diskobj[id].diskobj.gadget.gadgetid:=id
+
+	/*- Add to windows gadget list -*/
+	AddGadget(icon.win, icon.diskobj[id].diskobj.gadget, NIL)
+
+	/*- Add icon info to this gadget -*/
+	add_gadgetinfo(id, text)
+
+	icon.max:=Max(icon.max, id+1)
+
+	/*- pass back width and height so we can fit the icons in properly... -*/
+ENDPROC icon.diskobj[id].diskobj.gadget.width, icon.diskobj[id].diskobj.gadget.height</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

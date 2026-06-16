@@ -1,0 +1,158 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>GenCodeE.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-aepd21.html">AEPD21</a> &rsaquo; GenCodeE.e</div><h1>File: <code>GenCodeE.e</code></h1><p class="meta">132 lines · project <a href="../examples/pkg-aepd21.html"><code>AEPD21</code></a></p><p class="pathctx">AEPD21/EPD21/Amiga_E-Programme/GenCodeE/sources/GenCodeE_v22/GenCodeE.e</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/muibuilder.html">muibuilder</a></li><li><a href="../modules/tagitem.html">utility/tagitem</a></li></ul></div><h2>Source</h2><pre class="code">OPT OSVERSION=37
+
+
+-&gt;*****
+-&gt;** External modules
+-&gt;*****
+MODULE &#x27;muibuilder&#x27; , &#x27;libraries/muibuilder&#x27;
+MODULE &#x27;utility/tagitem&#x27;
+
+MODULE &#x27;*MUIStrings&#x27;
+MODULE &#x27;*AuxProcs&#x27;
+MODULE &#x27;*Variable&#x27;
+MODULE &#x27;*GUIFile&#x27;
+
+
+-&gt;*****
+-&gt;** Exception handling
+-&gt;*****
+RAISE	&quot;LIB&quot;	IF	OpenLibrary()	=	NIL	,
+		&quot;MBtf&quot;	IF	Mb_Open()		=	NIL	,
+		&quot;MEM&quot;	IF	String()		=	NIL
+
+
+/*******************
+** Main procedure **
+*******************/
+PROC main() HANDLE
+
+	DEF application = FALSE , declarations = FALSE , code = FALSE
+	DEF notifications = FALSE , environment = FALSE , locale = FALSE
+	DEF filename : PTR TO CHAR , catalog_filename : PTR TO CHAR
+	DEF catalog_name : PTR TO CHAR , getstring_func : PTR TO CHAR
+	DEF number_vars , vars : PTR TO variable , ident_length_max
+	DEF genfile = NIL : PTR TO gui_file
+	DEF tmp_string : PTR TO CHAR
+
+	muibbase := OpenLibrary( &#x27;muibuilder.library&#x27; , 0 )
+	Mb_Open()
+
+	Mb_GetA( [	MUIB_VARNUMBER		, {number_vars}			,
+				MUIB_APPLICATION	, {application}			,
+				MUIB_DECLARATIONS	, {declarations}		,
+				MUIB_CODE			, {code}				,
+				MUIB_NOTIFICATIONS	, {notifications}		,
+				MUIB_ENVIRONMENT	, {environment}			,
+				MUIB_LOCALE			, {locale}				,
+				MUIB_FILENAME		, {filename}			,
+				MUIB_CATALOGNAME	, {catalog_filename}	,
+				MUIB_GETSTRINGNAME	, {getstring_func}		,
+				TAG_END ] )
+
+	tmp_string := filename
+	filename := String( StrLen( filename ) + 3 )
+	StringF( filename , &#x27;\s.em&#x27; , tmp_string )
+
+	catalog_filename := FilePart( catalog_filename )
+	catalog_name := String( StrLen( catalog_filename ) + 5 )
+	StringF( catalog_name , &#x27;catalog_\s&#x27; , catalog_filename )
+
+	vars , ident_length_max := init_variables( number_vars )
+
+	NEW genfile.open( filename , number_vars , vars , ident_length_max )
+
+	IF declarations
+
+		IF environment THEN genfile.put_header( application , locale )
+		genfile.put_aux_objects( environment , application )
+		genfile.put_main_object( environment )
+		genfile.put_constants( environment )
+		genfile.put_global_vars( environment , locale , catalog_name )
+
+	ENDIF
+
+	IF code
+
+		IF environment THEN genfile.put_create_declaration( application )
+		IF environment THEN genfile.put_create_local_defs()
+		IF environment THEN genfile.put_create_initialisations( locale , getstring_func )
+		genfile.put_code( getstring_func , muistrings_contents() )
+		IF environment THEN genfile.put_create_end()
+		IF environment THEN genfile.put_dispose_method()
+
+	ENDIF
+
+	IF notifications
+
+		IF environment THEN genfile.put_init_notifications_declaration()
+		genfile.put_notifications( muistrings_contents() , getstring_func )
+		IF environment THEN genfile.put_init_notifications_end()
+
+	ENDIF
+
+	IF environment AND locale THEN genfile.put_aux_funcs()
+
+EXCEPT DO
+
+	SELECT exception
+
+		CASE &quot;MEM&quot;
+
+			error_request( &#x27;Out of memory !&#x27; )
+
+		CASE &quot;LIB&quot;
+
+			error_request( &#x27;Can&#x27;&#x27;t open muibuilder.library !&#x27; )
+
+		CASE &quot;MBtf&quot;
+
+			error_request( &#x27;Unable to get temporary files !&#x27; )
+
+		CASE &quot;OPEN&quot;
+
+			error_request( &#x27;Unable to open file to generate !&#x27; )
+
+		CASE &quot;OUT&quot;
+
+			error_request( &#x27;Trouble writing file to generate !&#x27; )
+
+	ENDSELECT
+
+	IF genfile	THEN genfile.close()
+	IF muibbase	THEN Mb_Close()
+	IF muibbase	THEN CloseLibrary( muibbase )
+
+ENDPROC
+
+
+/*******************
+** String version **
+*******************/
+CHAR &#x27;$VER: GenCodeE 2.2 (21.11.94)&#x27; , 0
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

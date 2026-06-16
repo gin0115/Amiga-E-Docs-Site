@@ -1,0 +1,254 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ReqUserStartup.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-capus2.html">capus2</a> &rsaquo; ReqUserStartup.e</div><h1>File: <code>ReqUserStartup.e</code></h1><p class="meta">228 lines · project <a href="../examples/pkg-capus2.html"><code>capus2</code></a></p><p class="pathctx">capus2/capus2/UserStartup/Sources/ReqUserStartup.e</p><p class="prose">======&lt;&lt;&lt; <a href="../modules/peps.html">Peps</a> Header &gt;&gt;&gt;====== PRGVERSION &#x27;0&#x27; ================================ PRGREVISION &#x27;0&#x27; ================================ AUTHOR &#x27;NasGûl&#x27; ===============================</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/dos.html">dos/dos</a></li><li><a href="../modules/lists.html">exec/lists</a></li><li><a href="../modules/ports.html">exec/ports</a></li><li><a href="../modules/reqtools.html">reqtools</a></li></ul></div><h2>Source</h2><pre class="code">/*======&lt;&lt;&lt; Peps Header &gt;&gt;&gt;======
+ PRGVERSION &#x27;0&#x27;
+ ================================
+ PRGREVISION &#x27;0&#x27;
+ ================================
+ AUTHOR      &#x27;NasGûl&#x27;
+ ===============================*/
+/*======&lt;&lt;&lt;   History   &gt;&gt;&gt;======
+ ReqStartup
+ ===============================*/
+
+OPT OSVERSION=37
+
+MODULE &#x27;reqtools&#x27;,&#x27;libraries/reqtools&#x27;
+MODULE &#x27;exec/lists&#x27;,&#x27;exec/nodes&#x27;
+MODULE &#x27;dos/dos&#x27;,&#x27;dos/dosasl&#x27;,&#x27;dos/dosextens&#x27;,&#x27;dos/dostags&#x27;
+MODULE &#x27;exec/ports&#x27;,&#x27;intuition/screens&#x27;,&#x27;graphics/displayinfo&#x27;,&#x27;graphics/text&#x27;
+
+ENUM ER_NONE,ER_ONLYCLI,ER_BADARGS,ER_REQTOOLSLIB,ER_LIST,ER_INITENV,ER_SCREEN
+
+DEF reqtexte[2000]:STRING
+DEF reqgad[80]:STRING
+DEF screen=NIL:PTR TO screen
+DEF cmd[256]:STRING
+DEF defs[256]:STRING
+DEF dorun=FALSE,test=FALSE,openscreen=FALSE
+
+DEF slist:PTR TO lh
+
+PMODULE &#x27;ReqUserStartupList&#x27;
+
+/*&quot;main()&quot;*/
+PROC main() HANDLE
+    DEF r
+    DEF n:PTR TO ln
+    DEF rdargs=NIL,myargs:PTR TO LONG
+    VOID {banner}
+    myargs:=[0,0,0,0]
+    IF rdargs:=ReadArgs(&#x27;DefaultStartup,Run/S,Test/S,Screen/S&#x27;,myargs,NIL)
+        IF myargs[0] THEN StrCopy(defs,myargs[0],ALL)
+        IF myargs[1] THEN dorun:=TRUE
+        IF myargs[2] THEN test:=TRUE
+        IF myargs[3] THEN openscreen:=TRUE
+        IF initEnv()
+            IF reqtoolsbase:=OpenLibrary(&#x27;reqtools.library&#x27;,37)
+                IF slist:=p_InitList()
+                    makeFileList()
+                    makeRequest()
+                    IF openscreen
+                        IF openScreen()&lt;&gt;ER_NONE THEN Raise(ER_SCREEN)
+                    ENDIF
+                    r:=RtEZRequestA(reqtexte,reqgad,0,0,[RTEZ_REQTITLE,&#x27;ReqUserStartup v0.1 © NasGûl&#x27;,RT_SCREEN,screen,RT_PUBSCRNAME,&#x27;ReqUserStartupScreen&#x27;,RT_UNDERSCORE,&quot;_&quot;,NIL])
+                    IF r&lt;&gt;0
+                        n:=p_GetAdrNode(slist,r-1)
+                        StringF(cmd,&#x27;S:\s&#x27;,n.name)
+                    ELSE
+                        StringF(cmd,&#x27;S:\s&#x27;,defs)
+                    ENDIF
+                ELSE
+                    Raise(ER_LIST)
+                ENDIF
+            ELSE
+                Raise(ER_REQTOOLSLIB)
+            ENDIF
+            remENV()
+        ELSE
+            Raise(ER_INITENV)
+        ENDIF
+    ELSE
+        Raise(ER_BADARGS)
+    ENDIF
+    Raise(ER_NONE)
+EXCEPT
+    IF openscreen
+        IF screen THEN CloseScreen(screen)
+    ENDIF
+    IF rdargs THEN FreeArgs(rdargs)
+    IF reqtoolsbase THEN CloseLibrary(reqtoolsbase)
+    SELECT exception
+        CASE ER_ONLYCLI;        WriteF(&#x27;seulement en cli..\n&#x27;)
+        CASE ER_BADARGS;        WriteF(&#x27;Mauvais arguments..\n&#x27;)
+        CASE ER_REQTOOLSLIB;    WriteF(&#x27;retools.library v37 ??..\n&#x27;)
+        CASE ER_LIST;           WriteF(&#x27;Erreur de création de la liste..\n&#x27;)
+        CASE ER_INITENV;        WriteF(&#x27;&#x27;&#x27;makedir ram:env&#x27;&#x27; ou &#x27;&#x27;assign env: ram:env&#x27;&#x27; impossible..\n&#x27;)
+    ENDSELECT
+    IF test=TRUE
+        WriteF(&#x27;Executing \s\n&#x27;,cmd)
+    ELSE
+        IF dorun=FALSE
+            Execute(cmd,0,stdout)
+        ELSE
+            myExecute(cmd,&#x27;S:&#x27;)
+        ENDIF
+    ENDIF
+ENDPROC
+/**/
+/*&quot;initEnv()&quot;*/
+PROC initEnv()
+    DEF r,lock,d,dl
+    IF test=FALSE
+        lock:=CreateDir(&#x27;Ram:ENV&#x27;)
+        IF lock=0 THEN RETURN FALSE
+        UnLock(lock)
+        IF d:=Lock(&#x27;Ram:ENV&#x27;,-2)
+            dl:=DupLock(d)
+            UnLock(d)
+            r:=AssignLock(&#x27;ENV&#x27;,dl)
+            RETURN TRUE
+        ELSE
+            RETURN FALSE
+        ENDIF
+    ELSE
+        RETURN TRUE
+    ENDIF
+ENDPROC
+/**/
+/*&quot;remENV()&quot;*/
+PROC remENV()
+    IF test=FALSE
+        AssignLock(&#x27;ENV&#x27;,NIL)
+        DeleteFile(&#x27;Ram:ENV&#x27;)
+    ENDIF
+ENDPROC
+/**/
+/*&quot;makeFileList()&quot;*/
+PROC makeFileList()
+    DEF er
+    DEF i:PTR TO fileinfoblock
+    DEF anchor=NIL:PTR TO anchorpath
+    DEF name[256]:STRING
+    slist:=p_InitList()
+    anchor:=New(SIZEOF anchorpath+250)
+    anchor.strlen:=249
+    er:=MatchFirst(&#x27;S:startup#?&#x27;,anchor)
+    WHILE er=0
+        i:=anchor.info
+        StringF(name,&#x27;\s&#x27;,i.filename)
+        IF EstrLen(name)&lt;&gt;16
+            p_AjouteNode(slist,name,0)
+        ENDIF
+        er:=MatchNext(anchor)
+    ENDWHILE
+    MatchEnd(anchor)
+    Dispose(anchor)
+ENDPROC
+/**/
+/*&quot;makeRequest()&quot;*/
+PROC makeRequest()
+    DEF n:PTR TO ln,c=1
+    DEF pv[256]:STRING
+    n:=slist.head
+    WHILE n
+        IF n.succ&lt;&gt;0
+            StringF(pv,&#x27;(\d[2]) -&gt;\l\s[32]\n&#x27;,c,n.name)
+            StrAdd(reqtexte,pv,ALL)
+            StringF(pv,&#x27;_\d|&#x27;,c)
+            StrAdd(reqgad,pv,ALL)
+            c:=c+1
+        ENDIF
+        n:=n.succ
+    ENDWHILE
+    StrAdd(reqgad,&#x27;_By NasGûl&#x27;,ALL)
+ENDPROC
+/**/
+/*&quot;myExecute(cmd,dir)&quot;*/
+PROC myExecute(cmd,dir) HANDLE
+    DEF ofh:PTR TO filehandle
+    DEF ifh:PTR TO filehandle
+    DEF newct=NIL:PTR TO mp
+    DEF oldct:PTR TO mp
+    DEF oldcd=NIL
+    DEF newcd=NIL
+    DEF test
+    IF ofh:=Open(&#x27;NIL:&#x27;,1006)
+        IF IsInteractive(ofh)
+            newct:=ofh.type
+            oldct:=SetConsoleTask(newct)
+            ifh:=Open(&#x27;CONSOLE:&#x27;,1005)
+            SetConsoleTask(oldct)
+        ELSE
+            ifh:=Open(&#x27;NIL:&#x27;,1005)
+        ENDIF
+    ENDIF
+    newcd:=Lock(dir,-2)
+    oldcd:=CurrentDir(newcd)
+    IF test:=SystemTagList(cmd,[SYS_OUTPUT,NIL,
+                         SYS_INPUT,NIL,
+                         SYS_ASYNCH,TRUE,
+                         SYS_USERSHELL,FALSE,
+                         NP_STACKSIZE,4096,
+                         NP_PRIORITY,0,
+                         NP_PATH,NIL,
+                         NP_CONSOLETASK,newct,
+                         0])
+    ENDIF
+    CurrentDir(oldcd)
+    IF newcd THEN UnLock(newcd)
+    IF ofh THEN Close(ofh)
+    IF ifh THEN Close(ifh)
+    Raise(ER_NONE)
+EXCEPT
+    RETURN exception
+ENDPROC
+/**/
+/*&quot;openScreen()&quot;*/
+PROC openScreen() HANDLE
+    DEF ps:PTR TO screen
+    IF (ps:=OpenScreenTagList(NIL,          /* get ourselves a public screen */
+                                 [SA_TOP,0,
+                                  SA_DEPTH,3,             /*                         */
+                                  SA_FONT,[&#x27;topaz.font&#x27;,8,0,0]:textattr,              /*                         */
+                                  SA_DISPLAYID,HIRES_KEY,          /* le champ SA_DISPLAYID           */
+                                  SA_PUBNAME,&#x27;ReqUserStartupScreen&#x27;,
+                                  SA_TITLE,&#x27;ReqUserStartup v0.1 © 1995 NasGûl&#x27;,
+                                  SA_AUTOSCROLL,TRUE,
+                                  SA_TYPE,CUSTOMSCREEN+PUBLICSCREEN,
+                                  SA_OVERSCAN,OSCAN_TEXT,
+                                  SA_PENS,[0,1,1,2,1,3,1,0,2,1,2,1]:INT,    /* Répartition de couleurs WB 2.0 */
+                                  SA_DETAILPEN,1,            /* Detailpen */
+                                  SA_BLOCKPEN,2,             /* BlockPen  */
+                                  0,0]))=NIL THEN Raise(ER_SCREEN)
+    screen:=ps
+    Raise(ER_NONE)
+EXCEPT
+    RETURN exception
+ENDPROC
+/**/
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

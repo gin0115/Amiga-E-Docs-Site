@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>thread.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-lsestuff.html">lsEstuff</a> &rsaquo; thread.e</div><h1>File: <code>thread.e</code></h1><p class="meta">84 lines · project <a href="../examples/pkg-lsestuff.html"><code>lsEstuff</code></a></p><p class="pathctx">lsEstuff/thread.e</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/dos.html">dos/dos</a></li><li><a href="../modules/dostags.html">dos/dostags</a></li><li><a href="../modules/geta4.html">geta4</a></li><li><a href="../modules/tagitem.html">utility/tagitem</a></li></ul></div><h2>Source</h2><pre class="code">OPT MODULE
+
+MODULE &#x27;dos/dos&#x27;
+MODULE &#x27;dos/dostags&#x27;
+MODULE &#x27;geta4&#x27;
+MODULE &#x27;utility/tagitem&#x27;
+
+ENUM THREAD_INITING=1, THREAD_RUNNING, THREAD_EXITING, THREAD_DEAD
+
+EXPORT OBJECT thread
+   PRIVATE
+   mothertask
+   threadtask
+   threadstatus:INT
+   proc2bethread
+   name[34]:ARRAY OF CHAR
+   arg
+ENDOBJECT
+
+
+DEF proc2bethread, threadclass:PTR TO thread
+
+PROC threadstart()
+   geta4()
+   proc2bethread(threadclass)
+ENDPROC
+
+PROC signalCTRL_F(task)
+   Signal(task, SIGBREAKF_CTRL_F)
+ENDPROC
+
+PROC waitCTRL_F()
+   Wait(SIGBREAKF_CTRL_F)
+ENDPROC
+
+PROC thread(proc, name=NIL) OF thread
+   self.proc2bethread := proc
+   self.mothertask := FindTask(0)
+   self.threadstatus := THREAD_DEAD
+   IF name THEN AstrCopy(self.name, name, 33) ELSE AstrCopy(self.name, &#x27;unnamed&#x27;, 33)
+ENDPROC
+
+PROC setArg(arg) OF thread
+   self.arg := arg
+ENDPROC
+
+PROC start(pri=NIL, tags=NIL) OF thread
+   /* globals */
+   threadclass := self
+   proc2bethread := self.proc2bethread
+   /* start it */
+   self.threadtask:=CreateNewProc(
+    [
+    NP_ENTRY,{threadstart}, -&gt; where the thread process begins
+    NP_NAME, self.name,
+    NP_PRIORITY, pri,
+    IF tags = NIL THEN TAG_END ELSE TAG_MORE,
+    tags
+    ])
+   /* wait for it to initialize */
+   IF self.threadtask THEN waitCTRL_F()
+   /* we are in buissiness */
+   self.threadstatus := THREAD_RUNNING
+ENDPROC self.threadtask
+
+PROC kill() OF thread
+   IF self.threadtask
+      signalCTRL_F(self.threadtask)
+      waitCTRL_F()
+      RETURN TRUE
+   ENDIF
+ENDPROC NIL
+
+PROC end() OF thread IS self.kill()
+
+PROC ready() OF thread IS signalCTRL_F(self.mothertask)
+
+PROC getArg() OF thread IS self.arg
+
+PROC imGone() OF thread IS signalCTRL_F(self.mothertask)
+
+
+
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

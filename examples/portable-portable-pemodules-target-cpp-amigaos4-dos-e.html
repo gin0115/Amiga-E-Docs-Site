@@ -1,0 +1,648 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>dos.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-portable.html">PortablE</a> &rsaquo; dos.e</div><h1>File: <code>dos.e</code></h1><p class="meta">622 lines · project <a href="../examples/pkg-portable.html"><code>PortablE</code></a></p><p class="pathctx">PortablE/PortablE/PEmodules/target/CPP_AmigaOS4/dos.e</p><p class="prose">dos.h 53.29 (10.8.2015)</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/types.html">target/exec/types</a></li><li><a href="../modules/tagitem.html">target/utility/tagitem</a></li></ul></div><h2>Source</h2><pre class="code">/* dos.h 53.29 (10.8.2015) */
+OPT NATIVE, INLINE
+PUBLIC MODULE &#x27;target/dos/anchorpath&#x27;, &#x27;target/dos/datetime&#x27;, &#x27;target/dos/dos&#x27;, &#x27;target/dos/dosasl&#x27;, &#x27;target/dos/dosextens&#x27;, &#x27;target/dos/doshunks&#x27;, &#x27;target/dos/dostags&#x27;, &#x27;target/dos/dos_lib&#x27;, &#x27;target/dos/errors&#x27;, &#x27;target/dos/exall&#x27;, &#x27;target/dos/filehandler&#x27;, &#x27;target/dos/mount&#x27;, &#x27;target/dos/notify&#x27;, /**/&#x27;target/dos/obsolete&#x27;,/**/ &#x27;target/dos/path&#x27;, &#x27;target/dos/rdargs&#x27;, &#x27;target/dos/record&#x27;, &#x27;target/dos/stdio&#x27;, &#x27;target/dos/var&#x27;
+MODULE &#x27;target/exec/types&#x27;, &#x27;target/exec&#x27;, &#x27;target/exec/interfaces&#x27;, &#x27;target/dos/dos&#x27;, &#x27;target/dos/dosextens&#x27;, &#x27;target/dos/record&#x27;, &#x27;target/dos/rdargs&#x27;, &#x27;target/dos/dosasl&#x27;, &#x27;target/dos/var&#x27;, &#x27;target/dos/notify&#x27;, &#x27;target/dos/datetime&#x27;, &#x27;target/dos/exall&#x27;, &#x27;target/dos/filehandler&#x27;, &#x27;target/dos/dostags&#x27;, &#x27;target/dos/mount&#x27;, &#x27;target/dos/doshunks&#x27;, &#x27;target/dos/path&#x27;, &#x27;target/dos/anchorpath&#x27;
+MODULE &#x27;target/utility/tagitem&#x27;, &#x27;target/utility/hooks&#x27;
+{
+#include &lt;proto/dos.h&gt;
+}
+{
+//#ifndef __NEWLIB_H__
+//struct Library* DOSBase = NULL;
+//struct DOSIFace* IDOS = NULL;
+//#endif
+}
+NATIVE {CLIB_DOS_PROTOS_H} CONST
+NATIVE {PROTO_DOS_H} CONST
+NATIVE {PRAGMA_DOS_H} CONST
+NATIVE {INLINE4_DOS_H} CONST
+NATIVE {DOS_INTERFACE_DEF_H} CONST
+
+NATIVE {DOSBase} DEF dosbase:PTR TO lib
+NATIVE {IDOS} DEF
+
+-&gt;automatic opening of dos library
+PROC new()
+	dosbase := OpenLibrary(&#x27;dos.library&#x27;, 0)
+	IF dosbase=NIL THEN CleanUp(RETURN_ERROR)
+	
+	NATIVE {IDOS = (struct DOSIFace *) IExec-&gt;GetInterface((struct Library *)} dosbase{, &quot;main&quot;, 1, NULL)} ENDNATIVE
+ENDPROC
+
+-&gt;automatic closing of dos library
+PROC end()
+	{IExec-&gt;DropInterface((struct Interface *) IDOS)}
+	CloseLibrary(dosbase)
+ENDPROC
+
+-&gt;NATIVE {Open} PROC
+PROC Open(name:/*CONST_STRPTR*/ ARRAY OF CHAR, accessMode:VALUE) IS NATIVE {IDOS-&gt;Open(} name {,} accessMode {)} ENDNATIVE !!BPTR
+-&gt;NATIVE {Close} PROC
+PROC Close(file:BPTR) IS NATIVE {-(BOOLEAN)(0!=IDOS-&gt;Close(} file {))} ENDNATIVE !!BOOL
+-&gt;NATIVE {Read} PROC
+PROC Read(file:BPTR, buffer:APTR, length:VALUE) IS NATIVE {IDOS-&gt;Read(} file {,} buffer {,} length {)} ENDNATIVE !!VALUE
+-&gt;NATIVE {Write} PROC
+PROC Write(file:BPTR, buffer:CONST_APTR, length:VALUE) IS NATIVE {IDOS-&gt;Write(} file {,} buffer {,} length {)} ENDNATIVE !!VALUE
+-&gt;NATIVE {Input} PROC
+PROC Input() IS NATIVE {IDOS-&gt;Input()} ENDNATIVE !!BPTR
+-&gt;NATIVE {Output} PROC
+PROC Output() IS NATIVE {IDOS-&gt;Output()} ENDNATIVE !!BPTR
+-&gt;NATIVE {Seek} PROC
+PROC Seek(file:BPTR, position:VALUE, offset:VALUE) IS NATIVE {IDOS-&gt;Seek(} file {,} position {,} offset {)} ENDNATIVE !!VALUE
+-&gt;NATIVE {Delete} PROC
+PROC DeleteFile(name:/*CONST_STRPTR*/ ARRAY OF CHAR) IS NATIVE {-(BOOLEAN)(0!=IDOS-&gt;Delete(} name {))} ENDNATIVE !!BOOL
+-&gt;NATIVE {Rename} PROC
+PROC Rename(oldName:/*CONST_STRPTR*/ ARRAY OF CHAR, newName:/*CONST_STRPTR*/ ARRAY OF CHAR) IS NATIVE {-(BOOLEAN)(0!=IDOS-&gt;Rename(} oldName {,} newName {))} ENDNATIVE !!BOOL
+-&gt;NATIVE {Lock} PROC
+PROC Lock(name:/*CONST_STRPTR*/ ARRAY OF CHAR, type:VALUE) IS NATIVE {IDOS-&gt;Lock(} name {,} type {)} ENDNATIVE !!BPTR
+-&gt;NATIVE {UnLock} PROC
+PROC UnLock(lock:BPTR) IS NATIVE {IDOS-&gt;UnLock(} lock {)} ENDNATIVE
+-&gt;NATIVE {DupLock} PROC
+PROC DupLock(lock:BPTR) IS NATIVE {IDOS-&gt;DupLock(} lock {)} ENDNATIVE !!BPTR
+-&gt;NATIVE {Examine} PROC
+PROC Examine(lock:BPTR, fileInfoBlock:PTR TO fileinfoblock) IS NATIVE {-(BOOLEAN)(0!=IDOS-&gt;Examine(} lock {,} fileInfoBlock {))} ENDNATIVE !!BOOL
+-&gt;NATIVE {ExNext} PROC
+PROC ExNext(lock:BPTR, fileInfoBlock:PTR TO fileinfoblock) IS NATIVE {-(BOOLEAN)(0!=IDOS-&gt;ExNext(} lock {,} fileInfoBlock {))} ENDNATIVE !!BOOL
+-&gt;NATIVE {Info} PROC
+PROC Info(lock:BPTR, parameterBlock:PTR TO infodata) IS NATIVE {-(BOOLEAN)(0!=IDOS-&gt;Info(} lock {,} parameterBlock {))} ENDNATIVE !!BOOL
+-&gt;NATIVE {CreateDir} PROC
+PROC CreateDir(name:/*CONST_STRPTR*/ ARRAY OF CHAR) IS NATIVE {IDOS-&gt;CreateDir(} name {)} ENDNATIVE !!BPTR
+-&gt;NATIVE {SetCurrentDir} PROC
+PROC CurrentDir(lock:BPTR) IS NATIVE {IDOS-&gt;SetCurrentDir(} lock {)} ENDNATIVE !!BPTR
+-&gt;NATIVE {IoErr} PROC
+PROC IoErr() IS NATIVE {IDOS-&gt;IoErr()} ENDNATIVE !!VALUE
+-&gt;NATIVE {CreateProc} PROC
+PROC CreateProc(name:/*CONST_STRPTR*/ ARRAY OF CHAR, pri:VALUE, segList:BPTR, stackSize:VALUE) IS NATIVE {IDOS-&gt;CreateProc(} name {,} pri {,} segList {,} stackSize {)} ENDNATIVE !!PTR TO mp
+-&gt;NATIVE {OBSOLETEExit} PROC
+-&gt;PROC ObSOLETEExit(returnCode:VALUE) IS NATIVE {IDOS-&gt;OBSOLETEExit(} returnCode {)} ENDNATIVE
+-&gt;NATIVE {OBSOLETELoadSeg} PROC
+-&gt;PROC ObSOLETELoadSeg(name:/*CONST_STRPTR*/ ARRAY OF CHAR, hunktab:BPTR, stream:BPTR) IS NATIVE {IDOS-&gt;OBSOLETELoadSeg(} name {,} hunktab {,} stream {)} ENDNATIVE !!BPTR
+-&gt;NATIVE {UnLoadSeg} PROC
+PROC UnLoadSeg(seglist:BPTR) IS NATIVE {IDOS-&gt;UnLoadSeg(} seglist {)} ENDNATIVE !!VALUE
+-&gt;NATIVE {PRIVATEDoPkt32} PROC
+-&gt;PROC PrIVATEDoPkt32(port:PTR TO mp, action:VALUE, arg1:VALUE, arg2:VALUE, arg3:VALUE, arg4:VALUE, arg5:VALUE, arg6:VALUE, arg7:VALUE) IS NATIVE {IDOS-&gt;PRIVATEDoPkt32(} port {,} action {,} arg1 {,} arg2 {,} arg3 {,} arg4 {,} arg5 {,} arg6 {,} arg7 {)} ENDNATIVE !!VALUE
+-&gt;NATIVE {LoadSeg} PROC
+PROC LoadSeg(name:/*CONST_STRPTR*/ ARRAY OF CHAR) IS NATIVE {IDOS-&gt;LoadSeg(} name {)} ENDNATIVE !!BPTR
+-&gt;NATIVE {DeviceProc} PROC
+PROC DeviceProc(name:/*CONST_STRPTR*/ ARRAY OF CHAR) IS NATIVE {IDOS-&gt;DeviceProc(} name {)} ENDNATIVE !!PTR TO mp
+-&gt;NATIVE {SetComment} PROC
+PROC SetComment(name:/*CONST_STRPTR*/ ARRAY OF CHAR, comment:/*CONST_STRPTR*/ ARRAY OF CHAR) IS NATIVE {-(BOOLEAN)(0!=IDOS-&gt;SetComment(} name {,} comment {))} ENDNATIVE !!BOOL
+-&gt;NATIVE {SetProtection} PROC
+PROC SetProtection(name:/*CONST_STRPTR*/ ARRAY OF CHAR, protect:ULONG) IS NATIVE {-(BOOLEAN)(0!=IDOS-&gt;SetProtection(} name {,} protect {))} ENDNATIVE !!BOOL
+-&gt;NATIVE {DateStamp} PROC
+PROC DateStamp(date:PTR TO datestamp) IS NATIVE {IDOS-&gt;DateStamp(} date {)} ENDNATIVE !!PTR TO datestamp
+-&gt;NATIVE {Delay} PROC
+PROC Delay(timeout:VALUE) IS NATIVE {IDOS-&gt;Delay(} timeout {)} ENDNATIVE
+-&gt;NATIVE {WaitForChar} PROC
+PROC WaitForChar(file:BPTR, timeout:VALUE) IS NATIVE {-(BOOLEAN)(0!=IDOS-&gt;WaitForChar(} file {,} timeout {))} ENDNATIVE !!BOOL
+-&gt;NATIVE {ParentDir} PROC
+PROC ParentDir(lock:BPTR) IS NATIVE {IDOS-&gt;ParentDir(} lock {)} ENDNATIVE !!BPTR
+-&gt;NATIVE {IsInteractive} PROC
+PROC IsInteractive(file:BPTR) IS NATIVE {-(BOOLEAN)(0!=IDOS-&gt;IsInteractive(} file {))} ENDNATIVE !!BOOL
+-&gt;NATIVE {Execute} PROC
+PROC Execute(string:/*CONST_STRPTR*/ ARRAY OF CHAR, file:BPTR, file2:BPTR) IS NATIVE {-(BOOLEAN)(0!=IDOS-&gt;Execute(} string {,} file {,} file2 {))} ENDNATIVE !!BOOL
+-&gt;NATIVE {AllocDosObject} PROC
+PROC AllocDosObject(type:ULONG, tags:ARRAY OF tagitem) IS NATIVE {IDOS-&gt;AllocDosObject(} type {,} tags {)} ENDNATIVE !!APTR2
+-&gt;NATIVE {AllocDosObjectTagList} PROC
+PROC AllocDosObjectTagList(type:ULONG, tags:ARRAY OF tagitem) IS NATIVE {IDOS-&gt;AllocDosObjectTagList(} type {,} tags {)} ENDNATIVE !!APTR2
+-&gt;NATIVE {AllocDosObjectTags} PROC
+-&gt;PROC AllocDosObjectTags(type:ULONG, type2=0:ULONG, ...) IS NATIVE {IDOS-&gt;AllocDosObjectTags(} type {,} type2 {,} ... {)} ENDNATIVE !!APTR2
+-&gt;NATIVE {FreeDosObject} PROC
+PROC FreeDosObject(type:ULONG, ptr:APTR2) IS NATIVE {IDOS-&gt;FreeDosObject(} type {,} ptr {)} ENDNATIVE
+-&gt;NATIVE {DoPkt} PROC
+PROC DoPkt(port:PTR TO mp, action:VALUE, arg1:VALUE, arg2:VALUE, arg3:VALUE, arg4:VALUE, arg5:VALUE) IS NATIVE {IDOS-&gt;DoPkt(} port {,} action {,} arg1 {,} arg2 {,} arg3 {,} arg4 {,} arg5 {)} ENDNATIVE !!VALUE
+-&gt;NATIVE {DoPkt0} PROC
+PROC DoPkt0(port:PTR TO mp, action:VALUE) IS NATIVE {IDOS-&gt;DoPkt0(} port {,} action {)} ENDNATIVE !!VALUE
+-&gt;NATIVE {DoPkt1} PROC
+PROC DoPkt1(port:PTR TO mp, action:VALUE, arg1:VALUE) IS NATIVE {IDOS-&gt;DoPkt1(} port {,} action {,} arg1 {)} ENDNATIVE !!VALUE
+-&gt;NATIVE {DoPkt2} PROC
+PROC DoPkt2(port:PTR TO mp, action:VALUE, arg1:VALUE, arg2:VALUE) IS NATIVE {IDOS-&gt;DoPkt2(} port {,} action {,} arg1 {,} arg2 {)} ENDNATIVE !!VALUE
+-&gt;NATIVE {DoPkt3} PROC
+PROC DoPkt3(port:PTR TO mp, action:VALUE, arg1:VALUE, arg2:VALUE, arg3:VALUE) IS NATIVE {IDOS-&gt;DoPkt3(} port {,} action {,} arg1 {,} arg2 {,} arg3 {)} ENDNATIVE !!VALUE
+-&gt;NATIVE {DoPkt4} PROC
+PROC DoPkt4(port:PTR TO mp, action:VALUE, arg1:VALUE, arg2:VALUE, arg3:VALUE, arg4:VALUE) IS NATIVE {IDOS-&gt;DoPkt4(} port {,} action {,} arg1 {,} arg2 {,} arg3 {,} arg4 {)} ENDNATIVE !!VALUE
+-&gt;NATIVE {SendPkt} PROC
+PROC SendPkt(dp:PTR TO dospacket, port:PTR TO mp, replyport:PTR TO mp) IS NATIVE {IDOS-&gt;SendPkt(} dp {,} port {,} replyport {)} ENDNATIVE
+-&gt;NATIVE {WaitPkt} PROC
+PROC WaitPkt(task_replyport:PTR TO mp) IS NATIVE {IDOS-&gt;WaitPkt(} task_replyport {)} ENDNATIVE !!PTR TO dospacket
+-&gt;NATIVE {ReplyPkt} PROC
+PROC ReplyPkt(dp:PTR TO dospacket, res1:VALUE, res2:VALUE) IS NATIVE {IDOS-&gt;ReplyPkt(} dp {,} res1 {,} res2 {)} ENDNATIVE !!VALUE
+-&gt;NATIVE {OBSOLETELockRecord} PROC
+-&gt;PROC ObSOLETELockRecord(fh:BPTR, offset:ULONG, length:ULONG, mode:ULONG, timeout:ULONG) IS NATIVE {-(BOOLEAN)(0!=IDOS-&gt;OBSOLETELockRecord(} fh {,} offset {,} length {,} mode {,} timeout {))} ENDNATIVE !!BOOL
+-&gt;NATIVE {LockRecords} PROC
+PROC LockRecords(recArray:PTR TO recordlock, timeout:ULONG) IS NATIVE {-(BOOLEAN)(0!=IDOS-&gt;LockRecords(} recArray {,} timeout {))} ENDNATIVE !!BOOL
+-&gt;NATIVE {OBSOLETEUnLockRecord} PROC
+-&gt;PROC ObSOLETEUnLockRecord(fh:BPTR, offset:ULONG, length:ULONG) IS NATIVE {-(BOOLEAN)(0!=IDOS-&gt;OBSOLETEUnLockRecord(} fh {,} offset {,} length {))} ENDNATIVE !!BOOL
+-&gt;NATIVE {UnLockRecords} PROC
+PROC UnLockRecords(recArray:PTR TO recordlock) IS NATIVE {-(BOOLEAN)(0!=IDOS-&gt;UnLockRecords(} recArray {))} ENDNATIVE !!BOOL
+-&gt;NATIVE {SelectInput} PROC
+PROC SelectInput(fh:BPTR) IS NATIVE {IDOS-&gt;SelectInput(} fh {)} ENDNATIVE !!BPTR
+-&gt;NATIVE {SelectOutput} PROC
+PROC SelectOutput(fh:BPTR) IS NATIVE {IDOS-&gt;SelectOutput(} fh {)} ENDNATIVE !!BPTR
+-&gt;NATIVE {FGetC} PROC
+PROC FgetC(fh:BPTR) IS NATIVE {IDOS-&gt;FGetC(} fh {)} ENDNATIVE !!VALUE
+-&gt;NATIVE {FPutC} PROC
+PROC FputC(fh:BPTR, ch:VALUE) IS NATIVE {IDOS-&gt;FPutC(} fh {,} ch {)} ENDNATIVE !!VALUE
+-&gt;NATIVE {UnGetC} PROC
+PROC UnGetC(fh:BPTR, character:VALUE) IS NATIVE {IDOS-&gt;UnGetC(} fh {,} character {)} ENDNATIVE !!VALUE
+-&gt;NATIVE {FRead} PROC
+PROC Fread(fh:BPTR, block:APTR, blocklen:ULONG, number:ULONG) IS NATIVE {IDOS-&gt;FRead(} fh {,} block {,} blocklen {,} number {)} ENDNATIVE !!ULONG
+-&gt;NATIVE {FWrite} PROC
+PROC Fwrite(fh:BPTR, block:CONST_APTR, blocklen:ULONG, number:ULONG) IS NATIVE {IDOS-&gt;FWrite(} fh {,} block {,} blocklen {,} number {)} ENDNATIVE !!ULONG
+-&gt;NATIVE {FGets} PROC
+PROC Fgets(fh:BPTR, buf:/*STRPTR*/ ARRAY OF CHAR, buflen:ULONG) IS NATIVE {IDOS-&gt;FGets(} fh {,} buf {,} buflen {)} ENDNATIVE !!/*STRPTR*/ ARRAY OF CHAR
+-&gt;NATIVE {FPuts} PROC
+PROC Fputs(fh:BPTR, str:/*CONST_STRPTR*/ ARRAY OF CHAR) IS NATIVE {IDOS-&gt;FPuts(} fh {,} str {)} ENDNATIVE !!VALUE
+-&gt;NATIVE {OBSOLETEVFWritef} PROC
+-&gt;PROC ObSOLETEVFWritef(fh:BPTR, format:/*CONST_STRPTR*/ ARRAY OF CHAR, argarray:ARRAY OF VALUE) IS NATIVE {IDOS-&gt;OBSOLETEVFWritef(} fh {,} format {,} argarray {)} ENDNATIVE
+-&gt;NATIVE {OBSOLETEFWritef} PROC
+-&gt;PROC ObSOLETEFWritef(fh:BPTR, format:/*CONST_STRPTR*/ ARRAY OF CHAR, format2=0:ULONG, ...) IS NATIVE {IDOS-&gt;OBSOLETEFWritef(} fh {,} format {,} format2 {,} ... {)} ENDNATIVE
+-&gt;NATIVE {VFPrintf} PROC
+PROC VfPrintf(fh:BPTR, format:/*CONST_STRPTR*/ ARRAY OF CHAR, argarray:CONST_APTR) IS NATIVE {IDOS-&gt;VFPrintf(} fh {,} format {,} argarray {)} ENDNATIVE !!VALUE
+-&gt;NATIVE {FPrintf} PROC
+PROC Fprintf(fh:BPTR, format:/*CONST_STRPTR*/ ARRAY OF CHAR, format2=0:ULONG, ...) IS NATIVE {IDOS-&gt;FPrintf(} fh {,} format {,} format2 {,} ... {)} ENDNATIVE !!VALUE
+-&gt;NATIVE {FFlush} PROC
+PROC Flush(fh:BPTR) IS NATIVE {IDOS-&gt;FFlush(} fh {)} ENDNATIVE !!VALUE
+-&gt;NATIVE {SetVBuf} PROC
+PROC SetVBuf(fh:BPTR, buff:/*STRPTR*/ ARRAY OF CHAR, type:VALUE, size:VALUE) IS NATIVE {IDOS-&gt;SetVBuf(} fh {,} buff {,} type {,} size {)} ENDNATIVE !!VALUE
+-&gt;NATIVE {DupLockFromFH} PROC
+PROC DupLockFromFH(fh:BPTR) IS NATIVE {IDOS-&gt;DupLockFromFH(} fh {)} ENDNATIVE !!BPTR
+-&gt;NATIVE {OpenFromLock} PROC
+PROC OpenFromLock(lock:BPTR) IS NATIVE {IDOS-&gt;OpenFromLock(} lock {)} ENDNATIVE !!BPTR
+-&gt;NATIVE {ParentOfFH} PROC
+PROC ParentOfFH(fh:BPTR) IS NATIVE {IDOS-&gt;ParentOfFH(} fh {)} ENDNATIVE !!BPTR
+-&gt;NATIVE {ExamineFH} PROC
+PROC ExamineFH(fh:BPTR, fib:PTR TO fileinfoblock) IS NATIVE {-(BOOLEAN)(0!=IDOS-&gt;ExamineFH(} fh {,} fib {))} ENDNATIVE !!BOOL
+-&gt;NATIVE {SetDate} PROC
+PROC SetFileDate(name:/*CONST_STRPTR*/ ARRAY OF CHAR, date:PTR TO datestamp) IS NATIVE {-(BOOLEAN)(0!=IDOS-&gt;SetDate(} name {,} date {))} ENDNATIVE !!BOOL
+-&gt;NATIVE {NameFromLock} PROC
+PROC NameFromLock(lock:BPTR, buffer:/*STRPTR*/ ARRAY OF CHAR, len:VALUE) IS NATIVE {-(BOOLEAN)(0!=IDOS-&gt;NameFromLock(} lock {,} buffer {,} len {))} ENDNATIVE !!BOOL
+-&gt;NATIVE {NameFromFH} PROC
+PROC NameFromFH(fh:BPTR, buffer:/*STRPTR*/ ARRAY OF CHAR, len:VALUE) IS NATIVE {-(BOOLEAN)(0!=IDOS-&gt;NameFromFH(} fh {,} buffer {,} len {))} ENDNATIVE !!BOOL
+-&gt;NATIVE {SplitName} PROC
+PROC SplitName(name:/*CONST_STRPTR*/ ARRAY OF CHAR, separator:VALUE, buf:/*STRPTR*/ ARRAY OF CHAR, oldpos:VALUE, size:VALUE) IS NATIVE {IDOS-&gt;SplitName(} name {,} separator {,} buf {,} oldpos {,} size {)} ENDNATIVE !!VALUE
+-&gt;NATIVE {SameLock} PROC
+PROC SameLock(lock1:BPTR, lock2:BPTR) IS NATIVE {IDOS-&gt;SameLock(} lock1 {,} lock2 {)} ENDNATIVE !!VALUE
+-&gt;NATIVE {SetMode} PROC
+PROC SetMode(fh:BPTR, mode:VALUE) IS NATIVE {-(BOOLEAN)(0!=IDOS-&gt;SetMode(} fh {,} mode {))} ENDNATIVE !!BOOL
+-&gt;NATIVE {ExAll} PROC
+PROC ExAll(lock:BPTR, buffer:PTR TO exalldata, size:VALUE, data:VALUE, control:PTR TO exallcontrol) IS NATIVE {-(BOOLEAN)(0!=IDOS-&gt;ExAll(} lock {,} buffer {,} size {,} data {,} control {))} ENDNATIVE !!BOOL
+-&gt;NATIVE {ReadSoftLink} PROC
+PROC ReadLink(port:PTR TO mp, lock:BPTR, path:/*CONST_STRPTR*/ ARRAY OF CHAR, buffer:/*STRPTR*/ ARRAY OF CHAR, size:ULONG) IS NATIVE {IDOS-&gt;ReadSoftLink(} port {,} lock {,} path {,} buffer {,} size {)} ENDNATIVE !!VALUE
+-&gt;NATIVE {MakeLink} PROC
+PROC MakeLink(name:/*CONST_STRPTR*/ ARRAY OF CHAR, dest:APTR, soft:VALUE) IS NATIVE {-(BOOLEAN)(0!=IDOS-&gt;MakeLink(} name {,} dest {,} soft {))} ENDNATIVE !!BOOL
+-&gt;NATIVE {ChangeMode} PROC
+PROC ChangeMode(type:VALUE, fh:BPTR, newmode:VALUE) IS NATIVE {-(BOOLEAN)(0!=IDOS-&gt;ChangeMode(} type {,} fh {,} newmode {))} ENDNATIVE !!BOOL
+-&gt;NATIVE {SetFileSize} PROC
+PROC SetFileSize(fh:BPTR, pos:VALUE, mode:VALUE) IS NATIVE {IDOS-&gt;SetFileSize(} fh {,} pos {,} mode {)} ENDNATIVE !!VALUE
+-&gt;NATIVE {SetIoErr} PROC
+PROC SetIoErr(result:VALUE) IS NATIVE {IDOS-&gt;SetIoErr(} result {)} ENDNATIVE !!VALUE
+-&gt;NATIVE {Fault} PROC
+PROC Fault(code:VALUE, header:/*CONST_STRPTR*/ ARRAY OF CHAR, buffer:/*STRPTR*/ ARRAY OF CHAR, len:VALUE) IS NATIVE {IDOS-&gt;Fault(} code {,} header {,} buffer {,} len {)} ENDNATIVE !!VALUE
+-&gt;NATIVE {PrintFault} PROC
+PROC PrintFault(code:VALUE, header:/*CONST_STRPTR*/ ARRAY OF CHAR) IS NATIVE {IDOS-&gt;PrintFault(} code {,} header {)} ENDNATIVE !!VALUE
+-&gt;NATIVE {ErrorReport} PROC
+PROC ErrorReport(code:VALUE, type:VALUE, arg1:ULONG, device:PTR TO mp) IS NATIVE {-(BOOLEAN)(0!=IDOS-&gt;ErrorReport(} code {,} type {,} arg1 {,} device {))} ENDNATIVE !!BOOL
+-&gt;NATIVE {PRIVATERequester} PROC
+-&gt;PROC PrIVATERequester(s1:/*CONST_STRPTR*/ ARRAY OF CHAR, s2:/*CONST_STRPTR*/ ARRAY OF CHAR, s3:/*CONST_STRPTR*/ ARRAY OF CHAR, idcmp:VALUE) IS NATIVE {IDOS-&gt;PRIVATERequester(} s1 {,} s2 {,} s3 {,} idcmp {)} ENDNATIVE !!VALUE
+-&gt;NATIVE {Cli} PROC
+PROC Cli() IS NATIVE {IDOS-&gt;Cli()} ENDNATIVE !!PTR TO commandlineinterface
+-&gt;NATIVE {CreateNewProc} PROC
+PROC CreateNewProc(tags:ARRAY OF tagitem) IS NATIVE {IDOS-&gt;CreateNewProc(} tags {)} ENDNATIVE !!PTR TO process
+-&gt;NATIVE {CreateNewProcTagList} PROC
+PROC CreateNewProcTagList(tags:ARRAY OF tagitem) IS NATIVE {IDOS-&gt;CreateNewProcTagList(} tags {)} ENDNATIVE !!PTR TO process
+-&gt;NATIVE {CreateNewProcTags} PROC
+-&gt;PROC CreateNewProcTags(param:VALUE, param2=0:ULONG, ...) IS NATIVE {IDOS-&gt;CreateNewProcTags(} param {,} param2 {,} ... {)} ENDNATIVE !!PTR TO process
+-&gt;NATIVE {RunCommand} PROC
+PROC RunCommand(seg:BPTR, stack:ULONG, paramptr:/*CONST_STRPTR*/ ARRAY OF CHAR, paramlen:VALUE) IS NATIVE {IDOS-&gt;RunCommand(} seg {,} stack {,} paramptr {,} paramlen {)} ENDNATIVE !!VALUE
+-&gt;NATIVE {GetConsolePort} PROC
+PROC GetConsoleTask() IS NATIVE {IDOS-&gt;GetConsolePort()} ENDNATIVE !!PTR TO mp
+-&gt;NATIVE {SetConsolePort} PROC
+PROC SetConsoleTask(port:PTR TO mp) IS NATIVE {IDOS-&gt;SetConsolePort(} port {)} ENDNATIVE !!PTR TO mp
+-&gt;NATIVE {GetFileSysPort} PROC
+PROC GetFileSysTask() IS NATIVE {IDOS-&gt;GetFileSysPort()} ENDNATIVE !!PTR TO mp
+-&gt;NATIVE {SetFileSysPort} PROC
+PROC SetFileSysTask(port:PTR TO mp) IS NATIVE {IDOS-&gt;SetFileSysPort(} port {)} ENDNATIVE !!PTR TO mp
+-&gt;NATIVE {GetArgStr} PROC
+PROC GetArgStr() IS NATIVE {IDOS-&gt;GetArgStr()} ENDNATIVE !!/*STRPTR*/ ARRAY OF CHAR
+-&gt;NATIVE {SetArgStr} PROC
+PROC SetArgStr(string:/*CONST_STRPTR*/ ARRAY OF CHAR) IS NATIVE {IDOS-&gt;SetArgStr(} string {)} ENDNATIVE !!/*STRPTR*/ ARRAY OF CHAR
+-&gt;NATIVE {FindCliProc} PROC
+PROC FindCliProc(num:ULONG) IS NATIVE {IDOS-&gt;FindCliProc(} num {)} ENDNATIVE !!PTR TO process
+-&gt;NATIVE {MaxCli} PROC
+PROC MaxCli() IS NATIVE {IDOS-&gt;MaxCli()} ENDNATIVE !!ULONG
+-&gt;NATIVE {SetCliCurrentDirName} PROC
+PROC SetCurrentDirName(name:/*CONST_STRPTR*/ ARRAY OF CHAR) IS NATIVE {-(BOOLEAN)(0!=IDOS-&gt;SetCliCurrentDirName(} name {))} ENDNATIVE !!BOOL
+-&gt;NATIVE {GetCliCurrentDirName} PROC
+PROC GetCurrentDirName(buf:/*STRPTR*/ ARRAY OF CHAR, len:VALUE) IS NATIVE {-(BOOLEAN)(0!=IDOS-&gt;GetCliCurrentDirName(} buf {,} len {))} ENDNATIVE !!BOOL
+-&gt;NATIVE {SetCliProgramName} PROC
+PROC SetProgramName(name:/*CONST_STRPTR*/ ARRAY OF CHAR) IS NATIVE {-(BOOLEAN)(0!=IDOS-&gt;SetCliProgramName(} name {))} ENDNATIVE !!BOOL
+-&gt;NATIVE {GetCliProgramName} PROC
+PROC GetProgramName(buf:/*STRPTR*/ ARRAY OF CHAR, len:VALUE) IS NATIVE {-(BOOLEAN)(0!=IDOS-&gt;GetCliProgramName(} buf {,} len {))} ENDNATIVE !!BOOL
+-&gt;NATIVE {SetCliPrompt} PROC
+PROC SetPrompt(name:/*CONST_STRPTR*/ ARRAY OF CHAR) IS NATIVE {-(BOOLEAN)(0!=IDOS-&gt;SetCliPrompt(} name {))} ENDNATIVE !!BOOL
+-&gt;NATIVE {GetCliPrompt} PROC
+PROC GetPrompt(buf:/*STRPTR*/ ARRAY OF CHAR, len:VALUE) IS NATIVE {-(BOOLEAN)(0!=IDOS-&gt;GetCliPrompt(} buf {,} len {))} ENDNATIVE !!BOOL
+-&gt;NATIVE {SetProgramDir} PROC
+PROC SetProgramDir(lock:BPTR) IS NATIVE {IDOS-&gt;SetProgramDir(} lock {)} ENDNATIVE !!BPTR
+-&gt;NATIVE {GetProgramDir} PROC
+PROC GetProgramDir() IS NATIVE {IDOS-&gt;GetProgramDir()} ENDNATIVE !!BPTR
+-&gt;NATIVE {SystemTagList} PROC
+PROC SystemTagList(command:/*CONST_STRPTR*/ ARRAY OF CHAR, tags:ARRAY OF tagitem) IS NATIVE {IDOS-&gt;SystemTagList(} command {,} tags {)} ENDNATIVE !!VALUE
+-&gt;NATIVE {System} PROC
+PROC System(command:/*CONST_STRPTR*/ ARRAY OF CHAR, tags:ARRAY OF tagitem) IS NATIVE {IDOS-&gt;System(} command {,} tags {)} ENDNATIVE !!VALUE
+-&gt;NATIVE {SystemTags} PROC
+PROC SystemTags(command:/*CONST_STRPTR*/ ARRAY OF CHAR, tag=0:ULONG, ...) IS NATIVE {IDOS-&gt;SystemTags(} command {,} tag {,} ... {)} ENDNATIVE !!VALUE
+-&gt;NATIVE {AssignLock} PROC
+PROC AssignLock(name:/*CONST_STRPTR*/ ARRAY OF CHAR, lock:BPTR) IS NATIVE {-(BOOLEAN)(0!=IDOS-&gt;AssignLock(} name {,} lock {))} ENDNATIVE !!BOOL
+-&gt;NATIVE {AssignLate} PROC
+PROC AssignLate(name:/*CONST_STRPTR*/ ARRAY OF CHAR, path:/*CONST_STRPTR*/ ARRAY OF CHAR) IS NATIVE {-(BOOLEAN)(0!=IDOS-&gt;AssignLate(} name {,} path {))} ENDNATIVE !!BOOL
+-&gt;NATIVE {AssignPath} PROC
+PROC AssignPath(name:/*CONST_STRPTR*/ ARRAY OF CHAR, path:/*CONST_STRPTR*/ ARRAY OF CHAR) IS NATIVE {-(BOOLEAN)(0!=IDOS-&gt;AssignPath(} name {,} path {))} ENDNATIVE !!BOOL
+-&gt;NATIVE {AssignAdd} PROC
+PROC AssignAdd(name:/*CONST_STRPTR*/ ARRAY OF CHAR, lock:BPTR) IS NATIVE {-(BOOLEAN)(0!=IDOS-&gt;AssignAdd(} name {,} lock {))} ENDNATIVE !!BOOL
+-&gt;NATIVE {RemAssignList} PROC
+PROC RemAssignList(name:/*CONST_STRPTR*/ ARRAY OF CHAR, lock:BPTR) IS NATIVE {IDOS-&gt;RemAssignList(} name {,} lock {)} ENDNATIVE !!VALUE
+-&gt;NATIVE {GetDeviceProc} PROC
+PROC GetDeviceProc(name:/*CONST_STRPTR*/ ARRAY OF CHAR, dp:PTR TO devproc) IS NATIVE {IDOS-&gt;GetDeviceProc(} name {,} dp {)} ENDNATIVE !!PTR TO devproc
+-&gt;NATIVE {FreeDeviceProc} PROC
+PROC FreeDeviceProc(dp:PTR TO devproc) IS NATIVE {IDOS-&gt;FreeDeviceProc(} dp {)} ENDNATIVE
+-&gt;NATIVE {LockDosList} PROC
+PROC LockDosList(flags:ULONG) IS NATIVE {IDOS-&gt;LockDosList(} flags {)} ENDNATIVE !!PTR TO doslist
+-&gt;NATIVE {UnLockDosList} PROC
+PROC UnLockDosList(flags:ULONG) IS NATIVE {IDOS-&gt;UnLockDosList(} flags {)} ENDNATIVE
+-&gt;NATIVE {AttemptLockDosList} PROC
+PROC AttemptLockDosList(flags:ULONG) IS NATIVE {IDOS-&gt;AttemptLockDosList(} flags {)} ENDNATIVE !!PTR TO doslist
+-&gt;NATIVE {RemDosEntry} PROC
+PROC RemDosEntry(dlist:PTR TO doslist) IS NATIVE {-(BOOLEAN)(0!=IDOS-&gt;RemDosEntry(} dlist {))} ENDNATIVE !!BOOL
+-&gt;NATIVE {AddDosEntry} PROC
+PROC AddDosEntry(dlist:PTR TO doslist) IS NATIVE {IDOS-&gt;AddDosEntry(} dlist {)} ENDNATIVE !!VALUE
+-&gt;NATIVE {FindDosEntry} PROC
+PROC FindDosEntry(dlist:PTR TO doslist, name:/*CONST_STRPTR*/ ARRAY OF CHAR, flags:ULONG) IS NATIVE {IDOS-&gt;FindDosEntry(} dlist {,} name {,} flags {)} ENDNATIVE !!PTR TO doslist
+-&gt;NATIVE {NextDosEntry} PROC
+PROC NextDosEntry(dlist:PTR TO doslist, flags:ULONG) IS NATIVE {IDOS-&gt;NextDosEntry(} dlist {,} flags {)} ENDNATIVE !!PTR TO doslist
+-&gt;NATIVE {MakeDosEntry} PROC
+PROC MakeDosEntry(name:/*CONST_STRPTR*/ ARRAY OF CHAR, type:VALUE) IS NATIVE {IDOS-&gt;MakeDosEntry(} name {,} type {)} ENDNATIVE !!PTR TO doslist
+-&gt;NATIVE {FreeDosEntry} PROC
+PROC FreeDosEntry(dlist:PTR TO doslist) IS NATIVE {IDOS-&gt;FreeDosEntry(} dlist {)} ENDNATIVE
+-&gt;NATIVE {IsFileSystem} PROC
+PROC IsFileSystem(name:/*CONST_STRPTR*/ ARRAY OF CHAR) IS NATIVE {-(BOOLEAN)(0!=IDOS-&gt;IsFileSystem(} name {))} ENDNATIVE !!BOOL
+-&gt;NATIVE {Format} PROC
+PROC Format(filesystem:/*CONST_STRPTR*/ ARRAY OF CHAR, volumename:/*CONST_STRPTR*/ ARRAY OF CHAR, dostype:ULONG, flags:ULONG) IS NATIVE {-(BOOLEAN)(0!=IDOS-&gt;Format(} filesystem {,} volumename {,} dostype {,} flags {))} ENDNATIVE !!BOOL
+-&gt;NATIVE {Relabel} PROC
+PROC Relabel(drive:/*CONST_STRPTR*/ ARRAY OF CHAR, newname:/*CONST_STRPTR*/ ARRAY OF CHAR) IS NATIVE {-(BOOLEAN)(0!=IDOS-&gt;Relabel(} drive {,} newname {))} ENDNATIVE !!BOOL
+-&gt;NATIVE {Inhibit} PROC
+PROC Inhibit(name:/*CONST_STRPTR*/ ARRAY OF CHAR, onoff:VALUE) IS NATIVE {-(BOOLEAN)(0!=IDOS-&gt;Inhibit(} name {,} onoff {))} ENDNATIVE !!BOOL
+-&gt;NATIVE {AddBuffers} PROC
+PROC AddBuffers(name:/*CONST_STRPTR*/ ARRAY OF CHAR, number:VALUE) IS NATIVE {IDOS-&gt;AddBuffers(} name {,} number {)} ENDNATIVE !!VALUE
+-&gt;NATIVE {CompareDates} PROC
+PROC CompareDates(date1:PTR TO datestamp, date2:PTR TO datestamp) IS NATIVE {IDOS-&gt;CompareDates(} date1 {,} date2 {)} ENDNATIVE !!VALUE
+-&gt;NATIVE {DateToStr} PROC
+PROC DateToStr(datetime:PTR TO datetime) IS NATIVE {-(BOOLEAN)(0!=IDOS-&gt;DateToStr(} datetime {))} ENDNATIVE !!BOOL
+-&gt;NATIVE {StrToDate} PROC
+PROC StrToDate(datetime:PTR TO datetime) IS NATIVE {-(BOOLEAN)(0!=IDOS-&gt;StrToDate(} datetime {))} ENDNATIVE !!BOOL
+-&gt;NATIVE {OBSOLETEInternalLoadSeg} PROC
+-&gt;PROC ObSOLETEInternalLoadSeg(fh:BPTR, table:BPTR, funcarray:ARRAY OF VALUE) IS NATIVE {IDOS-&gt;OBSOLETEInternalLoadSeg(} fh {,} table {,} funcarray {)} ENDNATIVE !!BPTR
+-&gt;NATIVE {OBSOLETEInternalUnLoadSeg} PROC
+-&gt;PROC ObSOLETEInternalUnLoadSeg(seglist:BPTR, freefunc:PTR /*VOID (*freefunc )()*/) IS NATIVE {-(BOOLEAN)(0!=IDOS-&gt;OBSOLETEInternalUnLoadSeg(} seglist {, (VOID (*)()) } freefunc {))} ENDNATIVE !!BOOL
+-&gt;NATIVE {OBSOLETENewLoadSeg} PROC
+-&gt;PROC ObSOLETENewLoadSeg(file:/*CONST_STRPTR*/ ARRAY OF CHAR, tags:ARRAY OF tagitem) IS NATIVE {IDOS-&gt;OBSOLETENewLoadSeg(} file {,} tags {)} ENDNATIVE !!BPTR
+-&gt;NATIVE {OBSOLETENewLoadSegTagList} PROC
+-&gt;PROC ObSOLETENewLoadSegTagList(file:/*CONST_STRPTR*/ ARRAY OF CHAR, tags:ARRAY OF tagitem) IS NATIVE {IDOS-&gt;OBSOLETENewLoadSegTagList(} file {,} tags {)} ENDNATIVE !!BPTR
+-&gt;NATIVE {OBSOLETENewLoadSegTags} PROC
+-&gt;-&gt;PROC ObSOLETENewLoadSegTags(file:/*CONST_STRPTR*/ ARRAY OF CHAR, file2=0:ULONG, ...) IS NATIVE {IDOS-&gt;OBSOLETENewLoadSegTags(} file {,} file2 {,} ... {)} ENDNATIVE !!BPTR
+-&gt;NATIVE {AddSegment} PROC
+PROC AddSegment(name:/*CONST_STRPTR*/ ARRAY OF CHAR, seg:BPTR, type:VALUE) IS NATIVE {IDOS-&gt;AddSegment(} name {,} seg {,} type {)} ENDNATIVE !!VALUE
+-&gt;NATIVE {FindSegment} PROC
+PROC FindSegment(name:/*CONST_STRPTR*/ ARRAY OF CHAR, seg:PTR TO segment, sys:VALUE) IS NATIVE {IDOS-&gt;FindSegment(} name {,} seg {,} sys {)} ENDNATIVE !!PTR TO segment
+-&gt;NATIVE {RemSegment} PROC
+PROC RemSegment(seg:PTR TO segment) IS NATIVE {IDOS-&gt;RemSegment(} seg {)} ENDNATIVE !!VALUE
+-&gt;NATIVE {CheckSignal} PROC
+PROC CheckSignal(mask:ULONG) IS NATIVE {IDOS-&gt;CheckSignal(} mask {)} ENDNATIVE !!ULONG
+-&gt;NATIVE {ReadArgs} PROC
+PROC ReadArgs(arg_template:/*CONST_STRPTR*/ ARRAY OF CHAR, array:ARRAY OF VALUE, args:PTR TO rdargs) IS NATIVE {IDOS-&gt;ReadArgs(} arg_template {,} array {,} args {)} ENDNATIVE !!PTR TO rdargs
+-&gt;NATIVE {FindArg} PROC
+PROC FindArg(arg_template:/*CONST_STRPTR*/ ARRAY OF CHAR, keyword:/*CONST_STRPTR*/ ARRAY OF CHAR) IS NATIVE {IDOS-&gt;FindArg(} arg_template {,} keyword {)} ENDNATIVE !!VALUE
+-&gt;NATIVE {ReadItem} PROC
+PROC ReadItem(buffer:/*STRPTR*/ ARRAY OF CHAR, maxchars:VALUE, cSource:PTR TO csource) IS NATIVE {IDOS-&gt;ReadItem(} buffer {,} maxchars {,} cSource {)} ENDNATIVE !!VALUE
+-&gt;NATIVE {StrToLong} PROC
+PROC StrToLong(string:/*CONST_STRPTR*/ ARRAY OF CHAR, value:ARRAY OF VALUE) IS NATIVE {IDOS-&gt;StrToLong(} string {,} value {)} ENDNATIVE !!VALUE
+-&gt;NATIVE {MatchFirst} PROC
+PROC MatchFirst(pat:/*CONST_STRPTR*/ ARRAY OF CHAR, anchor:PTR TO anchorpath) IS NATIVE {IDOS-&gt;MatchFirst(} pat {,} anchor {)} ENDNATIVE !!VALUE
+-&gt;NATIVE {MatchNext} PROC
+PROC MatchNext(anchor:PTR TO anchorpath) IS NATIVE {IDOS-&gt;MatchNext(} anchor {)} ENDNATIVE !!VALUE
+-&gt;NATIVE {MatchEnd} PROC
+PROC MatchEnd(anchor:PTR TO anchorpath) IS NATIVE {IDOS-&gt;MatchEnd(} anchor {)} ENDNATIVE
+-&gt;NATIVE {ParsePattern} PROC
+PROC ParsePattern(pat:/*CONST_STRPTR*/ ARRAY OF CHAR, buf:/*STRPTR*/ ARRAY OF CHAR, buflen:VALUE) IS NATIVE {IDOS-&gt;ParsePattern(} pat {,} buf {,} buflen {)} ENDNATIVE !!VALUE
+-&gt;NATIVE {MatchPattern} PROC
+PROC MatchPattern(pat:/*CONST_STRPTR*/ ARRAY OF CHAR, str:/*CONST_STRPTR*/ ARRAY OF CHAR) IS NATIVE {-(BOOLEAN)(0!=IDOS-&gt;MatchPattern(} pat {,} str {))} ENDNATIVE !!BOOL
+-&gt;NATIVE {FreeArgs} PROC
+PROC FreeArgs(args:PTR TO rdargs) IS NATIVE {IDOS-&gt;FreeArgs(} args {)} ENDNATIVE
+-&gt;NATIVE {FilePart} PROC
+PROC FilePart(path:/*CONST_STRPTR*/ ARRAY OF CHAR) IS NATIVE {IDOS-&gt;FilePart(} path {)} ENDNATIVE !!CONST_STRPTR
+-&gt;NATIVE {PathPart} PROC
+PROC PathPart(path:/*CONST_STRPTR*/ ARRAY OF CHAR) IS NATIVE {IDOS-&gt;PathPart(} path {)} ENDNATIVE !!/*STRPTR*/ ARRAY OF CHAR
+-&gt;NATIVE {AddPart} PROC
+PROC AddPart(destdirname:/*STRPTR*/ ARRAY OF CHAR, filename:/*CONST_STRPTR*/ ARRAY OF CHAR, size:ULONG) IS NATIVE {-(BOOLEAN)(0!=IDOS-&gt;AddPart(} destdirname {,} filename {,} size {))} ENDNATIVE !!BOOL
+-&gt;NATIVE {StartNotify} PROC
+PROC StartNotify(notify:PTR TO notifyrequest) IS NATIVE {-(BOOLEAN)(0!=IDOS-&gt;StartNotify(} notify {))} ENDNATIVE !!BOOL
+-&gt;NATIVE {EndNotify} PROC
+PROC EndNotify(notify:PTR TO notifyrequest) IS NATIVE {IDOS-&gt;EndNotify(} notify {)} ENDNATIVE !!VALUE
+-&gt;NATIVE {SetVar} PROC
+PROC SetVar(name:/*CONST_STRPTR*/ ARRAY OF CHAR, buffer:/*CONST_STRPTR*/ ARRAY OF CHAR, size:VALUE, flags:ULONG) IS NATIVE {-(BOOLEAN)(0!=IDOS-&gt;SetVar(} name {,} buffer {,} size {,} flags {))} ENDNATIVE !!BOOL
+-&gt;NATIVE {GetVar} PROC
+PROC GetVar(name:/*CONST_STRPTR*/ ARRAY OF CHAR, buffer:/*STRPTR*/ ARRAY OF CHAR, size:VALUE, flags:ULONG) IS NATIVE {IDOS-&gt;GetVar(} name {,} buffer {,} size {,} flags {)} ENDNATIVE !!VALUE
+-&gt;NATIVE {DeleteVar} PROC
+PROC DeleteVar(name:/*CONST_STRPTR*/ ARRAY OF CHAR, flags:ULONG) IS NATIVE {-(BOOLEAN)(0!=IDOS-&gt;DeleteVar(} name {,} flags {))} ENDNATIVE !!BOOL
+-&gt;NATIVE {FindVar} PROC
+PROC FindVar(name:/*CONST_STRPTR*/ ARRAY OF CHAR, type:ULONG) IS NATIVE {IDOS-&gt;FindVar(} name {,} type {)} ENDNATIVE !!PTR TO localvar
+-&gt;NATIVE {PRIVATECliInit} PROC
+-&gt;PROC PrIVATECliInit(dp:PTR TO dospacket) IS NATIVE {IDOS-&gt;PRIVATECliInit(} dp {)} ENDNATIVE !!VALUE
+-&gt;NATIVE {CliInitNewcli} PROC
+PROC CliInitNewcli(dp:PTR TO dospacket) IS NATIVE {IDOS-&gt;CliInitNewcli(} dp {)} ENDNATIVE !!VALUE
+-&gt;NATIVE {CliInitRun} PROC
+PROC CliInitRun(dp:PTR TO dospacket) IS NATIVE {IDOS-&gt;CliInitRun(} dp {)} ENDNATIVE !!VALUE
+-&gt;NATIVE {WriteChars} PROC
+PROC WriteChars(buf:/*CONST_STRPTR*/ ARRAY OF CHAR, buflen:ULONG) IS NATIVE {IDOS-&gt;WriteChars(} buf {,} buflen {)} ENDNATIVE !!VALUE
+-&gt;NATIVE {PutStr} PROC
+PROC PutStr(str:/*CONST_STRPTR*/ ARRAY OF CHAR) IS NATIVE {IDOS-&gt;PutStr(} str {)} ENDNATIVE !!VALUE
+-&gt;NATIVE {VPrintf} PROC
+PROC Vprintf(format:/*CONST_STRPTR*/ ARRAY OF CHAR, argarray:CONST_APTR) IS NATIVE {IDOS-&gt;VPrintf(} format {,} argarray {)} ENDNATIVE !!VALUE
+-&gt;NATIVE {Printf} PROC
+PROC Printf(format:/*CONST_STRPTR*/ ARRAY OF CHAR, format2=0:ULONG, ...) IS NATIVE {IDOS-&gt;Printf(} format {,} format2 {,} ... {)} ENDNATIVE !!VALUE
+-&gt;NATIVE {ParsePatternNoCase} PROC
+PROC ParsePatternNoCase(pat:/*CONST_STRPTR*/ ARRAY OF CHAR, buf:/*STRPTR*/ ARRAY OF CHAR, buflen:VALUE) IS NATIVE {IDOS-&gt;ParsePatternNoCase(} pat {,} buf {,} buflen {)} ENDNATIVE !!VALUE
+-&gt;NATIVE {MatchPatternNoCase} PROC
+PROC MatchPatternNoCase(pat:/*CONST_STRPTR*/ ARRAY OF CHAR, str:/*CONST_STRPTR*/ ARRAY OF CHAR) IS NATIVE {-(BOOLEAN)(0!=IDOS-&gt;MatchPatternNoCase(} pat {,} str {))} ENDNATIVE !!BOOL
+-&gt;NATIVE {PRIVATEDosGetString} PROC
+-&gt;PROC PrIVATEDosGetString(num:VALUE) IS NATIVE {IDOS-&gt;PRIVATEDosGetString(} num {)} ENDNATIVE !!/*STRPTR*/ ARRAY OF CHAR
+-&gt;NATIVE {SameDevice} PROC
+PROC SameDevice(lock1:BPTR, lock2:BPTR) IS NATIVE {-(BOOLEAN)(0!=IDOS-&gt;SameDevice(} lock1 {,} lock2 {))} ENDNATIVE !!BOOL
+-&gt;NATIVE {ExAllEnd} PROC
+PROC ExAllEnd(lock:BPTR, buffer:PTR TO exalldata, size:VALUE, data:VALUE, control:PTR TO exallcontrol) IS NATIVE {IDOS-&gt;ExAllEnd(} lock {,} buffer {,} size {,} data {,} control {)} ENDNATIVE
+-&gt;NATIVE {SetOwner} PROC
+PROC SetOwner(name:/*CONST_STRPTR*/ ARRAY OF CHAR, owner_info:ULONG) IS NATIVE {-(BOOLEAN)(0!=IDOS-&gt;SetOwner(} name {,} owner_info {))} ENDNATIVE !!BOOL
+-&gt;NATIVE {GetEntryData} PROC
+PROC GetEntryData() IS NATIVE {IDOS-&gt;GetEntryData()} ENDNATIVE !!VALUE
+-&gt;NATIVE {ReadLineItem} PROC
+PROC ReadLineItem(buffer:/*STRPTR*/ ARRAY OF CHAR, maxchars:VALUE, taglist:ARRAY OF tagitem) IS NATIVE {IDOS-&gt;ReadLineItem(} buffer {,} maxchars {,} taglist {)} ENDNATIVE !!VALUE
+-&gt;NATIVE {ReadLineItemTags} PROC
+-&gt;PROC ReadLineItemTags(buffer:/*STRPTR*/ ARRAY OF CHAR, maxchars:VALUE, maxchars2=0:ULONG, ...) IS NATIVE {IDOS-&gt;ReadLineItemTags(} buffer {,} maxchars {,} maxchars2 {,} ... {)} ENDNATIVE !!VALUE
+-&gt;NATIVE {PRIVATEInternalRunCommand} PROC
+-&gt;PROC PrIVATEInternalRunCommand(seg:BPTR, stksize:ULONG, args:/*CONST_STRPTR*/ ARRAY OF CHAR, arglen:VALUE) IS NATIVE {IDOS-&gt;PRIVATEInternalRunCommand(} seg {,} stksize {,} args {,} arglen {)} ENDNATIVE !!VALUE
+-&gt;NATIVE {GetCurrentDir} PROC
+PROC GetCurrentDir() IS NATIVE {IDOS-&gt;GetCurrentDir()} ENDNATIVE !!BPTR
+-&gt;NATIVE {NonBlockingModifyDosEntry} PROC
+PROC NonBlockingModifyDosEntry(dl:PTR TO doslist, mode:VALUE, arg1:APTR, arg2:APTR) IS NATIVE {IDOS-&gt;NonBlockingModifyDosEntry(} dl {,} mode {,} arg1 {,} arg2 {)} ENDNATIVE !!VALUE
+-&gt;NATIVE {SecondsToDateStamp} PROC
+PROC SecondsToDateStamp(seconds:ULONG, ds:PTR TO datestamp) IS NATIVE {IDOS-&gt;SecondsToDateStamp(} seconds {,} ds {)} ENDNATIVE !!PTR TO datestamp
+-&gt;NATIVE {DateStampToSeconds} PROC
+PROC DateStampToSeconds(ds:PTR TO datestamp) IS NATIVE {IDOS-&gt;DateStampToSeconds(} ds {)} ENDNATIVE !!ULONG
+-&gt;NATIVE {FixDateStamp} PROC
+PROC FixDateStamp(ds:PTR TO datestamp) IS NATIVE {IDOS-&gt;FixDateStamp(} ds {)} ENDNATIVE !!VALUE
+-&gt;NATIVE {AddDates} PROC
+PROC AddDates(to:PTR TO datestamp, from:PTR TO datestamp) IS NATIVE {IDOS-&gt;AddDates(} to {,} from {)} ENDNATIVE !!VALUE
+-&gt;NATIVE {SubtractDates} PROC
+PROC SubtractDates(to:PTR TO datestamp, from:PTR TO datestamp) IS NATIVE {IDOS-&gt;SubtractDates(} to {,} from {)} ENDNATIVE !!VALUE
+-&gt;NATIVE {AddSegmentTagList} PROC
+PROC AddSegmentTagList(name:/*CONST_STRPTR*/ ARRAY OF CHAR, type:VALUE, tags:ARRAY OF tagitem) IS NATIVE {IDOS-&gt;AddSegmentTagList(} name {,} type {,} tags {)} ENDNATIVE !!VALUE
+-&gt;NATIVE {ParseCapturePattern} PROC
+PROC ParseCapturePattern(pat:/*CONST_STRPTR*/ ARRAY OF CHAR, dst:/*STRPTR*/ ARRAY OF CHAR, length:VALUE, casesen:VALUE) IS NATIVE {IDOS-&gt;ParseCapturePattern(} pat {,} dst {,} length {,} casesen {)} ENDNATIVE !!VALUE
+-&gt;NATIVE {CapturePattern} PROC
+PROC CapturePattern(pat:/*CONST_STRPTR*/ ARRAY OF CHAR, str:/*CONST_STRPTR*/ ARRAY OF CHAR, casesen:VALUE, cap:PTR TO PTR /*TO capturedexpression*/) IS NATIVE {IDOS-&gt;CapturePattern(} pat {,} str {,} casesen {, (CapturedExpression ** ) } cap {)} ENDNATIVE !!VALUE
+-&gt;NATIVE {ReleaseCapturedExpressions} PROC
+PROC ReleaseCapturedExpressions(first:PTR TO capturedexpression) IS NATIVE {IDOS-&gt;ReleaseCapturedExpressions(} first {)} ENDNATIVE
+-&gt;NATIVE {FindTrackedAddress} PROC
+PROC FindTrackedAddress(address:CONST_APTR, hook:PTR TO hook) IS NATIVE {IDOS-&gt;FindTrackedAddress(} address {,} hook {)} ENDNATIVE
+-&gt;NATIVE {TrackAddressList} PROC
+PROC TrackAddressList(name:/*CONST_STRPTR*/ ARRAY OF CHAR, segment:BPTR, extra_info:CONST_APTR, extra_info_size:VALUE, aas:PTR TO addressandsize, num_pairs:VALUE) IS NATIVE {IDOS-&gt;TrackAddressList(} name {,} segment {,} extra_info {,} extra_info_size {,} aas {,} num_pairs {)} ENDNATIVE !!VALUE
+-&gt;NATIVE {TrackSegmentList} PROC
+PROC TrackSegmentList(name:/*CONST_STRPTR*/ ARRAY OF CHAR, segment:BPTR, extra_info:CONST_APTR, extra_info_size:VALUE) IS NATIVE {IDOS-&gt;TrackSegmentList(} name {,} segment {,} extra_info {,} extra_info_size {)} ENDNATIVE !!VALUE
+-&gt;NATIVE {UnTrackAddress} PROC
+PROC UnTrackAddress(address:APTR) IS NATIVE {IDOS-&gt;UnTrackAddress(} address {)} ENDNATIVE
+-&gt;NATIVE {UnTrackSegmentList} PROC
+PROC UnTrackSegmentList(segment:BPTR) IS NATIVE {IDOS-&gt;UnTrackSegmentList(} segment {)} ENDNATIVE
+-&gt;NATIVE {GetExitData} PROC
+PROC GetExitData() IS NATIVE {IDOS-&gt;GetExitData()} ENDNATIVE !!VALUE
+-&gt;NATIVE {PutErrStr} PROC
+PROC PutErrStr(str:/*CONST_STRPTR*/ ARRAY OF CHAR) IS NATIVE {IDOS-&gt;PutErrStr(} str {)} ENDNATIVE !!VALUE
+-&gt;NATIVE {ErrorOutput} PROC
+PROC ErrorOutput() IS NATIVE {IDOS-&gt;ErrorOutput()} ENDNATIVE !!BPTR
+-&gt;NATIVE {SelectErrorOutput} PROC
+PROC SelectErrorOutput(fh:BPTR) IS NATIVE {IDOS-&gt;SelectErrorOutput(} fh {)} ENDNATIVE !!BPTR
+-&gt;NATIVE {MountDevice} PROC
+PROC MountDevice(name:/*CONST_STRPTR*/ ARRAY OF CHAR, type:VALUE, tags:ARRAY OF tagitem) IS NATIVE {IDOS-&gt;MountDevice(} name {,} type {,} tags {)} ENDNATIVE !!VALUE
+-&gt;NATIVE {MountDeviceTags} PROC
+-&gt;PROC MountDeviceTags(name:/*CONST_STRPTR*/ ARRAY OF CHAR, type:VALUE, type2=0:ULONG, ...) IS NATIVE {IDOS-&gt;MountDeviceTags(} name {,} type {,} type2 {,} ... {)} ENDNATIVE !!VALUE
+-&gt;NATIVE {SetProcWindow} PROC
+PROC SetProcWindow(win:CONST_APTR) IS NATIVE {IDOS-&gt;SetProcWindow(} win {)} ENDNATIVE !!APTR
+-&gt;NATIVE {FindSegmentStackSize} PROC
+PROC FindSegmentStackSize(segment:BPTR) IS NATIVE {IDOS-&gt;FindSegmentStackSize(} segment {)} ENDNATIVE !!ULONG
+-&gt;NATIVE {CalculateSegmentChecksum} PROC
+PROC CalculateSegmentChecksum(segment:BPTR) IS NATIVE {IDOS-&gt;CalculateSegmentChecksum(} segment {)} ENDNATIVE !!ULONG
+-&gt;NATIVE {AllocSegList} PROC
+PROC AllocSegList(entry:CONST_APTR, data:CONST_APTR, datalen:ULONG, identkey:ULONG) IS NATIVE {IDOS-&gt;AllocSegList(} entry {,} data {,} datalen {,} identkey {)} ENDNATIVE !!BPTR
+-&gt;NATIVE {GetSegListInfo} PROC
+PROC GetSegListInfo(seglist:BPTR, tags:ARRAY OF tagitem) IS NATIVE {IDOS-&gt;GetSegListInfo(} seglist {,} tags {)} ENDNATIVE !!VALUE
+-&gt;NATIVE {GetSegListInfoTags} PROC
+-&gt;PROC GetSegListInfoTags(seglist:BPTR, seglist2=0:ULONG, ...) IS NATIVE {IDOS-&gt;GetSegListInfoTags(} seglist {,} seglist2 {,} ... {)} ENDNATIVE !!VALUE
+-&gt;NATIVE {AddSegListTail} PROC
+PROC AddSegListTail(bseglist_head:BPTR, bseg_new:BPTR) IS NATIVE {IDOS-&gt;AddSegListTail(} bseglist_head {,} bseg_new {)} ENDNATIVE !!VALUE
+-&gt;NATIVE {DevNameFromLock} PROC
+PROC DevNameFromLock(lock:BPTR, buffer:/*STRPTR*/ ARRAY OF CHAR, buflen:VALUE, mode:VALUE) IS NATIVE {-(BOOLEAN)(0!=IDOS-&gt;DevNameFromLock(} lock {,} buffer {,} buflen {,} mode {))} ENDNATIVE !!BOOL
+-&gt;NATIVE {GetProcMsgPort} PROC
+PROC GetProcMsgPort(proc:PTR TO process) IS NATIVE {IDOS-&gt;GetProcMsgPort(} proc {)} ENDNATIVE !!PTR TO mp
+-&gt;NATIVE {WaitForData} PROC
+PROC WaitForData(stream:BPTR, data_direction:VALUE, timeout:VALUE) IS NATIVE {IDOS-&gt;WaitForData(} stream {,} data_direction {,} timeout {)} ENDNATIVE !!VALUE
+-&gt;NATIVE {SetBlockingMode} PROC
+PROC SetBlockingMode(stream:BPTR, new_blocking_mode:VALUE) IS NATIVE {IDOS-&gt;SetBlockingMode(} stream {,} new_blocking_mode {)} ENDNATIVE !!VALUE
+-&gt;NATIVE {SetCurrentCmdPathList} PROC
+PROC SetCurrentCmdPathList(pn:PTR TO pathnode) IS NATIVE {IDOS-&gt;SetCurrentCmdPathList(} pn {)} ENDNATIVE !!PTR TO pathnode
+-&gt;NATIVE {AllocateCmdPathList} PROC
+PROC AllocateCmdPathList(first_lock:BPTR) IS NATIVE {IDOS-&gt;AllocateCmdPathList(} first_lock {)} ENDNATIVE !!PTR TO pathnode
+-&gt;NATIVE {FreeCmdPathList} PROC
+PROC FreeCmdPathList(pn:PTR TO pathnode) IS NATIVE {IDOS-&gt;FreeCmdPathList(} pn {)} ENDNATIVE
+-&gt;NATIVE {RemoveCmdPathNode} PROC
+PROC RemoveCmdPathNode(pn:PTR TO pathnode, lock:BPTR) IS NATIVE {IDOS-&gt;RemoveCmdPathNode(} pn {,} lock {)} ENDNATIVE !!PTR TO pathnode
+-&gt;NATIVE {AddCmdPathNode} PROC
+PROC AddCmdPathNode(pn:PTR TO pathnode, lock:BPTR, where:VALUE) IS NATIVE {IDOS-&gt;AddCmdPathNode(} pn {,} lock {,} where {)} ENDNATIVE !!PTR TO pathnode
+-&gt;NATIVE {SearchCmdPathList} PROC
+PROC SearchCmdPathList(pn:PTR TO pathnode, h:PTR TO hook, name:/*CONST_STRPTR*/ ARRAY OF CHAR, tags:ARRAY OF tagitem) IS NATIVE {IDOS-&gt;SearchCmdPathList(} pn {,} h {,} name {,} tags {)} ENDNATIVE !!VALUE
+-&gt;NATIVE {SearchCmdPathListTags} PROC
+-&gt;PROC SearchCmdPathListTags(pn:PTR TO pathnode, h:PTR TO hook, name:/*CONST_STRPTR*/ ARRAY OF CHAR, name2=0:ULONG, ...) IS NATIVE {IDOS-&gt;SearchCmdPathListTags(} pn {,} h {,} name {,} name2 {,} ... {)} ENDNATIVE !!VALUE
+-&gt;NATIVE {ScanVars} PROC
+PROC ScanVars(hook:PTR TO hook, flags:ULONG, userdata:CONST_APTR) IS NATIVE {IDOS-&gt;ScanVars(} hook {,} flags {,} userdata {)} ENDNATIVE !!VALUE
+-&gt;NATIVE {GetProcSegList} PROC
+PROC GetProcSegList(proc:PTR TO process, flags:ULONG) IS NATIVE {IDOS-&gt;GetProcSegList(} proc {,} flags {)} ENDNATIVE !!BPTR
+-&gt;NATIVE {HexToLong} PROC
+PROC HexToLong(string:/*CONST_STRPTR*/ ARRAY OF CHAR, value_ptr:PTR TO ULONG) IS NATIVE {IDOS-&gt;HexToLong(} string {,} value_ptr {)} ENDNATIVE !!VALUE
+-&gt;NATIVE {GetDeviceProcFlags} PROC
+PROC GetDeviceProcFlags(name:/*CONST_STRPTR*/ ARRAY OF CHAR, odp:PTR TO devproc, flags:ULONG) IS NATIVE {IDOS-&gt;GetDeviceProcFlags(} name {,} odp {,} flags {)} ENDNATIVE !!PTR TO devproc
+-&gt;NATIVE {DosControl} PROC
+PROC DosControl(tags:ARRAY OF tagitem) IS NATIVE {IDOS-&gt;DosControl(} tags {)} ENDNATIVE !!VALUE
+-&gt;NATIVE {DosControlTags} PROC
+-&gt;PROC DosControlTags(param:VALUE, param2=0:ULONG, ...) IS NATIVE {IDOS-&gt;DosControlTags(} param {,} param2 {,} ... {)} ENDNATIVE !!VALUE
+-&gt;NATIVE {CreateDirTree} PROC
+PROC CreateDirTree(name:/*CONST_STRPTR*/ ARRAY OF CHAR) IS NATIVE {IDOS-&gt;CreateDirTree(} name {)} ENDNATIVE !!BPTR
+-&gt;NATIVE {NotifyVar} PROC
+PROC NotifyVar(name:/*CONST_STRPTR*/ ARRAY OF CHAR, hook:PTR TO hook, flags:VALUE, userdata:CONST_APTR) IS NATIVE {IDOS-&gt;NotifyVar(} name {,} hook {,} flags {,} userdata {)} ENDNATIVE !!VALUE
+-&gt;NATIVE {GetDiskFileSystemData} PROC
+PROC GetDiskFileSystemData(name:/*CONST_STRPTR*/ ARRAY OF CHAR) IS NATIVE {IDOS-&gt;GetDiskFileSystemData(} name {)} ENDNATIVE !!PTR TO filesystemdata
+-&gt;NATIVE {FreeDiskFileSystemData} PROC
+PROC FreeDiskFileSystemData(fsd:PTR TO filesystemdata) IS NATIVE {IDOS-&gt;FreeDiskFileSystemData(} fsd {)} ENDNATIVE
+-&gt;NATIVE {FOpen} PROC
+PROC Fopen(name:/*CONST_STRPTR*/ ARRAY OF CHAR, mode:VALUE, bufsize:VALUE) IS NATIVE {IDOS-&gt;FOpen(} name {,} mode {,} bufsize {)} ENDNATIVE !!BPTR
+-&gt;NATIVE {FClose} PROC
+PROC Fclose(scb:BPTR) IS NATIVE {IDOS-&gt;FClose(} scb {)} ENDNATIVE !!VALUE
+-&gt;NATIVE {FOpenFromLock} PROC
+PROC FopenFromLock(lock:BPTR, bufsize:VALUE) IS NATIVE {IDOS-&gt;FOpenFromLock(} lock {,} bufsize {)} ENDNATIVE !!BPTR
+-&gt;NATIVE {TimedDosRequester} PROC
+PROC TimedDosRequester(tags:ARRAY OF tagitem) IS NATIVE {IDOS-&gt;TimedDosRequester(} tags {)} ENDNATIVE !!VALUE
+-&gt;NATIVE {TimedDosRequesterTags} PROC
+-&gt;PROC TimedDosRequesterTags(param:VALUE, param2=0:ULONG, ...) IS NATIVE {IDOS-&gt;TimedDosRequesterTags(} param {,} param2 {,} ... {)} ENDNATIVE !!VALUE
+-&gt;NATIVE {RenameDosEntry} PROC
+PROC RenameDosEntry(dlist:PTR TO doslist, newname:/*CONST_STRPTR*/ ARRAY OF CHAR) IS NATIVE {IDOS-&gt;RenameDosEntry(} dlist {,} newname {)} ENDNATIVE !!VALUE
+-&gt;NATIVE {DismountDevice} PROC
+PROC DismountDevice(name:/*CONST_STRPTR*/ ARRAY OF CHAR, flags:ULONG, reserved:APTR) IS NATIVE {IDOS-&gt;DismountDevice(} name {,} flags {,} reserved {)} ENDNATIVE !!VALUE
+-&gt;NATIVE {DupFileHandle} PROC
+PROC DupFileHandle(scb:BPTR) IS NATIVE {IDOS-&gt;DupFileHandle(} scb {)} ENDNATIVE !!BPTR
+-&gt;NATIVE {DevNameFromFH} PROC
+PROC DevNameFromFH(scb:BPTR, buffer:/*STRPTR*/ ARRAY OF CHAR, buflen:VALUE, mode:VALUE) IS NATIVE {-(BOOLEAN)(0!=IDOS-&gt;DevNameFromFH(} scb {,} buffer {,} buflen {,} mode {))} ENDNATIVE !!BOOL
+-&gt;NATIVE {AssignAddToList} PROC
+PROC AssignAddToList(name:/*CONST_STRPTR*/ ARRAY OF CHAR, lock:BPTR, endpos:VALUE) IS NATIVE {IDOS-&gt;AssignAddToList(} name {,} lock {,} endpos {)} ENDNATIVE !!VALUE
+-&gt;NATIVE {SetFileHandleAttr} PROC
+PROC SetFileHandleAttr(fh:BPTR, tags:ARRAY OF tagitem) IS NATIVE {IDOS-&gt;SetFileHandleAttr(} fh {,} tags {)} ENDNATIVE !!VALUE
+-&gt;NATIVE {SetFileHandleAttrTags} PROC
+-&gt;PROC SetFileHandleAttrTags(fh:BPTR, fh2=0:ULONG, ...) IS NATIVE {IDOS-&gt;SetFileHandleAttrTags(} fh {,} fh2 {,} ... {)} ENDNATIVE !!VALUE
+-&gt;NATIVE {FileSystemAttr} PROC
+PROC FileSystemAttr(tags:ARRAY OF tagitem) IS NATIVE {IDOS-&gt;FileSystemAttr(} tags {)} ENDNATIVE !!VALUE
+-&gt;NATIVE {FileSystemAttrTags} PROC
+-&gt;PROC FileSystemAttrTags(param:VALUE, param2=0:ULONG, ...) IS NATIVE {IDOS-&gt;FileSystemAttrTags(} param {,} param2 {,} ... {)} ENDNATIVE !!VALUE
+-&gt;NATIVE {FReadLine} PROC
+PROC FreadLine(fh:BPTR, frld:PTR TO freadlinedata) IS NATIVE {IDOS-&gt;FReadLine(} fh {,} frld {)} ENDNATIVE !!VALUE
+-&gt;NATIVE {CopyStringBSTRToC} PROC
+PROC CopyStringBSTRToC(bsrc:BSTR, dst:/*STRPTR*/ ARRAY OF CHAR, siz:ULONG) IS NATIVE {IDOS-&gt;CopyStringBSTRToC(} bsrc {,} dst {,} siz {)} ENDNATIVE !!ULONG
+-&gt;NATIVE {CopyStringCToBSTR} PROC
+PROC CopyStringCToBSTR(src:/*CONST_STRPTR*/ ARRAY OF CHAR, bdest:BSTR, siz:ULONG) IS NATIVE {IDOS-&gt;CopyStringCToBSTR(} src {,} bdest {,} siz {)} ENDNATIVE !!ULONG
+-&gt;NATIVE {GetFilePosition} PROC
+PROC GetFilePosition(fh:BPTR) IS NATIVE {IDOS-&gt;GetFilePosition(} fh {)} ENDNATIVE !!BIGVALUE
+-&gt;NATIVE {ChangeFilePosition} PROC
+PROC ChangeFilePosition(file:BPTR, position:BIGVALUE, offset:VALUE) IS NATIVE {IDOS-&gt;ChangeFilePosition(} file {,} position {,} offset {)} ENDNATIVE !!VALUE
+-&gt;NATIVE {ChangeFileSize} PROC
+PROC ChangeFileSize(fh:BPTR, pos:BIGVALUE, mode:VALUE) IS NATIVE {IDOS-&gt;ChangeFileSize(} fh {,} pos {,} mode {)} ENDNATIVE !!VALUE
+-&gt;NATIVE {GetFileSize} PROC
+PROC GetFileSize(fh:BPTR) IS NATIVE {IDOS-&gt;GetFileSize(} fh {)} ENDNATIVE !!BIGVALUE
+-&gt;NATIVE {PRIVATEDoPkt64} PROC
+PROC PrIVATEDoPkt64(sendport:PTR TO mp, type:VALUE, arg1:VALUE, arg2:BIGVALUE, arg3:VALUE, arg4:VALUE, arg5:BIGVALUE) IS NATIVE {IDOS-&gt;PRIVATEDoPkt64(} sendport {,} type {,} arg1 {,} arg2 {,} arg3 {,} arg4 {,} arg5 {)} ENDNATIVE !!BIGVALUE
+-&gt;NATIVE {ProcessScan} PROC
+PROC ProcessScan(hook:PTR TO hook, userdata:CONST_APTR, reserved:ULONG) IS NATIVE {IDOS-&gt;ProcessScan(} hook {,} userdata {,} reserved {)} ENDNATIVE !!VALUE
+-&gt;NATIVE {NotifyDosListChange} PROC
+PROC NotifyDosListChange(process:PTR TO process, signalnum:ULONG, reserved:ULONG) IS NATIVE {IDOS-&gt;NotifyDosListChange(} process {,} signalnum {,} reserved {)} ENDNATIVE !!VALUE
+-&gt;NATIVE {NotifyProcListChange} PROC
+PROC NotifyProcListChange(process:PTR TO process, signalnum:ULONG, reserved:ULONG) IS NATIVE {IDOS-&gt;NotifyProcListChange(} process {,} signalnum {,} reserved {)} ENDNATIVE !!VALUE
+-&gt;NATIVE {GetDiskInfo} PROC
+PROC GetDiskInfo(tags:ARRAY OF tagitem) IS NATIVE {IDOS-&gt;GetDiskInfo(} tags {)} ENDNATIVE !!VALUE
+-&gt;NATIVE {GetDiskInfoTags} PROC
+-&gt;PROC GetDiskInfoTags(param:VALUE, param2=0:ULONG, ...) IS NATIVE {IDOS-&gt;GetDiskInfoTags(} param {,} param2 {,} ... {)} ENDNATIVE !!VALUE
+-&gt;NATIVE {WriteProtectVolume} PROC
+PROC WriteProtectVolume(name:/*CONST_STRPTR*/ ARRAY OF CHAR, on_off:VALUE, passkey:ULONG, reserved:VALUE) IS NATIVE {IDOS-&gt;WriteProtectVolume(} name {,} on_off {,} passkey {,} reserved {)} ENDNATIVE !!VALUE
+-&gt;NATIVE {ExamineObject} PROC
+PROC ExamineObject(ctags:ARRAY OF tagitem) IS NATIVE {IDOS-&gt;ExamineObject(} ctags {)} ENDNATIVE !!PTR TO examinedata
+-&gt;NATIVE {ExamineObjectTags} PROC
+-&gt;PROC ExamineObjectTags(param:VALUE, param2=0:ULONG, ...) IS NATIVE {IDOS-&gt;ExamineObjectTags(} param {,} param2 {,} ... {)} ENDNATIVE !!PTR TO examinedata
+-&gt;NATIVE {ExamineDir} PROC
+PROC ExamineDir(context:APTR) IS NATIVE {IDOS-&gt;ExamineDir(} context {)} ENDNATIVE !!PTR TO examinedata
+-&gt;NATIVE {ObtainDirContext} PROC
+PROC ObtainDirContext(ctags:ARRAY OF tagitem) IS NATIVE {IDOS-&gt;ObtainDirContext(} ctags {)} ENDNATIVE !!APTR
+-&gt;NATIVE {ObtainDirContextTags} PROC
+-&gt;PROC ObtainDirContextTags(param:VALUE, param2=0:ULONG, ...) IS NATIVE {IDOS-&gt;ObtainDirContextTags(} param {,} param2 {,} ... {)} ENDNATIVE !!APTR
+-&gt;NATIVE {ReleaseDirContext} PROC
+PROC ReleaseDirContext(contx:APTR) IS NATIVE {IDOS-&gt;ReleaseDirContext(} contx {)} ENDNATIVE
+-&gt;NATIVE {GetOwnerInfo} PROC
+PROC GetOwnerInfo(tags:ARRAY OF tagitem) IS NATIVE {IDOS-&gt;GetOwnerInfo(} tags {)} ENDNATIVE !!VALUE
+-&gt;NATIVE {GetOwnerInfoTags} PROC
+-&gt;PROC GetOwnerInfoTags(param:VALUE, param2=0:ULONG, ...) IS NATIVE {IDOS-&gt;GetOwnerInfoTags(} param {,} param2 {,} ... {)} ENDNATIVE !!VALUE
+-&gt;NATIVE {SetOwnerInfo} PROC
+PROC SetOwnerInfo(tags:ARRAY OF tagitem) IS NATIVE {IDOS-&gt;SetOwnerInfo(} tags {)} ENDNATIVE !!VALUE
+-&gt;NATIVE {SetOwnerInfoTags} PROC
+-&gt;PROC SetOwnerInfoTags(param:VALUE, param2=0:ULONG, ...) IS NATIVE {IDOS-&gt;SetOwnerInfoTags(} param {,} param2 {,} ... {)} ENDNATIVE !!VALUE
+-&gt;NATIVE {LockTagList} PROC
+PROC LockTagList(tags:ARRAY OF tagitem) IS NATIVE {IDOS-&gt;LockTagList(} tags {)} ENDNATIVE !!BPTR
+-&gt;NATIVE {LockTags} PROC
+-&gt;PROC LockTags(param:VALUE, param2=0:ULONG, ...) IS NATIVE {IDOS-&gt;LockTags(} param {,} param2 {,} ... {)} ENDNATIVE !!BPTR
+-&gt;NATIVE {GetPID} PROC
+PROC GetPID(process:PTR TO process, which:VALUE) IS NATIVE {IDOS-&gt;GetPID(} process {,} which {)} ENDNATIVE !!ULONG
+-&gt;NATIVE {FlushVolume} PROC
+PROC FlushVolume(name:/*CONST_STRPTR*/ ARRAY OF CHAR) IS NATIVE {IDOS-&gt;FlushVolume(} name {)} ENDNATIVE !!VALUE
+-&gt;NATIVE {ObtainConsoleData} PROC
+PROC ObtainConsoleData(ctags:ARRAY OF tagitem) IS NATIVE {IDOS-&gt;ObtainConsoleData(} ctags {)} ENDNATIVE !!PTR TO consolewindowdata
+-&gt;NATIVE {ObtainConsoleDataTags} PROC
+-&gt;PROC ObtainConsoleDataTags(param:VALUE, param2=0:ULONG, ...) IS NATIVE {IDOS-&gt;ObtainConsoleDataTags(} param {,} param2 {,} ... {)} ENDNATIVE !!PTR TO consolewindowdata
+-&gt;NATIVE {ReleaseConsoleData} PROC
+PROC ReleaseConsoleData(data:PTR TO consolewindowdata) IS NATIVE {IDOS-&gt;ReleaseConsoleData(} data {)} ENDNATIVE
+-&gt;NATIVE {Serialize} PROC
+PROC Serialize(name:/*CONST_STRPTR*/ ARRAY OF CHAR) IS NATIVE {IDOS-&gt;Serialize(} name {)} ENDNATIVE !!VALUE
+-&gt;NATIVE {NameFromPort} PROC
+PROC NameFromPort(port:PTR TO mp, buffer:/*STRPTR*/ ARRAY OF CHAR, buflen:VALUE, add_colon:VALUE) IS NATIVE {IDOS-&gt;NameFromPort(} port {,} buffer {,} buflen {,} add_colon {)} ENDNATIVE !!VALUE
+-&gt;NATIVE {DevNameFromPort} PROC
+PROC DevNameFromPort(port:PTR TO mp, buffer:/*STRPTR*/ ARRAY OF CHAR, buflen:VALUE, add_colon:VALUE) IS NATIVE {IDOS-&gt;DevNameFromPort(} port {,} buffer {,} buflen {,} add_colon {)} ENDNATIVE !!VALUE
+-&gt;NATIVE {SameFH} PROC
+PROC SameFH(scb1:BPTR, scb2:BPTR) IS NATIVE {IDOS-&gt;SameFH(} scb1 {,} scb2 {)} ENDNATIVE !!VALUE
+-&gt;NATIVE {LockRecord} PROC
+PROC LockRecord(fh:BPTR, offset:BIGVALUE, length:BIGVALUE, mode:ULONG, timeout:ULONG) IS NATIVE {IDOS-&gt;LockRecord(} fh {,} offset {,} length {,} mode {,} timeout {)} ENDNATIVE !!VALUE
+-&gt;NATIVE {UnLockRecord} PROC
+PROC UnLockRecord(fh:BPTR, offset:BIGVALUE, length:BIGVALUE) IS NATIVE {IDOS-&gt;UnLockRecord(} fh {,} offset {,} length {)} ENDNATIVE !!VALUE
+-&gt;NATIVE {IsFileSystemPort} PROC
+PROC IsFileSystemPort(port:PTR TO mp) IS NATIVE {IDOS-&gt;IsFileSystemPort(} port {)} ENDNATIVE !!VALUE
+-&gt;NATIVE {InhibitPort} PROC
+PROC InhibitPort(port:PTR TO mp, state:VALUE) IS NATIVE {IDOS-&gt;InhibitPort(} port {,} state {)} ENDNATIVE !!VALUE
+-&gt;NATIVE {FormatPort} PROC
+PROC FormatPort(port:PTR TO mp, volumename:/*CONST_STRPTR*/ ARRAY OF CHAR, dostype:ULONG, flags:ULONG) IS NATIVE {IDOS-&gt;FormatPort(} port {,} volumename {,} dostype {,} flags {)} ENDNATIVE !!VALUE
+-&gt;NATIVE {SerializePort} PROC
+PROC SerializePort(port:PTR TO mp) IS NATIVE {IDOS-&gt;SerializePort(} port {)} ENDNATIVE !!VALUE
+-&gt;NATIVE {FlushVolumePort} PROC
+PROC FlushVolumePort(port:PTR TO mp) IS NATIVE {IDOS-&gt;FlushVolumePort(} port {)} ENDNATIVE !!VALUE
+-&gt;NATIVE {FileHandleScan} PROC
+PROC FileHandleScan(hook:PTR TO hook, userdata:CONST_APTR, reserved:ULONG) IS NATIVE {IDOS-&gt;FileHandleScan(} hook {,} userdata {,} reserved {)} ENDNATIVE !!VALUE
+-&gt;NATIVE {GetFileSystemVectorPort} PROC
+PROC GetFileSystemVectorPort(port:PTR TO mp, min_version:ULONG) IS NATIVE {IDOS-&gt;GetFileSystemVectorPort(} port {,} min_version {)} ENDNATIVE !!PTR TO filesystemvectorport
+-&gt;NATIVE {ResolvePath} PROC
+PROC ResolvePath(port:PTR TO mp, path:/*CONST_STRPTR*/ ARRAY OF CHAR, inlock:BPTR, out:/*STRPTR*/ ARRAY OF CHAR, outlen:ULONG, outdir:PTR TO BPTR, slcount:PTR TO ULONG) IS NATIVE {IDOS-&gt;ResolvePath(} port {,} path {,} inlock {,} out {,} outlen {,} outdir {,} slcount {)} ENDNATIVE !!VALUE
+-&gt;NATIVE {WriteProtectVolumePort} PROC
+PROC WriteProtectVolumePort(port:PTR TO mp, on_off:VALUE, passkey:ULONG, reserved:VALUE) IS NATIVE {IDOS-&gt;WriteProtectVolumePort(} port {,} on_off {,} passkey {,} reserved {)} ENDNATIVE !!VALUE
+-&gt;NATIVE {AsyncIO} PROC
+PROC AsyncIO(tags:ARRAY OF tagitem) IS NATIVE {-(BOOLEAN)(0!=IDOS-&gt;AsyncIO(} tags {))} ENDNATIVE !!BOOL
+-&gt;NATIVE {AsyncIOTags} PROC
+PROC AsyncIOTags(param:VALUE, param2=0:ULONG, ...) IS NATIVE {-(BOOLEAN)(0!=IDOS-&gt;AsyncIOTags(} param {,} param2 {,} ... {))} ENDNATIVE !!BOOL
+-&gt;NATIVE {WaitForChildExit} PROC
+PROC WaitForChildExit(pid:ULONG) IS NATIVE {-(BOOLEAN)(0!=IDOS-&gt;WaitForChildExit(} pid {))} ENDNATIVE !!BOOL
+-&gt;NATIVE {CheckForChildExit} PROC
+PROC CheckForChildExit(pid:ULONG) IS NATIVE {-(BOOLEAN)(0!=IDOS-&gt;CheckForChildExit(} pid {))} ENDNATIVE !!BOOL
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

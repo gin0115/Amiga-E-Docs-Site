@@ -1,0 +1,265 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Backdrop.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-aepd43.html">AEPD43</a> &rsaquo; Backdrop.e</div><h1>File: <code>Backdrop.e</code></h1><p class="meta">239 lines · project <a href="../examples/pkg-aepd43.html"><code>AEPD43</code></a></p><p class="pathctx">AEPD43/EPD43/Programme/bgui_ev41_4/sources/examples/Backdrop.e</p><p class="prose">* <a href="../modules/iobsolete.html#const-backdrop">BACKDROP</a>.e * * (C) Copyright 1995 Jaba Development. * (C) Copyright 1995 Jan van den Baard. * (C) Copyright 1996 Marco Talamelli. * All Rights Reserved.</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/bgui.html">libraries/bgui</a></li></ul></div><h2>Source</h2><pre class="code">/*
+ *      BACKDROP.e
+ *
+ *      (C) Copyright 1995 Jaba Development.
+ *      (C) Copyright 1995 Jan van den Baard.
+ *      (C) Copyright 1996 Marco Talamelli.
+ *          All Rights Reserved.
+ */
+
+OPT OSVERSION=37
+OPT PREPROCESS
+
+MODULE  &#x27;libraries/bgui&#x27;,
+        &#x27;libraries/bgui_macros&#x27;,
+        &#x27;libraries/gadtools&#x27;,
+        &#x27;bgui&#x27;,
+        &#x27;tools/boopsi&#x27;,
+        &#x27;utility/tagitem&#x27;,
+        &#x27;intuition/screens&#x27;,
+        &#x27;intuition/intuition&#x27;,
+        &#x27;intuition/classes&#x27;,
+        &#x27;intuition/classusr&#x27;,
+        &#x27;intuition/gadgetclass&#x27;,
+        &#x27;graphics/displayinfo&#x27;,
+        &#x27;graphics/modeid&#x27;
+
+/*
+ *      Quit object ID.
+ */
+#define ID_QUIT         1
+
+/*
+ *      A borderless window ;)
+ */
+PROC say( screen:PTR TO screen )
+
+    DEF wo_window, go_ok,
+        signal, rc,text:PTR TO CHAR,
+        running = TRUE
+
+    text :=  &#x27;\ecThis demonstration shows you how to\n&#x27;+
+             &#x27;create a backdrop, borderless window with BGUI.\n\n&#x27;+
+             &#x27;You may recognize the GUI as the main window\n&#x27;+
+             &#x27;of SPOT but that\as because I could not\n&#x27;+
+             &#x27;come up with something original.\n\n&#x27;+
+             &#x27;Just click on \ebQuit\en to exit the demo.&#x27;
+    /*
+     *      Create the window.
+     */
+    wo_window := WindowObject,
+            WINDOW_BORDERLESS,      TRUE,
+            WINDOW_SMARTREFRESH,    TRUE,
+            WINDOW_RMBTRAP,         TRUE,
+            WINDOW_AUTOASPECT,      TRUE,
+            WINDOW_AUTOKEYLABEL,    TRUE,
+            WINDOW_SCREEN,          screen,
+            WINDOW_MASTERGROUP,
+                    VGroupObject, HOffset( 4 ), VOffset( 4 ), Spacing( 3 ),
+                            FRM_TYPE,       FRTYPE_BUTTON,
+                            FRM_BACKFILL,   SHINE_RASTER,
+                            StartMember,
+                                    InfoObject,
+                                            FRM_TYPE,               FRTYPE_BUTTON,
+                                            FRM_RECESSED,           TRUE,
+                                            INFO_TEXTFORMAT,        text,
+                                            INFO_FIXTEXTWIDTH,      TRUE,
+                                            INFO_MINLINES,          8,
+                                    EndObject,
+                            EndMember,
+                            StartMember,
+                                    HGroupObject,
+                                            VarSpace( DEFAULT_WEIGHT ),
+                                            StartMember, go_ok := KeyButton( &#x27;_OK&#x27;, ID_QUIT ), EndMember,
+                                            VarSpace( DEFAULT_WEIGHT ),
+                                    EndObject, FixMinHeight,
+                            EndMember,
+                    EndObject,
+    EndObject
+
+    /*
+     *      OK?
+     */
+    IF wo_window
+            /*
+             *      Open the window.
+             */
+            IF WindowOpen( wo_window )
+                    GetAttr( WINDOW_SIGMASK, wo_window, {signal} )
+                    /*
+                     *      Wait for somebody to click
+                     *      on the &#x27;OK&#x27; gadget.
+                     */
+                    WHILE running = TRUE
+                            Wait( signal )
+                            WHILE (rc := HandleEvent( wo_window )) &lt;&gt; WMHI_NOMORE
+                                    IF rc = ID_QUIT THEN running := FALSE
+                            ENDWHILE
+                    ENDWHILE
+            ENDIF
+
+            DisposeObject( wo_window )
+    ENDIF
+ENDPROC
+
+/*
+ *      Here we go...
+ */
+PROC main()
+
+    DEF myscreen:PTR TO screen, wblock:PTR TO screen,
+        dri:PTR TO drawinfo,
+        window:PTR TO window,
+        wo_window,
+        wlock,
+        mode, rc, signal,
+        running = TRUE
+
+    /*
+    **      Open the library.
+    **/
+    IF bguibase := OpenLibrary( &#x27;bgui.library&#x27;, BGUIVERSION )
+        /*
+         *      Lock the workbench screen.
+         */
+        IF wblock := LockPubScreen( &#x27;Workbench&#x27; )
+                /*
+                 *      Obtain it&#x27;s DrawInfo.
+                 */
+                IF dri := GetScreenDrawInfo( wblock )
+                        /*
+                         *      And mode ID.
+                         */
+                        IF ( mode := GetVPModeID( wblock.viewport )) &lt;&gt; INVALID_ID
+                                /*
+                                 *      Open a screen ala your workbench.
+                                 */
+                                IF myscreen := OpenScreenTagList( NIL,[SA_DEPTH,         dri.depth,
+                                                                      SA_WIDTH,         wblock.width,
+                                                                      SA_HEIGHT,        wblock.height,
+                                                                      SA_DISPLAYID,     mode,
+                                                                      SA_PENS,          dri.pens,
+                                                                      SA_TITLE,         &#x27;Backdrop Demo.&#x27;,
+                                                                      TAG_END] )
+                                        /*
+                                         *      Create a simple backdrop window on
+                                         *      the screen whilst keeping the screen
+                                         *      title visible.
+                                         */
+                                        wo_window := WindowObject,
+                                                WINDOW_SMARTREFRESH,            TRUE,
+                                                WINDOW_BACKDROP,                TRUE,
+                                                WINDOW_SHOWTITLE,               TRUE,
+                                                WINDOW_CLOSEONESC,              TRUE,
+                                                WINDOW_AUTOASPECT,              TRUE,
+                                                WINDOW_NOBUFFERRP,              TRUE,
+                                                WINDOW_SCREEN,                  myscreen,
+                                                WINDOW_MASTERGROUP,
+                                                        HGroupObject, HOffset( 4 ), VOffset( 4 ), Spacing( 4 ),
+                                                                StartMember,
+                                                                        VGroupObject, Spacing( 4 ),
+                                                                                StartMember, Button( &#x27;Message list...&#x27;, 0 ), EndMember,
+                                                                                StartMember, Button( &#x27;Messages...&#x27;,     0 ), EndMember,
+                                                                                VarSpace( 40 ),
+                                                                                StartMember, Button( &#x27;Import...&#x27;,       0 ), EndMember,
+                                                                                StartMember, Button( &#x27;Export...&#x27;,       0 ), EndMember,
+                                                                                StartMember, Button( &#x27;Maintenance...&#x27;,  0 ), EndMember,
+                                                                                StartMember, Button( &#x27;Optimize...&#x27;,     0 ), EndMember,
+                                                                                VarSpace( 40 ),
+                                                                                StartMember, Button( &#x27;Poll...&#x27;,         0 ), EndMember,
+                                                                                StartMember, Button( &#x27;File request...&#x27;, 0 ), EndMember,
+                                                                                VarSpace( 40 ),
+                                                                                StartMember, Button( &#x27;Iconify&#x27;,         0 ), EndMember,
+                                                                                StartMember, Button( &#x27;Quit&#x27;,            ID_QUIT ), EndMember,
+                                                                        EndObject, FixMinSize,
+                                                                EndMember,
+                                                                StartMember, ListviewObject, EndObject, EndMember,
+                                                        EndObject,
+                                        EndObject
+
+                                        /*
+                                         *      Window OK?
+                                         */
+                                        IF wo_window
+                                                /*
+                                                 *      Open the window.
+                                                 */
+                                                IF window := WindowOpen( wo_window )
+                                                        /*
+                                                         *      Show an explanation window.
+                                                         */
+                                                        wlock := BgUI_LockWindow( window )
+                                                        say( myscreen )
+                                                        BgUI_UnlockWindow( wlock )
+                                                        /*
+                                                         *      Pick up the window signal.
+                                                         */
+                                                        GetAttr( WINDOW_SIGMASK, wo_window, {signal} )
+                                                        /*
+                                                         *      Event loop...
+                                                         */
+                                                        WHILE running = TRUE
+                                                                Wait( signal )
+                                                                WHILE ( rc := HandleEvent( wo_window )) &lt;&gt; WMHI_NOMORE
+                                                                        SELECT rc
+                                                                                CASE    WMHI_CLOSEWINDOW
+                                                                                        running := FALSE
+                                                                                CASE    ID_QUIT
+                                                                                        running := FALSE
+                                                                        ENDSELECT
+                                                                ENDWHILE
+                                                        ENDWHILE
+                                                ELSE
+                                                        WriteF( &#x27;Unable to open the window\n&#x27; )
+                                                ENDIF
+                                                DisposeObject( wo_window )
+                                        ELSE
+                                            WriteF( &#x27;Unable to create the window object\n&#x27; )
+                                        ENDIF
+                                        CloseScreen( myscreen )
+                                ELSE
+                                    WriteF( &#x27;Unable to open the screen\n&#x27; )
+                                ENDIF
+                        ELSE
+                            WriteF( &#x27;Unknown screen mode\n&#x27; )
+                        ENDIF
+                        FreeScreenDrawInfo( wblock, dri )
+                ELSE
+                    WriteF( &#x27;Unable to get DrawInfo\n&#x27; )
+                ENDIF
+                UnlockPubScreen( NIL, wblock )
+        ELSE
+            WriteF( &#x27;Unable to lock the Workbench screen\n&#x27; )
+        ENDIF
+        CloseLibrary(bguibase)
+    ELSE
+        WriteF(&#x27;Could not open the bgui.library\n&#x27;)
+    ENDIF
+ENDPROC
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

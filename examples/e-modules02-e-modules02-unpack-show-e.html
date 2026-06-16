@@ -1,0 +1,129 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>show.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-e-modules02.html">e-modules02</a> &rsaquo; show.e</div><h1>File: <code>show.e</code></h1><p class="meta">103 lines · project <a href="../examples/pkg-e-modules02.html"><code>e-modules02</code></a></p><p class="pathctx">e-modules02/e_modules02/unpack/show.e</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/lists.html">exec/lists</a></li><li><a href="../modules/mempools.html">tools/mempools</a></li></ul></div><h2>Source</h2><pre class="code">OPT OSVERSION=37
+OPT PREPROCESS,REG=5
+
+/*
+*-- AutoRev header do NOT edit!
+*
+*   Project         :   Crunchery które unpack.library moûe rozpakowaê
+*   File            :   show.e
+*   Copyright       :   © 1996 Piotr Gapiïski
+*   Author          :   Piotr Gapiïski
+*   Creation Date   :   13.07.96
+*   Current version :   2.0
+*   Translator      :   AmigaE v3.2e
+*
+*   REVISION HISTORY
+*
+*   Date       Version  Comment
+*   ---------  -------  ----------------------------------------------------
+*   04.01.96   1.0      first release (with nice easygui.m gui)
+*   25.04.96   1.0.1    lepsze zarzâdzanie pamiëciâ
+*   13.07.96   2.0      poprawione zarzâdzanie pamiëciâ (mempools)
+*
+*-- REV_END --*
+*/
+
+MODULE &#x27;exec/lists&#x27;,&#x27;exec/nodes&#x27;,&#x27;exec/memory&#x27;,
+       &#x27;intuition/screens&#x27;,&#x27;intuition/intuition&#x27;,
+       &#x27;utility/tagitem&#x27;,
+       &#x27;libraries/unpack&#x27;,&#x27;unpack&#x27;,
+       &#x27;tools/easygui&#x27;,&#x27;tools/constructors&#x27;
+MODULE &#x27;tools/mempools&#x27;
+
+#define PROGRAMVERSION &#x27;$VER: show 2.0 (13.07.96)&#x27;
+
+#define MSG_CLI_WRONGKICK     &#x27;Require OS v37+ !\n&#x27;
+#define MSG_CLI_NOUNPACKERLIB &#x27;Couldn\at open unpacker.library v39+ !\n&#x27;
+#define MSG_CLI_NOMEM         &#x27;No free memory!\n&#x27;
+#define MSG_TITLE_HAIL        &#x27;Crunchers the unpack.library can unpack&#x27;
+#define MSG_TITLE_WINDOW      &#x27;unpack.library&#x27;
+
+CONST PUDDLESIZE = 1024 * 20
+CONST TRESHSIZE  = PUDDLESIZE
+
+PROC main() HANDLE
+  DEF pool=NIL:PTR TO pool,
+      info=NIL:PTR TO unpackinfo
+  DEF gh=NIL:PTR TO guihandle,listgad,res=-1
+  DEF list=NIL:PTR TO lh,node:PTR TO ln,name,str:PTR TO CHAR
+  DEF done,scr=NIL:PTR TO screen
+
+  IF KickVersion(37)=FALSE THEN Raise(MSG_CLI_WRONGKICK)
+  IF (unpackbase:=OpenLibrary(UNPACKNAME,39))=NIL THEN Raise (MSG_CLI_NOUNPACKERLIB)
+  IF (info:=UpAllocCInfo())=NIL THEN Raise(MSG_CLI_NOMEM)
+  IF (pool:=libCreatePool(MEMF_ANY OR MEMF_CLEAR,PUDDLESIZE,
+                          TRESHSIZE))=NIL THEN Raise(MSG_CLI_NOMEM)
+
+  scr:=LockPubScreen(NIL)
+  gh:=guiinit(MSG_TITLE_WINDOW,
+    [EQROWS,
+      [BEVEL,
+        [TEXT,MSG_TITLE_HAIL,NIL,FALSE,3]
+      ],
+      listgad:=[LISTV,{dummy},NIL,20,17,list,TRUE,0,0]
+    ])
+  IF gh&lt;&gt;NIL THEN gh.wnd.flags:=gh.wnd.flags OR WFLG_RMBTRAP
+  SetWindowPointerA(gh.wnd,[WA_BUSYPOINTER,TRUE,TAG_DONE])
+  SetWindowTitles(gh.wnd,-1,PROGRAMVERSION)
+  list:=newlist()
+  name:=UpUnpackList(info)
+  REPEAT
+    done:=UpUnpackListNext(info)
+    MOVE.L A1,name
+    IF name
+      node:=libAllocPooled(pool,SIZEOF ln)
+      str:=libAllocPooled(pool,StrLen(name)+1)
+      IF node=NIL OR str=NIL THEN Raise(MSG_CLI_NOMEM)
+      AstrCopy(str,name)
+      node.name:=str
+      setlistvlabels(gh,listgad,-1)
+      AddTail(list,node)
+      setlistvlabels(gh,listgad,list)
+    ENDIF
+  UNTIL done=0
+  SetWindowPointerA(gh.wnd,[TAG_DONE])
+
+  WHILE res&lt;0
+    Wait(gh.sig)
+    res:=guimessage(gh)
+  ENDWHILE
+EXCEPT DO
+  IF exception THEN WriteF(exception,
+                    IF exceptioninfo THEN exceptioninfo ELSE NIL)
+  IF gh THEN cleangui(gh)
+  IF scr THEN UnlockPubScreen(NIL,scr)
+  IF info THEN UpFreeCInfo(info)
+  IF pool THEN libDeletePool(pool)
+  END list
+  IF unpackbase THEN CloseLibrary(unpackbase)
+ENDPROC
+
+PROC dummy() IS EMPTY
+CHAR PROGRAMVERSION,0
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

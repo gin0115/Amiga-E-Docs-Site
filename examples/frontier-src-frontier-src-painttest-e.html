@@ -1,0 +1,236 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>painttest.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-frontier-src.html">FRONTIER-Src</a> &rsaquo; painttest.e</div><h1>File: <code>painttest.e</code></h1><p class="meta">210 lines · project <a href="../examples/pkg-frontier-src.html"><code>FRONTIER-Src</code></a></p><p class="pathctx">FRONTIER-Src/FRONTIER-Src/painttest.e</p><p class="prose">* Test für die MIP-Zeichenroutinen * -================================- * * * *</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/rastport.html">graphics/rastport</a></li><li><a href="../modules/intuition.html">intuition/intuition</a></li></ul></div><h2>Source</h2><pre class="code">/* 
+ *  Test für die MIP-Zeichenroutinen
+ * -================================-
+ * 
+ * 
+ * 
+ * 
+ */
+
+MODULE  &#x27;graphics/rastport&#x27;
+MODULE  &#x27;intuition/intuition&#x27;
+
+ENUM    ERR_NONE   =    0,
+        ERR_WIN
+
+CONST   WIN_WIDTH  =    640,
+        WIN_HEIGHT =    480
+
+CONST   WIN_IDCMP  =    IDCMP_MOUSEBUTTONS      OR
+                        IDCMP_MOUSEMOVE         OR
+                        IDCMP_CLOSEWINDOW       OR
+                        IDCMP_VANILLAKEY
+
+CONST   WIN_FLAGS  =    WFLG_ACTIVATE           OR
+                        WFLG_DRAGBAR            OR
+                        WFLG_CLOSEGADGET        OR
+                        WFLG_DEPTHGADGET
+
+ENUM    MODE_FREEHAND   = 1,    -&gt; d
+        MODE_LINE,              -&gt; v
+        MODE_BOX,               -&gt; b
+        MODE_FILLEDBOX,         -&gt; B
+        MODE_CIRCLE,            -&gt; c
+        MODE_FILLEDCIRCLE,      -&gt; C
+        MODE_ELLIPSE,           -&gt; e
+        MODE_FILLEDELLIPSE,     -&gt; E
+        MODE_POLYGON            -&gt; p
+                                -&gt; k = Clear
+
+DEF     win=NIL:PTR TO window,
+        rport=NIL,
+        mode=MODE_FREEHAND,
+        button=FALSE,
+        backcolor=0,            -&gt; Shift+0-7 (MWB-Colors...) = !,&quot;,§,$,%,&amp;,/,(
+        color=1,                -&gt; 1-8 (MWB-Colors...)
+        oldx=0,                 -&gt; &quot;Alte&quot; X-Coordinate (beim Mausklick)
+        oldy=0,                 -&gt; &quot;Alte&quot; Y-Coordinate (beim Mausklick)
+        x=0,                    -&gt; &quot;Neue&quot; X-Coordinate (Nach dem Mausklick)
+        y=0                     -&gt; &quot;Neue&quot; Y-Coordinate (nach dem Mausklick)
+
+PROC main()     HANDLE
+ openall()
+  handleall()
+
+EXCEPT DO
+ closeall()
+CleanUp(exception)
+ENDPROC
+
+PROC openall()
+ IF (win:=OpenWindowTagList(NIL,
+       [WA_LEFT,        0,
+        WA_TOP,         0,
+        WA_WIDTH,       WIN_WIDTH,
+        WA_HEIGHT,      WIN_HEIGHT,
+        WA_IDCMP,       WIN_IDCMP,
+        WA_FLAGS,       WIN_FLAGS,
+        NIL,            NIL]))=FALSE THEN Raise(ERR_WIN)
+  rport:=win.rport
+ENDPROC
+
+PROC closeall()
+  rport:=NIL
+ IF (win&lt;&gt;NIL)  THEN CloseWindow(win)
+ENDPROC
+
+PROC handleall()
+ DEF    quit=FALSE,
+        class=NIL,
+        code=NIL
+  REPEAT
+   class:=WaitIMessage(win)
+    IF (class=IDCMP_CLOSEWINDOW)
+     quit:=TRUE
+    ELSEIF (class=IDCMP_MOUSEBUTTONS)
+     code:=MsgCode()
+      IF (code=SELECTDOWN)
+       IF (mode&lt;&gt;MODE_POLYGON)
+        oldx:=MouseX(win)
+         oldy:=MouseY(win)
+        button:=TRUE
+       ENDIF
+      ELSEIF (code=SELECTUP)
+       x:=MouseX(win)
+        y:=MouseY(win)
+        domode()
+       button:=FALSE
+      ENDIF
+    ELSEIF (class=IDCMP_VANILLAKEY)
+     analysekey(MsgCode())
+    ELSEIF (class=IDCMP_MOUSEMOVE)
+     IF (mode=MODE_FREEHAND) AND (button=TRUE)
+      oldx:=0
+       oldy:=0
+        x:=MouseX(win)
+       y:=MouseY(win)
+      domode()
+     ENDIF
+    ENDIF
+  UNTIL (quit=TRUE) OR CtrlC()
+ENDPROC
+
+PROC analysekey(key)
+ SELECT key
+  CASE  &quot;d&quot;
+   mode:=MODE_FREEHAND
+  CASE  &quot;v&quot;
+   mode:=MODE_LINE
+  CASE  &quot;b&quot;
+   mode:=MODE_BOX
+  CASE  &quot;B&quot;
+   mode:=MODE_FILLEDBOX
+  CASE  &quot;c&quot;
+   mode:=MODE_CIRCLE
+  CASE  &quot;C&quot;
+   mode:=MODE_FILLEDCIRCLE
+  CASE  &quot;e&quot;
+   mode:=MODE_ELLIPSE
+  CASE  &quot;E&quot;
+   mode:=MODE_FILLEDELLIPSE
+  CASE  &quot;p&quot;
+   mode:=MODE_POLYGON
+  CASE  &quot;1&quot;
+   color:=0
+  CASE  &quot;2&quot;
+   color:=1
+  CASE  &quot;3&quot;
+   color:=2
+  CASE  &quot;4&quot;
+   color:=3
+  CASE  &quot;5&quot;
+   color:=4
+  CASE  &quot;6&quot;
+   color:=5
+  CASE  &quot;7&quot;
+   color:=6
+  CASE  &quot;8&quot;
+   color:=7
+  CASE  &quot;!&quot;
+   backcolor:=0
+  CASE  $22
+   backcolor:=1
+  CASE  &quot;§&quot;
+   backcolor:=2
+  CASE  &quot;$&quot;
+   backcolor:=3
+  CASE  &quot;%&quot;
+   backcolor:=4
+  CASE  &quot;&amp;&quot;
+   backcolor:=5
+  CASE  &quot;/&quot;
+   backcolor:=6
+  CASE  &quot;(&quot;
+   backcolor:=7
+  CASE  &quot;k&quot;
+   SetAPen(rport,backcolor)
+    SetBPen(rport,backcolor)
+   RectFill(rport,0,0,win.width,win.height)
+  RefreshWindowFrame(win)
+ ENDSELECT
+ENDPROC
+
+PROC domode()
+ DEF    relx=0,
+        rely=0
+  SetAPen(rport,color)
+  SetBPen(rport,backcolor)
+  SELECT mode
+   CASE MODE_FREEHAND
+    Move(rport,x,y)
+     Draw(rport,x,y)
+   CASE MODE_LINE
+    Move(rport,oldx,oldy)
+     Draw(rport,x,y)
+   CASE MODE_BOX
+    Move(rport,oldx,oldy)
+     PolyDraw(rport,4,[x,oldy,  x,y,  oldx,y,  oldx,oldy]:INT)
+   CASE MODE_FILLEDBOX
+ 
+   CASE MODE_CIRCLE
+    relx:=Abs(oldx-x)
+     rely:=Abs(oldy-y)
+    DrawEllipse(rport,oldx,oldy,IF (relx&gt;rely) THEN relx ELSE rely,IF (relx&gt;rely) THEN relx ELSE rely)
+   CASE MODE_FILLEDCIRCLE
+ 
+   CASE MODE_ELLIPSE
+    relx:=Abs(oldx-x)
+     rely:=Abs(oldy-y)
+    DrawEllipse(rport,oldx,oldy,relx,rely)
+   CASE MODE_FILLEDELLIPSE
+ 
+   CASE MODE_POLYGON
+    IF (oldx&gt;0) AND (oldy&gt;0) THEN Move(rport,oldx,oldy) ELSE Move(rport,x,y)
+     Draw(rport,x,y)
+    oldx:=x
+   oldy:=y
+  ENDSELECT
+ENDPROC
+
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

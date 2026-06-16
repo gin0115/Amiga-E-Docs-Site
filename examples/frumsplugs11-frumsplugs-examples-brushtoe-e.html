@@ -1,0 +1,150 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>BrushToE.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-frumsplugs11.html">frumSPlugs11</a> &rsaquo; BrushToE.e</div><h1>File: <code>BrushToE.e</code></h1><p class="meta">124 lines · project <a href="../examples/pkg-frumsplugs11.html"><code>frumSPlugs11</code></a></p><p class="pathctx">frumSPlugs11/frumSPlugs/Examples/BrushToE.e</p><p class="prose">** ((( frumSPlugs ))) ** ©1996 Stephen Sinclair ** ** This source may be copied or edited in any ** way you wish. ** ** This file is part of the frumSPlugs package, ** and may only be distributed with it.</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/iff.html">iff</a></li><li><a href="../modules/easygui.html">tools/easygui</a></li><li><a href="../modules/workbench.html">workbench/workbench</a></li></ul></div><h2>Source</h2><pre class="code">/*
+**   ((( frumSPlugs )))
+** ©1996 Stephen Sinclair
+**
+** This source may be copied or edited in any
+** way you wish.
+**
+** This file is part of the frumSPlugs package,
+** and may only be distributed with it.
+*/
+
+/* Convert an ilbm to it&#x27;s bitmaps and output as E data entry */
+-&gt; $VER: BrushToE.e V1.1 Stephen Sinclair (96.07.15)
+
+OPT PREPROCESS,OSVERSION=37
+
+MODULE &#x27;iff&#x27;,&#x27;libraries/iff&#x27;,&#x27;graphics/gfx&#x27;
+MODULE &#x27;workbench/workbench&#x27;,&#x27;intuition/intuition&#x27;
+MODULE &#x27;tools/EasyGUI&#x27;,&#x27;Plugins/BitMap&#x27;
+
+ENUM SUCCESS,ER_NOBMHD,ER_NOMEM,ER_DECODE
+
+DEF planes:PTR TO LONG
+DEF myargs:PTR TO LONG,bmp:bitmap,bmhd:PTR TO bmh
+
+PROC main() HANDLE
+  DEF iff,i
+  DEF rdargs
+
+  myargs:=[0]
+  IF rdargs:=ReadArgs(&#x27;ILBM_FILE/A&#x27;,myargs,NIL)
+
+    IF iffbase:=OpenLibrary(&#x27;iff.library&#x27;,23)
+          IF iff:=IfFL_OpenIFF(myargs[0],IFFL_MODE_READ)
+            IF bmhd:=IfFL_GetBMHD(iff)
+              WriteF(&#x27;Initializing &amp; Allocating bitmaps...\n&#x27;)
+              InitBitMap(bmp,bmhd.nplanes,bmhd.width,bmhd.height)
+              planes:=bmp.planes
+              planes[0]:=AllocRaster(bmhd.width,bmhd.height*bmhd.nplanes)
+              IF planes[0]=NIL THEN Raise(ER_NOMEM)
+              FOR i:=1 TO bmhd.nplanes-1
+                planes[i]:=planes[0]+(i*RASSIZE(bmhd.width,bmhd.height))
+              ENDFOR
+              WriteF(&#x27;Decoding pic...\n&#x27;)
+              IF IfFL_DecodePic(iff,bmp)
+                WriteF(&#x27;\s:  \dx\dx\d\n&#x27;,myargs[0],bmhd.width,bmhd.height,bmhd.nplanes)
+                writedo()
+              ELSE
+                Raise(ER_DECODE)
+              ENDIF
+            ELSE
+              Raise(ER_NOBMHD)
+            ENDIF
+          ELSE
+            WriteF(&#x27;Couldn&#x27;&#x27;t open iff `\s&#x27;&#x27;.\n&#x27;,myargs[0])
+            Raise(0)
+          ENDIF
+    ELSE
+      WriteF(&#x27;Couldn&#x27;&#x27;t open iff.library v23+\n&#x27;)
+      Raise(0)
+    ENDIF
+  ELSE
+    WriteF(&#x27;Bad Args!\n&#x27;)
+    CleanUp(0)
+  ENDIF
+EXCEPT DO
+  planes:=bmp.planes
+  FOR i:=0 TO bmhd.nplanes-1
+    IF planes[i] THEN FreeRaster(planes[i],bmhd.width,bmhd.height)
+  ENDFOR
+  IF iff THEN IfFL_CloseIFF(iff)
+  IF iffbase THEN CloseLibrary(iffbase)
+  IF rdargs THEN FreeArgs(rdargs)
+  IF exception&gt;0
+    WriteF(&#x27;\s\n&#x27;,ListItem([&#x27;No bitmap header!&#x27;,
+                            &#x27;Couldn&#x27;&#x27;t allocate enough mem for bitmaps!&#x27;,
+                            &#x27;Couldn&#x27;&#x27;t decode the iff!&#x27;],exception-1))
+  ENDIF
+ENDPROC
+
+CHAR &#x27;$VER: BrushToE V1.1 Stephen Sinclair (96.07.15)&#x27;,0
+
+PROC writedo() HANDLE
+  DEF plug:PTR TO bitmapplugin,v,i,p,r=0,file=NIL,oldstd
+  oldstd:=stdout
+  v:=easygui(&#x27;Test for BitMapPlugin&#x27;,
+    [EQROWS,
+      [TEXT,&#x27;Bitmap:&#x27;,NIL,TRUE,STRLEN],
+      [BEVEL,
+        [PLUGIN,0,NEW plug.bitmapplugin(bmp,0,0,bmhd.width,bmhd.height)]
+      ],
+      [EQCOLS,
+        [BUTTON,1,&#x27;Okay&#x27;],
+        [SPACEH],
+        [BUTTON,0,&#x27;Cancel&#x27;]
+      ]
+    ]
+  )
+  IF v
+    WriteF(&#x27;Writing image...\n&#x27;)
+    WriteF(&#x27;/* \d x \d x \d */\n&#x27;,bmhd.width,bmhd.height,bmhd.nplanes)
+    FOR p:=0 TO bmp.depth-1
+      WriteF(&#x27;INT &#x27;)
+      FOR i:=0 TO (bmp.rows*bmp.bytesperrow/2)-1
+        WriteF(&#x27;$\z\h[4],&#x27;,Int(bmp.planes[p]+(i*2)))
+        IF CtrlC() THEN Raise(&quot;BRAK&quot;)
+        INC r
+        IF r&gt;11
+          r:=0
+          WriteF(&#x27;\n    &#x27;)
+        ENDIF
+      ENDFOR
+      WriteF(&#x27;$\z\h[4]\n&#x27;,Int(bmp.planes[p]+(i+2)))
+      r:=0
+    ENDFOR
+  ENDIF
+EXCEPT DO
+  IF file THEN Close(file)
+  stdout:=oldstd
+  SELECT exception
+    CASE &quot;BRAK&quot;; WriteF(&#x27;***break\n&#x27;)
+  ENDSELECT
+ENDPROC
+-&gt; PROC dummy() IS FALSE</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

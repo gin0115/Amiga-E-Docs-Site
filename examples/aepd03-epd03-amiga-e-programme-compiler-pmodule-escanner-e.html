@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Escanner.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-aepd03.html">AEPD03</a> &rsaquo; Escanner.e</div><h1>File: <code>Escanner.e</code></h1><p class="meta">85 lines · project <a href="../examples/pkg-aepd03.html"><code>AEPD03</code></a></p><p class="pathctx">AEPD03/EPD03/Amiga_E-Programme/compiler/PModule/Escanner.e</p><p class="prose">Der Mini-Compiler. Umgesetzt aus dem Sonderheft Amiga-Plus 1/93 in AMIGA_E.</p><h2>Source</h2><pre class="code">
+
+/*  Der Mini-Compiler.
+    Umgesetzt aus dem Sonderheft Amiga-Plus 1/93 in AMIGA_E.
+*/
+
+/* Symbole */
+ENUM CPROGRAM=0, CVAR, CBEGIN, CEND, CWHILE, CDO, CPRINT, CCOMMA, CEQUAL,
+     CPLUS, CMINUS, CIDENT, CCONST, CEOF
+
+CONST MAXIDLEN = 79
+
+
+DEF source,    /* Quelltextdatei                         */
+    char=32,      /* zuletzt gelesenes Zeichen (0X bei EOF) */
+    sym        /* das letzte Symbol (program, var, etc.) */
+DEF identifier[MAXIDLEN]: STRING,  /* der Bezeichner bei sym=ident */
+    constant   /* die Konstante bei sym=const            */
+
+PROC getchar()
+     char := FgetC(source)
+     IF char = -1 THEN char := 0
+ENDPROC
+
+PROC getSym()
+DEF i=0
+
+  WHILE (char&gt;0) AND (char&lt;=&quot; &quot;) DO getchar()     /* Space, LF, etc. */
+  IF (char &gt; 96) AND (char &lt; 123) THEN char := char - 32
+
+  IF (char &gt; 64) AND (char &lt; 91)                 /* Bezeichner oder Schlüsselwort */
+     REPEAT
+        identifier[i] := char
+        i++
+        getchar()
+        IF (char &gt; 96) AND (char &lt; 123) THEN char := char - 32
+     UNTIL (i=MAXIDLEN) OR (char&lt;&quot;A&quot;) OR (char&gt;&quot;Z&quot;)
+     identifier[i] := 0
+     IF     StrCmp(identifier,&#x27;PROGRAM&#x27;,ALL)
+            sym := CPROGRAM
+     ELSEIF StrCmp(identifier,&#x27;VAR&#x27;    ,ALL)
+            sym := CVAR
+     ELSEIF StrCmp(identifier,&#x27;BEGIN&#x27;  ,ALL)
+            sym := CBEGIN
+     ELSEIF StrCmp(identifier,&#x27;END&#x27;    ,ALL)
+            sym := CEND
+     ELSEIF StrCmp(identifier,&#x27;WHILE&#x27;  ,ALL)
+            sym := CWHILE
+     ELSEIF StrCmp(identifier,&#x27;DO&#x27;     ,ALL)
+            sym := CDO
+     ELSEIF StrCmp(identifier,&#x27;PRINT&#x27;  ,ALL)
+            sym := CPRINT
+     ELSE
+        sym := CIDENT          /* Kein Schlüsselwort, also Bezeichner */
+     ENDIF
+
+  ELSEIF (char &gt;= &quot;0&quot;) AND (char &lt;= &quot;9&quot;)
+      constant := 0;
+      REPEAT
+        constant := 10*constant + (char-&quot;0&quot;); getchar()
+      UNTIL (char&lt;&quot;0&quot;) OR (char&gt;&quot;9&quot;)
+      sym := CCONST
+
+  ELSE      /* Sonderzeichen */
+    SELECT char
+    CASE &quot;=&quot;
+        sym := CEQUAL
+        getchar()
+    CASE &quot;,&quot;
+        sym := CCOMMA
+        getchar()
+    CASE &quot;+&quot;
+        sym := CPLUS
+        getchar()
+    CASE &quot;-&quot;
+        sym := CMINUS
+        getchar()
+    CASE 0
+        sym := CEOF
+    DEFAULT
+        error(&#x27;Unerwartetes Zeichen!&#x27;)
+    ENDSELECT
+  ENDIF
+ENDPROC /* GetSym */
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

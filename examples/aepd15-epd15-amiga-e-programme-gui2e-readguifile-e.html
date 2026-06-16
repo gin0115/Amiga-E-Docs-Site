@@ -1,0 +1,936 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ReadGuiFile.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-aepd15.html">AEPD15</a> &rsaquo; ReadGuiFile.e</div><h1>File: <code>ReadGuiFile.e</code></h1><p class="meta">910 lines · project <a href="../examples/pkg-aepd15.html"><code>AEPD15</code></a></p><p class="pathctx">AEPD15/EPD15/Amiga_E-Programme/Gui2E/ReadGuiFile.e</p><p class="prose">********************************</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/gtx.html">gtx</a></li><li><a href="../modules/intuitionbase.html">intuition/intuitionbase</a></li><li><a href="../modules/reqtools.html">reqtools</a></li><li><a href="../modules/tagitem.html">utility/tagitem</a></li></ul></div><h2>Source</h2><pre class="code">/**********************************/
+/* GUI2E v0.0 © NasGûl            */
+/**********************************/
+/*
+C_DATE=29 Jan 1994
+C_TIME=23:24:45
+*/
+
+ENUM ER_NONE
+
+MODULE &#x27;gtx&#x27;,
+       &#x27;gadtoolsbox/forms&#x27;,
+       &#x27;gadtoolsbox/gui&#x27;,
+       &#x27;gadtoolsbox/prefs&#x27;,
+       &#x27;gadtoolsbox/gtxbase&#x27;,
+       &#x27;gadtoolsbox/hotkey&#x27;,
+       &#x27;gadtoolsbox/textclass&#x27;
+MODULE &#x27;intuition/intuitionbase&#x27;,&#x27;graphics/gfxbase&#x27;,&#x27;gadtools&#x27;,&#x27;libraries/gadtools&#x27;,&#x27;intuition/intuition&#x27;
+MODULE &#x27;reqtools&#x27;,&#x27;libraries/reqtools&#x27;,&#x27;nofrag&#x27;,&#x27;libraries/nofrag&#x27;
+MODULE &#x27;utility/tagitem&#x27;,&#x27;exec/memory&#x27;,&#x27;graphics/text&#x27;
+MODULE &#x27;utility/tagitem&#x27;
+MODULE &#x27;readguifile&#x27;,&#x27;exec/lists&#x27;,&#x27;exec/nodes&#x27;
+DEF currentname[256]:STRING
+DEF myguibase:PTR TO guibase
+DEF string_kind[14]:LIST
+/******************************************/
+/* GESTION DES LISTES                     */
+/******************************************/
+PROC p_InitList() HANDLE /*&quot;p_InitList()&quot;*/
+/********************************************************************************
+ * Para         : NONE
+ * Return       : address of the new list if ok,else NIL.
+ * Description  : Initialise a list.
+ *******************************************************************************/
+    DEF i_list:PTR TO lh
+    i_list:=New(SIZEOF lh)
+    i_list.tail:=0
+    i_list.head:=i_list.tail
+    i_list.tailpred:=i_list.head
+    i_list.type:=0
+    i_list.pad:=0
+    IF i_list THEN Raise(i_list) ELSE Raise(NIL)
+EXCEPT
+    RETURN exception
+ENDPROC
+PROC p_RemoveList(ptr_list) /*&quot;p_RemoveList(ptr_list)&quot;*/
+/********************************************************************************
+ * Para         : address of list
+ * Return       : NONE
+ * Description  : p_CleanList() and dispose the list.
+ *******************************************************************************/
+    DEF r_list:PTR TO lh
+    r_list:=p_CleanList(ptr_list)
+    IF r_list THEN Dispose(r_list)
+ENDPROC
+PROC p_CleanList(ptr_list) /*&quot;p_CleanList(ptr_list)&quot;*/
+/********************************************************************************
+ * Para         : address of list
+ * Return       : address of clean list
+ * Description  : Remove all nodes in the list.
+ *******************************************************************************/
+    DEF c_node:PTR TO ln
+    DEF c_list:PTR TO lh
+    c_list:=ptr_list
+    c_node:=c_list.head
+    WHILE c_node
+        IF c_node.succ
+            IF c_node.succ=0 THEN RemTail(c_list)
+            IF c_node.pred=0 THEN RemHead(c_list)
+            IF (c_node.succ&lt;&gt;0) AND (c_node.pred&lt;&gt;0) THEN Remove(c_node)
+        ENDIF
+        c_node:=c_node.succ
+    ENDWHILE
+    RETURN c_list
+ENDPROC
+PROC p_GetAdrNode(ptr_list,num_node) /*&quot;p_GetAdrNode(ptr_list,num_node)&quot;*/
+/********************************************************************************
+ * Para         : address of list,number&#x27;s node.
+ * Return       : address of node or NIL.
+ * Description  : Find the address of a node.
+ *******************************************************************************/
+    DEF g_list:PTR TO lh
+    DEF g_node:PTR TO ln
+    DEF count=0
+    g_list:=ptr_list
+    g_node:=g_list.head
+    WHILE g_node
+        IF count=num_node THEN RETURN g_node
+        INC count
+        g_node:=g_node.succ
+    ENDWHILE
+    RETURN NIL
+ENDPROC
+PROC p_GetNumNode(ptr_list,adr_node) /*&quot;p_GetNumNode(ptr_list,adr_node)&quot;*/
+/********************************************************************************
+ * Para         : address of list,address of node
+ * Return       : the number of the node.
+ * Description  : Find the number of a node.
+ *******************************************************************************/
+    DEF g_list:PTR TO lh
+    DEF g_node:PTR TO ln
+    DEF count=0
+    g_list:=ptr_list
+    g_node:=g_list.head
+    WHILE g_node
+        IF g_node=adr_node THEN RETURN count
+        INC count
+        g_node:=g_node.succ
+    ENDWHILE
+    RETURN NIL
+ENDPROC
+PROC p_EmptyList(adr_list) /*&quot;p_EmptyList(adr_list)&quot;*/
+/********************************************************************************
+ * Para         : address of list.
+ * Return       : TRUE if list is empty,else address of list.
+ * Description  : Look if a list is empty.
+ *******************************************************************************/
+    DEF e_list:PTR TO lh,count=0
+    DEF e_node:PTR TO ln
+    e_list:=adr_list
+    e_node:=e_list.head
+    WHILE e_node
+        IF e_node.succ&lt;&gt;0 THEN INC count
+        e_node:=e_node.succ
+    ENDWHILE
+    IF count=0 THEN RETURN TRUE ELSE RETURN e_list
+ENDPROC
+/******************************************/
+/* LECTURE DU FICHIER GUI                 */
+/******************************************/
+PROC g_ReadGUIFile(source) /*&quot;g_ReadGUIFile(source)&quot;*/
+    DEF len,a,adr,buf,handle,flen=TRUE,pos
+    DEF chunk,long
+    /*****************************************/
+    /* Stockage du fichier source dans buf   */
+    /*****************************************/
+    IF (flen:=FileLength(source))=-1 THEN RETURN FALSE
+    IF (buf:=New(flen+1))=NIL THEN RETURN FALSE
+    IF (handle:=Open(source,1005))=NIL THEN RETURN FALSE
+    len:=Read(handle,buf,flen)
+    Close(handle)
+    IF len&lt;1 THEN RETURN FALSE
+    adr:=buf
+    chunk:=Long(adr+8)
+    IF chunk&lt;&gt;ID_GXUI THEN RETURN FALSE
+    /***********/
+    /* Lecture */
+    /***********/
+    FOR a:=0 TO len-1
+        pos:=adr++
+        chunk:=Long(pos)
+        SELECT chunk
+            long:=Long(pos+4)
+            CASE ID_GXMN
+            CASE ID_GXTX
+            CASE ID_GXBX
+            CASE ID_GXGA
+            CASE ID_GXWD
+            CASE ID_GXUI
+            CASE ID_MEDA
+                g_ReadMenuData(pos+8)
+            CASE ID_ITXT
+                g_ReadItextData(pos+8)
+            CASE ID_BBOX
+                g_ReadBboxData(pos+8)
+            CASE ID_GADA
+                g_ReadGadgetData(pos+8)
+            CASE ID_WDDA
+                g_ReadWindowData(pos+8)
+            CASE ID_GGUI
+            CASE ID_VERS
+        ENDSELECT
+    ENDFOR
+    Dispose(buf)
+ENDPROC
+PROC g_ReadMenuData(mymenu:PTR TO menudata) /*&quot;g_ReadMenuData(mymenu: PTR TO menudata)&quot;*/
+    DEF mynm:PTR TO newmenu
+    DEF nnode:PTR TO ln
+    DEF cnode:PTR TO ln
+    DEF clist:PTR TO lh
+    DEF curwin:PTR TO windownode
+    DEF nm:PTR TO menunode
+    DEF nn
+    mynm:=mymenu
+    curwin:=myguibase.currentwindow
+    cnode:=curwin
+    nnode:=New(SIZEOF ln)
+    nm:=New(SIZEOF menunode)
+    nnode.succ:=0
+    nnode.name:=String(EstrLen(&#x27; &#x27;))
+    StrCopy(nnode.name,&#x27; &#x27;,ALL)
+    CopyMem(nnode,nm.node,SIZEOF ln)
+    AddTail(curwin.adrmenulist,nm.node)
+    nn:=p_GetNumNode(curwin.adrmenulist,nm.node)
+    IF nn=0
+        clist:=curwin.adrmenulist
+        clist.head:=nm.node
+        nnode.pred:=0
+    ENDIF
+    nm.type:=mynm.type
+    nm.text:=String(StrLen(mymenu.title))
+    StrCopy(nm.text,mymenu.title,ALL)
+    nm.comkey:=String(StrLen(mymenu.shortcut))
+    StrCopy(nm.comkey,mymenu.shortcut,ALL)
+    nm.flags:=mynm.flags
+    nm.mutualexclude:=mynm.mutualexclude
+    IF nnode THEN Dispose(nnode)
+ENDPROC
+PROC g_ReadBboxData(mybbox:PTR TO bboxdata) /*&quot;g_ReadBboxData(mybbox:PTR TO bboxdata)&quot;*/
+    DEF curwin:PTR TO windownode
+    DEF node:PTR TO ln
+    DEF b:PTR TO bboxnode
+    DEF nn
+    DEF clist:PTR TO lh
+    curwin:=myguibase.currentwindow
+    node:=New(SIZEOF ln)
+    b:=New(SIZEOF bboxnode)
+    node.succ:=0
+    node.name:=String(EstrLen(&#x27; &#x27;))
+    StrCopy(node.name,&#x27; &#x27;,ALL)
+    CopyMem(node,b.node,SIZEOF ln)
+    AddTail(curwin.adrbboxlist,b.node)
+    nn:=p_GetNumNode(curwin.adrbboxlist,b.node)
+    IF nn=0
+        clist:=curwin.adrbboxlist
+        clist.head:=b.node
+        node.pred:=0
+    ENDIF
+    b.left:=mybbox.left
+    b.top:=mybbox.top
+    b.width:=mybbox.width
+    b.height:=mybbox.height
+    b.flags:=mybbox.flags
+    IF node THEN Dispose(node)
+    /*
+    WriteF(&#x27;Left :\d Top:\d Width:\d Height:\d Flags:\d\n&#x27;,
+            mybbox.left,mybbox.top,mybbox.width,mybbox.height,mybbox.flags)
+    */
+ENDPROC
+PROC g_ReadGadgetData(mygad:PTR TO gadgetdata) /*&quot;g_ReadGadgetData(mygad:PTR TO gadgetdata)&quot;*/
+    DEF mynewgad:PTR TO newgadget
+    DEF nnode:PTR TO ln
+    DEF ngad:PTR TO gadgetnode
+    DEF clist:PTR TO lh
+    DEF curwin:PTR TO windownode
+    DEF nn
+    DEF pv[50]:STRING
+    mynewgad:=mygad
+    curwin:=myguibase.currentwindow
+    nnode:=New(SIZEOF ln)
+    ngad:=New(SIZEOF gadgetnode)
+    nnode.succ:=0
+    StringF(pv,&#x27;\s&#x27;,mygad.gadgetlabel)
+    LowerStr(pv)
+    nnode.name:=String(StrLen(pv))
+    StrCopy(nnode.name,pv,ALL)
+    CopyMem(nnode,ngad.node,SIZEOF ln)
+    AddTail(curwin.adrgadgetlist,ngad.node)
+    nn:=p_GetNumNode(curwin.adrgadgetlist,ngad.node)
+    IF nn=0
+        clist:=curwin.adrgadgetlist
+        clist.head:=ngad.node
+        nnode.pred:=0
+    ENDIF
+    ngad.kind:=mygad.kind
+    ngad.leftedge:=mynewgad.leftedge
+    ngad.topedge:=mynewgad.topedge
+    ngad.width:=mynewgad.width
+    ngad.height:=mynewgad.height
+    ngad.gadgettext:=String(StrLen(mygad.gadgettext))
+    StrCopy(ngad.gadgettext,mygad.gadgettext,ALL)
+    ngad.flags:=mynewgad.flags
+    IF nnode THEN Dispose(nnode)
+    /*
+    WriteF(&#x27;PROC p_Init\sWindow() HANDLE /*&quot;p_Init\sWindow()&quot;*/\n&#x27;,currentname,currentname)
+    WriteF(&#x27;    IF (\s_glist:=CreateContext({\s_glist}))=NIL THEN Raise(ER_CONTEXT)\n&#x27;)
+    WriteF(&#x27;LeftEdge:\d TopEdge:\d Width:\d Height:\d\n&#x27;,
+            mynewgad.leftedge,mynewgad.topedge,mynewgad.width,mynewgad.height)
+    WriteF(&#x27;Text:\s Label:\s Flags:\d Kind:\d Numtag:\d\n&#x27;,
+            mygad.gadgettext,mygad.gadgetlabel,mygad.flags,mygad.kind,mygad.numtags)
+    tagitemlist:=mygad+SIZEOF gadgetdata
+    FOR b:=0 TO mygad.numtags-1
+        WriteF(&#x27;Tag:\d \h[8] Data:\d \h[8]\n&#x27;,tagitemlist.tag,tagitemlist.data)
+        tagitemlist:=tagitemlist+SIZEOF tagitem
+    ENDFOR
+    */
+ENDPROC
+PROC g_ReadWindowData(mywin:PTR TO windowdata) /*&quot;g_ReadWindowData(mywin:PTR TO windowdata)&quot;*/
+    DEF taglist:PTR TO tagitem
+    DEF b,currenttag
+    DEF nnode:PTR TO ln
+    DEF nwin:PTR TO windownode
+    DEF nn
+    DEF clist:PTR TO lh
+    DEF pv[50]:STRING
+    nnode:=New(SIZEOF ln)
+    nwin:=New(SIZEOF windownode)
+    nnode.succ:=0
+    StringF(pv,&#x27;\s&#x27;,mywin.name)
+    LowerStr(pv)
+    nnode.name:=String(StrLen(pv))
+    StrCopy(nnode.name,pv,ALL)
+    CopyMem(nnode,nwin.node,SIZEOF ln)
+    AddTail(myguibase.adrlistwindow,nwin.node)
+    myguibase.currentwindow:=nwin
+    nn:=p_GetNumNode(myguibase.adrlistwindow,nwin.node)
+    IF nn=0
+        clist:=myguibase.adrlistwindow
+        clist.head:=nwin.node
+        nnode.pred:=0
+    ENDIF
+    StringF(currentname,&#x27;\s&#x27;,mywin.name)
+    taglist:=mywin+SIZEOF windowdata
+    FOR b:=0 TO mywin.numtags-1
+        currenttag:=taglist.tag
+        SELECT currenttag
+            CASE WA_LEFT;    nwin.left:=taglist.data
+            CASE WA_TOP;     nwin.top:=taglist.data
+            CASE WA_WIDTH;   nwin.width:=taglist.data
+            CASE WA_HEIGHT;  nwin.height:=taglist.data
+            CASE WA_IDCMP;   nwin.idcmp:=mywin.idcmp
+            CASE WA_FLAGS;   nwin.flags:=mywin.windowflags
+        ENDSELECT
+        taglist:=taglist+SIZEOF tagitem
+    ENDFOR
+    nwin.adrgadgetlist:=p_InitList()
+    IF nwin.adrgadgetlist=NIL THEN g_Crash()
+    nwin.adrmenulist:=p_InitList()
+    IF nwin.adrmenulist=NIL THEN g_Crash()
+    nwin.adrbboxlist:=p_InitList()
+    IF nwin.adrbboxlist=NIL THEN g_Crash()
+    nwin.title:=String(StrLen(mywin.title))
+    StrCopy(nwin.title,mywin.title,ALL)
+    nwin.screen:=String(StrLen(mywin.screentitle))
+    StrCopy(nwin.screen,mywin.screentitle,ALL)
+    IF nnode THEN Dispose(nnode)
+ENDPROC
+PROC g_ReadItextData(myit:PTR TO itextdata) /*&quot;g_ReadItextData(myit:PTR TO itextdata)&quot;*/
+    DEF it:PTR TO intuitext
+    it:=myit
+    WriteF(&#x27;Fp:\d Bp:\d Dm:\d LeftEdge:\d TopEdge:\d &#x27;,
+            it.frontpen,it.backpen,it.drawmode,it.leftedge,it.topedge)
+    WriteF(&#x27;Text:\s\n&#x27;,myit.text)
+ENDPROC
+/******************************************/
+/* INIT APP                               */
+/******************************************/
+PROC g_InitGUIBase() /*&quot;g_InitGUIBase()&quot;*/
+    myguibase:=New(SIZEOF guibase)
+    myguibase.adrlistwindow:=p_InitList()
+    myguibase.adrlistdef:=p_InitList()
+    myguibase.currentwindow:=0
+    myguibase.currentgadget:=0
+ENDPROC
+PROC g_RemGUIBase() /*&quot;g_RemGUIBase()&quot;*/
+    IF myguibase
+        IF myguibase.adrlistdef THEN p_RemoveList(myguibase.adrlistdef)
+        IF myguibase.adrlistwindow THEN g_CleanWindowList(myguibase.adrlistwindow)
+        Dispose(myguibase)
+    ENDIF
+ENDPROC
+/*******************************************/
+/* CLEANUP                                 */
+/*******************************************/
+PROC g_CleanWindowList(list:PTR TO lh) /*&quot;g_CleanWindowList(list:PTR TO lh)&quot;*/
+    DEF wnode:PTR TO windownode
+    DEF node:PTR TO ln
+    wnode:=list.head
+    WHILE wnode
+        node:=wnode
+        IF node.succ&lt;&gt;0
+            IF wnode.adrgadgetlist THEN g_CleanGadgetList(wnode.adrgadgetlist)
+            IF wnode.adrmenulist THEN g_CleanMenuList(wnode.adrmenulist)
+            IF wnode.adrbboxlist THEN g_CleanBboxList(wnode.adrbboxlist)
+            IF wnode.title THEN Dispose(wnode.title)
+            IF wnode.screen THEN Dispose(wnode.screen)
+            IF node.name THEN Dispose(node.name)
+            IF wnode THEN Dispose(wnode)
+        ENDIF
+        IF node.succ=0 THEN RemTail(list)
+        IF node.pred=0 THEN RemHead(list)
+        IF (node.succ&lt;&gt;0) AND (node.pred&lt;&gt;0) THEN Remove(node)
+        wnode:=node.succ
+    ENDWHILE
+ENDPROC
+PROC g_CleanGadgetList(list:PTR TO lh) /*&quot;g_CleanGadgetList(list:PTR TO lh)&quot;*/
+    DEF gnode:PTR TO gadgetnode
+    DEF node:PTR TO ln
+    gnode:=list.head
+    WHILE gnode
+        node:=gnode
+        IF node.succ&lt;&gt;0
+            IF gnode.gadgettext THEN Dispose(gnode.gadgettext)
+            IF node.name THEN Dispose(node.name)
+            IF gnode THEN Dispose(gnode)
+        ENDIF
+        IF node.succ=0 THEN RemTail(list)
+        IF node.pred=0 THEN RemHead(list)
+        IF (node.succ&lt;&gt;0) AND (node.pred&lt;&gt;0) THEN Remove(node)
+        gnode:=node.succ
+    ENDWHILE
+ENDPROC
+PROC g_CleanBboxList(list:PTR TO lh) /*&quot;g_CleanBboxList(list:PTR TO lh)&quot;*/
+    DEF bnode:PTR TO bboxnode
+    DEF node:PTR TO ln
+    bnode:=list.head
+    WHILE bnode
+        node:=bnode
+        IF node.succ&lt;&gt;0
+            IF bnode THEN Dispose(bnode)
+        ENDIF
+        IF node.succ=0 THEN RemTail(list)
+        IF node.pred=0 THEN RemHead(list)
+        IF (node.succ&lt;&gt;0) AND (node.pred&lt;&gt;0) THEN Remove(node)
+        bnode:=node.succ
+    ENDWHILE
+ENDPROC
+PROC g_CleanMenuList(list:PTR TO lh) /*&quot;g_CleanMenuList(list:PTR TO lh)&quot;*/
+    DEF mnode:PTR TO menunode
+    DEF node:PTR TO ln
+    mnode:=list.head
+    WHILE mnode
+        node:=mnode
+        IF node.succ&lt;&gt;0
+            IF node.name THEN Dispose(node.name)
+            IF mnode.text THEN Dispose(mnode.text)
+            IF mnode.comkey THEN Dispose(mnode.comkey)
+            IF mnode THEN Dispose(mnode)
+        ENDIF
+        IF node.succ=0 THEN RemTail(list)
+        IF node.pred=0 THEN RemHead(list)
+        IF (node.succ&lt;&gt;0) AND (node.pred&lt;&gt;0) THEN Remove(node)
+        mnode:=node.succ
+    ENDWHILE
+ENDPROC
+/****************************************/
+/* GENERATE                             */
+/****************************************/
+PROC g_WriteFHeader() /*&quot;g_WriteFHeader()&quot;*/
+    WriteF(&#x27;/*******************************************************************************************/\n&#x27;)
+    WriteF(&#x27;/* Source code generate by Gui2E v0.1 © 1994 NasGûl                                        */\n&#x27;)
+    WriteF(&#x27;/*******************************************************************************************/\n&#x27;)
+    WriteF(&#x27;/********************************************************************************\n&#x27;)
+    WriteF(&#x27; * &lt;&lt; EUTILS HEADER &gt;&gt;\n&#x27;)
+    WriteF(&#x27; ********************************************************************************\n&#x27;)
+    WriteF(&#x27;   ED\n&#x27;)
+    WriteF(&#x27;   EC\n&#x27;)
+    WriteF(&#x27;   PREPRO\n&#x27;)
+    WriteF(&#x27;   SOURCE\n&#x27;)
+    WriteF(&#x27;   EPPDEST\n&#x27;)
+    WriteF(&#x27;   EXEC\n&#x27;)
+    WriteF(&#x27;   ISOURCE\n&#x27;)
+    WriteF(&#x27;   HSOURCE\n&#x27;)
+    WriteF(&#x27;   ERROREC\n&#x27;)
+    WriteF(&#x27;   ERROREPP\n&#x27;)
+    WriteF(&#x27;   VERSION\n&#x27;)
+    WriteF(&#x27;   REVISION\n&#x27;)
+    WriteF(&#x27;   NAMEPRG\n&#x27;)
+    WriteF(&#x27;   NAMEAUTHOR\n&#x27;)
+    WriteF(&#x27; ********************************************************************************\n&#x27;)
+    WriteF(&#x27; * HISTORY :\n&#x27;)
+    WriteF(&#x27; *******************************************************************************/\n&#x27;)
+    WriteF(&#x27;\n&#x27;)
+    WriteF(&#x27;OPT OSVERSION=37\n&#x27;)
+    WriteF(&#x27;\n&#x27;)
+    WriteF(&#x27;MODULE \aintuition/intuition\a,\agadtools\a,\alibraries/gadtools\a,\aintuition/gadgetclass\a,\aintuition/screens\a,\n&#x27;)
+    WriteF(&#x27;       \agraphics/text\a,\aexec/lists\a,\aexec/nodes\a,\aexec/ports\a,\aeropenlib\a,\autility/tagitem\a\n&#x27;)
+    WriteF(&#x27;\n&#x27;)
+    WriteF(&#x27;ENUM ER_NONE,ER_LOCKSCREEN,ER_VISUAL,ER_CONTEXT,ER_MENUS,ER_GADGET,ER_WINDOW\n&#x27;)
+    WriteF(&#x27;\n&#x27;)
+    WriteF(&#x27;DEF screen:PTR TO screen,\n&#x27;)
+    WriteF(&#x27;    visual=NIL,\n&#x27;)
+    WriteF(&#x27;    tattr:PTR TO textattr,\n&#x27;)
+    WriteF(&#x27;    reelquit=FALSE\n&#x27;)
+ENDPROC
+PROC g_WriteFDef(list:PTR TO lh) /*&quot;g_WriteFDef(list:PTR TO lh)&quot;*/
+    /* window */
+    DEF w:PTR TO windownode
+    DEF wnode:PTR TO ln
+    /* gadget */
+    DEF g:PTR TO gadgetnode
+    DEF gnode:PTR TO ln
+    DEF plist:PTR TO lh
+    DEF c=0
+    DEF pv[80]:STRING
+    w:=list.head
+    WHILE w
+        wnode:=w
+        IF wnode.succ&lt;&gt;0
+            myguibase.currentwindow:=w
+            WriteF(&#x27;/****************************************\n&#x27;)
+            WriteF(&#x27; * \s Definitions\n&#x27;,wnode.name)
+            WriteF(&#x27; ****************************************/\n&#x27;)
+            WriteF(&#x27;DEF \s_window=NIL:PTR TO window\n&#x27;,wnode.name)
+            WriteF(&#x27;DEF \s_glist=NIL\n&#x27;,wnode.name)
+            IF p_EmptyList(w.adrmenulist)&lt;&gt;-1 THEN WriteF(&#x27;DEF \s_menu=NIL\n&#x27;,wnode.name)
+            IF p_EmptyList(w.adrgadgetlist)&lt;&gt;-1
+                plist:=w.adrgadgetlist
+                g:=plist.head
+                WriteF(&#x27;/* Gadgets */\n&#x27;)
+                WHILE g
+                    gnode:=g
+                    IF gnode.succ&lt;&gt;0
+                        StrCopy(pv,gnode.name,ALL)
+                        UpperStr(pv)
+                        WriteF(&#x27;CONST GA_\s=\d\n&#x27;,pv,c)
+                        INC c
+                    ENDIF
+                    g:=gnode.succ
+                ENDWHILE
+                WriteF(&#x27;/* Gadgets labels of \s */\n&#x27;,wnode.name)
+                g:=plist.head
+                WHILE g
+                    gnode:=g
+                    IF gnode.succ&lt;&gt;0
+                        WriteF(&#x27;DEF \s\n&#x27;,gnode.name)
+                    ENDIF
+                    g:=gnode.succ
+                ENDWHILE
+            ENDIF
+        ENDIF
+        w:=wnode.succ
+    ENDWHILE
+ENDPROC
+PROC g_WriteFLookMessage(list:PTR TO lh) /*&quot;g_WriteFLookMessgage(list:PTR TO lh)&quot;*/
+    /* window */
+    DEF w:PTR TO windownode
+    DEF wnode:PTR TO ln
+    DEF c=0
+    DEF pv[80]:STRING
+    /* PROC p_LookAllMessage() */
+    WriteF(&#x27;PROC p_LookAllMessage() /*&quot;p_LookAllMessage()&quot;*/\n&#x27;)
+    WriteF(&#x27;    DEF sigreturn\n&#x27;)
+    w:=list.head
+    WHILE w
+        wnode:=w
+        IF wnode.succ&lt;&gt;0
+            WriteF(&#x27;    DEF \sport:PTR TO mp\n&#x27;,wnode.name)
+        ENDIF
+        w:=wnode.succ
+    ENDWHILE
+    w:=list.head
+    WHILE w
+        wnode:=w
+        IF wnode.succ&lt;&gt;0
+            WriteF(&#x27;    IF \s_window THEN \sport:=\s_window.userport ELSE \sport:=NIL\n&#x27;,
+                    wnode.name,wnode.name,wnode.name,wnode.name)
+        ENDIF
+        w:=wnode.succ
+    ENDWHILE
+    WriteF(&#x27;    sigreturn:=Wait(&#x27;)
+    w:=list.head
+    WHILE w
+        wnode:=w
+        IF wnode.succ&lt;&gt;0
+            IF wnode.pred=0
+                WriteF(&#x27;Shl(1,\sport.sigbit) OR\n&#x27;,wnode.name)
+            ELSE
+                WriteF(&#x27;                    Shl(1,\sport.sigbit) OR\n&#x27;,wnode.name)
+            ENDIF
+        ENDIF
+        w:=wnode.succ
+    ENDWHILE
+    WriteF(&#x27;                    $F000)\n&#x27;)
+    w:=list.head
+    WHILE w
+        wnode:=w
+        IF wnode.succ&lt;&gt;0
+                WriteF(&#x27;    IF (sigreturn AND Shl(1,\sport.sigbit))\n&#x27;,wnode.name)
+                WriteF(&#x27;        p_Look\sMessage()\n&#x27;,wnode.name)
+                WriteF(&#x27;    ENDIF\n&#x27;)
+        ENDIF
+        w:=wnode.succ
+    ENDWHILE
+    WriteF(&#x27;    IF (sigreturn AND $F000)\n&#x27;,wnode.name)
+    WriteF(&#x27;        reelquit:=TRUE\n&#x27;)
+    WriteF(&#x27;    ENDIF\n&#x27;)
+    WriteF(&#x27;ENDPROC\n&#x27;)
+ENDPROC
+PROC g_WriteFMain(list:PTR TO lh) /*&quot;g_WriteFMain()&quot;*/
+    /* window */
+    DEF w:PTR TO windownode
+    DEF wnode:PTR TO ln
+    DEF c=0
+    DEF pv[80]:STRING
+    /* PROC p_LookAllMessage() */
+    WriteF(&#x27;PROC main() HANDLE /*&quot;main()&quot;*/\n&#x27;)
+    WriteF(&#x27;    DEF testmain\n&#x27;)
+    WriteF(&#x27;    tattr:=[\atopaz.font\a,8,0,0]:textattr\n&#x27;)
+    WriteF(&#x27;    IF (testmain:=p_OpenLibraries())&lt;&gt;ER_NONE THEN Raise(testmain)\n&#x27;)
+    WriteF(&#x27;    IF (testmain:=p_SetUpScreen())&lt;&gt;ER_NONE THEN Raise(testmain)\n&#x27;)
+    w:=list.head
+    WHILE w
+        wnode:=w
+        IF wnode.succ&lt;&gt;0
+            WriteF(&#x27;    IF (testmain:=p_Init\sWindow())&lt;&gt;ER_NONE THEN Raise(testmain)\n&#x27;,wnode.name)
+        ENDIF
+        w:=wnode.succ
+    ENDWHILE
+    w:=list.head
+    WHILE w
+        wnode:=w
+        IF wnode.succ&lt;&gt;0
+            IF wnode.pred=0 THEN WriteF(&#x27;    IF (testmain:=p_Open\sWindow())&lt;&gt;ER_NONE THEN Raise(testmain)\n&#x27;,wnode.name)
+        ENDIF
+        w:=wnode.succ
+    ENDWHILE
+    WriteF(&#x27;    REPEAT\n&#x27;)
+    WriteF(&#x27;        p_LookAllMessage()\n&#x27;)
+    WriteF(&#x27;    UNTIL reelquit=TRUE\n&#x27;)
+    WriteF(&#x27;    Raise(ER_NONE)\n&#x27;)
+    WriteF(&#x27;EXCEPT\n&#x27;)
+    w:=list.head
+    WHILE w
+        wnode:=w
+        IF wnode.succ&lt;&gt;0
+            WriteF(&#x27;    p_Rem\sWindow()\n&#x27;,wnode.name)
+        ENDIF
+        w:=wnode.succ
+    ENDWHILE
+    WriteF(&#x27;    p_SetDownScreen()\n&#x27;)
+    WriteF(&#x27;    p_CloseLibraries()\n&#x27;)
+    WriteF(&#x27;    SELECT exception\n&#x27;)
+    WriteF(&#x27;        CASE ER_LOCKSCREEN; WriteF(\aLock Screen Failed.\a)\n&#x27;)
+    WriteF(&#x27;        CASE ER_VISUAL;     WriteF(\aError Visual.\a)\n&#x27;)
+    WriteF(&#x27;        CASE ER_CONTEXT;    WriteF(\aError Context.\a)\n&#x27;)
+    WriteF(&#x27;        CASE ER_MENUS;      WriteF(\aError Menus.\a)\n&#x27;)
+    WriteF(&#x27;        CASE ER_GADGET;     WriteF(\aError Gadget.\a)\n&#x27;)
+    WriteF(&#x27;        CASE ER_WINDOW;     WriteF(\aError Window.\a)\n&#x27;)
+    WriteF(&#x27;    ENDSELECT\n&#x27;)
+    WriteF(&#x27;ENDPROC\n&#x27;)
+ENDPROC
+PROC g_WriteFOpenCloseLib() /*&quot;g_WriteFOpenCloseLib()&quot;*/
+    WriteF(&#x27;PROC p_OpenLibraries() HANDLE /*&quot;p_OpenLibraries()&quot;*/\n&#x27;)
+    WriteF(&#x27;    IF (intuitionbase:=OpenLibrary(\aintuition.library\a,37))=NIL THEN Raise(ER_INTUITIONLIB)\n&#x27;)
+    WriteF(&#x27;    IF (gadtoolsbase:=OpenLibrary(\agadtools.library\a,37))=NIL THEN Raise(ER_GADTOOLSLIB)\n&#x27;)
+    WriteF(&#x27;    IF (gfxbase:=OpenLibrary(\agraphics.library\a,37))=NIL THEN Raise(ER_GRAPHICSLIB)\n&#x27;)
+    WriteF(&#x27;    Raise(ER_NONE)\n&#x27;)
+    WriteF(&#x27;EXCEPT\n&#x27;)
+    WriteF(&#x27;    RETURN exception\n&#x27;)
+    WriteF(&#x27;ENDPROC\n&#x27;)
+    WriteF(&#x27;PROC p_CloseLibraries()  /*&quot;p_CloseLibraries()&quot;*/\n&#x27;)
+    WriteF(&#x27;    IF gfxbase THEN CloseLibrary(gfxbase)\n&#x27;)
+    WriteF(&#x27;    IF gadtoolsbase THEN CloseLibrary(gadtoolsbase)\n&#x27;)
+    WriteF(&#x27;    IF intuitionbase THEN CloseLibrary(intuitionbase)\n&#x27;)
+    WriteF(&#x27;ENDPROC\n&#x27;)
+ENDPROC
+PROC g_WriteFScreen() /*&quot;g_WriteFScreen()&quot;*/
+    WriteF(&#x27;PROC p_SetUpScreen() HANDLE /*&quot;p_SetUpScreen()&quot;*/\n&#x27;)
+    WriteF(&#x27;    IF (screen:=LockPubScreen(\aWorkbench\a))=NIL THEN Raise(ER_LOCKSCREEN)\n&#x27;)
+    WriteF(&#x27;    IF (visual:=GetVisualInfoA(screen,NIL))=NIL THEN Raise(ER_VISUAL)\n&#x27;)
+    WriteF(&#x27;    Raise(ER_NONE)\n&#x27;)
+    WriteF(&#x27;EXCEPT\n&#x27;)
+    WriteF(&#x27;    RETURN exception\n&#x27;)
+    WriteF(&#x27;ENDPROC\n&#x27;)
+    WriteF(&#x27;PROC p_SetDownScreen() /*&quot;p_SetDownScreen()&quot;*/\n&#x27;)
+    WriteF(&#x27;    IF visual THEN FreeVisualInfo(visual)\n&#x27;)
+    WriteF(&#x27;    IF screen THEN UnlockPubScreen(NIL,screen)\n&#x27;)
+    WriteF(&#x27;ENDPROC\n&#x27;)
+ENDPROC
+PROC g_WriteFWinMessage(list:PTR TO lh) /*&quot;g_WriteFWinMessage(list:PTR TO lh)&quot;*/
+    /* window */
+    DEF w:PTR TO windownode
+    DEF wnode:PTR TO ln
+    /* gadget */
+    DEF g:PTR TO gadgetnode
+    DEF gnode:PTR TO ln
+    DEF plist:PTR TO lh
+    DEF c=0
+    DEF pv[80]:STRING
+    w:=list.head
+    WHILE w
+        wnode:=w
+        IF wnode.succ&lt;&gt;0
+            myguibase.currentwindow:=w
+            WriteF(&#x27;PROC p_Look\sMessage() /*&quot;p_Look\sMessage()&quot;*/\n&#x27;,wnode.name,wnode.name)
+            WriteF(&#x27;   DEF mes:PTR TO intuimessage\n&#x27;)
+            WriteF(&#x27;   DEF g:PTR TO gadget\n&#x27;)
+            WriteF(&#x27;   DEF gstr:PTR TO stringinfo\n&#x27;)
+            WriteF(&#x27;   DEF type=0,infos=NIL\n&#x27;)
+            WriteF(&#x27;   IF mes:=Gt_GetIMsg(\s_window.userport)\n&#x27;)
+            WriteF(&#x27;       type:=mes.class\n&#x27;)
+            WriteF(&#x27;       SELECT type\n&#x27;)
+            WriteF(&#x27;           CASE IDCMP_MENUPICK\n&#x27;)
+            WriteF(&#x27;              infos:=mes.code\n&#x27;)
+            WriteF(&#x27;              SELECT infos\n&#x27;)
+            WriteF(&#x27;              ENDSELECT\n&#x27;)
+            WriteF(&#x27;           CASE (IDCMP_GADGETDOWN OR IDCMP_GADGETUP)\n&#x27;)
+            WriteF(&#x27;              g:=mes.iaddress\n&#x27;)
+            WriteF(&#x27;              infos:=g.gadgetid\n&#x27;)
+            WriteF(&#x27;              SELECT infos\n&#x27;)
+            IF p_EmptyList(w.adrgadgetlist)&lt;&gt;-1
+                plist:=w.adrgadgetlist
+                g:=plist.head
+                WHILE g
+                    gnode:=g
+                    IF gnode.succ&lt;&gt;0
+                        StrCopy(pv,gnode.name,ALL)
+                        UpperStr(pv)
+                        WriteF(&#x27;                  CASE GA_\s\n&#x27;,pv)
+                        INC c
+                    ENDIF
+                    g:=gnode.succ
+                ENDWHILE
+            ENDIF
+            WriteF(&#x27;              ENDSELECT\n&#x27;)
+            WriteF(&#x27;       ENDSELECT\n&#x27;)
+            WriteF(&#x27;       Gt_ReplyIMsg(mes)\n&#x27;)
+            WriteF(&#x27;   ENDIF\n&#x27;)
+            WriteF(&#x27;ENDPROC\n&#x27;)
+        ENDIF
+        w:=wnode.succ
+    ENDWHILE
+ENDPROC
+PROC g_WriteFWindowList(list:PTR TO lh) /*&quot;g_WriteFWindowList(list:PTR TO lh)&quot;*/
+    DEF w:PTR TO windownode
+    DEF node:PTR TO ln
+    w:=list.head
+    WHILE w
+        node:=w
+        IF node.succ&lt;&gt;0
+            myguibase.currentwindow:=w
+            IF w.adrgadgetlist THEN g_GenerateInitWindow(w)
+            WriteF(&#x27;PROC p_Open\sWindow() HANDLE /*&quot;p_Open\sWindow()&quot;*/\n&#x27;,node.name,node.name)
+            WriteF(&#x27;    IF (\s_window:=OpenWindowTagList(NIL,\n&#x27;)
+            WriteF(&#x27;                      [WA_LEFT,\d,\n&#x27;,w.left)
+            WriteF(&#x27;                       WA_TOP,\d,\n&#x27;,w.top)
+            WriteF(&#x27;                       WA_WIDTH,\d,\n&#x27;,w.width)
+            WriteF(&#x27;                       WA_HEIGHT,\d,\n&#x27;,w.height)
+            WriteF(&#x27;                       WA_IDCMP,$\h,\n&#x27;,w.idcmp)
+            WriteF(&#x27;                       WA_FLAGS,$\h,\n&#x27;,w.flags)
+            WriteF(&#x27;                       WA_GADGETS,\s_glist,\n&#x27;,node.name)
+            WriteF(&#x27;                       WA_TITLE,\a\s\a,\n&#x27;,w.title)
+            WriteF(&#x27;                       WA_SCREENTITLE,\a\s\a,\n&#x27;,w.screen)
+            WriteF(&#x27;                       TAG_DONE]))=NIL THEN Raise(ER_WINDOW)\n&#x27;)
+            IF p_EmptyList(w.adrmenulist)&lt;&gt;-1
+                WriteF(&#x27;    IF SetMenuStrip(\s_window,\s_menu)=FALSE THEN Raise(ER_MENUS)\n&#x27;,node.name,node.name)
+                WriteF(&#x27;    Gt_RefreshWindow(\s_window,NIL)\n&#x27;,node.name)
+            ENDIF
+            IF p_EmptyList(w.adrbboxlist)&lt;&gt;-1 THEN WriteF(&#x27;    p_Render\sWindow()\n&#x27;,node.name)
+            WriteF(&#x27;    Raise(ER_NONE)\n&#x27;)
+            WriteF(&#x27;EXCEPT\n&#x27;)
+            WriteF(&#x27;    RETURN exception\n&#x27;)
+            WriteF(&#x27;ENDPROC\n&#x27;)
+            WriteF(&#x27;PROC p_Rem\sWindow() /*&quot;p_Rem\sWindow()&quot;*/\n&#x27;,node.name,node.name)
+            WriteF(&#x27;    IF \s_window THEN CloseWindow(\s_window)\n&#x27;,node.name,node.name)
+            IF p_EmptyList(w.adrmenulist)&lt;&gt;-1
+                WriteF(&#x27;    IF \s_menu THEN FreeMenus(\s_menu)\n&#x27;,node.name,node.name)
+            ENDIF
+            WriteF(&#x27;    IF \s_glist THEN FreeGadgets(\s_glist)\n&#x27;,node.name,node.name)
+            WriteF(&#x27;ENDPROC\n&#x27;)
+        ENDIF
+        w:=node.succ
+    ENDWHILE
+ENDPROC
+PROC g_WriteFGadgetList(list:PTR TO lh,glist) /*&quot;g_WriteFGadgetList(list:PTR TO lh,glist)&quot;*/
+    DEF gnode:PTR TO gadgetnode
+    DEF node:PTR TO ln,count=0
+    DEF last_gad[256]:STRING
+    gnode:=list.head
+    WHILE gnode
+        node:=gnode
+        IF node.succ&lt;&gt;0
+            IF node.pred=0
+                WriteF(&#x27;    IF (\s:=CreateGadgetA(\s,\s_glist,[\d,\d,\d,\d,\a\s\a,tattr,\d,\d,visual,0]:newgadget,\s))=NIL THEN Raise(ER_GADGET)\n&#x27;,
+                                 node.name,string_kind[gnode.kind],glist,gnode.leftedge,gnode.topedge,
+                                 gnode.width,gnode.height,gnode.gadgettext,count,gnode.flags,g_FoundTag(gnode.kind))
+                StringF(last_gad,&#x27;\s&#x27;,node.name)
+            ELSE
+                WriteF(&#x27;    IF (\s:=CreateGadgetA(\s,\s,[\d,\d,\d,\d,\a\s\a,tattr,\d,\d,visual,0]:newgadget,\s))=NIL THEN Raise(ER_GADGET)\n&#x27;,
+                                 node.name,string_kind[gnode.kind],last_gad,gnode.leftedge,gnode.topedge,
+                                 gnode.width,gnode.height,gnode.gadgettext,count,gnode.flags,g_FoundTag(gnode.kind))
+                StringF(last_gad,&#x27;\s&#x27;,node.name)
+            ENDIF
+        ENDIF
+        INC count
+        gnode:=node.succ
+    ENDWHILE
+ENDPROC
+PROC g_WriteFMenuList(list:PTR TO lh,nom) /*&quot;g_WriteFMenuList(list:PTR TO lh,nom)&quot;*/
+    DEF mnode:PTR TO menunode
+    DEF node:PTR TO ln
+    mnode:=list.head
+    WHILE mnode
+        node:=mnode
+        IF node.succ&lt;&gt;0
+            IF node.pred=0
+                WriteF(&#x27;    IF (\s_menu:=CreateMenusA([&#x27;,nom)
+                WriteF(&#x27;\d,\d,\a\s\a,&#x27;,mnode.type,0,mnode.text)
+                IF (mnode.type&lt;&gt;1) AND mnode.comkey
+                    WriteF(&#x27;\a\s\a,&#x27;,mnode.comkey)
+                ELSE
+                    WriteF(&#x27;0,&#x27;)
+                ENDIF
+                WriteF(&#x27;\d,\d,0,\n&#x27;,mnode.flags,mnode.mutualexclude)
+            ELSE
+                WriteF(&#x27;                                  \d,\d,\a\s\a,&#x27;,mnode.type,0,mnode.text)
+                IF (mnode.type&lt;&gt;1) AND mnode.comkey
+                    WriteF(&#x27;\a\s\a,&#x27;,mnode.comkey)
+                ELSE
+                    WriteF(&#x27;0,&#x27;)
+                ENDIF
+                WriteF(&#x27;\d,\d,0,\n&#x27;,mnode.flags,mnode.mutualexclude)
+            ENDIF
+        ENDIF
+        mnode:=node.succ
+    ENDWHILE
+    WriteF(&#x27;                                   0,0,0,0,0,0,0]:newmenu,NIL))=NIL THEN Raise(ER_MENUS)\n&#x27;)
+    WriteF(&#x27;    IF LayoutMenusA(\s_menu,visual,NIL)=FALSE THEN Raise(ER_MENUS)\n&#x27;,nom)
+ENDPROC
+PROC g_WriteFBboxList(list:PTR TO lh,nom) /*&quot;g_WriteBboxList(list:PTR TO lh,nom)&quot;*/
+    DEF bnode:PTR TO bboxnode
+    DEF node:PTR TO ln
+    DEF gn:PTR TO ln
+    DEF curwin:PTR TO windownode
+    curwin:=myguibase.currentwindow
+    gn:=p_GetAdrNode(curwin.adrgadgetlist,0)
+    bnode:=list.head
+    WriteF(&#x27;PROC p_Render\sWindow() /*&quot;p_Render\sWindow()&quot;*/\n&#x27;,nom,nom)
+    WHILE bnode
+        node:=bnode
+        IF node.succ&lt;&gt;0
+            WriteF(&#x27;    DrawBevelBoxA(\s_window.rport,\d,\d,\d,\d,[GTBB_RECESSED,\d,GT_VISUALINFO,visual,TAG_DONE,0])\n&#x27;,
+                        nom,bnode.left,bnode.top,bnode.width,bnode.height,bnode.flags)
+        ENDIF
+        bnode:=node.succ
+    ENDWHILE
+    WriteF(&#x27;    RefreshGList(\s,\s_window,NIL,-1)\n&#x27;,gn.name,nom)
+    WriteF(&#x27;    Gt_RefreshWindow(\s_window,NIL)\n&#x27;,nom)
+    WriteF(&#x27;ENDPROC\n&#x27;)
+ENDPROC
+PROC g_GenerateInitWindow(w:PTR TO windownode) /*&quot;g_GenerateInitWindow(w:PTR TO windownode)&quot;*/
+    DEF node:PTR TO ln
+    node:=w
+    WriteF(&#x27;PROC p_Init\sWindow() HANDLE /*&quot;p_Init\sWindow()&quot;*/\n&#x27;,node.name,node.name)
+    WriteF(&#x27;    IF (\s_glist:=CreateContext({\s_glist}))=NIL THEN Raise(ER_CONTEXT)\n&#x27;)
+    IF p_EmptyList(w.adrmenulist)&lt;&gt;-1 THEN g_WriteFMenuList(w.adrmenulist,node.name)
+    IF p_EmptyList(w.adrgadgetlist)&lt;&gt;-1 THEN g_WriteFGadgetList(w.adrgadgetlist,node.name)
+    WriteF(&#x27;    Raise(ER_NONE)\n&#x27;)
+    WriteF(&#x27;EXCEPT\n&#x27;)
+    WriteF(&#x27;    RETURN exception\n&#x27;)
+    WriteF(&#x27;ENDPROC\n&#x27;)
+    IF p_EmptyList(w.adrbboxlist)&lt;&gt;-1 THEN g_WriteFBboxList(w.adrbboxlist,node.name)
+ENDPROC
+PROC g_FoundTag(f_tag) /*&quot;g_FoundTag(f_tag)&quot;*/
+    SELECT f_tag
+        CASE 0
+        /* BUTTON_KIND */
+        CASE 1; RETURN &#x27;[GA_RELVERIFY,TRUE,GA_DISABLED,FALSE,GT_UNDERSCORE,&quot;_&quot;,TAG_DONE,0]&#x27;
+        /* CHEKBOX_KIND */
+        CASE 2; RETURN &#x27;[GA_RELVERIFY,TRUE,GTCB_CHECKED,FALSE,GT_UNDERSCORE,&quot;_&quot;, TAG_DONE,0]&#x27;
+        /* INTEGER_KIND */
+        CASE 3; RETURN &#x27;[GA_RELVERIFY,TRUE,GTIN_NUMBER,666,GTIN_MAXCHARS,8,GT_UNDERSCORE,&quot;_&quot;,TAG_DONE,0]&#x27;
+        /* LISTVIEW_KIND */
+        CASE 4; RETURN &#x27;[GA_RELVERIFY,TRUE,GTLV_LABELS,-1,GT_UNDERSCORE,&quot;_&quot;,TAG_DONE,0]&#x27;
+        /* MX_KIND */
+        CASE 5; RETURN &#x27;[GA_RELVERIFY,TRUE,GTMX_LABELS,[\a\a,\a\a,0],GT_UNDERSCORE,&quot;_&quot;,TAG_DONE,0]&#x27;
+        /* NUMBER_KIND */
+        CASE 6; RETURN &#x27;[GA_RELVERIFY,TRUE,GT_UNDERSCORE,&quot;_&quot;,TAG_DONE,0]&#x27;
+        /* CYCLE_KIND */
+        CASE 7; RETURN &#x27;[GA_RELVERIFY,TRUE,GTCY_LABELS,[\a\a,\a\a,0],GT_UNDERSCORE,&quot;_&quot;,TAG_DONE,0]&#x27;
+        /* PALETTE_KIND */
+        CASE 8; RETURN &#x27;[GTPA_DEPTH,2,GTPA_COLOR,1,GTPA_INDICATORWIDTH,TRUE,GTPA_INDICATORHEIGHT,TRUE,GT_UNDERSCORE,&quot;_&quot;,TAG_DONE,0]&#x27;
+        /* SCROLLER_KIND */
+        CASE 9; RETURN &#x27;[GA_RELVERIFY,TRUE,GA_DISABLED,FALSE,GT_UNDERSCORE,&quot;_&quot;,TAG_DONE,0]&#x27;
+        /* SLIDER_KIND */
+        CASE 11; RETURN &#x27;[GTSL_MIN,0,GTSL_MAX,10,GT_UNDERSCORE,&quot;_&quot;,TAG_DONE,0]&#x27;
+        /* STRING_KIND */
+        CASE 12; RETURN &#x27;[GTST_STRING,\a\a,GTST_MAXCHARS,100,GA_RELVERIFY,TRUE,GA_DISABLED,FALSE,GT_UNDERSCORE,&quot;_&quot;,TAG_DONE,0]&#x27;
+        /* TEXT_KIND */
+        CASE 13; RETURN &#x27;[GTTX_TEXT,\a\a,GTTX_COPYTEXT,FALSE,GT_UNDERSCORE,&quot;_&quot;,TAG_DONE,0]&#x27;
+    ENDSELECT
+ENDPROC
+PROC g_Crash() /*&quot;g_Crash()&quot;*/
+    g_RemGUIBase()
+    CleanUp(20)
+ENDPROC
+PROC main() HANDLE /*&quot;main()&quot;*/
+    string_kind:=[&#x27;GENERIC_KIND&#x27;,
+                  &#x27;BUTTON_KIND&#x27;,
+                  &#x27;CHECKBOX_KIND&#x27;,
+                  &#x27;INTEGER_KIND&#x27;,
+                  &#x27;LISTVIEW_KIND&#x27;,
+                  &#x27;MX_KIND&#x27;,
+                  &#x27;NUMBER_KIND&#x27;,
+                  &#x27;CYCLE_KIND&#x27;,
+                  &#x27;PALETTE_KIND&#x27;,
+                  &#x27;&#x27;,
+                  &#x27;SCROLLER_KIND&#x27;,
+                  &#x27;SLIDER_KIND&#x27;,
+                  &#x27;STRING_KIND&#x27;,
+                  &#x27;TEXT_KIND&#x27;]
+    g_InitGUIBase()
+    g_ReadGUIFile(arg)
+    /*
+    g_WriteFHeader()
+    g_WriteFDef(myguibase.adrlistwindow)
+    g_WriteFOpenCloseLib()
+    g_WriteFScreen()
+    g_WriteFWindowList(myguibase.adrlistwindow)
+    g_WriteFLookMessage(myguibase.adrlistwindow)
+    g_WriteFWinMessage(myguibase.adrlistwindow)
+    g_WriteFMain(myguibase.adrlistwindow)
+    */
+    Raise(ER_NONE)
+EXCEPT
+    g_RemGUIBase()
+ENDPROC
+
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

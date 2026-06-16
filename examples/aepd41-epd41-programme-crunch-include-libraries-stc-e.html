@@ -1,0 +1,150 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>stc.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-aepd41.html">AEPD41</a> &rsaquo; stc.e</div><h1>File: <code>stc.e</code></h1><p class="meta">124 lines · project <a href="../examples/pkg-aepd41.html"><code>AEPD41</code></a></p><p class="pathctx">AEPD41/EPD41/Programme/Crunch/include/libraries/stc.e</p><p class="prose">Stc.e,  by Bluebird</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/libraries.html">exec/libraries</a></li></ul></div><h2>Source</h2><pre class="code">
+-&gt;         Stc.e,  by Bluebird
+
+OPT MODULE
+OPT EXPORT
+OPT PREPROCESS
+
+MODULE  &#x27;exec/libraries&#x27;
+
+#define STCNAME &#x27;stc.library&#x27;
+
+CONST STCVERSION = 3,
+      S403   = 0,
+      S404   = 1,
+   
+      PHNOHEADER = 1,
+      PHNOMATCH = 2,
+      PHUNIT  = 3,
+      PHNAME  = 4,
+      PHREHEADER = 5,
+      PHOVERLAY = 6,
+      PHBREAK  = 7,
+      PHHUNKID  = 8,
+
+      SEEXEC  = 0,
+      SEPEXEC  = 1,
+      SELIBRARY = 2,
+      SEOVERLAY = 3,
+      SEABSOLUTE = 4,
+
+      ISEXEC  = $80000000,
+      ISDATA  = $40000000,
+      ISS403  = $20000000,
+      ISS404  = $10000000,
+      ISNPEXEC  = $01000000,
+      ISLPEXEC  = $02000000,
+      ISNABS  = $03000000,
+      ISPABS  = $04000000,
+      ISKABS  = $05000000,
+      ISSKIPMASK = $00FFFFFF,
+      ISINFOMASK = $FF000000,
+      ISERRORMASK = $00FFFFFF,
+
+
+      STC_TAGBASE = $80000000,
+
+  /* CrunchDataTags Tags */
+      CDDESTINATION = $80000000+$01,
+      CDLENGTH   = $80000000+$02,
+      CDABORTFLAGS = $80000000+$03,
+      CDOUTPUTFLAGS = $80000000+$04,
+      CDXPOS   = $80000000+$05,
+      CDYPOS   = $80000000+$06,
+      CDRASTPORT  = $80000000+$07,
+      CDMSGPORT  = $80000000+$08,
+      CDDISTBITS  = $80000000+$09,
+      CDBUFFER   = $80000000+$0A,
+      CDOUTPUTNIL  = 0,
+      CDOUTPUTCLI  = 1,
+      CDOUTPUTWIN  = 2,
+      CDABORTNIL  = 0,
+      CDABORTGADGET = 1,
+      CDABORTCTRLC = 2,
+      CDDIST1K   = 10,
+      CDDIST2K   = 11,
+      CDDIST4K   = 12,
+      CDDIST8K   = 13,
+      CDDIST16K  = 14,
+
+  /* SaveExecTags Tags */
+      SXSAVETYPE  = $80000000+$0B,
+      SXFILENAME  = $80000000+$0C,
+      SXDATABUFFER = $80000000+$0D,
+      SXLENGTH   = $80000000+$0E,
+      SXLOAD   = $80000000+$0F,
+      SXJUMP   = $80000000+$10,
+      SXDECR   = $80000000+$11,
+      SXUSP    = $80000000+$12,
+      SXSSP    = $80000000+$13,
+      SXSR    = $80000000+$14,
+      SXDATA   = 0,
+      SXPEXEC   = 1,
+      SXPEXECLIB  = 2,
+      SXABSNORMAL  = 3,
+      SXABSPLAIN  = 4,
+      SXABSKILLSYSTEM= 5;
+
+
+  /* Nur für ältere Library Versionen. Nicht mehr benutzen */
+
+   OBJECT crunchinfo
+          filelength: LONG
+          buffer: PTR TO LONG
+          filebuffer: PTR TO LONG
+          msgport: PTR TO LONG  /*  Falls NIL, kein Ereignischeck  */
+          rastport: PTR TO LONG
+          gfxbase: PTR TO LONG  /*  Falls NIL, kein Crunchcounter  */
+          xpos: INT
+          ypos: INT
+   ENDOBJECT
+
+   OBJECT stcbase
+     libnode: lib
+     dosbase: PTR TO LONG
+     seglist: LONG
+     flags: LONG
+     pad: LONG
+   ENDOBJECT
+
+
+  /* Nur für Kompatibilität. Nicht Lesen oder Schreiben */
+DEF firstbuffer: PTR TO LONG,
+    buffersize: LONG,
+    securitylen: LONG,
+
+  /* Diese Fehlermeldung ist GLOBAL. In den meisten Fällen ist sie mit
+    dem Ergebnis der Funktion IOErr identisch.
+    Beachte: Greifen mehrere Tasks auf die stc.library zu, so kann der
+             erhaltene Wert nicht immer der richtige sein. */
+   errormsg: LONG,
+
+   stcbase: PTR TO stcbase;
+
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

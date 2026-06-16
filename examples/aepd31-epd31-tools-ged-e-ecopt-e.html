@@ -1,0 +1,233 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ECOpt.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-aepd31.html">AEPD31</a> &rsaquo; ECOpt.e</div><h1>File: <code>ECOpt.e</code></h1><p class="meta">207 lines · project <a href="../examples/pkg-aepd31.html"><code>AEPD31</code></a></p><p class="pathctx">AEPD31/EPD31/Tools/GED-E/ECOpt.e</p><p class="prose">Sauve les options de compilations selectionnées par l&#x27;intermédiaire</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/dos.html">dos/dos</a></li><li><a href="../modules/gadtools.html">gadtools</a></li><li><a href="../modules/text.html">graphics/text</a></li><li><a href="../modules/intuition.html">intuition/intuition</a></li><li><a href="../modules/tagitem.html">utility/tagitem</a></li></ul></div><h2>Source</h2><pre class="code">/* Sauve les options de compilations selectionnées par l&#x27;intermédiaire    */
+/* d&#x27;une fenêtre gadtools dans une variable d&#x27;environnement.              */
+
+    OPT OSVERSION=37
+
+    MODULE &#x27;dos/dos&#x27;,&#x27;dos/rdargs&#x27;
+    MODULE &#x27;gadtools&#x27;,&#x27;libraries/gadtools&#x27;
+    MODULE &#x27;intuition/intuition&#x27;,&#x27;intuition/screens&#x27;,&#x27;intuition/gadgetclass&#x27;,
+           &#x27;intuition/intuitionbase&#x27;,&#x27;intuition/gadgetclass&#x27;
+    MODULE &#x27;graphics/text&#x27;
+    MODULE &#x27;utility/tagitem&#x27;
+
+    ENUM OWN_ERROR=21,IO_ERROR,FIND_ERROR,MEM_ERROR,GAD
+
+    DEF ecoptionswnd:PTR TO window,ecoptionsglist:PTR TO gadget,
+        scr:PTR TO screen,visual=NIL,tattr,optstr[50]:STRING,
+        opthandle,opt,optname1:PTR TO CHAR,
+        optname2:PTR TO CHAR,args:PTR TO rdargs,gad:PTR TO gadget,
+        g:PTR TO gadget,argarray:PTR TO LONG
+
+    RAISE GAD IF CreateGadgetA()=NIL
+
+/*FOLDER &quot;main()&quot;*/
+PROC main() HANDLE
+    openpwindow()
+    wait4message(ecoptionswnd)
+    quit(RETURN_OK,NIL)
+EXCEPT
+    SELECT exception
+        CASE GAD ; quit(OWN_ERROR,&#x27;CreateGadgetA()&#x27;)
+    ENDSELECT
+ENDPROC
+/*FEND*/
+CHAR &#x27;$VER: ECOpt 1.010 (09 Oct 1994) © BURGHARD Eric | WANABOSO/AGOA&#x27;
+
+/*FOLDER &quot;openpwindow()&quot;*/
+PROC openpwindow()
+    DEF ib:PTR TO intuitionbase,gtname:PTR TO CHAR
+
+    ib:=intuitionbase
+    scr:=ib.activescreen
+    gtname:=&#x27;gadtools.library&#x27;
+    IF (gadtoolsbase:=OpenLibrary(gtname,37))=NIL THEN quit(FIND_ERROR,gtname)
+    IF (visual:=GetVisualInfoA(scr,NIL))=NIL THEN quit(OWN_ERROR,&#x27;GetVisualInfo()&#x27;)
+    tattr:=[&#x27;topaz.font&#x27;,8,0,0]:textattr
+    IF (g:=CreateContext({ecoptionsglist}))=NIL THEN quit(OWN_ERROR,&#x27;CreateContext()&#x27;)
+    g:=CreateGadgetA(INTEGER_KIND,g,[143,89,99,14,&#x27;&#x27;,tattr,0,0,visual,0]:newgadget,
+                                    [GTIN_NUMBER,0,GTIN_MAXCHARS,1,
+                                     NIL])
+    g:=CreateGadgetA(CHECKBOX_KIND,g,[19,89,26,11,&#x27;REGISTERS&#x27;,tattr,1,PLACETEXT_RIGHT,visual,0]:newgadget,
+                                     [NIL])
+    g:=CreateGadgetA(CHECKBOX_KIND,g,[19,24,26,11,&#x27;IGNORE CACHE&#x27;,tattr,2,PLACETEXT_RIGHT,visual,0]:newgadget,
+                                     [NIL])
+    g:=CreateGadgetA(CHECKBOX_KIND,g,[19,76,26,11,&#x27;OPTIMISATIONS&#x27;,tattr,3,PLACETEXT_RIGHT,visual,0]:newgadget,
+                                     [NIL])
+    g:=CreateGadgetA(CHECKBOX_KIND,g,[19,50,26,11,&#x27;SYMBOLS&#x27;,tattr,4,PLACETEXT_RIGHT,visual,0]:newgadget,
+                                     [NIL])
+    g:=CreateGadgetA(CHECKBOX_KIND,g,[19,63,26,11,&#x27;LINEDEBUG&#x27;,tattr,5,PLACETEXT_RIGHT,visual,0]:newgadget,
+                                     [NIL])
+    g:=CreateGadgetA(CHECKBOX_KIND,g,[19,37,26,11,&#x27;LARGE MODEL&#x27;,tattr,6,PLACETEXT_RIGHT,visual,0]:newgadget,
+                                     [NIL])
+    g:=CreateGadgetA(BUTTON_KIND,g,[12,110,77,17,&#x27;USE&#x27;,tattr,7,PLACETEXT_IN,visual,0]:newgadget,
+                                   [NIL])
+    g:=CreateGadgetA(BUTTON_KIND,g,[92,110,77,17,&#x27;SAVE&#x27;,tattr,8,PLACETEXT_IN,visual,0]:newgadget,
+                                   [NIL])
+    g:=CreateGadgetA(BUTTON_KIND,g,[172,110,77,17,&#x27;CANCEL&#x27;,tattr,9,PLACETEXT_IN,visual,0]:newgadget,
+                                   [NIL])
+    optname1:=&#x27;ENV:ECOpt&#x27;
+    optname2:=&#x27;ENVARC:ECOpt&#x27;
+    IF setflg(optname1)=FALSE THEN setflg(optname2)
+    SetStr(optstr,0)
+    IF (ecoptionswnd:=OpenWindowTagList(NIL,[WA_LEFT,184,WA_TOP,48,
+                                             WA_WIDTH,260,WA_HEIGHT,131,
+                                             WA_IDCMP,(IDCMP_REFRESHWINDOW OR IDCMP_GADGETUP OR IDCMP_CLOSEWINDOW),
+                                             WA_FLAGS,(WFLG_DEPTHGADGET OR WFLG_CLOSEGADGET OR WFLG_DRAGBAR OR WFLG_ACTIVATE),
+                                             WA_TITLE,&#x27;ECompiler Options&#x27;,
+                                             WA_CUSTOMSCREEN,scr,
+                                             WA_AUTOADJUST,1,
+                                             WA_GADGETS,ecoptionsglist,
+                                             NIL]))=NIL THEN quit(OWN_ERROR,&#x27;OpenWindowTagList()&#x27;)
+    DrawBevelBoxA(ecoptionswnd.rport,12,17,237,92,[GT_VISUALINFO,visual,NIL])
+ENDPROC
+/*FEND*/
+/*FOLDER &quot;setflg(name)&quot;*/
+PROC setflg(name)
+    IF (opthandle:=Open(name,MODE_OLDFILE))
+        ReadStr(opthandle,optstr)
+        Close(opthandle) ; opthandle:=0
+        IF (args:=AllocDosObject(DOS_RDARGS,NIL))
+            args::csource.buffer:=optstr
+            args::csource.length:=EstrLen(optstr)
+            argarray:=[-1,0,0,0,0,0]:LONG
+            IF ReadArgs(&#x27;REG/K/N,IGNORECACHE/S,OPTI/S,SYM/S,LINEDEBUG/S,LARGE/S&#x27;,argarray,args)
+                gad:=ecoptionsglist.nextgadget
+                g:=gad.nextgadget
+                Gt_SetGadgetAttrsA(g,NIL,NIL,[GTCB_CHECKED,IF argarray[0]&lt;&gt;-1 THEN TRUE ELSE FALSE,TAG_END])
+                Gt_SetGadgetAttrsA(gad,NIL,NIL,[GA_DISABLED,IF argarray[0]&lt;&gt;-1 THEN FALSE ELSE TRUE,GTIN_NUMBER,IF argarray[0]&lt;&gt;-1 THEN Long(argarray[0]) ELSE 0,TAG_END])
+                g:=g.nextgadget
+                FOR opt:=1 TO 5
+                    Gt_SetGadgetAttrsA(g,NIL,NIL,[GTCB_CHECKED,IF argarray[opt] THEN TRUE ELSE FALSE,TAG_END])
+                    g:=g.nextgadget
+                ENDFOR
+                FreeArgs(args)
+            ELSE ; quit(IO_ERROR,&#x27;ECOpt&#x27;)
+            ENDIF
+        ELSE ; quit(MEM_ERROR,&#x27;AllocDosObject()&#x27;)
+        ENDIF
+    ELSE ; RETURN FALSE
+    ENDIF
+ENDPROC TRUE
+
+/*FEND*/
+/*FOLDER &quot;wait4message(win:PTR TO window)&quot;*/
+PROC wait4message(win:PTR TO window)
+    DEF mes:PTR TO intuimessage,type:PTR TO gadget,gadid
+
+    REPEAT
+        type:=0
+        IF mes:=Gt_GetIMsg(win.userport)
+            type:=mes.class
+            IF type&lt;&gt;IDCMP_CLOSEWINDOW
+                SELECT type
+                    CASE IDCMP_GADGETUP
+                        type:=mes.iaddress
+                        gadid:=type.gadgetid
+                        SELECT gadid
+                            CASE 1
+                                gad:=ecoptionsglist.nextgadget
+                                Gt_SetGadgetAttrsA(gad,ecoptionswnd,NIL,[GA_DISABLED,IF (type.flags AND GFLG_SELECTED) THEN FALSE ELSE TRUE,TAG_END])
+                                type:=0
+                            CASE 7
+                                optfmt()
+                                saveopt(optname1)
+                            CASE 8
+                                optfmt()
+                                saveopt(optname1)
+                                saveopt(optname2)
+                            CASE 9 ; NOP
+                            DEFAULT ; type:=0
+                        ENDSELECT
+                    CASE IDCMP_REFRESHWINDOW
+                        Gt_BeginRefresh(win)
+                        Gt_EndRefresh(win,TRUE)
+                        type:=0
+                ENDSELECT
+            ENDIF
+            Gt_ReplyIMsg(mes)
+        ELSE ; WaitPort(win.userport)
+        ENDIF
+    UNTIL type
+ENDPROC type
+/*FEND*/
+/*FOLDER &quot;optfmt()&quot;*/
+PROC optfmt()
+    DEF tmpstr[15]:STRING,sinfo:PTR TO stringinfo
+
+    gad:=ecoptionsglist.nextgadget
+    sinfo:=gad.specialinfo
+    gad:=gad.nextgadget
+    FOR opt:=0 TO 5
+        IF (gad.flags AND GFLG_SELECTED)
+            StringF(tmpstr,ListItem([&#x27;REG \d &#x27;,&#x27;IGNORECACHE &#x27;,&#x27;OPTI &#x27;,&#x27;SYM &#x27;,&#x27;LINEDEBUG &#x27;,&#x27;LARGE &#x27;]:LONG,opt),sinfo.longint)
+            StrAdd(optstr,tmpstr,ALL)
+        ENDIF
+        gad:=gad.nextgadget
+    ENDFOR
+ENDPROC
+
+/*FEND*/
+/*FOLDER &quot;saveopt(name)&quot;*/
+PROC saveopt(name)
+    IF (opthandle:=Open(name,MODE_NEWFILE))
+        IF Fputs(opthandle,optstr) THEN quit(IO_ERROR,name)
+        Close(opthandle) ; opthandle:=0
+    ENDIF
+ENDPROC
+
+/*FEND*/
+/*FOLDER &quot;quit(err,obj)&quot;*/
+PROC quit(err,obj)
+    DEF flt=0
+
+    IF err&lt;&gt;RETURN_OK
+        IF err&lt;&gt;OWN_ERROR
+            SELECT err
+                CASE IO_ERROR  ; flt:=IoErr()
+                CASE MEM_ERROR ; flt:=ERROR_NO_FREE_STORE
+                CASE FIND_ERROR; flt:=ERROR_OBJECT_NOT_FOUND
+            ENDSELECT
+            err:=RETURN_ERROR
+            PrintFault(flt,obj)
+        ELSE
+            WriteF(&#x27;Error with \s\n&#x27;,obj)
+            err:=RETURN_ERROR
+        ENDIF
+    ENDIF
+    IF args THEN FreeDosObject(DOS_RDARGS,args)
+    IF opthandle THEN Close(opthandle)
+    IF visual THEN FreeVisualInfo(visual)
+    IF gadtoolsbase THEN CloseLibrary(gadtoolsbase)
+    IF ecoptionswnd THEN CloseWindow(ecoptionswnd)
+    IF ecoptionsglist THEN FreeGadgets(ecoptionsglist)
+    CleanUp(err)
+ENDPROC
+/*FEND*/
+
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

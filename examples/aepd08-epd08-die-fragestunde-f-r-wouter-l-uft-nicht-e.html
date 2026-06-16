@@ -1,0 +1,521 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>läuft_nicht.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-aepd08.html">AEPD08</a> &rsaquo; läuft_nicht.e</div><h1>File: <code>läuft_nicht.e</code></h1><p class="meta">495 lines · project <a href="../examples/pkg-aepd08.html"><code>AEPD08</code></a></p><p class="pathctx">AEPD08/EPD08/Die_Fragestunde/Für_Wouter/läuft_nicht.e</p><p class="prose">temporär: 11-Mai-94 in den Listen stehen jetzt auch die Abbruchzeichen, damit rekursive Verwendung von Regeln möglich wird. Bis Ausgabe der Listen alles OK. 5-Mai-94 getword von datei auf zeichenkette umgestellt index bei fktns.-aufruf eingeführt 6-Mai-94 klassenzketteerstellen() erstellt läuft sowe</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/dos.html">dos/dos</a></li></ul></div><h2>Source</h2><pre class="code">/*
+temporär:
+11-Mai-94
+
+in den Listen stehen jetzt auch die Abbruchzeichen, damit rekursive
+Verwendung von Regeln möglich wird. Bis Ausgabe der Listen alles OK.
+
+5-Mai-94
+
+getword von datei auf zeichenkette umgestellt
+index bei fktns.-aufruf eingeführt
+
+6-Mai-94
+klassenzketteerstellen() erstellt
+läuft soweit
+
+TODO:
+
+Rekursive Regeln? Dafür zu tun: Regeln ohne Anführungszeichen angeben, sie
+werden dann Wort für Wort in eine Liste gepackt. Vor ParsePattern() die
+einzelnen Elemente mit dazwischenliegendem &#x27; &#x27; aneinander klatschen, nicht
+ohne jedoch vorher das ranzuklatschende Element auf Gleichheit mit einem
+Regelnamen zu untersuchen (isinlist()); ggf. wird dann eben jener
+Regelklartext da angefügt. Sollte einfach sein.
+
+
+Aus der Datei &#x27;ram:quelltext&#x27; werden Klassen und Regeln eingelesen.
+Syntax:
+KLASSE &lt;Wortklasse&gt; &lt;beliebige viele Worte&gt;
+REGEL &lt;Regelname&gt; &lt;beliebige viele Worte&gt;
+ENDE
+
+Die Schlüsselwörter KLASSE und REGEL können in beliebiger Reihenfolge
+beliebig auf auftreten, das Schüsselwort ENDE steht jedoch stets am Ende.
+Eine Regel besteht aus einzelnen Wörtern, die die Wortklassen bezeichnen.
+DOS-Wildcards können verwendet werden.
+Beispiel: Artikel #(Adjektiv #(Konjunktion|Komma))
+*/
+
+
+MODULE &#x27;dos/dos&#x27;, &#x27;dos/dosextens&#x27;
+
+DEF	keywordlist[255]:LIST,
+	regelliste[255]:LIST,klassenliste[255]:LIST,
+	textdigitus=0 /* der zeigefinger, der auf die position zeigt, bis zu der */
+				/* schon gesucht wurde */
+
+PROC getword(quellzeichenkette, zielzeichenkette,positionszaehler)
+/*
+
+Liest ein Wort aus der Quell-Zeichenkette und schreibt es ab
+Adresse Zeichenkette in den Speicher. Als Worttrenner werden betrachtet:
+Tabulator (8), Return (10), Leertaste (32), Komma, Punkt, Semikolon und
+Doppelpunkt u.a., s. Source. Führende Tabs, CRs, Spaces werden übergangen,
+der Backslash &quot;\&quot; kann benutzt werden, um das nächste Zeichen zu überlesen
+(es wird in die Zeichenkette übernommen, führt jedoch nicht zum Abbruch).
+Doppelte Anführungszeichen setzen die Worttrenner außer Funktion, bei CR
+tritt zwar kein Fehler auf, abgebrochen wird aber trotzdem.
+positionszahler ist die ADRESSE einer Variablen, in der der Startindex für
+die Suche steht; er wird von der Funktion automatisch erhöht.
+Rückgabewert ist das Zeichen, das zum Abbruch geführt hat.
+
+Erste lauffähige Version: 1. Mai 1994
+Autor: Gregor Goldbach
+
+*/
+
+DEF abbruch=FALSE,
+	zaehler=0, /* für ziel */
+	quellindex=0, /* zeichenzähler der quelle */
+	zeichen,
+	skipit=FALSE, /* bei backslash */
+	ziel:PTR TO CHAR, trennzeichen=&quot; &quot;, quelle:PTR TO CHAR
+
+  quelle := quellzeichenkette
+  ziel := zielzeichenkette
+
+  IF positionszaehler THEN quellindex := ^positionszaehler
+
+  WHILE ((abbruch=FALSE) AND (quelle[zaehler]&lt;&gt;0) AND (zaehler&lt;255))
+
+	zeichen := quelle[quellindex]
+    ziel[zaehler] := zeichen /* gleich eintragen */
+
+	IF (skipit=FALSE)
+	  SELECT zeichen
+		/*  tab, cr und space werden anfangs überlesen */
+		CASE 9
+		  IF (zaehler &gt; 0)
+			IF trennzeichen = &quot; &quot;
+			  abbruch := TRUE
+			ENDIF
+		  ELSE
+			zaehler--
+		  ENDIF
+		CASE 10
+		  IF (zaehler &gt; 0) THEN abbruch := TRUE ELSE zaehler--
+		  trennzeichen:=&quot; &quot;
+		CASE 32
+		  IF (zaehler &gt; 0)
+			IF trennzeichen = &quot; &quot;
+			  abbruch := TRUE
+			ENDIF
+		  ELSE
+			zaehler--
+		  ENDIF
+
+		/* 0Byte, Komma ,Punkt, Strich- und Doppelpunkt führen auch am Anfang zum Abbruch */
+		CASE 0;		abbruch := TRUE /* kann nich auftreten */
+		CASE &quot;,&quot;;	IF trennzeichen=&quot; &quot; THEN abbruch := TRUE
+		CASE &quot;.&quot;;	IF trennzeichen=&quot; &quot; THEN abbruch := TRUE
+		CASE &quot;;&quot;;	IF trennzeichen=&quot; &quot; THEN abbruch := TRUE
+		CASE &quot;:&quot;;	IF trennzeichen=&quot; &quot; THEN abbruch := TRUE
+		CASE &quot;(&quot;;	IF trennzeichen=&quot; &quot; THEN abbruch := TRUE
+		CASE &quot;)&quot;;	IF trennzeichen=&quot; &quot; THEN abbruch := TRUE
+		CASE &quot;[&quot;;	IF trennzeichen=&quot; &quot; THEN abbruch := TRUE
+		CASE &quot;]&quot;;	IF trennzeichen=&quot; &quot; THEN abbruch := TRUE
+		CASE &quot;{&quot;;	IF trennzeichen=&quot; &quot; THEN abbruch := TRUE
+		CASE &quot;}&quot;;	IF trennzeichen=&quot; &quot; THEN abbruch := TRUE
+		CASE &quot;+&quot;;	IF trennzeichen=&quot; &quot; THEN abbruch := TRUE
+		CASE &quot;-&quot;;	IF trennzeichen=&quot; &quot; THEN abbruch := TRUE
+		CASE &quot;*&quot;;	IF trennzeichen=&quot; &quot; THEN abbruch := TRUE
+		CASE &quot;/&quot;;	IF trennzeichen=&quot; &quot; THEN abbruch := TRUE
+		CASE &quot;=&quot;;	IF trennzeichen=&quot; &quot; THEN abbruch := TRUE
+		CASE &quot;%&quot;;	IF trennzeichen=&quot; &quot; THEN abbruch := TRUE
+		CASE &quot;!&quot;;	IF trennzeichen=&quot; &quot; THEN abbruch := TRUE
+		CASE &quot;?&quot;;	IF trennzeichen=&quot; &quot; THEN abbruch := TRUE
+		CASE &quot;^&quot;;	IF trennzeichen=&quot; &quot; THEN abbruch := TRUE
+		CASE &quot;#&quot;;	IF trennzeichen=&quot; &quot; THEN abbruch := TRUE
+		CASE &quot;|&quot;;	IF trennzeichen=&quot; &quot; THEN abbruch := TRUE
+		CASE $22 /* wenn auf Anführungszeichen getroffen */
+		  IF trennzeichen=$22 THEN trennzeichen:=&quot; &quot; ELSE trennzeichen:= $22
+		  zaehler--
+		  
+		CASE &quot;\&quot; /* backslash */
+		  zaehler--
+		  skipit := TRUE
+	  ENDSELECT
+	ELSE
+	  skipit := FALSE
+	ENDIF
+
+	zaehler++
+	quellindex++
+  ENDWHILE
+  IF (zeichen&lt;&gt;0) THEN zaehler-- /* bei 0Byte NICHT erniedrigen */
+  ziel[zaehler] := 0 /* das ende markieren */
+
+  IF positionszaehler THEN ^positionszaehler := quellindex /* Parameter: neu setzen */
+  RETURN zeichen
+
+ENDPROC
+
+
+PROC putstringinlist(liste, zkette)
+DEF laenge,kopie
+
+  laenge := StrLen(zkette)
+  kopie := String(laenge)
+  StrCopy(kopie, zkette, ALL)
+  ListAdd(liste, [kopie], 1)
+
+ENDPROC
+
+PROC isinlist(s,liste)
+DEF x
+  RETURN Exists({x}, liste, `StrCmp(x, s,ALL) )
+ENDPROC
+
+PROC liste_einlesen(quellzeichenkette,zkette)
+/*
+liest bis zum nächsten Ausftreten eines Schlüsselwortes aus
+·quellzeichenkette·, zkette ist... eine Zeichenkette, genau.
+Der Zeiger auf die Liste mit den eingelesenen Worten wird zurückgegeben
+oder NIL, wenn kein Wort eingelesen werden konnte.
+Im zweiten Parameter steht nach Ende der Funktion des nächste
+Schlüsselwort oder NIL.
+In der Liste wechseln sich Wort und Abbruchzeichen ab, wenn zwischen zwei
+Abbruchzeichen kein Wort stand, fehlt das Wort eben. Also: Wenn Länge des
+Listenelements &gt; 1 ist, dann ist es ein Wort. */
+
+DEF liste, abbruchzeichen[1]:STRING
+
+  liste := List(255) /* dynamisch allokieren ! */
+
+  abbruchzeichen[0] := getword(quellzeichenkette, zkette, {textdigitus})
+  IF (abbruchzeichen[0]&gt;0)
+	REPEAT
+	  IF (zkette[0]) THEN putstringinlist(liste, zkette)
+	  putstringinlist(liste, abbruchzeichen)
+	  abbruchzeichen[0] := getword(quellzeichenkette, zkette, {textdigitus})
+	UNTIL isinlist(zkette,keywordlist) OR (abbruchzeichen[0] = FALSE)
+  ELSE
+	liste := NIL
+  ENDIF
+
+  RETURN liste
+ENDPROC
+
+
+
+PROC main()
+DEF zaehler,sourcehandle,
+	wort[255]:STRING, klassenliste_temp[255]:LIST, listenzeiger[255]:STRING,
+	regelliste_temp[255]:LIST,
+	textspeicher=NIL:PTR TO CHAR,
+	dateilaenge
+
+/* 
+regelliste:
+Hierin werden die Regeln stehen. Die Regeln können durchaus über
+mehrere Listen verteilt sein (per Next() zu erreichen).
+
+klassenliste:
+Die Listen der &#x27;Klassen&#x27; der Worte. Pro Liste eine Klasse, aber nicht
+notwendigerweise pro Klasse nur eine Liste.
+
+listenzeiger:
+scratch
+*/
+/*
+  putstringinlist(wortliste, &#x27;Wort eins&#x27;)
+  putstringinlist(wortliste, &#x27;Wort zwei&#x27;)
+  putstringinlist(wortliste, &#x27;numero 3&#x27;)
+  putstringinlist(wortliste, &#x27;Nº 4&#x27;)
+
+  listenlaenge := ListLen(wortliste)
+  WriteF(&#x27;Länge der Liste: \d\n&#x27;, listenlaenge)
+  FOR zaehler := 1 TO listenlaenge
+	WriteF(&#x27;  \s\n&#x27;, ListItem(wortliste, zaehler-1))
+  ENDFOR
+
+  IF iskeyword(&#x27;maus&#x27;) THEN WriteF(&#x27;Schlüsselwort\n&#x27;)
+  IF iskeyword(&#x27;KLASSE&#x27;) THEN WriteF(&#x27;Schlüsselwort\n&#x27;)
+  IF iskeyword(&#x27;REGEL&#x27;) THEN WriteF(&#x27;Schlüsselwort\n&#x27;)
+*/
+
+  keywordlist := [&#x27;KLASSE&#x27;, &#x27;REGEL&#x27;, &#x27;ENDE&#x27;]
+
+  sourcehandle := Open(&#x27;ram:quelltext&#x27;, MODE_OLDFILE)
+  IF (sourcehandle=NIL)
+	WriteF(&#x27;ram:quelltext ist source, wo isser?\n&#x27;)
+	CleanUp(20)
+  ENDIF
+
+  dateilaenge := FileLength(&#x27;ram:quelltext&#x27;)
+
+  textspeicher := String(dateilaenge+1)
+  Read(sourcehandle,textspeicher,dateilaenge)
+  /* der Dateiinhalt sollte jetzt in ·textspeicher· stehen */
+  textspeicher[dateilaenge] := 0
+
+  Close(sourcehandle)
+
+
+  regelliste_temp := regelliste := [&#x27;Regelindex&#x27;]
+  klassenliste_temp := klassenliste := [&#x27;Klassenindex&#x27;]
+  listenzeiger:=42
+
+  zaehler:=0
+
+  getword(textspeicher, wort, {textdigitus})
+  WHILE(listenzeiger)
+	IF isinlist(wort,keywordlist)
+
+	  IF StrCmp(wort, &#x27;KLASSE&#x27;,ALL)
+		listenzeiger := liste_einlesen(textspeicher,wort)
+		IF(listenzeiger)
+		  Link(klassenliste_temp, listenzeiger)
+		  klassenliste_temp := listenzeiger
+		  /* die erste Liste benutzen wir als Index */
+		  ListAdd(klassenliste, [ListItem(listenzeiger,0)],1)
+		ELSE
+		  WriteF(&#x27;Klassen-Fehler!\n&#x27;)
+		ENDIF
+	  ELSEIF StrCmp(wort, &#x27;REGEL&#x27;,ALL)
+
+		listenzeiger := liste_einlesen(textspeicher,wort)
+		IF(listenzeiger)
+		  Link(regelliste_temp, listenzeiger)
+		  regelliste_temp := listenzeiger
+		  /* die erste Liste benutzen wir als Index */
+		  ListAdd(regelliste, [ListItem(listenzeiger,0)],1)
+		ELSE
+		  WriteF(&#x27;Regel-Fehler!\n&#x27;)
+		ENDIF
+
+	  ELSE /* weder KLASSE noch REGEL */
+		listenzeiger := NIL
+	  ENDIF
+
+	ELSE /* kein schlüsselwort */
+	  WriteF(&#x27;Schlüsselwort erwartet!\n&#x27;)
+	  listenzeiger := NIL
+	ENDIF
+  ENDWHILE
+
+  klassenliste[0] := &#x27;Klassenindex&#x27;
+
+/*
+Ausgabe der klassenliste (klasse nummer 1 ist index)
+
+  WriteF(&#x27;Ausgabe der gelesenen Klassen:\n\n&#x27;)
+
+  klassenliste_temp := klassenliste
+
+  WHILE(klassenliste_temp)
+	WriteF(&#x27;Klasse &lt;\s&gt;:\n&#x27;, ListItem(klassenliste_temp, 0))
+	FOR zaehler := 1 TO ListLen(klassenliste_temp)-1
+	  WriteF(&#x27;  &lt;\s&gt;\n&#x27;, ListItem(klassenliste_temp, zaehler))
+	ENDFOR
+	WriteF(&#x27;\n&#x27;)
+	klassenliste_temp := Next(klassenliste_temp)
+  ENDWHILE
+
+
+  WriteF(&#x27;Ausgabe der gelesenen Regeln:\n\n&#x27;)
+
+  regelliste_temp := regelliste
+
+  WHILE(regelliste_temp)
+	WriteF(&#x27;Regel &lt;\s&gt;:\n&#x27;, ListItem(regelliste_temp, 0))
+	FOR zaehler := 1 TO ListLen(regelliste_temp)-1
+	  WriteF(&#x27;  &lt;\s&gt;\n&#x27;, ListItem(regelliste_temp, zaehler))
+	ENDFOR
+	WriteF(&#x27;\n&#x27;)
+	regelliste_temp := Next(regelliste_temp)
+  ENDWHILE
+*/
+
+  regel_zusammensetzen([&#x27;Nur ein Test&#x27;,&#x27; &#x27;,&#x27;simpel&#x27;,&#x27; &#x27;,&#x27;#&#x27;,&#x27;einfacher Satz&#x27;,&#x27; &#x27;,&#x27;affe&#x27;,&#x27; &#x27;, &#x27;ho&#x27;])
+  WriteF(&#x27;\s\n&#x27;,klassenzkette_erstellen(&#x27;der doofe Nasenmann kotzt&#x27;))
+  WriteF(&#x27;regelüberprüfung:\n&#x27;)
+  listenzeiger := [&#x27;Noch ein Test&#x27;,&#x27; &#x27;,
+			&#x27;#&#x27;,&#x27;Artikel&#x27;,
+			&#x27; &#x27;,&#x27;#&#x27;,&#x27;Adjektiv&#x27;,
+			&#x27; &#x27;,&#x27;Hauptwort&#x27;,
+			&#x27; &#x27;,&#x27;Verb&#x27;]
+  Link(listenzeiger,NIL)
+  regelueberpruefung(klassenzkette_erstellen(&#x27;der doofe Nasenmann kotzt&#x27;),listenzeiger)
+
+
+  CleanUp(20)
+
+  isse_regelmaessig(&#x27;der Apfel, die Banane laufen.&#x27;)
+  isse_regelmaessig(&#x27;der doofe Nasenmann kotzt.&#x27;)
+  isse_regelmaessig(&#x27;der Nasenmann kotzt&#x27;)
+  isse_regelmaessig(&#x27;der Nasenmann kotzt.&#x27;)
+  isse_regelmaessig(&#x27;der doofe, große und grüne Nasenmann&#x27;)
+
+  regel_zusammensetzen([&#x27;simpel&#x27;,&#x27;simpel 2&#x27;, &#x27;affe&#x27;, &#x27;ho&#x27;, &#x27;hi&#x27;])
+ENDPROC
+
+
+PROC klassenzkette_erstellen(eingabe)
+DEF quelle:PTR TO CHAR, wort[255]:STRING, index=0, listenzeiger,
+	klassenzkette:PTR TO CHAR,laenge, zeichen
+
+  klassenzkette := String(255)
+
+  listenzeiger := klassenliste
+  quelle:=eingabe
+  REPEAT
+	zeichen := getword(quelle, wort, {index})&gt;0
+	IF wort[0]
+	  listenzeiger := klassenliste
+	  WHILE( (isinlist(wort, listenzeiger) = FALSE) AND (listenzeiger) ) DO listenzeiger := Next(listenzeiger)
+	  IF listenzeiger
+		StrAdd(klassenzkette, ListItem(listenzeiger,0), ALL)
+		StrAdd(klassenzkette, &#x27; &#x27;, ALL)
+	  ELSE
+		WriteF(&#x27;unbekanntes Wort: \s\n&#x27;, wort)
+		StrAdd(klassenzkette, wort, ALL)
+		StrAdd(klassenzkette, &#x27; &#x27;, ALL)
+	  ENDIF
+	ENDIF
+  UNTIL zeichen=0
+
+  laenge := StrLen(klassenzkette)
+  klassenzkette[ laenge-1 ] := 0 /* das letzte space löschen */
+
+  RETURN klassenzkette
+
+ENDPROC
+
+PROC regelueberpruefung(proband, listenbeginn)
+/*
+	Der ·proband· wird mit den regeln in der liste verglichen, deren beginn bei
+	·listenbeginn· liegt. ·proband· ist eine zeichenkette mit dos-wildcards.
+	bei erfolg wird der zeiger auf die liste zurückgegeben, deren Element
+	Nummer 0 den Regelnamen enthält, die zum Erfolg führte.
+*/
+DEF listenzeiger, matchargument[255]:STRING, zeichenkette[511]:STRING, zaehler
+
+  listenzeiger := listenbeginn
+  WHILE( listenzeiger )
+	/* erst zeichenkette zusammensetzen: */
+	zeichenkette[0] := 0 /* sozusagen löschen */
+	FOR zaehler := 2 TO ListLen(listenzeiger)-1
+	  StrAdd(zeichenkette, ListItem(listenzeiger,zaehler), ALL)
+	ENDFOR
+	WriteF(&#x27;&lt;\s&gt;\n&#x27;,zeichenkette)
+	IF ParsePattern(zeichenkette,
+					matchargument, 255) = -1
+	  WriteF(&#x27;Fehler von ParsePattern() bei Regel \s!\n&#x27;, ListItem(listenzeiger,0))
+	ELSE
+	  IF MatchPattern(matchargument, proband)=1
+		WriteF(&#x27;ERFOLG!\n&#x27;)
+		RETURN listenzeiger
+	  ENDIF
+	ENDIF
+	listenzeiger := Next(listenzeiger)
+  ENDWHILE
+  RETURN(NIL)
+ENDPROC
+
+PROC isse_regelmaessig(zkette)
+DEF klassenzeichenkette, regelliste_temp=NIL
+
+  klassenzeichenkette := klassenzkette_erstellen(zkette)
+
+  regelliste_temp := Next(regelliste) /* erste liste ist index */
+  WHILE(regelliste_temp)
+	regelliste_temp := regelueberpruefung(klassenzeichenkette,regelliste_temp)
+	IF regelliste_temp
+	  WriteF(&#x27;Regel \s bei \s erfolgreich angewandt.\n&#x27;, ListItem(regelliste_temp,0), klassenzeichenkette)
+	  regelliste_temp := Next(regelliste_temp) /* weiterschalten, da sonst endlos */
+	ENDIF
+  ENDWHILE
+ENDPROC
+
+PROC regel_zusammensetzen(regelzeiger)
+/*
+Da eine Regel nicht nur Klassen, sondern auch Regelnamen enthalten kann,
+wird hier nachgesehen, ob die übergebene Regel Regelnamen enthält.
+Diese werden dann ersetzt. Der Zeiger auf eine neue Liste wird zurückgegeben.
+*/
+
+DEF regelnummer, elementnummer, zeiger_auf_ersatz, zaehler, wort[511]:STRING,
+	neue_liste
+
+  neue_liste := List(512)
+  StrAdd(wort,ListItem(regelzeiger, 0),ALL)
+  StrAdd(wort,&#x27;+&#x27;,1)
+  putstringinlist(neue_liste, wort)
+  ListAdd(neue_liste, [&#x27; &#x27;], 1)
+
+  elementnummer := 0
+  REPEAT
+
+	regelnummer := 0
+	REPEAT
+	  regelnummer++
+
+/*	es wird solange gesucht, bis das ende der liste erreicht ist oder der
+	Vergleiche erfolgreich war: */
+	UNTIL (StrCmp(ListItem(regelzeiger, elementnummer), ListItem(regelliste, regelnummer),ALL) AND (StrLen(ListItem(regelzeiger, elementnummer))&gt;1)) OR (elementnummer=ListLen(regelliste))
+					/* das Wort */					/* indexelement */
+
+/*	War der Vergleich erfolgreich, ist ·regelnummer· kleiner als die Länge
+	der Liste: */
+
+	IF regelnummer&lt;ListLen(regelliste)
+	  WriteF(&#x27;\s gefunden! Nummer \d\n&#x27;, ListItem(regelzeiger, elementnummer),regelnummer)
+
+/*	  Der Inhalt der gefundenen Liste wird in die neue Liste kopiert und
+	  umklammert, falls ein Wildcard davorstand */
+
+	  zeiger_auf_ersatz := Forward(regelliste, regelnummer)
+	  ListAdd(neue_liste, [&#x27;(&#x27;], 1)
+		FOR zaehler:=2 TO ListLen(zeiger_auf_ersatz)-2 /* name und erstes trennzeichen überspringen */
+		  ListAdd(neue_liste, [ListItem(zeiger_auf_ersatz,zaehler)],1)
+		ENDFOR
+	  ListAdd(neue_liste, [&#x27;)&#x27;], 1)
+	ELSE
+
+/*	  bei Mißerfolg der Suche wird lediglich das Wort kopiert */
+
+	  ListAdd(neue_liste, [ListItem(regelzeiger, elementnummer)], 1)
+	ENDIF
+
+	elementnummer++
+  UNTIL elementnummer = ListLen(regelzeiger)
+
+/*
+  FOR zaehler:= 2 TO ListLen(neue_liste)-1
+	WriteF(&#x27;\s&#x27;, ListItem(neue_liste, zaehler))
+  ENDFOR
+  WriteF(&#x27;\n&#x27;)
+*/
+
+  RETURN neue_liste
+
+ENDPROC
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

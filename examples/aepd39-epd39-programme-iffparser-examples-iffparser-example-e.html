@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>IFFParser_Example.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-aepd39.html">AEPD39</a> &rsaquo; IFFParser_Example.e</div><h1>File: <code>IFFParser_Example.e</code></h1><p class="meta">86 lines · project <a href="../examples/pkg-aepd39.html"><code>AEPD39</code></a></p><p class="pathctx">AEPD39/EPD39/Programme/iffparser/examples/IFFParser_Example.e</p><p class="prose">** <a href="../modules/iffparser-oo.html">IFFParser_oo</a> <a href="../modules/example.html">Example</a> 1 ** ** Here you will see how to ** write some chunks and then read them again! ** ** This code is meant for demostration only. ** ** Feel free of examine, modify or rip it! ** ** (C)Copyright 1995 Fabio Rotondo. ** ** PD Source Code. **</p><h2>Source</h2><pre class="code">/*
+** IFFParser_oo Example 1
+**
+** Here you will see how to
+** write some chunks and then read them again!
+**
+** This code is meant for demostration only.
+**
+** Feel free of examine, modify or rip it!
+**
+** (C)Copyright 1995 Fabio Rotondo.
+**
+** PD Source Code.
+**
+*/
+
+MODULE &#x27;fabio/IFFParser_oo&#x27;,     -&gt; Our MAGIC MODULE!
+       &#x27;tools/exceptions&#x27;
+
+PROC main() HANDLE              -&gt; NOTE: Exception handling!
+  DEF iff:PTR TO iffparser      -&gt; OBJECT instance
+  DEF buf[128]:STRING           -&gt; a STRING ;)
+  DEF s:PTR TO CHAR
+
+  NEW iff.iffparser()           -&gt; Let&#x27;s create it!
+
+  iff.save(&#x27;Ram:Test.IFF&#x27;)      -&gt; First Of ALL let&#x27;s save an ugly IFF file
+  iff.createchunk(&quot;DEMO&quot;,&quot;FORM&quot;) -&gt; This is the FORM chunk!
+
+  iff.createchunk(&quot;DEMO&quot;,&quot;FTXT&quot;) -&gt; This is a FTXT (not exactly 8) chunk!
+  StrCopy(buf, &#x27;DO you like my object?&#x27;)  -&gt; Here we fill our STRING...
+  iff.writechunk(buf, StrLen(buf)+1)    -&gt; AND write it into the chunk!
+  iff.closechunk()                 -&gt; AND THEN we close the chunk...
+
+  iff.createchunk(&quot;DEMO&quot;,&quot;FTXT&quot;) -&gt; Another chunk!
+  StrCopy(buf, &#x27;Is not that easy TO create IFF files with this object?&#x27;)
+  iff.writechunk(buf, StrLen(buf)+1)
+  iff.closechunk()
+
+  iff.createchunk(&quot;DEMO&quot;,&quot;FTXT&quot;)  -&gt; AND the last FTXT chunk!
+  StrCopy(buf, &#x27;What a kind of magic!&#x27;)
+  iff.writechunk(buf, StrLen(buf)+1)
+  iff.closechunk()
+
+  iff.createchunk(&quot;DEMO&quot;,&quot;INFO&quot;) -&gt; Whaaaat?!?! a nek kind of chunk!
+  StrCopy(buf, &#x27;Hello ALL, I\qm the INFO chunk!&#x27;)
+  iff.writechunk(buf, StrLen(buf)+1)
+  iff.closechunk()
+
+  iff.closechunk()               -&gt; Here we close DEMO FORM chunk!
+  iff.close()                    -&gt; AND here we close IFF save file session.
+
+  iff.getheader(buf,&#x27;Ram:Test.IFF&#x27;) -&gt; What kind of file we created?
+  WriteF(&#x27;\s\n&#x27;, buf)
+
+
+  iff.load(&#x27;Ram:Test.IFF&#x27;)
+  iff.setscan(&quot;DEMO&quot;,&quot;FTXT&quot;)  -&gt; Let&#x27;s load ALL FTXT chunks!
+  iff.setscan(&quot;DEMO&quot;,&quot;INFO&quot;)  -&gt; Let&#x27;s load ALL INFO chunks also!
+  iff.exit(&quot;DEMO&quot;,&quot;FORM&quot;)     -&gt; We will stop when FORM ends!
+
+  iff.scan()                  -&gt; Here comes the sun!
+
+  IF (s:=iff.first(&quot;DEMO&quot;,&quot;INFO&quot;))   -&gt; Here we pos TO the first INFO chunk
+    REPEAT
+      WriteF(&#x27;INFO txt:\s\n&#x27;, s)     -&gt; We WriteF() it
+    UNTIL (s:=iff.succ()) = FALSE    -&gt; AND get the next one
+  ENDIF
+
+  IF (s:=iff.first(&quot;DEMO&quot;,&quot;FTXT&quot;))   -&gt; Here we pos TO the first FTXT chunk
+    REPEAT
+      WriteF(&#x27;FTXT txt:\s\n&#x27;, s)     -&gt; We WriteF() it
+    UNTIL (s:=iff.succ()) = FALSE    -&gt; AND get the next one
+  ENDIF
+
+  iff.close()                        -&gt; Here we close ALL resources
+
+
+EXCEPT DO
+  WriteF(&#x27;Here we die!\n&#x27;)
+  report_exception()
+  END iff                            -&gt; ALWAYS END the OBJECT before exiting!!!!
+  CleanUp(0)
+ENDPROC
+
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

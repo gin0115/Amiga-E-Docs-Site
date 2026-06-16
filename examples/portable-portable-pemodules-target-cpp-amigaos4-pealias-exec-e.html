@@ -1,0 +1,176 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>exec.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-portable.html">PortablE</a> &rsaquo; exec.e</div><h1>File: <code>exec.e</code></h1><p class="meta">150 lines · project <a href="../examples/pkg-portable.html"><code>PortablE</code></a></p><p class="pathctx">PortablE/PortablE/PEmodules/target/CPP_AmigaOS4/PEalias/exec.e</p><p class="prose">alias module AND patches <a href="../modules/exec.html#fn-openlibrary">OpenLibrary</a>() for OS4 interfaces</p><h2>Source</h2><pre class="code">/* alias module AND patches OpenLibrary() for OS4 interfaces */
+PUBLIC MODULE &#x27;targetShared/Amiga/exec&#x27;
+PUBLIC MODULE &#x27;targetShared/CPP/Amiga/pStack&#x27;
+MODULE &#x27;target/PE/base&#x27;, &#x27;target/exec&#x27;
+
+
+PRIVATE
+
+OBJECT libNode
+	libName     :ARRAY OF CHAR				-&gt;library name specified during initialisation
+	library     :PTR TO lib					-&gt;actual opened library
+	ifaceName   :ARRAY OF CHAR				-&gt;interface name which should be opened (usually &quot;main&quot;)
+	ifaceVersion							-&gt;interface version which should be opened (usually &quot;1&quot;)
+	ifaceAddress:ARRAY OF PTR TO interface	-&gt;address of library&#x27;s interface variable
+	count
+	
+	next:OWNS PTR TO libNode
+ENDOBJECT
+
+DEF head=NIL:OWNS PTR TO libNode
+
+-&gt;clean-up all library nodes created by InitLibrary() calls
+PROC end()
+	DEF node:OWNS PTR TO libNode, next:OWNS PTR TO libNode
+	
+	node := PASS head
+	WHILE node
+		next := PASS node.next
+		END node
+		node := PASS next
+	ENDWHILE
+ENDPROC
+
+-&gt;helper procedure
+PROC findLibraryNameNode(libName:ARRAY OF CHAR, last=NIL:PTR TO libNode) RETURNS found:PTR TO libNode
+	DEF node :PTR TO libNode
+	
+	found := NIL
+	node := IF last = NIL THEN head ELSE last.next
+	WHILE node
+		IF StrCmpNoCase(node.libName, libName) THEN found := node
+		
+		node := node.next
+	ENDWHILE IF found
+ENDPROC
+
+-&gt;helper procedure
+PROC findLibraryNode(library:PTR TO lib, last=NIL:PTR TO libNode) RETURNS found:PTR TO libNode
+	DEF node :PTR TO libNode
+	
+	found := NIL
+	node := IF last = NIL THEN head ELSE last.next
+	WHILE node
+		IF node.library = library THEN found := node
+		
+		node := node.next
+	ENDWHILE IF found
+ENDPROC
+
+
+PUBLIC
+
+-&gt;this is normally called once per library, from within the relevant module&#x27;s new() procedure
+-&gt;but it may be called more than once, if the library has more than one interface
+PROC InitLibrary(libName:ARRAY OF CHAR, ifaceAddress:ARRAY OF PTR TO interface, ifaceName=NILA:ARRAY OF CHAR, ifaceVersion=1)
+	DEF node:OWNS PTR TO libNode
+	
+	NEW node
+	node.libName := libName
+	node.library := NIL
+	node.ifaceName    := IF ifaceName THEN ifaceName ELSE &#x27;main&#x27;
+	node.ifaceVersion := ifaceVersion
+	node.ifaceAddress := ifaceAddress
+	node.count   := 0
+	node.next    := PASS head
+	
+	node.ifaceAddress[0] := NIL		-&gt;kludge for utility.library &amp; any other interfaces that may be automatically opened by newlib/clib2
+	
+	head := PASS node
+ENDPROC
+
+PROC OpenLibrary(libName:ARRAY OF CHAR, version:ULONG) RETURNS ret:PTR TO lib REPLACEMENT
+	DEF node:PTR TO libNode
+	
+	IF ret := SUPER OpenLibrary(libName, version)
+		-&gt;find relevant library node
+		node := findLibraryNameNode(libName)
+		IF node = NIL
+			Print(&#x27;BUG in PortablE: target/PEalias/exec; OpenLibrary(&quot;\s&quot;, \d); InitLibrary() has not been called for supplied library.\n&#x27;, libName, version)
+			Throw(&quot;BUG&quot;, &#x27;target/PEalias/exec; OpenLibrary(); InitLibrary() has not been called for supplied library&#x27;)
+		ENDIF
+		
+		REPEAT
+			-&gt;handle OS4 library interface
+			node.count := node.count + 1
+			IF node.ifaceAddress[0] = NIL
+				-&gt;get global interface
+				node.ifaceAddress[0] := GetInterface(ret, node.ifaceName, node.ifaceVersion, NILA)
+				node.library := ret
+				
+				IF node.ifaceAddress[0] = NIL
+					Print(&#x27;ERROR: target/PEalias/exec; OpenLibrary(&quot;\s&quot;, \d); GetInterface(,&quot;\s&quot;, \d) failed.\n&#x27;, libName, version, node.ifaceName, node.ifaceVersion)
+					Throw(&quot;lib&quot;, &#x27;target/PEalias/exec; OpenLibrary(); GetInterface() failed&#x27;)
+				ENDIF
+				
+			ELSE IF node.library &lt;&gt; ret
+				Throw(&quot;BUG&quot;, &#x27;target/PEalias/exec; OpenLibrary(); SUPER call unexpectedly returned a different library compared to a previous call&#x27;)
+			ENDIF
+			
+			-&gt;search for any more interfaces associated with this library
+			node := findLibraryNameNode(libName, node)
+		UNTIL node = NIL
+	ENDIF
+ENDPROC
+
+/*
+PROC InfoLibraryInterface(library:PTR TO lib) RETURNS iface:PTR TO interface
+	DEF node:PTR TO libNode
+	
+	-&gt;find relevant library node
+	IF node := findLibraryNode(library)
+		iface := node.ifaceAddress[0]
+	ENDIF
+ENDPROC
+*/
+
+PROC CloseLibrary(library:PTR TO lib) REPLACEMENT
+	DEF node:PTR TO libNode
+	
+	-&gt;find relevant library node
+	node := findLibraryNode(library)
+	-&gt;IF node = NIL THEN Throw(&quot;BUG&quot;, &#x27;target/PEalias/exec; CloseLibrary(); InitLibrary() has not been called for supplied library&#x27;)
+	
+	WHILE node
+		-&gt;handle OS4 library interface
+		node.count := node.count - 1
+		IF node.count = 0
+			-&gt;drop global interface
+			DropInterface(node.ifaceAddress[0])
+			node.library         := NIL
+			node.ifaceAddress[0] := NIL
+		ENDIF
+		
+		-&gt;search for any more interfaces associated with this library
+		node := findLibraryNode(library, node)
+	ENDWHILE
+	
+	SUPER CloseLibrary(library)
+ENDPROC
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

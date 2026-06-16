@@ -1,0 +1,207 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>AP-ToolsPrefs.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-ap-examples.html">AP-examples</a> &rsaquo; AP-ToolsPrefs.e</div><h1>File: <code>AP-ToolsPrefs.e</code></h1><p class="meta">181 lines · project <a href="../examples/pkg-ap-examples.html"><code>AP-examples</code></a></p><p class="pathctx">AP-examples/AP-examples/AP-ToolsPrefs.e</p><p class="prose"><a href="../modules/example.html">Example</a> of using AWNPipe to create a <a href="../modules/reaction.html">reaction</a> gui in E, by Dave Norris</p><h2>Source</h2><pre class="code">
+/* Example of using AWNPipe to create a reaction gui in E, by Dave Norris */
+
+-&gt; MODULE  none needed
+
+DEF pipefile,instring[10]:LIST,
+    menulist,edmenugad,newgad,deletegad,insertgad,close,strtotal,
+    menugad,subgad,bargad,akeygad,notegad,
+    hotkeygad,comlist,edcomgad,stackgad,addgad,deletegad2,insertgad2,wbcligad,
+    savegad,filereqgad,cancelgad,menu1,menu2,
+    in0[100]:STRING,in1[100]:STRING,in2[100]:STRING,in3[100]:STRING,in4[100]:STRING,
+    in5[100]:STRING,in6[100]:STRING,in7[100]:STRING,in8[100]:STRING,in9[100]:STRING,
+    str_spaces[10]:ARRAY OF INT
+
+PROC main()
+  close:=FALSE
+  setdefaults()
+  buildgui()
+  WHILE close=FALSE
+    getline()
+    IF StrCmp(&#x27;app&#x27;,in0)
+      PrintF(&#x27;You dropped this icon on me!\n \s\n\n&#x27;,in1)
+    ELSEIF StrCmp(&#x27;gadget&#x27;,in0)
+      dogad()
+    ELSEIF StrCmp(&#x27;menu&#x27;,in0)
+      PrintF(&#x27;You picked a menu item!\n\n&#x27;)
+    ELSEIF StrCmp(&#x27;close&#x27;,in0)
+      close:=TRUE
+    ENDIF
+  ENDWHILE
+  Close(pipefile)
+  PrintF(&#x27;file closed,\nsee you later.\n&#x27;)
+ENDPROC
+
+PROC dogad()
+  DEF x
+  x:=Val(in1)
+  SELECT x
+    CASE menulist;      PrintF(&#x27;just clicked on menulist!\n\n&#x27;)
+    CASE edmenugad;     printstring()        -&gt; check string gads for spaces
+    CASE newgad;        PrintF(&#x27;just pressed new!\n\n&#x27;)
+    CASE deletegad;     PrintF(&#x27;just pressed delete!\n\n&#x27;)
+    CASE insertgad;     PrintF(&#x27;just pressed insert!\n\n&#x27;)
+    CASE menugad;       PrintF(&#x27;just checked menu!\n\n&#x27;)
+    CASE subgad;        PrintF(&#x27;just checked sub!\n\n&#x27;)
+    CASE bargad;        PrintF(&#x27;just pressed bar!\n\n&#x27;)
+    CASE akeygad;       printstring()
+    CASE notegad;       printstring()
+    CASE hotkeygad;     printstring()
+    CASE comlist;       PrintF(&#x27;just clicked on command list!\n\n&#x27;)
+    CASE edcomgad;      printstring()
+    CASE stackgad;      printstring()
+    CASE addgad;        PrintF(&#x27;just pressed add!\n\n&#x27;)
+    CASE deletegad2;    PrintF(&#x27;just pressed delete button 2!\n\n&#x27;)
+    CASE insertgad2;    PrintF(&#x27;just pressed insert button 2!\n\n&#x27;)
+    CASE wbcligad;      PrintF(&#x27;just pressed chooser gadget!\n\n&#x27;)
+    CASE savegad;       PrintF(&#x27;just pressed save!\n\n&#x27;)
+    CASE filereqgad;    PrintF(&#x27;file selected=\s\n\n&#x27;,in3)
+    CASE cancelgad;     PrintF(&#x27;just pressed cancel!\n\n&#x27;)
+    DEFAULT;            PrintF(&#x27;You have not put me in yet!!!\n\n&#x27;)
+  ENDSELECT
+ENDPROC
+
+PROC printstring()
+  joinstr(); PrintF(&#x27;just pressed return \q\s\q!\n\n&#x27;,in2)
+ENDPROC
+
+PROC joinstr()  -&gt; glues string back together with spaces
+  DEF x,y
+  FOR x:=3 TO strtotal
+    FOR y:=0 TO str_spaces[x] DO StrAdd(in2,&#x27; &#x27;)
+    StrAdd(in2,instring[x])
+  ENDFOR
+ENDPROC
+
+PROC buildgui()
+  pipefile:=Open(&#x27;awnpipe:test1/xc&#x27;,OLDFILE)  -&gt;wcon:300//200/200/PipeEvents
+  topipe(pipefile,&#x27; &quot; Workbench Menu Prefs 1.0 &quot; cg dg db si so a cs app\n&#x27;)
+
+  topipe(pipefile,&#x27; layout v\n&#x27;)
+    topipe(pipefile,&#x27; layout b 0 si\n&#x27;)  -&gt;so
+      topipe(pipefile,&#x27; layout b 0 so si v\n&#x27;)
+        topipe(pipefile,&#x27; layout gt &quot;Menu Items&quot; b 3 so si v\n&#x27;) -&gt; 3 4 5 7 8 9
+          menulist:=topipe(pipefile,&#x27;listbrowser minw 180  minh 110\n&#x27;)
+          edmenugad:=topipe(pipefile,&#x27;string lj\n&#x27;)
+          topipe(pipefile,&#x27; layout b 0 si even\n&#x27;)
+            newgad:=topipe(pipefile,&#x27;button gt _New\n&#x27;)
+            deletegad:=topipe(pipefile,&#x27;button gt Delete\n&#x27;)
+            insertgad:=topipe(pipefile,&#x27;button gt Insert\n&#x27;)
+          topipe(pipefile,&#x27; le\n&#x27;)
+        topipe(pipefile,&#x27; le\n&#x27;)
+      topipe(pipefile,&#x27; le\n&#x27;)
+      topipe(pipefile,&#x27; layout b 0 so si v\n&#x27;)
+        topipe(pipefile,&#x27;space\n&#x27;)
+        menugad:=topipe(pipefile,&#x27;checkbox gt _Menu\n&#x27;)
+        subgad:=topipe(pipefile,&#x27;checkbox gt _Sub\n&#x27;)
+        bargad:=topipe(pipefile,&#x27;button gt Bar\n&#x27;)
+        topipe(pipefile,&#x27;space\n&#x27;)
+        topipe(pipefile,&#x27; layout gt AmiKey b 0 so si v\n&#x27;)
+          akeygad:=topipe(pipefile,&#x27;string minc=0 maxc=2 lj\n&#x27;)
+        topipe(pipefile,&#x27; le\n&#x27;)
+        topipe(pipefile,&#x27; layout gt Comment b 0 so si v\n&#x27;)
+          notegad:=topipe(pipefile,&#x27;string minc=0 maxc=15 lj\n&#x27;)
+        topipe(pipefile,&#x27; le\n&#x27;)
+        topipe(pipefile,&#x27;space\n&#x27;)
+        topipe(pipefile,&#x27;space\n&#x27;)
+      topipe(pipefile,&#x27; le\n&#x27;)
+      topipe(pipefile,&#x27; layout b 0 so si v\n&#x27;)
+        topipe(pipefile,&#x27; layout gt &quot;Hot Key&quot; b 3 so si v\n&#x27;)
+          hotkeygad:=topipe(pipefile,&#x27;string lj\n&#x27;)
+        topipe(pipefile,&#x27; le\n&#x27;)
+        topipe(pipefile,&#x27; layout gt Commands b=3 so si v\n&#x27;)
+          comlist:=topipe(pipefile,&#x27;listbrowser minw 180  minh=70\n&#x27;)
+          topipe(pipefile,&#x27; layout b 0 si\n&#x27;)
+            edcomgad:=topipe(pipefile,&#x27;string lj\n&#x27;)
+            stackgad:=topipe(pipefile,&#x27;integer maxc=6 defn 4096\n&#x27;)
+          topipe(pipefile,&#x27; le\n&#x27;)
+          topipe(pipefile,&#x27; layout b 0 si even\n&#x27;)
+            addgad:=topipe(pipefile,&#x27;button gt _Add\n&#x27;)
+            deletegad2:=topipe(pipefile,&#x27;button gt Delete\n&#x27;)
+            insertgad2:=topipe(pipefile,&#x27;button gt Insert\n&#x27;)
+            wbcligad:=topipe(pipefile,&#x27;chooser pu cl &quot; WB|CLI&quot;\n&#x27;)
+          topipe(pipefile,&#x27; le\n&#x27;)
+        topipe(pipefile,&#x27; le\n&#x27;)
+      topipe(pipefile,&#x27; le\n&#x27;)
+    topipe(pipefile,&#x27; le\n&#x27;)
+    topipe(pipefile,&#x27; layout b 0 si so\n&#x27;)
+      savegad:=topipe(pipefile,&#x27;button gt Save\n&#x27;)
+      topipe(pipefile,&#x27;space\n&#x27;)
+      topipe(pipefile,&#x27;space\n&#x27;)
+      topipe(pipefile,&#x27;space\n&#x27;)
+      topipe(pipefile,&#x27;space\n&#x27;)
+      cancelgad:=topipe(pipefile,&#x27;button gt Cancel c\n&#x27;)
+    topipe(pipefile,&#x27; le\n&#x27;)
+  topipe(pipefile,&#x27; le\n&#x27;)
+
+  menu1:=topipe(pipefile,&#x27; menu gt &quot;Project |About|$! E with AWNpipe |$! By Dave Norris&quot;\n&#x27;)
+  menu2:=topipe(pipefile,&#x27; menu gt &quot;Data|@AShow all data|Show part|$@GGood|$@LLuck&quot;\n&#x27;)
+  topipe(pipefile,&#x27;open\n&#x27;)
+ENDPROC
+
+PROC topipe(pipef,data)
+  DEF res,input[10]:STRING
+  Fputs(pipef,data)
+  IF ReadStr(pipef,input)&lt;&gt;-1     -&gt; returns -1 if error or EOF encounted
+    IF StrCmp(input,&#x27;ok&#x27;,2)
+      IF StrLen(input)&gt;2 THEN res:=RightStr(input,input,(StrLen(input)-3))
+    ELSE  -&gt; ^ only return res if gadget or menu, not needed for layout ^
+      PrintF(&#x27;Error from \s\n&#x27;,data)
+    ENDIF
+  ELSE
+    PrintF(&#x27;Error from ReadStr(pipef,input)\n&#x27;)
+    close:=TRUE
+  ENDIF
+ENDPROC Val(res)
+
+PROC setdefaults()    -&gt; put here to unclutter main()
+  instring:=[in0,in1,in2,in3,in4,in5,in6,in7,in8,in9]:LONG
+ENDPROC
+
+PROC getline()     -&gt; loops until all data seperated by spaces is collected
+  DEF space,input[1024]:STRING,x,gap
+  x:=0
+  IF ReadStr(pipefile,input)&lt;&gt;-1     -&gt; returns -1 if error or EOF encounted
+-&gt;    PrintF(&#x27;input=\s,\n&#x27;,input)
+    WHILE (space:=InStr(input,&#x27; &#x27;))&lt;&gt;-1
+      StrCopy(instring[x],input,space)
+-&gt;      PrintF(&#x27;instring[\d]=\s,\n&#x27;,x,instring[x])
+      MidStr(input,input,space+1)
+      gap:=StrLen(input)
+      input:=TrimStr(input)
+      x:=x+1
+      str_spaces[x]:=gap-StrLen(input)
+    ENDWHILE
+    strtotal:=x
+    StrCopy(instring[x],input)
+-&gt;    PrintF(&#x27;instring[\d]=\s,\n&#x27;,x,instring[x])
+  ENDIF
+ENDPROC
+
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

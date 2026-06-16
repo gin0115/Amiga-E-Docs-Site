@@ -1,0 +1,1947 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>test_os12.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-easygui-os12.html">EasyGUI_OS12</a> &rsaquo; test_os12.e</div><h1>File: <code>test_os12.e</code></h1><p class="meta">1921 lines · project <a href="../examples/pkg-easygui-os12.html"><code>EasyGUI_OS12</code></a></p><p class="pathctx">EasyGUI_OS12/easygui_os12/examples/test_os12.e</p><p class="prose">A set of test GUIs using about any features of <a href="../modules/easygui.html">EasyGUI</a> and/or <a href="../modules/gadtools.html">gadtools</a> in a gallery style. TODO: plugins, <a href="../modules/easygui-debug.html#const-eg-maxw">EG_MAXW</a>, <a href="../modules/easygui-debug.html#const-eg-maxh">EG_MAXH</a>, let me know what else! This code was written basically to test the EasyGUI_OS12 distribution and the gadtools13.<a href="../modules/library.html">library</a>, but also went a good example how <a href="../modules/easygui.html">EasyGUI</a> can be used in</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/easygui.html">tools/easygui</a></li><li><a href="../modules/easygui-os12.html">tools/easygui_os12</a></li><li><a href="../modules/exceptions.html">tools/exceptions</a></li></ul></div><h2>Source</h2><pre class="code">/* A set of test GUIs using about any features of EasyGUI and/or
+   gadtools in a gallery style. TODO: plugins, EG_MAXW, EG_MAXH,
+   let me know what else!
+
+   This code was written basically to test the EasyGUI_OS12
+   distribution and the gadtools13.library, but also went a good
+   example how EasyGUI can be used in an OO context.
+
+   Here a short intro:
+
+   All windows are OO objects inherited from the &quot;gui&quot; object,
+   which provides a polymorph interface to all windows. All window
+   objects contain the entire global data they require, so running
+   mutliple instances of such an object is no big deal.
+
+   All action functions are mapped to object methods, the pointer to
+   the object in question is passed as the info value to each action
+   function. (also required for allowing multiple instances)
+
+   All window objects are grouped to one &quot;global&quot; object, which allows
+   for cloning of all GUIs in one go (as used in the changewin demo section)
+
+   Please do not redistribute modified versions of this code. If you have
+   any ideas how to make things better contact me at metamonk@yahoo.com.
+
+   This code is Copyright (c) 2000, Ralf &#x27;hippie2000&#x27; Steines, and
+   inherits the legal state from the original EasyGUI disctribution. */
+
+
+OPT PREPROCESS
+OPT LARGE
+
+-&gt; RST: Added conditional EASY_OS12 support
+#define EASY_OS12
+
+#ifdef EASY_OS12
+  MODULE &#x27;tools/easygui_os12&#x27;
+#endif
+#ifndef EASY_OS12
+  OPT OSVERSION=37
+  MODULE &#x27;tools/easygui&#x27;
+#endif
+
+MODULE &#x27;tools/exceptions&#x27;, &#x27;tools/constructors&#x27;,
+       &#x27;exec/nodes&#x27;, &#x27;exec/lists&#x27;,
+       &#x27;libraries/gadtools&#x27;, &#x27;utility/tagitem&#x27;,
+       &#x27;graphics/text&#x27;, &#x27;graphics/view&#x27;,
+       &#x27;intuition/intuition&#x27;,&#x27;intuition/screens&#x27;
+
+-&gt; the base class of all windows (and it&#x27;s methods)
+
+OBJECT gui
+  gh:PTR TO guihandle        -&gt; the guihandle
+  isopen                     -&gt; window open bool
+  top                        -&gt; top line of gui
+  gui                        -&gt; gui definition
+  title                      -&gt; window title
+/*
+  init()                     constructor
+  gui:=getgui(top)           create and get self.gui
+  setgh(gh)                  set to external guihandle
+  open()                     open the window
+  clean()                    called after window closed
+  disable(bool)              disable content of gui
+  set(bool)                  set all possible values
+  get()                      get all possible values
+*/
+ENDOBJECT
+
+-&gt; the windows classes (and their custom methods if any)
+
+OBJECT mainwin OF gui
+ENDOBJECT
+
+OBJECT gtbuttons OF gui
+  check[3]:ARRAY OF LONG     -&gt; checkmark gads
+  checkv[3]:ARRAY OF LONG    -&gt; checkmark values
+  mxlist                     -&gt; mx selections
+  mx[3]:ARRAY OF LONG        -&gt; mx gads
+  mxv[3]:ARRAY OF LONG       -&gt; mx values
+  button,sbutton,            -&gt; button gads
+  cyclelist                  -&gt; cycle selections
+  cycle[2]:ARRAY OF LONG     -&gt; cycle gads
+  cyclev[2]:ARRAY OF LONG    -&gt; cycle values
+ENDOBJECT
+
+OBJECT gttexts OF gui
+  integer[2]:ARRAY OF LONG   -&gt; integer gads
+  integerv[2]:ARRAY OF LONG  -&gt; integer values
+  str[2]:ARRAY OF LONG       -&gt; string gads
+  strv[2]:ARRAY OF LONG      -&gt; string strings
+  num[4]:ARRAY OF LONG       -&gt; num gads
+  numv[4]:ARRAY OF LONG      -&gt; num values
+  text[4]:ARRAY OF LONG      -&gt; text gads
+  textv[4]:ARRAY OF LONG     -&gt; text pointers
+ENDOBJECT
+
+OBJECT gtscrolls OF gui
+  slide[6]:ARRAY OF LONG     -&gt; slide gads
+  slidev[6]:ARRAY OF LONG    -&gt; slide values
+  scroll[6]:ARRAY OF LONG    -&gt; scroll gads
+  scrollv[6]:ARRAY OF LONG   -&gt; scroll values
+/*
+  set_total(bool)            set scroller&#x27;s total value
+  set_visible(bool)          set scroller&#x27;s visible value
+*/
+ENDOBJECT
+
+OBJECT gtlistvs OF gui
+  list1                      -&gt; default list
+  list2                      -&gt; changed list
+  listv[8]:ARRAY OF LONG     -&gt; listv gads
+  listvv[8]:ARRAY OF LONG    -&gt; listv values
+/*
+  set_list(bool)             set listview&#x27;s list
+*/
+ENDOBJECT
+
+OBJECT gtpalettes OF gui
+  palette[6]:ARRAY OF LONG   -&gt; palette gads
+  palettev[6]:ARRAY OF LONG  -&gt; palette values
+ENDOBJECT
+
+OBJECT egspaces OF gui
+ENDOBJECT
+
+OBJECT egbevels OF gui
+ENDOBJECT
+
+OBJECT gtmenus OF gui
+  menus1                     -&gt; newmenu struct 1
+  menus2                     -&gt; newmenu struct 2
+  menumx                     -&gt; the mx to choose between
+  menusnum                   -&gt; the current menus
+/*
+  change_menus(frommx,num)   change menus of this win
+*/
+ENDOBJECT
+
+OBJECT egchwin OF gui
+  screenmx                   -&gt; mx to choose screen
+  screennum                  -&gt; the current choice
+  winmx                      -&gt; mx to choose window type
+  wintypenum                 -&gt; the current choice
+  fontmx                     -&gt; mx to choose font
+  fontnum                    -&gt; the current choice
+  titlemx                    -&gt; mx to choose window title
+  titlenum                   -&gt; the current choice
+/*
+  change_screen(frommx,num)  change screen of all open windows
+  change_wintype(frommx,num) change decoration of all open windows
+  change_font(frommx,num)    change font of all open windows
+  change_title(num)          change title of all open windows
+  open_all(frombutton)       open all windows
+  close_all()                close all windows
+  block_all()                block all windows
+  move_all()                 move all windows
+  size_all()                 size all windows
+*/
+ENDOBJECT
+
+OBJECT egchgui OF gui
+  guilist                    -&gt; list of all guis
+  guilabels                  -&gt; and their names
+  guicycle                   -&gt; cycle to choose gui
+  guinum                     -&gt; the current choice
+ENDOBJECT
+
+-&gt; the global class containing all window objects and the global data
+
+OBJECT global
+  mh:PTR TO multihandle      -&gt; the multihandle for all windows
+  menus                      -&gt; the menus shared to all windows
+  screen                     -&gt; the screen where all goes on
+  wintype                    -&gt; the decoration type of all windows
+  font                       -&gt; the font (textattr) of all windows
+  title                      -&gt; global title for all windows or NIL
+  mainwin:PTR TO mainwin
+  gtbuttons:PTR TO gtbuttons
+  gttexts:PTR TO gttexts
+  gtscrolls:PTR TO gtscrolls
+  gtlistvs:PTR TO gtlistvs
+  gtpalettes:PTR TO gtpalettes
+  egspaces:PTR TO egspaces
+  egbevels:PTR TO egbevels
+  gtmenus:PTR TO gtmenus
+  egchwin:PTR TO egchwin
+  egchgui:PTR TO egchgui
+/*
+  init()                     constructor
+  end()                      destructor
+*/
+ENDOBJECT
+
+-&gt; the two global vars :)
+
+DEF global=NIL:PTR TO global,   -&gt; All gui objects
+    global2=NIL:PTR TO global,  -&gt; A 2nd instance for changegui window
+
+  -&gt; These two are required for ForAll() and multiforall(). Using local vars
+  -&gt; instead (which i would have preferred) crashes all !?! (EC 3.3a reg)
+
+    x:PTR TO guihandle,
+    g:PTR TO gui
+
+
+/********************************************************************
+ * Polymorph interface to all windows + action function wrapper
+ ********************************************************************/
+
+PROC init() OF gui IS EMPTY
+
+PROC getgui(t) OF gui RETURN NIL
+
+PROC setgh(gh) OF gui
+    self.gh:=gh
+ENDPROC
+
+PROC open(close=NIL,clean=NIL) OF gui
+  DEF mygh
+  IF self.isopen=FALSE
+    self.isopen:=TRUE
+    addmultiA(global.mh,IF global.title THEN global.title ELSE self.title,
+      self.getgui([BAR]),
+      [ EG_CLOSE,  close,
+        EG_CLEAN,  IF clean THEN clean ELSE {gui_clean},
+        EG_INFO,   self,
+        EG_GHVAR,  {mygh},
+        EG_MENU,   global.menus,
+        EG_WTYPE,  global.wintype,
+        EG_SCRN,   global.screen,
+        EG_FONT,   global.font,
+        EG_AWPROC, {global_awp},
+        EG_LEFT,   Rnd(400),
+        EG_TOP,    Rnd(400),
+        TAG_DONE]
+    )
+    self.gh:=mygh
+  ELSE
+    tofront(self.gh)
+  ENDIF
+ENDPROC
+
+-&gt; clean(info)
+PROC gui_clean(gui:PTR TO gui) IS gui.clean()
+PROC clean() OF gui
+  self.isopen:=FALSE
+  self.gh:=NIL
+ENDPROC
+
+-&gt; button(qual*,data*,info)
+PROC gui_disable(d,gui:PTR TO gui) IS gui.disable(d)
+PROC disable(d) OF gui IS EMPTY
+
+-&gt; button(qual*,data*,info)
+PROC gui_set(d,gui:PTR TO gui) IS gui.set(d)
+PROC set(d) OF gui IS EMPTY
+
+-&gt; button(qual*,data*,info)
+PROC gui_get(gui:PTR TO gui) IS gui.get()
+PROC get() OF gui IS EMPTY
+
+
+/********************************************************************
+ * Buttons window
+ ********************************************************************/
+
+PROC init() OF gtbuttons
+  DEF i
+  self.title:=&#x27;Gadtools Buttons in EasyGUI_OS12&#x27;
+  self.mxlist:=[&#x27;One&#x27;,&#x27;Two&#x27;,&#x27;Three&#x27;,NIL]
+  self.cyclelist:=[&#x27;Yep&#x27;,&#x27;Nope&#x27;,&#x27;Hmmm&#x27;,NIL]
+  FOR i:=0 TO 2
+    self.checkv[i]:=TRUE
+    self.mxv[i]:=1
+  ENDFOR
+  FOR i:=0 TO 1 DO self.cyclev[i]:=1
+ENDPROC
+
+PROC getgui(top) OF gtbuttons
+  DEF check0,check1,check2, mx0,mx1,mx2, button,sbutton, cycle0,cycle1
+  IF self.gui=NIL
+    self.gui:=
+      NEW [ROWS,
+        top,
+        NEW [TEXT,&#x27;Button and Sbutton are App-Buttons&#x27;,NIL,FALSE,5],
+        NEW [BAR],
+        NEW [COLS,
+
+          NEW [ROWS,
+
+              NEW [BEVEL,
+                check0:=NEW [CHECK,                         -&gt; CHECKs
+                {gtbuttons_cmv},-&gt; action
+                &#x27;_Check&#x27;,       -&gt; righttext
+                self.checkv[0], -&gt; checked
+                FALSE,          -&gt; lefttextbool
+                0,              -&gt; data
+                &quot;c&quot;,            -&gt; key
+                FALSE]          -&gt; disabled
+              ],
+              NEW [BEVEL,
+                check1:=NEW [CHECK,
+                {gtbuttons_cmv},-&gt; action
+                &#x27;C_heck&#x27;,       -&gt; righttext
+                self.checkv[1], -&gt; checked
+                TRUE,           -&gt; lefttextbool
+                1,              -&gt; data
+                &quot;h&quot;,            -&gt; key
+                FALSE]          -&gt; disabled
+              ],
+              NEW [BEVEL,
+                check2:=NEW [CHECK,
+                {gtbuttons_cmv},-&gt; action
+                NIL,            -&gt; righttext
+                self.checkv[2], -&gt; checked
+                FALSE,          -&gt; lefttextbool
+                2,              -&gt; data
+                NIL,            -&gt; key
+                FALSE]          -&gt; disabled
+              ],
+              NEW [BEVEL,
+                mx0:=NEW [MX,                               -&gt; MXs
+                {gtbuttons_mxv},-&gt; action
+                NIL,            -&gt; righttext
+                self.mxlist,    -&gt; list
+                FALSE,          -&gt; lefttextbool
+                self.mxv[0],    -&gt; current
+                0,              -&gt; data
+                NIL,            -&gt; key
+                FALSE]          -&gt; disabled
+              ]
+
+          ],
+
+          NEW [ROWS,
+
+              NEW [BEVEL,
+                mx1:=NEW [MX,
+                {gtbuttons_mxv},-&gt; action
+                &#x27;_Mx&#x27;,          -&gt; righttext
+                self.mxlist,    -&gt; list
+                FALSE,          -&gt; lefttextbool
+                self.mxv[1],    -&gt; current
+                1,              -&gt; data
+                &quot;m&quot;,            -&gt; key
+                FALSE]          -&gt; disabled
+              ],
+              NEW [BEVEL,
+                mx2:=NEW [MX,
+                {gtbuttons_mxv},-&gt; action
+                &#x27;M_x&#x27;,          -&gt; righttext
+                self.mxlist,    -&gt; list
+                TRUE,           -&gt; lefttextbool
+                self.mxv[2],    -&gt; current
+                2,              -&gt; data
+                &quot;x&quot;,            -&gt; key
+                FALSE]          -&gt; disabled
+              ]
+
+
+          ],
+
+          NEW [ROWS,
+
+              NEW [BEVEL,
+                button:=NEW [BUTTON,                         -&gt; BUTTONS
+                {gtbuttons_btv},-&gt; action
+                &#x27;_Button&#x27;,      -&gt; text
+                &#x27;&#x27;,             -&gt; data
+                &quot;b&quot;,            -&gt; key
+                {gtbuttons_gaw},-&gt; awproc
+                FALSE]          -&gt; disabled
+              ],
+              NEW [BEVEL,
+                sbutton:=NEW [SBUTTON,
+                {gtbuttons_btv},-&gt; action
+                &#x27;_SButton&#x27;,     -&gt; text
+                &#x27;s&#x27;,            -&gt; data
+                &quot;s&quot;,            -&gt; key
+                {gtbuttons_gaw},-&gt; awproc
+                FALSE]          -&gt; disabled
+              ],
+              NEW [BEVEL,
+                cycle0:=NEW [CYCLE,                           -&gt; CYCLEs
+                {gtbuttons_cyv},-&gt; action
+                &#x27;C_ycle&#x27;,       -&gt; lefttext
+                self.cyclelist, -&gt; list
+                self.cyclev[0], -&gt; current
+                0,              -&gt; data
+                &quot;y&quot;,            -&gt; key
+                FALSE]          -&gt; disabled
+              ],
+              NEW [BEVEL,
+                cycle1:=NEW [CYCLE,
+                {gtbuttons_cyv},-&gt; action
+                NIL,            -&gt; lefttext
+                self.cyclelist, -&gt; list
+                self.cyclev[1], -&gt; current
+                1,              -&gt; data
+                NIL,            -&gt; key
+                FALSE]          -&gt; disabled
+              ]
+
+          ]
+
+        ],
+        NEW [BAR],
+        NEW [EQCOLS,
+          NEW [BUTTON,{gui_disable},&#x27;Disable&#x27;,TRUE],
+          NEW [BUTTON,{gui_disable},&#x27;Enable&#x27;,FALSE],
+          NEW [BUTTON,{gui_set},&#x27;Set&#x27;,TRUE],
+          NEW [BUTTON,{gui_set},&#x27;Reset&#x27;,FALSE],
+          NEW [BUTTON,{gui_get},&#x27;Get&#x27;,TRUE],
+          NEW [BUTTON,0,&#x27;Close&#x27;]
+        ]
+      ]
+    self.check[0]:=check0; self.check[1]:=check1; self.check[2]:=check2
+    self.mx[0]:=mx0; self.mx[1]:=mx1; self.mx[2]:=mx2
+    self.button:=button; self.sbutton:=sbutton
+    self.cycle[0]:=cycle0; self.cycle[1]:=cycle1
+  ENDIF
+ENDPROC self.gui
+
+PROC disable(bool) OF gtbuttons
+  DEF i
+  FOR i:=0 TO 2
+    setdisabled(self.gh,self.check[i],bool)
+    setdisabled(self.gh,self.mx[i],bool)
+  ENDFOR
+  setdisabled(self.gh,self.button,bool)
+  setdisabled(self.gh,self.sbutton,bool)
+  FOR i:=0 TO 1
+    setdisabled(self.gh,self.cycle[i],bool)
+  ENDFOR
+ENDPROC
+
+PROC set(bool) OF gtbuttons
+  DEF new,i
+  new:=IF bool THEN FALSE ELSE TRUE
+  FOR i:=0 TO 2
+    self.checkv[i]:=new
+    setcheck(self.gh,self.check[i],new)
+  ENDFOR
+  new:=IF bool THEN 2 ELSE 1
+  FOR i:=0 TO 2
+    self.mxv[i]:=new
+    setmx(self.gh,self.mx[i],new)
+  ENDFOR
+  new:=IF bool THEN 0 ELSE 1
+  FOR i:=0 TO 1
+    self.cyclev[i]:=new
+    setcycle(self.gh,self.cycle[i],new)
+  ENDFOR
+ENDPROC
+
+PROC get() OF gtbuttons
+  DEF i
+  WriteF(&#x27;---All values:\n&#x27;)
+  FOR i:=0 TO 2 DO WriteF(&#x27;check\d: \d\n&#x27;,i,self.checkv[i])
+  FOR i:=0 TO 2 DO WriteF(&#x27;mx\d: \d\n&#x27;,i,self.mxv[i])
+  FOR i:=0 TO 1 DO WriteF(&#x27;cycle\d: \d\n&#x27;,i,self.cyclev[i])
+  WriteF(&#x27;---\n&#x27;)
+ENDPROC
+
+-&gt; check(qual*,data*,info,checkedbool)
+PROC gtbuttons_cmv(num,gui:PTR TO gtbuttons,val) IS setdisp(&#x27;check&#x27;,gui.checkv,num,val)
+
+-&gt; mx(qual*,data*,info,num_selected)
+PROC gtbuttons_mxv(num,gui:PTR TO gtbuttons,val) IS setdisp(&#x27;mx&#x27;,gui.mxv,num,val)
+
+-&gt; button(qual*,data*,info)
+PROC gtbuttons_btv(str,i) IS WriteF(&#x27;\sbutton=clicked\n&#x27;,str)
+
+-&gt; appwin(data*,info,awmsg:PTR TO appmessage)
+PROC gtbuttons_gaw(str,gui:PTR TO gtbuttons,a) IS WriteF(&#x27;Dropped in \sbutton\n&#x27;,str)
+
+-&gt; cycle(qual*,data*,info,num_selected)
+PROC gtbuttons_cyv(num,gui:PTR TO gtbuttons,val) IS setdisp(&#x27;cycle&#x27;,gui.cyclev,num,val)
+
+
+/********************************************************************
+ * Texts window
+ ********************************************************************/
+
+PROC init() OF gttexts
+  DEF i
+  self.title:=&#x27;Gadtools Texts in EasyGUI_OS12&#x27;
+  FOR i:=0 TO 1
+    self.integerv[i]:=123
+    self.strv[i]:=String(50)
+    StrCopy(self.strv[i],&#x27;bla&#x27;)
+  ENDFOR
+  FOR i:=0 TO 3
+    self.numv[i]:=123
+    self.textv[i]:=&#x27;bla&#x27;
+  ENDFOR
+ENDPROC
+
+PROC getgui(top) OF gttexts
+  DEF integer0,integer1, str0,str1, num0,num1,num2,num3, text0,text1,text2,text3
+  IF self.gui=NIL
+    self.gui:=
+      NEW [ROWS,
+        top,
+        NEW [TEXT,&#x27;The string gadgets are App-Gadgets&#x27;,NIL,FALSE,5],
+        NEW [BAR],
+        NEW [COLS,
+
+          NEW [ROWS,
+
+              NEW [BEVEL,
+                integer0:=NEW [INTEGER,                   -&gt; INTEGERs
+                {gttexts_itv},   -&gt; action
+                &#x27;_Integer&#x27;,      -&gt; lefttext
+                self.integerv[0],-&gt; value
+                5,               -&gt; relsize
+                0,               -&gt; data
+                &quot;i&quot;,             -&gt; key
+                FALSE]           -&gt; disabled
+              ],
+              NEW [BEVEL,
+                integer1:=NEW [INTEGER,
+                {gttexts_itv},   -&gt; action
+                NIL,             -&gt; lefttext
+                self.integerv[0],-&gt; value
+                5,               -&gt; relsize
+                1,               -&gt; data
+                NIL,             -&gt; key
+                FALSE]           -&gt; disabled
+              ],
+              NEW [BEVEL,
+                str0:=NEW [STR,                             -&gt; STRs
+                {gttexts_stv},   -&gt; action
+                &#x27;_Str&#x27;,          -&gt; lefttext
+                self.strv[0],    -&gt; initial
+                50,              -&gt; maxchars
+                5,               -&gt; relsize
+                FALSE,           -&gt; overbool
+                0,               -&gt; data
+                &quot;s&quot;,             -&gt; key
+                {gttexts_gaw},   -&gt; awproc
+                FALSE]           -&gt; disabled
+              ],
+              NEW [BEVEL,
+                str1:=NEW [STR,
+                {gttexts_stv},   -&gt; action
+                NIL,             -&gt; lefttext
+                self.strv[1],    -&gt; initial
+                50,              -&gt; maxchars
+                5,               -&gt; relsize
+                FALSE,           -&gt; overbool
+                1,               -&gt; data
+                NIL,             -&gt; key
+                {gttexts_gaw},   -&gt; awproc
+                FALSE]           -&gt; disabled
+              ]
+
+          ],
+
+          NEW [ROWS,
+
+              NEW [BEVEL,
+                num0:=NEW [NUM,                             -&gt; NUMs
+                self.numv[0],    -&gt; value
+                &#x27;Num&#x27;,           -&gt; lefttext  NO KEY!
+                TRUE,            -&gt; borderbool
+                5]               -&gt; relsize
+              ],
+              NEW [BEVEL,
+                num1:=NEW [NUM,
+                self.numv[1],    -&gt; value
+                &#x27;Num&#x27;,           -&gt; lefttext  NO KEY!
+                FALSE,           -&gt; borderbool
+                5]               -&gt; relsize
+              ],
+              NEW [BEVEL,
+                num2:=NEW [NUM,
+                self.numv[2],    -&gt; value
+                NIL,             -&gt; lefttext  NO KEY!
+                TRUE,            -&gt; borderbool
+                5]               -&gt; relsize
+              ],
+              NEW [BEVEL,
+                num3:=NEW [NUM,
+                self.numv[3],    -&gt; value
+                NIL,             -&gt; lefttext  NO KEY!
+                FALSE,           -&gt; borderbool
+                5]               -&gt; relsize
+              ]
+
+          ],
+
+          NEW [ROWS,
+
+              NEW [BEVEL,
+                text0:=NEW [TEXT,                             -&gt; TEXTs
+                self.textv[0],   -&gt; string
+                &#x27;Text&#x27;,          -&gt; lefttext  NO KEY!
+                TRUE,            -&gt; borderbool
+                5]               -&gt; relsize
+              ],
+              NEW [BEVEL,
+                text1:=NEW [TEXT,
+                self.textv[1],   -&gt; string
+                &#x27;Text&#x27;,          -&gt; lefttext  NO KEY!
+                FALSE,           -&gt; borderbool
+                5]               -&gt; relsize
+              ],
+              NEW [BEVEL,
+                text2:=NEW [TEXT,
+                self.textv[2],   -&gt; string
+                NIL,             -&gt; lefttext  NO KEY!
+                TRUE,            -&gt; borderbool
+                5]               -&gt; relsize
+              ],
+              NEW [BEVEL,
+                text3:=NEW [TEXT,
+                self.textv[3],   -&gt; string
+                NIL,             -&gt; lefttext  NO KEY!
+                FALSE,           -&gt; borderbool
+                5]               -&gt; relsize
+              ]
+
+          ]
+
+        ],
+        NEW [BAR],
+        NEW [EQCOLS,
+          NEW [BUTTON,{gui_disable},&#x27;Disable&#x27;,TRUE],
+          NEW [BUTTON,{gui_disable},&#x27;Enable&#x27;,FALSE],
+          NEW [BUTTON,{gui_set},&#x27;Set&#x27;,TRUE],
+          NEW [BUTTON,{gui_set},&#x27;Reset&#x27;,FALSE],
+          NEW [BUTTON,{gui_get},&#x27;Get&#x27;,TRUE],
+          NEW [BUTTON,0,&#x27;Close&#x27;]
+        ]
+      ]
+    self.integer[0]:=integer0; self.integer[1]:=integer1
+    self.str[0]:=str0; self.str[1]:=str1
+    self.num[0]:=num0; self.num[1]:=num1; self.num[2]:=num2; self.num[3]:=num3
+    self.text[0]:=text0; self.text[1]:=text1; self.text[2]:=text2; self.text[3]:=text3
+  ENDIF
+ENDPROC self.gui
+
+PROC disable(bool) OF gttexts
+  DEF i
+  FOR i:=0 TO 1
+    setdisabled(self.gh,self.integer[i],bool)
+    setdisabled(self.gh,self.str[i],bool)
+  ENDFOR
+  FOR i:=0 TO 3
+    setdisabled(self.gh,self.num[i],bool)
+    setdisabled(self.gh,self.text[i],bool)
+  ENDFOR
+ENDPROC
+
+PROC set(bool) OF gttexts
+  DEF new,i
+  new:=IF bool THEN 432 ELSE 123
+  FOR i:=0 TO 1
+    self.integerv[i]:=new
+    setinteger(self.gh,self.integer[i],new)
+  ENDFOR
+  FOR i:=0 TO 3
+    self.numv[i]:=new
+    setnum(self.gh,self.num[i],new)
+  ENDFOR
+  new:=IF bool THEN &#x27;blurp&#x27; ELSE &#x27;bla&#x27;
+  FOR i:=0 TO 1
+    setstr(self.gh,self.str[i],new)
+  ENDFOR
+  FOR i:=0 TO 3
+    self.textv[i]:=new
+    settext(self.gh,self.text[i],new)
+  ENDFOR
+ENDPROC
+
+PROC get() OF gttexts
+  DEF i
+  WriteF(&#x27;---All values:\n&#x27;)
+  FOR i:=0 TO 1
+    self.integerv[i]:=getinteger(self.gh,self.integer[i])
+    WriteF(&#x27;integer\d: \d\n&#x27;,i,self.integerv[i])
+  ENDFOR
+  FOR i:=0 TO 1
+    getstr(self.gh,self.str[i])
+    WriteF(&#x27;str\d: \s\n&#x27;,i,self.strv[i])
+  ENDFOR
+  FOR i:=0 TO 3 DO WriteF(&#x27;num\d: \d\n&#x27;,i,self.numv[i])
+  FOR i:=0 TO 3 DO WriteF(&#x27;text\d: \s\n&#x27;,i,self.textv[i])
+  WriteF(&#x27;---\n&#x27;)
+ENDPROC
+
+-&gt; appwin(data*,info,awmsg:PTR TO appmessage)
+PROC gttexts_gaw(num,gui:PTR TO gttexts,a) IS WriteF(&#x27;Dropped in str\d\n&#x27;,num)
+
+-&gt; integer(qual*,data*,info,newnum)
+PROC gttexts_itv(num,gui:PTR TO gttexts,val) IS setdisp(&#x27;integer&#x27;,gui.integerv,num,val)
+
+-&gt; (qual*,data*,info,string)
+PROC gttexts_stv(num,i,str) IS dispstr(&#x27;str&#x27;,num,str)
+
+
+/********************************************************************
+ * Sliders + Scrollers window
+ ********************************************************************/
+
+PROC init() OF gtscrolls
+  DEF i
+  self.title:=&#x27;Gadtools Sliders + Scrollers in EasyGUI_OS12&#x27;
+  FOR i:=0 TO 5 DO self.slidev[i]:=20
+  FOR i:=0 TO 1 DO self.scrollv[i]:=20
+ENDPROC
+
+PROC getgui(top) OF gtscrolls
+  DEF scroll0,scroll1, slide0,slide1,slide2,slide3,slide4,slide5
+  IF self.gui=NIL
+    self.gui:=
+      NEW [ROWS,
+        top,
+        NEW [COLS,
+
+          NEW [BUTTON,{gtscrolls_settotal},&#x27;Set Total&#x27;,TRUE],
+          NEW [BUTTON,{gtscrolls_settotal},&#x27;Reset Total&#x27;,FALSE],
+          NEW [BUTTON,{gtscrolls_setvisible},&#x27;Set Visible&#x27;,TRUE],
+          NEW [BUTTON,{gtscrolls_setvisible},&#x27;Reset Visible&#x27;,FALSE],
+          NEW [TEXT,&#x27; keys: V+H&#x27;,NIL,FALSE,5]
+
+        ],
+        NEW [BAR],
+        NEW [COLS,
+
+              NEW [BEVEL,
+                scroll0:=NEW [SCROLL,                     -&gt; SCROLLs
+                {gtscrolls_scv}, -&gt; action
+                TRUE,            -&gt; isvert
+                400,             -&gt; total
+                self.scrollv[0], -&gt; top
+                20,              -&gt; visible
+                2,               -&gt; relsize
+                0,               -&gt; data
+                &quot;v&quot;,             -&gt; key
+                FALSE]           -&gt; disabled
+              ],
+              NEW [BEVEL,
+                slide0:=NEW [SLIDE,                       -&gt; SLIDEs
+                {gtscrolls_slv}, -&gt; action
+                &#x27;_Slider     &#x27;,  -&gt; lefttext
+                TRUE,            -&gt; isvert
+                0,               -&gt; min
+                999,             -&gt; max
+                self.slidev[0],  -&gt; cur
+                2,               -&gt; relsize
+                &#x27;%3ld&#x27;,          -&gt; levelformat
+                0,               -&gt; data
+                &quot;s&quot;,             -&gt; key
+                FALSE]           -&gt; disabled
+              ],
+              NEW [BEVEL,
+                slide1:=NEW [SLIDE,
+                {gtscrolls_slv}, -&gt; action
+                &#x27;    &#x27;,          -&gt; lefttext
+                TRUE,            -&gt; isvert
+                0,               -&gt; min
+                999,             -&gt; max
+                self.slidev[1],  -&gt; cur
+                2,               -&gt; relsize
+                &#x27;%3ld&#x27;,          -&gt; levelformat
+                1,               -&gt; data
+                NIL,             -&gt; key
+                FALSE]           -&gt; disabled
+              ],
+              NEW [BEVEL,
+                slide2:=NEW [SLIDE,
+                {gtscrolls_slv}, -&gt; action
+                NIL,             -&gt; lefttext
+                TRUE,            -&gt; isvert
+                0,               -&gt; min
+                999,             -&gt; max
+                self.slidev[2],  -&gt; cur
+                2,               -&gt; relsize
+                &#x27;&#x27;,              -&gt; levelformat
+                2,               -&gt; data
+                NIL,             -&gt; key
+                FALSE]           -&gt; disabled
+              ],
+
+          NEW [ROWS,
+
+              NEW [BEVEL,
+                scroll1:=NEW [SCROLL,                     -&gt; SCROLLs
+                {gtscrolls_scv}, -&gt; action
+                FALSE,           -&gt; isvert
+                400,             -&gt; total
+                self.scrollv[1], -&gt; top
+                20,              -&gt; visible
+                2,               -&gt; relsize
+                1,               -&gt; data
+                &quot;h&quot;,             -&gt; key
+                FALSE]           -&gt; disabled
+              ],
+              NEW [BEVEL,
+                slide3:=NEW [SLIDE,                       -&gt; SLIDEs
+                {gtscrolls_slv}, -&gt; action
+                &#x27;S_lider     &#x27;,  -&gt; lefttext
+                FALSE,           -&gt; isvert
+                0,               -&gt; min
+                999,             -&gt; max
+                self.slidev[3],  -&gt; cur
+                2,               -&gt; relsize
+                &#x27;%3ld&#x27;,          -&gt; levelformat
+                3,               -&gt; data
+                &quot;l&quot;,             -&gt; key
+                FALSE]           -&gt; disabled
+              ],
+              NEW [BEVEL,
+                slide4:=NEW [SLIDE,
+                {gtscrolls_slv}, -&gt; action
+                &#x27;    &#x27;,          -&gt; lefttext
+                FALSE,           -&gt; isvert
+                0,               -&gt; min
+                999,             -&gt; max
+                self.slidev[4],  -&gt; cur
+                2,               -&gt; relsize
+                &#x27;%3ld&#x27;,          -&gt; levelformat
+                4,               -&gt; data
+                NIL,             -&gt; key
+                FALSE]           -&gt; disabled
+              ],
+              NEW [BEVEL,
+                slide5:=NEW [SLIDE,
+                {gtscrolls_slv}, -&gt; action
+                NIL,             -&gt; lefttext
+                FALSE,           -&gt; isvert
+                0,               -&gt; min
+                999,             -&gt; max
+                self.slidev[5],  -&gt; cur
+                2,               -&gt; relsize
+                &#x27;&#x27;,              -&gt; levelformat
+                5,               -&gt; data
+                NIL,             -&gt; key
+                FALSE]           -&gt; disabled
+              ]
+
+          ]
+
+        ],
+        NEW [BAR],
+        NEW [EQCOLS,
+          NEW [BUTTON,{gui_disable},&#x27;Disable&#x27;,TRUE],
+          NEW [BUTTON,{gui_disable},&#x27;Enable&#x27;,FALSE],
+          NEW [BUTTON,{gui_set},&#x27;Set&#x27;,TRUE],
+          NEW [BUTTON,{gui_set},&#x27;Reset&#x27;,FALSE],
+          NEW [BUTTON,{gui_get},&#x27;Get&#x27;,TRUE],
+          NEW [BUTTON,0,&#x27;Close&#x27;]
+        ]
+      ]
+    self.scroll[0]:=scroll0; self.scroll[1]:=scroll1
+    self.slide[0]:=slide0; self.slide[1]:=slide1; self.slide[2]:=slide2
+    self.slide[3]:=slide3; self.slide[4]:=slide4; self.slide[5]:=slide5
+  ENDIF
+ENDPROC self.gui
+
+PROC disable(bool) OF gtscrolls
+  DEF i
+  FOR i:=0 TO 1 DO setdisabled(self.gh,self.scroll[i],bool)
+  FOR i:=0 TO 5 DO setdisabled(self.gh,self.slide[i],bool)
+ENDPROC
+
+PROC set(bool) OF gtscrolls
+  DEF new,i
+  new:=IF bool THEN 200 ELSE 20
+  FOR i:=0 TO 1
+    self.scrollv[i]:=new
+    setscrolltop(self.gh,self.scroll[i],new)
+  ENDFOR
+  FOR i:=0 TO 5
+    self.slidev[i]:=new
+    setslide(self.gh,self.slide[i],new)
+  ENDFOR
+ENDPROC
+
+PROC get() OF gtscrolls
+  DEF i
+  WriteF(&#x27;---All values:\n&#x27;)
+  FOR i:=0 TO 1 DO WriteF(&#x27;scroll\d: \d\n&#x27;,i,self.scrollv[i])
+  FOR i:=0 TO 5 DO WriteF(&#x27;slide\d: \d\n&#x27;,i,self.slidev[i])
+  WriteF(&#x27;---\n&#x27;)
+ENDPROC
+
+-&gt; button(qual*,data*,info)
+PROC gtscrolls_settotal(bool,gui:PTR TO gtscrolls) IS gui.set_total(bool)
+
+PROC set_total(bool) OF gtscrolls
+  DEF new,i
+  new:=IF bool THEN 250 ELSE 400
+  FOR i:=0 TO 1 DO setscrolltotal(self.gh,self.scroll[i],new)
+ENDPROC
+
+-&gt; button(qual*,data*,info)
+PROC gtscrolls_setvisible(bool,gui:PTR TO gtscrolls) IS gui.set_visible(bool)
+
+PROC set_visible(bool) OF gtscrolls
+  DEF new,i
+  new:=IF bool THEN 50 ELSE 20
+  FOR i:=0 TO 1 DO setscrollvisible(self.gh,self.scroll[i],new)
+ENDPROC
+
+-&gt; slide(qual*,data*,info,cur)
+PROC gtscrolls_slv(num,gui:PTR TO gtscrolls,val) IS setdisp(&#x27;slide&#x27;,gui.slidev,num,val)
+
+-&gt; scroll(qual*,data*,info,curtop)
+PROC gtscrolls_scv(num,gui:PTR TO gtscrolls,val) IS setdisp(&#x27;scroll&#x27;,gui.scrollv,num,val)
+
+
+/********************************************************************
+ * Listviews window
+ ********************************************************************/
+
+PROC init() OF gtlistvs
+  DEF i
+  self.title:=&#x27;Gadtools Listviews in EasyGUI_OS12&#x27;
+  self.list1:=makeexeclist([&#x27;zero&#x27;,&#x27;one&#x27;,&#x27;two&#x27;,&#x27;three&#x27;,&#x27;four&#x27;,&#x27;five&#x27;,&#x27;six&#x27;,&#x27;seven&#x27;,
+                            &#x27;eight&#x27;,&#x27;nine&#x27;,&#x27;ten&#x27;,&#x27;eleven&#x27;,&#x27;twelve&#x27;,&#x27;thirteen&#x27;,&#x27;fourteen&#x27;])
+  self.list2:=makeexeclist([&#x27;null&#x27;,&#x27;eins&#x27;,&#x27;zwei&#x27;,&#x27;drei&#x27;,&#x27;vier&#x27;,&#x27;fuenf&#x27;,&#x27;sechs&#x27;,&#x27;sieben&#x27;,
+                            &#x27;acht&#x27;,&#x27;neun&#x27;,&#x27;zehn&#x27;,&#x27;elf&#x27;,&#x27;zwoelf&#x27;,&#x27;dreizehn&#x27;,&#x27;vierzehn&#x27;])
+  FOR i:=0 TO 7 DO self.listvv[i]:=2
+ENDPROC
+
+PROC getgui(top) OF gtlistvs
+  DEF listv0,listv1,listv2,listv3,listv4,listv5,listv6,listv7
+  IF self.gui=NIL
+    self.gui:=
+      NEW [ROWS,
+        top,
+        NEW [COLS,
+
+          NEW [BUTTON,{gtlistvs_setlist},&#x27;Set List&#x27;,TRUE],
+          NEW [BUTTON,{gtlistvs_setlist},&#x27;Reset List&#x27;,FALSE],
+          NEW [SPACEH],
+          NEW [TEXT,&#x27;All listviews are App-Gadgets&#x27;,NIL,FALSE,5]
+
+        ],
+        NEW [BAR],
+        NEW [COLS,
+
+              NEW [BEVEL,
+                listv0:=NEW [LISTV,                     -&gt; LISTVs
+                {gtlistvs_lvv},  -&gt; action
+                &#x27;_Listview&#x27;,     -&gt; textabove
+                5,               -&gt; relx
+                5,               -&gt; rely
+                self.list1,      -&gt; execlist
+                FALSE,           -&gt; readbool
+                0,               -&gt; selected  0=none, 1=highlight/show selected
+                self.listvv[0],  -&gt; current
+                0,               -&gt; data
+                &quot;l&quot;,             -&gt; key
+                {gtlistvs_gaw},  -&gt; awproc
+                FALSE]           -&gt; disabled
+              ],
+              NEW [BEVEL,
+                listv1:=NEW [LISTV,
+                {gtlistvs_lvv},  -&gt; action
+                NIL,             -&gt; textabove
+                5,               -&gt; relx
+                5,               -&gt; rely
+                self.list1,      -&gt; execlist
+                FALSE,           -&gt; readbool
+                0,               -&gt; selected  0=none, 1=highlight/show selected
+                self.listvv[1],  -&gt; current
+                1,               -&gt; data
+                NIL,             -&gt; key
+                {gtlistvs_gaw},  -&gt; awproc
+                FALSE]           -&gt; disabled
+              ],
+              NEW [BEVEL,
+                listv2:=NEW [LISTV,
+                {gtlistvs_lvv},  -&gt; action
+                &#x27;L_istview&#x27;,     -&gt; textabove
+                5,               -&gt; relx
+                5,               -&gt; rely
+                self.list1,      -&gt; execlist
+                FALSE,           -&gt; readbool
+                1,               -&gt; selected  0=none, 1=highlight/show selected
+                self.listvv[2],  -&gt; current
+                2,               -&gt; data
+                &quot;i&quot;,             -&gt; key
+                {gtlistvs_gaw},  -&gt; awproc
+                FALSE]           -&gt; disabled
+              ],
+              NEW [BEVEL,
+                listv3:=NEW [LISTV,
+                {gtlistvs_lvv},  -&gt; action
+                NIL,             -&gt; textabove
+                5,               -&gt; relx
+                5,               -&gt; rely
+                self.list1,      -&gt; execlist
+                FALSE,           -&gt; readbool
+                1,               -&gt; selected  0=none, 1=highlight/show selected
+                self.listvv[3],  -&gt; current
+                3,               -&gt; data
+                NIL,             -&gt; key
+                {gtlistvs_gaw},  -&gt; awproc
+                FALSE]           -&gt; disabled
+              ]
+
+        ],
+        NEW [TEXT,&#x27;Above are normal listviews, below should be &quot;read only&quot; ones:&#x27;,NIL,FALSE,5],
+        NEW [COLS,
+
+              NEW [BEVEL,
+                listv4:=NEW [LISTV,                     -&gt; LISTVs
+                {gtlistvs_lvv},  -&gt; action
+                &#x27;Li_stview&#x27;,     -&gt; textabove
+                5,               -&gt; relx
+                5,               -&gt; rely
+                self.list1,      -&gt; execlist
+                TRUE,            -&gt; readbool
+                0,               -&gt; selected  0=none, 1=highlight/show selected
+                self.listvv[4],  -&gt; current
+                4,               -&gt; data
+                &quot;s&quot;,             -&gt; key
+                {gtlistvs_gaw},  -&gt; awproc
+                FALSE]           -&gt; disabled
+              ],
+              NEW [BEVEL,
+                listv5:=NEW [LISTV,
+                {gtlistvs_lvv},  -&gt; action
+                NIL,             -&gt; textabove
+                5,               -&gt; relx
+                5,               -&gt; rely
+                self.list1,      -&gt; execlist
+                TRUE,            -&gt; readbool
+                0,               -&gt; selected  0=none, 1=highlight/show selected
+                self.listvv[5],  -&gt; current
+                5,               -&gt; data
+                NIL,             -&gt; key
+                {gtlistvs_gaw},  -&gt; awproc
+                FALSE]           -&gt; disabled
+              ],
+              NEW [BEVEL,
+                listv6:=NEW [LISTV,
+                {gtlistvs_lvv},  -&gt; action
+                &#x27;Lis_tview&#x27;,     -&gt; textabove
+                5,               -&gt; relx
+                5,               -&gt; rely
+                self.list1,      -&gt; execlist
+                TRUE,            -&gt; readbool
+                1,               -&gt; selected  0=none, 1=highlight/show selected
+                self.listvv[6],  -&gt; current
+                6,               -&gt; data
+                &quot;t&quot;,             -&gt; key
+                {gtlistvs_gaw},  -&gt; awproc
+                FALSE]           -&gt; disabled
+              ],
+              NEW [BEVEL,
+                listv7:=NEW [LISTV,
+                {gtlistvs_lvv},  -&gt; action
+                NIL,             -&gt; textabove
+                5,               -&gt; relx
+                5,               -&gt; rely
+                self.list1,      -&gt; execlist
+                TRUE,            -&gt; readbool
+                1,               -&gt; selected  0=none, 1=highlight/show selected
+                self.listvv[7],  -&gt; current
+                7,               -&gt; data
+                NIL,             -&gt; key
+                {gtlistvs_gaw},  -&gt; awproc
+                FALSE]           -&gt; disabled
+              ]
+
+        ],
+        NEW [BAR],
+        NEW [EQCOLS,
+          NEW [BUTTON,{gui_disable},&#x27;Disable&#x27;,TRUE],
+          NEW [BUTTON,{gui_disable},&#x27;Enable&#x27;,FALSE],
+          NEW [BUTTON,{gui_set},&#x27;Set&#x27;,TRUE],
+          NEW [BUTTON,{gui_set},&#x27;Reset&#x27;,FALSE],
+          NEW [BUTTON,{gui_get},&#x27;Get&#x27;,TRUE],
+          NEW [BUTTON,0,&#x27;Close&#x27;]
+        ]
+      ]
+    self.listv[0]:=listv0; self.listv[1]:=listv1; self.listv[2]:=listv2; self.listv[3]:=listv3
+    self.listv[4]:=listv4; self.listv[5]:=listv5; self.listv[6]:=listv6; self.listv[7]:=listv7
+  ENDIF
+ENDPROC self.gui
+
+PROC disable(bool) OF gtlistvs
+  DEF i
+  FOR i:=0 TO 7 DO setdisabled(self.gh,self.listv[i],bool)
+ENDPROC
+
+PROC set(bool) OF gtlistvs
+  DEF new,i
+  new:=IF bool THEN 6 ELSE 2
+  FOR i:=0 TO 7
+    self.listvv[i]:=new
+    setlistvselected(self.gh,self.listv[i],new)
+    setlistvvisible(self.gh,self.listv[i],new)
+  ENDFOR
+ENDPROC
+
+PROC get() OF gtlistvs
+  DEF i
+  WriteF(&#x27;---All values:\n&#x27;)
+  FOR i:=0 TO 7 DO WriteF(&#x27;listv\d: \d\n&#x27;,i,self.listvv[i])
+  WriteF(&#x27;---\n&#x27;)
+ENDPROC
+
+-&gt; button(qual*,data*,info)
+PROC gtlistvs_setlist(bool,gui:PTR TO gtlistvs) IS gui.set_list(bool)
+
+PROC set_list(bool) OF gtlistvs
+  DEF new,i
+  new:=IF bool THEN self.list2 ELSE self.list1
+  FOR i:=0 TO 7
+    setlistvlabels(self.gh,self.listv[i],new)
+  ENDFOR
+ENDPROC
+
+-&gt; (qual*,data*,info,num_selected)
+PROC gtlistvs_lvv(num,gui:PTR TO gtlistvs,val) IS setdisp(&#x27;listv&#x27;,gui.listvv,num,val)
+
+-&gt; appwin(data*,info,awmsg:PTR TO appmessage)
+PROC gtlistvs_gaw(num,gui:PTR TO gtlistvs,a) IS WriteF(&#x27;Dropped in listv\d\n&#x27;,num)
+
+
+/********************************************************************
+ * Palettes window
+ ********************************************************************/
+
+PROC init() OF gtpalettes
+  DEF i
+  self.title:=&#x27;Gadtools Palettes in EasyGUI_OS12&#x27;
+  FOR i:=0 TO 5 DO self.palettev[i]:=2
+ENDPROC
+
+PROC getgui(top) OF gtpalettes
+  DEF palette0,palette1,palette2,palette3,palette4,palette5
+  IF self.gui=NIL
+    self.gui:=
+      NEW [ROWS,
+        top,
+        NEW [COLS,
+
+              NEW [BEVEL,
+                palette0:=NEW [PALETTE,                     -&gt; PALETTEs
+                {gtpalettes_plv},-&gt; action
+                &#x27;_Palette&#x27;,      -&gt; lefttext
+                3,               -&gt; depth
+                1,               -&gt; relx
+                5,               -&gt; rely
+                self.palettev[0],-&gt; current
+                0,               -&gt; data
+                &quot;p&quot;,             -&gt; key
+                FALSE]           -&gt; disabled
+              ],
+              NEW [BEVEL,
+                palette1:=NEW [PALETTE,
+                {gtpalettes_plv},-&gt; action
+                NIL,             -&gt; lefttext
+                3,               -&gt; depth
+                1,               -&gt; relx
+                5,               -&gt; rely
+                self.palettev[1],-&gt; current
+                1,               -&gt; data
+                NIL,             -&gt; key
+                FALSE]           -&gt; disabled
+              ],
+              NEW [BEVEL,
+                palette2:=NEW [PALETTE,
+                {gtpalettes_plv},-&gt; action
+                NIL,             -&gt; lefttext
+                5,               -&gt; depth
+                1,               -&gt; relx
+                5,               -&gt; rely
+                self.palettev[2],-&gt; current
+                2,               -&gt; data
+                NIL,             -&gt; key
+                FALSE]           -&gt; disabled
+              ],
+
+          NEW [ROWS,
+
+              NEW [BEVEL,
+                palette3:=NEW [PALETTE,
+                {gtpalettes_plv},-&gt; action
+                &#x27;P_alette&#x27;,      -&gt; lefttext
+                3,               -&gt; depth
+                5,               -&gt; relx
+                1,               -&gt; rely
+                self.palettev[3],-&gt; current
+                4,               -&gt; data
+                &quot;a&quot;,             -&gt; key
+                FALSE]           -&gt; disabled
+              ],
+              NEW [BEVEL,
+                palette4:=NEW [PALETTE,
+                {gtpalettes_plv},-&gt; action
+                NIL,             -&gt; lefttext
+                3,               -&gt; depth
+                5,               -&gt; relx
+                1,               -&gt; rely
+                self.palettev[4],-&gt; current
+                5,               -&gt; data
+                NIL,             -&gt; key
+                FALSE]           -&gt; disabled
+              ],
+              NEW [BEVEL,
+                palette5:=NEW [PALETTE,
+                {gtpalettes_plv},-&gt; action
+                NIL,             -&gt; lefttext
+                5,               -&gt; depth
+                5,               -&gt; relx
+                1,               -&gt; rely
+                self.palettev[5],-&gt; current
+                6,               -&gt; data
+                NIL,             -&gt; key
+                FALSE]           -&gt; disabled
+              ]
+
+          ]
+        ],
+        NEW [BAR],
+        NEW [EQCOLS,
+          NEW [BUTTON,{gui_disable},&#x27;Disable&#x27;,TRUE],
+          NEW [BUTTON,{gui_disable},&#x27;Enable&#x27;,FALSE],
+          NEW [BUTTON,{gui_set},&#x27;Set&#x27;,TRUE],
+          NEW [BUTTON,{gui_set},&#x27;Reset&#x27;,FALSE],
+          NEW [BUTTON,{gui_get},&#x27;Get&#x27;,TRUE],
+          NEW [BUTTON,0,&#x27;Close&#x27;]
+        ]
+      ]
+    self.palette[0]:=palette0; self.palette[1]:=palette1; self.palette[2]:=palette2
+    self.palette[3]:=palette3; self.palette[4]:=palette4; self.palette[5]:=palette5
+  ENDIF
+ENDPROC self.gui
+
+PROC disable(bool) OF gtpalettes
+  DEF i
+  FOR i:=0 TO 5 DO setdisabled(self.gh,self.palette[i],bool)
+ENDPROC
+
+PROC set(bool) OF gtpalettes
+  DEF new,i
+  new:=IF bool THEN 3 ELSE 2
+  FOR i:=0 TO 5
+    self.palettev[i]:=new
+    setpalette(self.gh,self.palette[i],new)
+  ENDFOR
+ENDPROC
+
+PROC get() OF gtpalettes
+  DEF i
+  WriteF(&#x27;---All values:\n&#x27;)
+  FOR i:=0 TO 5 DO WriteF(&#x27;palette\d: \d\n&#x27;,i,self.palettev[i])
+  WriteF(&#x27;---\n&#x27;)
+ENDPROC
+
+-&gt; palette(qual*,data*,info,colour)
+PROC gtpalettes_plv(num,gui:PTR TO gtpalettes,val) IS setdisp(&#x27;palette&#x27;,gui.palettev,num,val)
+
+
+/********************************************************************
+ * Spaces window
+ ********************************************************************/
+
+PROC init() OF egspaces
+  self.title:=&#x27;Spaces in EasyGUI_OS12&#x27;
+ENDPROC
+
+PROC getgui(top) OF egspaces
+  IF self.gui=NIL
+    self.gui:=
+      NEW [ROWS,
+        top,
+        NEW [TEXT,&#x27;xy resizable spaces using SPACE:&#x27;,NIL,FALSE,5],
+        NEW [COLS,
+
+              NEW [BEVEL,
+                NEW [SPACE]
+              ],
+              NEW [BEVEL,
+                NEW [SPACE]
+              ],
+              NEW [BEVEL,
+                NEW [SPACE]
+              ],
+
+          NEW [ROWS,
+
+              NEW [BEVEL,
+                NEW [SPACE]
+              ],
+              NEW [BEVEL,
+                NEW [SPACE]
+              ],
+              NEW [BEVEL,
+                NEW [SPACE]
+              ]
+
+          ]
+        ],
+        NEW [TEXT,&#x27;x resizable spaces using SPACEH:&#x27;,NIL,FALSE,5],
+        NEW [COLS,
+
+              NEW [BEVEL,
+                NEW [SPACEH]
+              ],
+              NEW [BEVEL,
+                NEW [SPACEH]
+              ],
+              NEW [BEVEL,
+                NEW [SPACEH]
+              ],
+
+          NEW [ROWS,
+
+              NEW [BEVEL,
+                NEW [SPACEH]
+              ],
+              NEW [BEVEL,
+                NEW [SPACEH]
+              ],
+              NEW [BEVEL,
+                NEW [SPACEH]
+              ]
+
+          ]
+        ],
+        NEW [TEXT,&#x27;y resizable spaces using SPACEV:&#x27;,NIL,FALSE,5],
+        NEW [COLS,
+
+              NEW [BEVEL,
+                NEW [SPACEV]
+              ],
+              NEW [BEVEL,
+                NEW [SPACEV]
+              ],
+              NEW [BEVEL,
+                NEW [SPACEV]
+              ],
+
+          NEW [ROWS,
+
+              NEW [BEVEL,
+                NEW [SPACEV]
+              ],
+              NEW [BEVEL,
+                NEW [SPACEV]
+              ],
+              NEW [BEVEL,
+                NEW [SPACEV]
+              ]
+
+          ]
+        ]
+      ]
+  ENDIF
+ENDPROC self.gui
+
+
+/********************************************************************
+ * Bars + Bevels window
+ ********************************************************************/
+
+PROC init() OF egbevels
+  self.title:=&#x27;Bars + Bevels in EasyGUI_OS12&#x27;
+ENDPROC
+
+PROC getgui(top) OF egbevels
+  DEF g
+  IF self.gui=NIL
+    self.gui:=
+      NEW [ROWS,
+        top,
+        NEW [TEXT,&#x27;normal bevels using BEVEL:&#x27;,NIL,FALSE,5],
+        NEW [COLS,
+
+              NEW [BEVEL,
+                NEW [SPACE]
+              ],
+              NEW [BEVEL,
+                NEW [SPACE]
+              ],
+              NEW [BEVEL,
+                NEW [SPACE]
+              ],
+
+          NEW [ROWS,
+
+              NEW [BEVEL,
+                NEW [SPACE]
+              ],
+              NEW [BEVEL,
+                NEW [SPACE]
+              ],
+              NEW [BEVEL,
+                NEW [SPACE]
+              ]
+
+          ]
+        ],
+        NEW [TEXT,&#x27;recessed bevels using BEVELR:&#x27;,NIL,FALSE,5],
+        NEW [COLS,
+
+              NEW [BEVELR,
+                NEW [SPACE]
+              ],
+              NEW [BEVELR,
+                NEW [SPACE]
+              ],
+              NEW [BEVELR,
+                NEW [SPACE]
+              ],
+
+          NEW [ROWS,
+
+              NEW [BEVELR,
+                NEW [SPACE]
+              ],
+              NEW [BEVELR,
+                NEW [SPACE]
+              ],
+              NEW [BEVELR,
+                NEW [SPACE]
+              ]
+
+          ]
+        ],
+        NEW [TEXT,&#x27;bars:&#x27;,NIL,FALSE,5],
+        NEW [BAR],
+        NEW [BAR],
+        NEW [BAR]
+      ]
+  ENDIF
+ENDPROC self.gui
+
+
+/********************************************************************
+ * Menus window
+ ********************************************************************/
+
+PROC init() OF gtmenus
+  self.title:=&#x27;Gadtools Menus in EasyGUI_OS12&#x27;
+  self.menus1:=[NM_TITLE,0,&#x27;Menus 1&#x27;, NIL,0,0,0,
+                NM_ITEM,0,&#x27;Menus 0&#x27;,  NIL,0,0,{gtmenus_menus0},
+                NM_ITEM,0,&#x27;Menus 2&#x27;,  NIL,0,0,{gtmenus_menus2},
+                NM_END,  0,NIL,       NIL,0,0,0]:newmenu
+  self.menus2:=[NM_TITLE,0,&#x27;Menus 2&#x27;, NIL,0,0,0,
+                NM_ITEM,0,&#x27;Menus 0&#x27;,  NIL,0,0,{gtmenus_menus0},
+                NM_ITEM,0,&#x27;Menus 1&#x27;,  NIL,0,0,{gtmenus_menus1},
+                NM_END,  0,NIL,       NIL,0,0,0]:newmenu
+  self.menusnum:=0
+ENDPROC
+
+PROC getgui(top) OF gtmenus
+  DEF menumx
+  IF self.gui=NIL
+    self.gui:=
+      NEW [ROWS,
+        top,
+        NEW [TEXT,&#x27;Menus 0 are shared across all windows!&#x27;,NIL,FALSE,5],
+        NEW [BAR],
+          NEW [BEVEL,
+          NEW [ROWS,
+            NEW [TEXT,&#x27;Choose Menus for this window:&#x27;,NIL,FALSE,5],
+            NEW [BEVEL,
+              menumx:=NEW [MX,{gtmenus_change},NIL,[&#x27;Menus 0&#x27;,&#x27;Menus 1&#x27;,&#x27;Menus 2&#x27;,NIL],FALSE,self.menusnum,TRUE]
+            ]
+          ]
+        ],
+        NEW [BAR],
+        NEW [SBUTTON,0,&#x27;Close&#x27;]
+      ]
+    self.menumx:=menumx
+  ENDIF
+ENDPROC self.gui
+
+-&gt; menu(qual*=NIL,data*=NIL,info)
+PROC gtmenus_menus0(gui:PTR TO gtmenus) IS gui.change_menus(FALSE,0)
+PROC gtmenus_menus1(gui:PTR TO gtmenus) IS gui.change_menus(FALSE,1)
+PROC gtmenus_menus2(gui:PTR TO gtmenus) IS gui.change_menus(FALSE,2)
+
+-&gt; mx(qual*,data*,info,num_selected)
+PROC gtmenus_change(gui:PTR TO gtmenus,num) IS gui.change_menus(TRUE,num)
+
+PROC change_menus(frommx,num) OF gtmenus
+  DEF new
+  self.menusnum:=num
+  new:=ListItem([global.menus,self.menus1,self.menus2],num)
+  -&gt; the following line crashes/raises &quot;gui&quot;:
+  -&gt;multiforall({x},global.mh,`changemenus(x,new))
+  -&gt; so for now just change menus of this window:
+  changemenus(self.gh,new)
+  IF frommx=FALSE THEN setmx(self.gh,self.menumx,num)
+ENDPROC
+
+
+/********************************************************************
+ * Window Manipulation window
+ ********************************************************************/
+
+PROC init() OF egchwin
+  self.title:=&#x27;Window Manipulation in EasyGUI_OS12&#x27;
+  self.screennum:=0
+  self.wintypenum:=3
+  self.fontnum:=0
+ENDPROC
+
+PROC getgui(top) OF egchwin
+  DEF screenmx,winmx,fontmx,titlemx
+  IF self.gui=NIL
+    self.gui:=
+      NEW [ROWS,
+        top,
+        NEW [TEXT,&#x27;Can also be called from the menus:&#x27;,NIL,FALSE,5],
+        NEW [BAR],
+        NEW [COLS,
+          NEW [BEVEL,
+            NEW [ROWS,
+              NEW [TEXT,&#x27;Screen:&#x27;,NIL,FALSE,5],
+              NEW [BEVEL,
+                screenmx:=NEW [MX,{egchwin_changescreen},NIL,[&#x27;Default&#x27;,&#x27;Custom&#x27;,NIL],FALSE,self.screennum]
+              ]
+            ]
+          ],
+          NEW [BEVEL,
+            NEW [ROWS,
+              NEW [TEXT,&#x27;Decoration:&#x27;,NIL,FALSE,5],
+              NEW [BEVEL,
+                winmx:=NEW [MX,{egchwin_changewintype},NIL,[&#x27;No Border&#x27;,&#x27;Basic&#x27;,&#x27;No Size&#x27;,&#x27;Size&#x27;,NIL],FALSE,self.wintypenum]
+              ]
+            ]
+          ],
+          NEW [BEVEL,
+            NEW [ROWS,
+              NEW [TEXT,&#x27;Font:&#x27;,NIL,FALSE,5],
+              NEW [BEVEL,
+                fontmx:=NEW [MX,{egchwin_changefont},NIL,[&#x27;Screen&#x27;,&#x27;Topaz 8&#x27;,&#x27;Topaz 10&#x27;,NIL],FALSE,self.fontnum]
+              ]
+            ]
+          ],
+          NEW [BEVEL,
+            NEW [ROWS,
+              NEW [TEXT,&#x27;Title:&#x27;,NIL,FALSE,5],
+              NEW [BEVEL,
+                titlemx:=NEW [MX,{egchwin_changetitle},NIL,[&#x27;Info&#x27;,&#x27;Nonsens&#x27;,NIL],FALSE,self.titlenum]
+              ]
+            ]
+          ]
+        ],
+        NEW [BAR],
+        NEW [EQCOLS,
+            NEW [SBUTTON,{egchwin_moveall},&#x27;Move All&#x27;],
+            NEW [SBUTTON,{egchwin_sizeall},&#x27;Size All&#x27;],
+            NEW [SBUTTON,{egchwin_blockall},&#x27;Block All&#x27;],
+            NEW [SBUTTON,{egchwin_openall},&#x27;Open All&#x27;],
+            NEW [SBUTTON,{egchwin_closeall},&#x27;Close All&#x27;]
+        ]
+      ]
+    self.screenmx:=screenmx; self.winmx:=winmx; self.fontmx:=fontmx; self.titlemx:=titlemx
+  ENDIF
+ENDPROC self.gui
+
+-&gt; menu(qual*=NIL,data*=NIL,info)
+PROC global_defaultscreen(i) IS global.egchwin.change_screen(FALSE,0)
+PROC global_customscreen(i) IS global.egchwin.change_screen(FALSE,1)
+
+-&gt; mx(qual*,data*,info,num_selected)
+PROC egchwin_changescreen(gui:PTR TO egchwin,num) IS gui.change_screen(TRUE,num)
+
+PROC change_screen(frommx,num) OF egchwin HANDLE
+  multiforall({x},global.mh,`closewin(x))
+  self.screennum:=num
+  IF num
+    IF global.screen=NIL THEN global.screen:=OpenS(640,400,4,V_HIRES OR V_LACE,&#x27;Custom Screen&#x27;)
+  ELSE
+    IF global.screen
+      CloseS(global.screen)
+      global.screen:=NIL
+    ENDIF
+  ENDIF
+  multiforall({x},global.mh,`changescreen(x,global.screen))
+EXCEPT DO
+  multiforall({x},global.mh,`openwin(x))
+  IF frommx THEN tofront(self.gh) ELSE setmx(self.gh,self.screenmx,num)
+  ReThrow()
+ENDPROC
+
+-&gt; menu(qual*=NIL,data*=NIL,info)
+PROC global_noborderwin(i) IS global.egchwin.change_wintype(FALSE,0)
+PROC global_basicwin(i) IS global.egchwin.change_wintype(FALSE,1)
+PROC global_nosizewin(i) IS global.egchwin.change_wintype(FALSE,2)
+PROC global_sizewin(i) IS global.egchwin.change_wintype(FALSE,3)
+
+-&gt; mx(qual*,data*,info,num_selected)
+PROC egchwin_changewintype(gui:PTR TO egchwin,num) IS gui.change_wintype(TRUE,num)
+
+PROC change_wintype(frommx,num) OF egchwin HANDLE
+  multiforall({x},global.mh,`closewin(x))
+  self.wintypenum:=num
+  global.wintype:=ListItem([WTYPE_NOBORDER,WTYPE_BASIC,WTYPE_NOSIZE,WTYPE_SIZE],num)
+  multiforall({x},global.mh,`changewintype(x,global.wintype))
+EXCEPT DO
+  multiforall({x},global.mh,`openwin(x))
+  IF frommx THEN tofront(self.gh) ELSE setmx(self.gh,self.winmx,num)
+  ReThrow()
+ENDPROC
+
+-&gt; menu(qual*=NIL,data*=NIL,info)
+PROC global_screenfont(i) IS global.egchwin.change_font(FALSE,0)
+PROC global_topaz8font(i) IS global.egchwin.change_font(FALSE,1)
+PROC global_topaz10font(i) IS global.egchwin.change_font(FALSE,2)
+
+-&gt; mx(qual*,data*,info,num_selected)
+PROC egchwin_changefont(gui:PTR TO egchwin,num) IS gui.change_font(TRUE,num)
+
+PROC change_font(frommx,num) OF egchwin HANDLE
+  multiforall({x},global.mh,`closewin(x))
+  self.fontnum:=num
+  global.font:=ListItem([NIL,[&#x27;topaz.font&#x27;,8,0,0]:textattr,[&#x27;topaz.font&#x27;,10,0,0]:textattr],num)
+  multiforall({x},global.mh,`changefont(x,global.font))
+EXCEPT DO
+  multiforall({x},global.mh,`openwin(x))
+  IF frommx THEN tofront(self.gh) ELSE setmx(self.gh,self.fontmx,num)
+  ReThrow()
+ENDPROC
+
+-&gt; menu(qual*=NIL,data*=NIL,info)
+PROC global_infotitle(i) IS global.egchwin.change_title(0)
+PROC global_nonsensetitle(i) IS global.egchwin.change_title(1)
+
+-&gt; mx(qual*,data*,info,num_selected)
+PROC egchwin_changetitle(gui:PTR TO egchwin,num) IS gui.change_title(num)
+
+PROC change_title(num) OF egchwin
+  self.titlenum:=num
+  global.title:=IF num THEN &#x27;Nonsense&#x27; ELSE NIL
+  multiforall({x},global.mh,`changetitle(x,IF global.title THEN global.title ELSE x.info::gui.title))
+ENDPROC
+
+
+-&gt; menu(qual*=NIL,data*=NIL,info)
+PROC global_moveall(i) IS global.egchwin.move_all()
+
+-&gt; button(qual*,data*,info)
+PROC egchwin_moveall(gui:PTR TO egchwin) IS gui.move_all()
+
+PROC move_all() OF egchwin
+  multiforall({x},global.mh,`movewin(x,Rnd(400),Rnd(400)))
+ENDPROC
+
+-&gt; menu(qual*=NIL,data*=NIL,info)
+PROC global_sizeall(i) IS global.egchwin.size_all()
+
+-&gt; button(qual*,data*,info)
+PROC egchwin_sizeall(gui:PTR TO egchwin) IS gui.size_all()
+
+PROC size_all() OF egchwin
+  multiforall({x},global.mh,`sizewin(x,x.wnd.minwidth+Rnd(100),x.wnd.minheight+Rnd(100)))
+ENDPROC
+
+-&gt; menu(qual*=NIL,data*=NIL,info)
+PROC global_openall(i) IS global.egchwin.open_all(FALSE)
+
+-&gt; button(qual*,data*,info)
+PROC egchwin_openall(gui:PTR TO egchwin) IS gui.open_all(TRUE)
+
+PROC open_all(frombutton) OF egchwin
+  DEF gui:PTR TO gui
+  ForAll({gui},[global.gtbuttons,global.gttexts,global.gtscrolls,global.gtlistvs,
+                global.gtpalettes,global.egspaces,global.egbevels,global.gtmenus,
+                global.egchwin],`gui.open())
+  IF frombutton THEN tofront(self.gh)
+ENDPROC
+
+-&gt; menu(qual*=NIL,data*=NIL,info)
+PROC global_closeall(i) IS global.egchwin.close_all()
+
+-&gt; button(qual*,data*,info)
+PROC egchwin_closeall(gui:PTR TO egchwin) IS gui.close_all()
+
+PROC close_all() OF egchwin
+  multiforall({x},global.mh,`IF x&lt;&gt;global.mainwin.gh THEN cleangui(x) ELSE EMPTY)
+ENDPROC
+
+-&gt; menu(qual*=NIL,data*=NIL,info)
+PROC global_blockall(i) IS global.egchwin.block_all()
+
+-&gt; button(qual*,data*,info)
+PROC egchwin_blockall(gui:PTR TO egchwin) IS gui.block_all()
+
+PROC block_all() OF egchwin
+  multiforall({x},global.mh,`blockwin(x))
+  easyguiA(&#x27;Blocked&#x27;,
+    [ROWS,
+      [TEXT,&#x27;All GUIs blocked&#x27;,NIL,FALSE,1],
+      [BUTTON,NIL,&#x27;Unblock GUIs&#x27;,TRUE]
+    ],
+    [ EG_SCRN,   global.screen,
+      EG_FONT,   global.font,
+      TAG_DONE
+    ]
+  )
+  multiforall({x},global.mh,`unblockwin(x))
+ENDPROC
+
+/********************************************************************
+ * GUI Manipulation window
+ ********************************************************************/
+
+/* this is the most tricky section of all. global2 is a second instance
+  of all window objects, which are not accessed by the open() method,
+  just we take the gui by getgui() and place it into our window.
+  To make all action functions work on the right instance of the gui
+  the info must be changed on each gui change to point at the right
+  gui. Because of that we must NOT use the gui pointer passed through
+  the info value to refer to the cycle&#x27;s action-method, but the global
+  pointer to ourself. Same applies to the gui clean action-funtion.
+  That&#x27;s why this window can not be run in a second instance. */
+
+PROC init() OF egchgui
+  self.title:=&#x27;GUI Manipulation in EasyGUI_OS12&#x27;
+  self.guilist:=[ global2.gtbuttons,global2.gttexts,global2.gtscrolls,global2.gtlistvs,
+                  global2.gtpalettes,global2.egspaces,global2.egbevels,global2.gtmenus,
+                  global2.egchwin ]
+  self.guilabels:=[&#x27;Buttons&#x27;,&#x27;Texts&#x27;,&#x27;Sliders + Scrollers&#x27;,&#x27;Listviews&#x27;,
+                   &#x27;Palettes&#x27;,&#x27;Spaces&#x27;,&#x27;Bars + Bevels&#x27;,&#x27;Menus&#x27;,
+                   &#x27;Window Manipulation&#x27;,NIL]
+ENDPROC
+
+PROC getgui(top) OF egchgui
+  self.gui:=global2.gtbuttons.getgui(self.topgui(0))
+ENDPROC self.gui
+
+PROC topgui(num) OF egchgui
+  DEF tg
+  tg:=[CYCLE,{egchgui_change},&#x27;Change _GUI&#x27;,self.guilabels,num,NIL,&quot;g&quot;]
+ENDPROC tg
+
+PROC open(close=NIL,clean=NIL) OF egchgui
+  SUPER self.open(close,{gui_clean2})
+  ForAll({g},self.guilist,`g.setgh(self.gh))
+  changeinfo(self.gh,global2.gtbuttons)
+ENDPROC
+
+-&gt; clean(info)
+PROC gui_clean2(i) IS global.egchgui.clean() -&gt; ignore the GUI pointer passed!!!
+
+-&gt; cycle(qual*,data*,info,num_selected)
+PROC egchgui_change(i,num) IS global.egchgui.change_gui(num) -&gt; ignore the GUI pointer passed!!!
+
+PROC change_gui(num) OF egchgui
+  DEF gui:PTR TO gui
+  gui:=ListItem(self.guilist,num)
+  changegui(self.gh,gui.getgui(self.topgui(num)))
+  changeinfo(self.gh,gui)
+ENDPROC
+
+/********************************************************************
+ * Main window
+ ********************************************************************/
+
+PROC init() OF mainwin
+  self.title:=&#x27;EasyGUI_OS12 Tests&#x27;
+ENDPROC
+
+PROC getgui(top) OF mainwin
+  IF self.gui=NIL
+    self.gui:=
+      NEW [ROWS,
+        NEW [BEVEL,
+          NEW [EQROWS,
+            NEW [SBUTTON,{global_gtbuttons},&#x27;Buttons&#x27;],
+            NEW [SBUTTON,{global_gttexts},&#x27;Texts&#x27;],
+            NEW [SBUTTON,{global_gtscrolls},&#x27;Sliders + Scrollers&#x27;],
+            NEW [SBUTTON,{global_gtlistvs},&#x27;Listviews&#x27;],
+            NEW [SBUTTON,{global_gtpalettes},&#x27;Palettes&#x27;],
+            NEW [SBUTTON,{global_egspaces},&#x27;Spaces&#x27;],
+            NEW [SBUTTON,{global_egbevels},&#x27;Bars + Bevels&#x27;],
+            NEW [SBUTTON,{global_gtmenus},&#x27;Menus&#x27;],
+            NEW [SBUTTON,{global_egchwin},&#x27;Window Manipulation&#x27;],
+            NEW [SBUTTON,{global_egchgui},&#x27;GUI Manipulation&#x27;]
+          ]
+        ]
+      ]
+  ENDIF
+ENDPROC self.gui
+
+/********************************************************************
+ * Global stuff
+ ********************************************************************/
+
+PROC init() OF global
+  NEW self.mainwin.init(),self.gtbuttons.init(), self.gttexts.init(), self.gtscrolls.init(),
+      self.gtlistvs.init(),self.gtpalettes.init(),self.egspaces.init(),self.egbevels.init(),
+      self.gtmenus.init(),self.egchwin.init(),self.egchgui.init()
+ENDPROC
+
+PROC end() OF global
+  END self.mainwin,self.gtbuttons,self.gttexts,self.gtscrolls,
+      self.gtlistvs,self.gtpalettes,self.egspaces,self.egbevels,
+      self.gtmenus,self.egchwin,self.egchgui
+ENDPROC
+
+/*******
+ ATTENTION! All funtions starting with global_ may be called from any GUI
+ (or instance), so they must not use the gui object pointer passed through
+ info!!!
+ *******/
+
+PROC main() HANDLE
+  NEW global.init(),global2.init()
+
+  global.mh:=multiinit()
+  global.wintype:=WTYPE_SIZE
+  global.menus:=[NM_TITLE,0,&#x27;Project&#x27;,      NIL,0,0,0,
+                  NM_ITEM,0,&#x27;Block All&#x27;,    &#x27;L&#x27;,0,0,{global_blockall},
+                  NM_ITEM,0,NM_BARLABEL,    NIL,0,0,0,
+                  NM_ITEM,0,&#x27;Open All&#x27;,     &#x27;O&#x27;,0,0,{global_openall},
+                  NM_ITEM,0,&#x27;Close All&#x27;,    &#x27;C&#x27;,0,0,{global_closeall},
+                  NM_ITEM,0,NM_BARLABEL,    NIL,0,0,0,
+                  NM_ITEM,0,&#x27;Move All&#x27;,     &#x27;M&#x27;,0,0,{global_moveall},
+                  NM_ITEM,0,&#x27;Size All&#x27;,     &#x27;M&#x27;,0,0,{global_sizeall},
+                  NM_ITEM,0,NM_BARLABEL,    NIL,0,0,0,
+                  NM_ITEM,0,&#x27;Quit&#x27;,         &#x27;Q&#x27;,0,0,{global_quit},
+                 NM_TITLE,0,&#x27;Windows&#x27;,      NIL,0,0,0,
+                  NM_ITEM,0,&#x27;Buttons&#x27;,      &#x27;0&#x27;,0,0,{global_gtbuttons},
+                  NM_ITEM,0,&#x27;Texts&#x27;,        &#x27;1&#x27;,0,0,{global_gttexts},
+                  NM_ITEM,0,&#x27;Sliders&#x27;,      &#x27;2&#x27;,0,0,{global_gtscrolls},
+                  NM_ITEM,0,&#x27;Scrollers&#x27;,    &#x27;2&#x27;,0,0,{global_gtscrolls},
+                  NM_ITEM,0,&#x27;Listviews&#x27;,    &#x27;3&#x27;,0,0,{global_gtlistvs},
+                  NM_ITEM,0,&#x27;Palettes&#x27;,     &#x27;4&#x27;,0,0,{global_gtpalettes},
+                  NM_ITEM,0,&#x27;Spaces&#x27;,       &#x27;5&#x27;,0,0,{global_egspaces},
+                  NM_ITEM,0,&#x27;Bars&#x27;,         &#x27;6&#x27;,0,0,{global_egbevels},
+                  NM_ITEM,0,&#x27;Bevels&#x27;,       &#x27;6&#x27;,0,0,{global_egbevels},
+                  NM_ITEM,0,&#x27;Menus&#x27;,        &#x27;7&#x27;,0,0,{global_gtmenus},
+                  NM_ITEM,0,&#x27;ChangeWin&#x27;,    &#x27;8&#x27;,0,0,{global_egchwin},
+                  NM_ITEM,0,&#x27;ChangeGUI&#x27;,    &#x27;9&#x27;,0,0,{global_egchgui},
+                 NM_TITLE,0,&#x27;Screen&#x27;,       NIL,0,0,0,
+                  NM_ITEM,0,&#x27;Default&#x27;,      &#x27;D&#x27;,0,0,{global_defaultscreen},
+                  NM_ITEM,0,&#x27;Custom&#x27;,       &#x27;C&#x27;,0,0,{global_customscreen},
+                 NM_TITLE,0,&#x27;Decoration&#x27;,   NIL,0,0,0,
+                  NM_ITEM,0,&#x27;No Border&#x27;,    &#x27;N&#x27;,0,0,{global_noborderwin},
+                  NM_ITEM,0,&#x27;Basic&#x27;,        &#x27;B&#x27;,0,0,{global_basicwin},
+                  NM_ITEM,0,&#x27;No Size&#x27;,      &#x27;O&#x27;,0,0,{global_nosizewin},
+                  NM_ITEM,0,&#x27;Size&#x27;,         &#x27;S&#x27;,0,0,{global_sizewin},
+                 NM_TITLE,0,&#x27;Font&#x27;,         NIL,0,0,0,
+                  NM_ITEM,0,&#x27;Screen&#x27;,       &#x27;R&#x27;,0,0,{global_screenfont},
+                  NM_ITEM,0,&#x27;Topaz 8&#x27;,      &#x27;8&#x27;,0,0,{global_topaz8font},
+                  NM_ITEM,0,&#x27;Topaz 10&#x27;,     &#x27;1&#x27;,0,0,{global_topaz10font},
+                 NM_TITLE,0,&#x27;Title&#x27;,         NIL,0,0,0,
+                  NM_ITEM,0,&#x27;Info&#x27;,         &#x27;I&#x27;,0,0,{global_infotitle},
+                  NM_ITEM,0,&#x27;Nonsense&#x27;,     &#x27;N&#x27;,0,0,{global_nonsensetitle},
+                 NM_END,  0,NIL,            NIL,0,0,0]:newmenu
+
+  global.mainwin.open({global_quit})
+
+  REPEAT
+    multiloop(global.mh)
+  UNTIL global.mh.opencount=0
+EXCEPT DO
+  IF global.screen
+    CloseS(global.screen)
+    global.screen:=NIL
+  ENDIF
+  cleanmulti(global.mh)
+  report_exception()
+  END global,global2
+ENDPROC
+
+-&gt; button(qual*,data*,info)
+-&gt; menu(qual*=NIL,data*=NIL,info)
+PROC global_gtbuttons(i) IS global.gtbuttons.open()
+PROC global_gttexts(i) IS global.gttexts.open()
+PROC global_gtscrolls(i) IS global.gtscrolls.open()
+PROC global_gtlistvs(i) IS global.gtlistvs.open()
+PROC global_gtpalettes(i) IS global.gtpalettes.open()
+PROC global_egspaces(i) IS global.egspaces.open()
+PROC global_egbevels(i) IS global.egbevels.open()
+PROC global_gtmenus(i) IS global.gtmenus.open()
+PROC global_egchwin(i) IS global.egchwin.open()
+PROC global_egchgui(i) IS global.egchgui.open()
+
+-&gt; close(mh*,info)
+-&gt; button(qual*,data*,info)
+-&gt; menu(qual*=NIL,data*=NIL,info)
+PROC global_quit(i)
+  multiforall({x},global.mh,`cleangui(x))
+ENDPROC
+
+-&gt; appwin(data*,info,awmsg:PTR TO appmessage)
+PROC global_awp(i,a) IS WriteF(&#x27;Dropped in window\n&#x27;)
+
+/********************************************************************
+ * Misc support stuff
+ ********************************************************************/
+
+PROC makeexeclist(nodes) -&gt; derived from the dclisview plugin demo code by Ali Graham
+  DEF list
+  list:=newlist()
+  ForAll({x}, nodes, `AddTail(list, newnode(NIL, x)))
+ENDPROC list
+
+PROC tofront(gh:PTR TO guihandle)
+  IF gh
+    WindowToFront(gh.wnd)
+    ActivateWindow(gh.wnd)
+  ENDIF
+ENDPROC
+
+PROC setdisp(name,array:PTR TO LONG,num,val)
+  WriteF(&#x27;\s\d=\d\n&#x27;,name,num,val)
+  array[num]:=val
+ENDPROC
+
+PROC dispstr(name,num,str) IS WriteF(&#x27;\s\d=\s\n&#x27;,name,num,str)
+
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

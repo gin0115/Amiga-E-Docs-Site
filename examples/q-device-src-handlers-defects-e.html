@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>defects.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-q-device-src.html">q-device_src</a> &rsaquo; defects.e</div><h1>File: <code>defects.e</code></h1><p class="meta">78 lines · project <a href="../examples/pkg-q-device-src.html"><code>q-device_src</code></a></p><p class="pathctx">q-device_src/handlers/defects.e</p><h2>Source</h2><pre class="code">OPT MODULE
+OPT EXPORT
+
+MODULE &#x27;*/scsi/headers&#x27;,
+       &#x27;*/listview/outlist&#x27;
+
+DEF defectsformatflag,
+    defectsflag       
+       
+PROC process_defects(reply:PTR TO d_list)
+DEF param:PTR TO d_list_psf, x=0, str[255]:STRING
+
+    param:=reply + SIZEOF d_list
+
+    IF defectsformatflag=0
+        IF defectsflag=0
+            outlist(&#x27;\ebList Type:\en&#x27;, &#x27;Primary&#x27;)    
+        ELSEIF defectsflag=1
+            outlist(&#x27;\ebList Type:\en&#x27;, &#x27;Grown&#x27;)
+        ELSE
+            outlist(&#x27;\ebList Type:\en&#x27;, &#x27;Both Primary and Grown&#x27;)
+        ENDIF
+        
+        outlist(&#x27;\ebFormat:\en&#x27;, &#x27;Physical Sector&#x27;)
+        outlist_i(&#x27;\ebDefect List Size:\en&#x27;, reply.defectlistsize, &#x27; bytes&#x27;)
+        outlist_i(&#x27;\ebNumber of Defects:\en&#x27;, reply.defectlistsize / 8, NIL)
+        outlist(&#x27; &#x27;, &#x27; &#x27;)
+
+        FOR x:=1 TO (reply.defectlistsize / 8)
+            StringF(str, &#x27;Cylinder: \d, Head: \d, Sector: \d ($\h)&#x27;,Shr((param.cylinders AND $FFFFFF00), 8), (param.cylinders AND $FF), param.sector, param.sector)
+            outlist(&#x27;\ebDefect Found:\en&#x27;, str)
+            param:=param + SIZEOF d_list_psf
+        ENDFOR
+
+    ELSEIF defectsformatflag=1
+        IF defectsflag=0
+            outlist(&#x27;\ebList Type:\en&#x27;, &#x27;Primary&#x27;)    
+        ELSEIF defectsflag=1
+            outlist(&#x27;\ebList Type:\en&#x27;, &#x27;Grown&#x27;)
+        ELSE
+            outlist(&#x27;\ebList Type:\en&#x27;, &#x27;Both Primary and Grown&#x27;)
+        ENDIF    
+    
+        outlist(&#x27;\ebFormat:\en&#x27;, &#x27;Bytes From Index&#x27;)
+        outlist_i(&#x27;\ebDefect List Size:\en&#x27;, reply.defectlistsize, &#x27; bytes&#x27;)
+        outlist_i(&#x27;\ebNumber of Defects:\en&#x27;, reply.defectlistsize / 8, NIL)
+        outlist(&#x27; &#x27;, &#x27; &#x27;)
+
+        FOR x:=1 TO (reply.defectlistsize / 8)
+            StringF(str, &#x27;Cylinder: \d, Head: \d, Bytes From Index: \d ($\h)&#x27;,Shr((param.cylinders AND $FFFFFF00), 8), (param.cylinders AND $FF), param.sector, param.sector)
+            outlist(&#x27;\ebDefect Found:\en&#x27;, str)
+            param:=param + SIZEOF d_list_psf
+        ENDFOR
+
+    ELSE
+        IF defectsflag=0
+            outlist(&#x27;\ebList Type:\en&#x27;, &#x27;Primary&#x27;)    
+        ELSEIF defectsflag=1
+            outlist(&#x27;\ebList Type:\en&#x27;, &#x27;Grown&#x27;)
+        ELSE
+            outlist(&#x27;\ebList Type:\en&#x27;, &#x27;Both Primary and Grown&#x27;)
+        ENDIF     
+        
+        outlist(&#x27;\ebFormat:\en&#x27;, &#x27;Block&#x27;)
+        outlist_i(&#x27;\ebDefect List Size:\en&#x27;, reply.defectlistsize, &#x27; bytes&#x27;)
+        outlist_i(&#x27;\ebNumber of Defects:\en&#x27;, reply.defectlistsize / 4, NIL)
+        outlist(&#x27; &#x27;, &#x27; &#x27;)
+    
+        FOR x:=1 TO (reply.defectlistsize / 8)
+            StringF(str, &#x27;Defective Block Address: \d ($\h)&#x27;, Long(param), Long(param))
+            outlist(&#x27;\ebDefect Found:\en&#x27;, str)
+            param:=param + 4
+        ENDFOR
+
+    ENDIF
+
+ENDPROC
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

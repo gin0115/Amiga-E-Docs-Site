@@ -1,0 +1,770 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Sview.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-capus2.html">capus2</a> &rsaquo; Sview.e</div><h1>File: <code>Sview.e</code></h1><p class="meta">744 lines · project <a href="../examples/pkg-capus2.html"><code>capus2</code></a></p><p class="pathctx">capus2/capus2/LibTests/TEST_superview.library/Sview.e</p><p class="prose">=============================================</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/eropenlib.html">eropenlib</a></li><li><a href="../modules/nodes.html">exec/nodes</a></li><li><a href="../modules/gadtools.html">gadtools</a></li><li><a href="../modules/intuition.html">intuition/intuition</a></li><li><a href="../modules/screens.html">intuition/screens</a></li><li><a href="../modules/superview.html">superview</a></li><li><a href="../modules/superviewsupport.html">superviewsupport</a></li><li><a href="../modules/svdrivers.html">svdrivers</a></li><li><a href="../modules/svobjects.html">svobjects</a></li></ul></div><h2>Source</h2><pre class="code">/* ============================================= */
+/* TEST superview.library by NasGûl              */
+/* all structures are in source code (no module) */
+/* ============================================= */
+MODULE &#x27;exec/nodes&#x27;,&#x27;exec/lists&#x27;,&#x27;exec/libraries&#x27;
+MODULE &#x27;intuition/intuition&#x27;,&#x27;intuition/intuitionbase&#x27;
+MODULE &#x27;intuition/screens&#x27;
+MODULE &#x27;superviewsupport&#x27;
+MODULE &#x27;superview&#x27;
+MODULE &#x27;svdrivers&#x27;
+MODULE &#x27;svobjects&#x27;
+MODULE &#x27;gadtools&#x27;
+MODULE &#x27;eropenlib&#x27;
+
+ENUM ER_NONE,ER_ONLYCLI,ER_SUPERVIEWLIB,ER_BADARGS,ER_HANDLE
+
+/*&quot;superview.h&quot;*/
+/* superview/superview.h            */
+/* Version    : 6.1                 */
+/* Date       : 27.05.1994          */
+/* Written by : Andreas R. Kleinert */
+
+
+/* *************************************************** */
+/* *                                                 * */
+/* * Version Defines                                 * */
+/* *                                                 * */
+/* *************************************************** */
+
+CONST SVLIB_VERSION=6
+
+/* *************************************************** */
+/* *                             * */
+/* * DEFINES                         * */
+/* *                             * */
+/* *************************************************** */
+
+
+/* Possible FileTypes */
+
+CONST SV_FILETYPE_NONE=0
+CONST SV_FILETYPE_UNKNOWN=SV_FILETYPE_NONE
+CONST SV_FILETYPE_ILLEGAL=$FFFFFFFF
+
+CONST SV_FILETYPE_ILBM=1          /* IFF-ILBM, any derivat   */
+CONST SV_FILETYPE_ACBM=2          /* IFF-ACBM, any derivat   */
+CONST SV_FILETYPE_DATATYPE=3      /* V39-Datatype-Object     */
+
+     /*
+    up to here  : Constant codes for IFF-ILBM, IFF-ACBM and DataTypes
+              (constant for compatibility reasons).
+    above these : External, user defined FileSubTypes
+              (defined EACH TIME NEW at Library&#x27;s startup-time).
+     */
+
+
+/* Possible SubTypes of FileTypes */
+
+CONST SV_SUBTYPE_NONE=0
+CONST SV_SUBTYPE_UNKNOWN=SV_SUBTYPE_NONE
+CONST SV_SUBTYPE_ILLEGAL=$FFFFFFFF
+
+CONST SV_SUBTYPE_ILBM=1          /* Is IFF-ILBM              */
+CONST SV_SUBTYPE_ILBM_01=2          /* Is IFF-ILBM, CmpByteRun1 */
+CONST SV_SUBTYPE_ACBM=3          /* Is IFF-ACBM              */
+CONST SV_SUBTYPE_DATATYPE=4          /* Is V39-DataType-Object   */
+
+     /*
+    up to here  : Constant codes for IFF-ILBM, IFF-ACBM and DataTypes
+              (constant for compatibility reasons).
+    above these : External, user defined FileSubTypes
+              (defined EACH TIME NEW at Library&#x27;s startup-time).
+     */
+
+
+/* Possible Input and Output mediums */
+
+CONST AKO_MEDIUM_NONE=0          /* means : DEFAULT          */
+CONST AKO_MEDIUM_ILLEGAL=$FFFFFFFF
+
+CONST AKO_MEDIUM_DISK=1              /* Read and Write media     */
+CONST AKO_MEDIUM_CLIP=2
+
+     /* not any medium might be supported by any SVObject */
+
+
+/* *************************************************** */
+/* *                             * */
+/* * Function Error Codes                * */
+/* *                             * */
+/* *************************************************** */
+
+CONST SVERR_MAX_ERROR_TEXT_LENGTH=80       /* plus Null-Byte */
+
+CONST SVERR_NO_ERROR=NIL
+CONST SVERR_INTERNAL_ERROR=$FFFFFFFF
+
+CONST SVERR_UNKNOWN_FILE_FORMAT=1
+CONST SVERR_FILE_NOT_FOUND=2
+CONST SVERR_NO_MEMORY=3
+CONST SVERR_IFFPARSE_ERROR=4
+CONST SVERR_NO_CLIPBOARD=5
+CONST SVERR_NO_SCREEN=6
+CONST SVERR_NO_FILE=7
+CONST SVERR_NO_HANDLE=8
+CONST SVERR_NO_DATA=9
+CONST SVERR_GOT_NO_WINDOW=10
+CONST SVERR_GOT_NO_SCREEN=11
+CONST SVERR_NO_INFORMATION=12
+CONST SVERR_ILLEGAL_ACCESS=13
+CONST SVERR_DECODE_ERROR=14
+CONST SVERR_UNKNOWN_PARAMETERS=15
+CONST SVERR_ACTION_NOT_SUPPORTED=16
+CONST SVERR_VERSION_CONFLICT=17
+CONST SVERR_NO_DRIVER_AVAILABLE=18
+
+    /* Each new Library-Subversion may contain new Codes above
+       the last one of these.
+       So do not interpret the codes directly, but use
+       SVL_GetErrorString().
+       Maybe, newer Codes will not be listed up here.
+    */
+
+OBJECT gfxbuffer /* SV_GfxBuffer */
+
+ /*
+    All values are strictly READ-ONLY :
+    - DO NOT write-access any entries !
+    - DO NOT free any memory by hand !
+ */
+
+ version:LONG        /* structure version, see below            */
+ buffertype:LONG     /* Data organization, see below            */
+ width:LONG          /* Graphic&#x27;s Width                             */
+ height:LONG         /* Graphic&#x27;s Height                            */
+ colordepth:LONG     /* Graphic&#x27;s ColorDepth                        */
+ viewmode32:LONG     /* if NULL, best ScreenMode is suggested       */
+ colors[768]:ARRAY   /* For ColorDepth &lt; 8 : 3-Byte RGB         */
+ bytesperline:LONG   /* as in conventional BitMaps (see below)      */
+                     /* only valid, if svgfx_BufferType == BITPLANE */
+ pixelbits:LONG      /* how many Bits per Pixel : 8, 16, 24 ?       */
+                     /* only valid, if svgfx_BufferType == ONEPLANE */
+ buffer:LONG         /* any kind of memory (no chip ram needed)     */
+ buffersize:LONG     /* if you want to copy it ...          */
+
+ENDOBJECT /* size of structure may grow in future versions : Check svgfx_Version ! */
+
+CONST SVGFX_VERSION=1
+
+CONST SVGFX_BUFFERTYPE_BITPLANE=1  /* Amiga-like BitPlanes            */
+CONST SVGFX_BUFFERTYPE_ONEPLANE=2  /* single Byte-/Word-/24 Bit-Plane */
+
+/* there may be more types in the future */
+
+
+/* structure of svgfx_Buffer is as follows :
+
+   BITPLANE : Amiga-like BitPlane, upto 256 Colors (8 Bit)
+          NO SPECIAL ALIGNMENT IS DONE.
+   ONEPLANE :  8 Bit : Chunky Pixel (ColorMap)
+          16 Bit : R:G:B = 5:5:5 plus 1 Bit Alpha Channel (IGNORED)
+          24 Bit : R:G:B = 8:8:8
+*/
+/**/
+/*&quot;superviewbase.h&quot;*/
+/* superview/superviewbase.h        */
+/* Version    : 6.1                 */
+/* Date       : 23.05.1994          */
+/* Written by : Andreas R. Kleinert */
+
+   /*
+      All entries are READ-ONLY.
+      The private entries should NEVER be accessed.
+   */
+
+OBJECT superviewbase
+ libnode:lib
+ seglist:LONG
+ sysbase:LONG
+ dosbase:LONG
+ intuitionbase:LONG
+ gfxbase:LONG
+
+  /* next have been added with V2 : */
+
+ iffparsebase:LONG  /* may be NULL */
+ datatypesbase:LONG /* may be NULL */
+
+ svobjectlist:lh
+ private1:LONG      /* DO NOT ACCESS */
+ private2:LONG      /* DO NOT ACCESS */
+ private3:LONG      /* DO NOT ACCESS */
+
+  /* next have been added with V3 : */
+
+ svdriverlist:lh
+ globaldriver:LONG  /* may be NULL for Default-Driver */
+
+  /* next have been added with V4 : */
+
+ utilitybase:LONG
+ svsupportbase:LONG
+ENDOBJECT
+/**/
+/*&quot;svinfo.h&quot;*/
+/* superview/svinfo.h               */
+/* Version    : 6.1                 */
+/* Date       : 27.05.1994          */
+/* Written by : Andreas R. Kleinert */
+
+/* *************************************************** */
+/* *                                                 * */
+/* * Information structures (SVObjects &amp; SVDrivers)  * */
+/* *                                                 * */
+/* *************************************************** */
+
+   /* the following have been introduced with V6 : */
+
+OBJECT svobjectinfo
+ type:LONG            /* valid SubTypeCode value       */
+ flags:LONG           /* Copy of Flags from svo_Flags  */
+ typename:LONG        /* Copy of svo_TypeID and        */
+                      /* svo_SubTypeID[x]              */
+ nextentry:LONG       /* Pointer to next entry or NULL */
+ENDOBJECT
+
+OBJECT svdriverinfo
+ flags:LONG     /* Copy of Flags from svd_Flags  */
+ name:LONG      /* Pointer to svd_ID             */
+ nextentry:LONG /* Pointer to next entry or NULL */
+ENDOBJECT
+/**/
+
+/*&quot;superviewsupport.h&quot;*/
+/* superviewsupport/superviewsupport.h */
+/* Version    : 3.1                    */
+/* Date       : 23.05.1994             */
+/* Written by : Andreas R. Kleinert    */
+
+/* *************************************************** */
+/* *                             * */
+/* * Version Defines                     * */
+/* *                             * */
+/* *************************************************** */
+
+CONST SVSUPPORTLIB_VERSION=3
+
+
+/* *************************************************** */
+/* *                             * */
+/* * Includes                        * */
+/* *                             * */
+/* *************************************************** */
+
+/*  === ControlPads === */
+
+/* see documentation for more and detailed information on ControlPad-Files */
+
+OBJECT controlpad          /* These ControlPads are supplied as    */
+                           /* single-chained list, where the       */
+ entryname:LONG            /* pointer to the last entry is NULL.   */
+ entrycontent:LONG         /* Do not free them by Hand.            */
+ nextentry:LONG
+ENDOBJECT
+/**/
+/*&quot;svsupportbase.h&quot;*/
+/* superviewsupport/svsupportbase.h */
+/* Version    : 2.1                 */
+/* Date       : 22.05.1994          */
+/* Written by : Andreas R. Kleinert */
+
+OBJECT svsupportbase
+ libnode:lib
+ seglist:LONG
+ sysbase:LONG
+ dosbase:LONG
+ intuitionbase:LONG
+ gfxbase:LONG
+ utilitybase:LONG
+ENDOBJECT
+/**/
+
+/*&quot;svdrivers.h&quot;*/
+/* svdrivers/svdrivers.h            */
+/* Version    : 3.5                 */
+/* Date       : 25.03.1994          */
+/* Written by : Andreas R. Kleinert */
+
+/* SVDriver-Version V1.x+ */
+
+OBJECT drivernode
+ node:ln              /* chaining Node                         */
+                      /* (svd_Node-&gt;ln_Name MUST               */
+                      /*  point to svd_FileName !)             */
+
+ version:LONG         /* Library-Version of svdriver           */
+
+ flags:LONG           /* Flags, see below                      */
+
+ filename[108]:ARRAY  /* use 30, as in struct FileInfoBlock    */
+
+ maxwidth:LONG                /* max. Screen Dimensions or 0xFFFFFFFF  */
+ maxheight:LONG
+ maxdepth:LONG
+ id[80]:ARRAY                 /* short description, e.g. &quot;AGA Driver&quot;  */
+
+ /* size may grow with bigger svd_Version, see below */
+ENDOBJECT
+
+CONST SVD_VERSION=1             /* If this Version, which depends on the */
+                                    /* svdriver&#x27;s Library-Version, is set,   */
+                                    /* it is guaranteed, that at least the   */
+                                    /* above information is available.       */
+
+   /* Flags allowed for svd_Flags field. Values are &quot;just for info&quot; yet. */
+
+CONST SVDF_INTUITION=0       /* Intuition compatible Display          */
+                             /* e.g. Amiga, ECS, AA                   */
+                             /* or compatible Graphic Cards           */
+
+CONST SVDF_FOREIGN=1       /* incompatible Gfx Display              */
+                           /* e.g. EGS                              */
+/**/
+/*&quot;svdriverbase.h&quot;*/
+/* svdrivers/svdriverbase.h     */
+/* Version    : 3.5         */
+/* Date       : 28.03.1994      */
+/* Written by : Andreas R. Kleinert */
+
+
+   /* An external Driver-Library (for graphics cards, framebuffers, etc.)
+      for the superview.library is called a &quot;svdriver&quot;.
+      Each svdriver has to contain a &quot;SVD_DriverNode&quot; structure (as follows)
+      in its Library-Header, which later will be READ and MODIFIED by
+      the superview.library.
+   */
+
+   /* The Construction of a svdriver :
+      ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+      The Library Base
+      ----------------
+
+      Version MUST be 1 yet, Revision can be set freely
+
+      (see structure described below)
+
+
+      The Function Table
+      ------------------
+
+      (see &lt;pragmas/svdrivers.h&gt; or Reference_ENG.doc)
+
+   */
+
+/* *************************************************** */
+/* *                             * */
+/* * Library base Definition for svdrivers       * */
+/* *                             * */
+/* *************************************************** */
+
+OBJECT svdriverbase
+ libnode:lib       /* Exec LibNode           */
+ svdriver:LONG     /* POINTER to initialized         */
+                   /* SVD_DriverNode             */
+                   /* Define it somewhere else,      */
+                   /* then initialize this pointer.  */
+
+ reserved[32]:ARRAY    /* Reserved for future expansion. */
+                       /* Always NULL yet (Version 1).   */
+
+ /*
+   Private data of the svdriver, not to be accessed
+   by superview.library, may follow.
+ */
+ENDOBJECT
+/**/
+
+/*&quot;svobectbase.h&quot;*/
+/* svobjects/svobjectbase.h     */
+/* Version    : 3.7         */
+/* Date       : 28.04.1994      */
+/* Written by : Andreas R. Kleinert */
+
+/* SVObject-Version V2.x+ */
+
+
+   /* An external support-library for the superview.library is called a
+      &quot;svobject&quot;.
+      Each svobject has to contain a &quot;SVO_ObjectNode&quot; structure (as follows)
+      in its Library-Header, which later will be READ and MODIFIED by
+      the superview.library.
+      Because the superview.library supports three different sorts
+      of SVObjects at the time (internal, independent and external),
+      there are three different types of this structure (might be more in
+      the future), which can be identified via their &quot;svo_ObjectType&quot;.
+   */
+
+   /* The Construction of a svobject :
+      ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+      The Library Base
+      ----------------
+
+      Version MUST be 2 yet, Revision can be set freely
+
+      (see structure described below)
+
+
+      The Function Table
+      ------------------
+
+      (see &lt;pragmas/svobjects.h&gt; or Reference_ENG.doc)
+
+   */
+
+/* *************************************************** */
+/* *                             * */
+/* * Library base Definition for svobjects       * */
+/* *                             * */
+/* *************************************************** */
+
+OBJECT svobjectbase
+ libnode:LONG       /* Exec LibNode           */
+ svobject:LONG;      /* POINTER to initialized         */
+                    /* SVO_ObjectNode             */
+                    /* Define it somewhere else,      */
+                    /* then initialize this pointer.  */
+
+ reserved[32]:ARRAY  /* Reserved for future expansion. */
+                     /* Always NULL yet (Version 1).   */
+
+ /*
+   Private data of the svobject, not to be accessed
+   by superview.library, may follow.
+ */
+ENDOBJECT
+/**/
+/*&quot;svobjects.h&quot;*/
+/* svobjects/svobjects.h            */
+/* Version    : 4.1                 */
+/* Date       : 15.05.1994          */
+/* Written by : Andreas R. Kleinert */
+
+/* SVObject-Version V2.x+ */
+
+
+
+OBJECT objectnode
+ node:ln              /* chaining Node                         */
+                      /* (svo_Node-&gt;ln_Name is NULL            */
+                      /*  by default !)                        */
+
+ version:LONG         /* Library-Version of svobject           */
+
+ objecttype:LONG      /* see below (SVO_OBJECTTYPE_...)        */
+
+ filename[108]:ARRAY   /* use 30, as in struct FileInfoBlock    */
+
+ typeid[32]:ARRAY        /* e.g. &quot;GIF&quot;                            */
+ typecode:LONG                /* ... and its appropriate Code,  ,      */
+                                    /* assigned by superview.library LATER.  */
+
+ subtypenum:LONG              /* actually available SubTypes           */
+                                    /* (maximum 16) of the svobject.         */
+
+                                    /* 0xFFFFFFFF means, that it is an       */
+                                    /* INDEPENDENT entry, which is an        */
+                                    /* unimplemented feature yet and         */
+                                    /* means that the SubTypeID and          */
+                                    /* SubTypeCode fields should be skipped. */
+
+ subtypeid[256]:ARRAY    /* e.g. &quot;87a&quot; or &quot;89a&quot;                   */
+ subtypecode[16]:ARRAY        /* ... and their appropriate Codes,      */
+                                    /* assigned by superview.library LATER.  */
+
+ /* version 2 extensions : */
+
+ flags:LONG                   /* SVO_FLAG_... (see below)              */
+
+ /* size may grow with bigger svo_Version, see below */
+ENDOBJECT
+
+CONST SVO_VERSION=2             /* If this Version, which depends on the */
+                                    /* svobject&#x27;s Library-Version, is set,   */
+                                    /* it is guaranteed, that at least the   */
+                                    /* above information is available.       */
+
+CONST SVO_FILENAME=&quot;INTE&quot;     /* for internal svobjects only.          */
+
+
+CONST SVO_OBJECTTYPE_NONE=0
+CONST SVO_OJECTTYPE_UNKNOWN=SVO_OBJECTTYPE_NONE
+CONST SVO_OBJECTTYPE_ILLEGAL=$FFFFFFFF
+
+CONST SVO_OBJECTTYPE_INTERNAL=1 /* internal                   */
+CONST SVO_OBJECTTYPE_INDEPENDENT=2 /* UNIMPLEMENTED              */
+                                               /* Handle them like EXTERNAL, */
+                                               /* but ignore some entries.   */
+CONST SVO_OBJECTTYPE_EXTERNAL=3 /* external svobject          */
+
+
+  /* The following flags have been introduced with the V2 SVObjects
+     (depending on svo_Version : do not check them with V1 SVObjects).
+     They should help any applications deciding, whether a specific
+     SVObject may fulfil an action or not.
+     Note : Some SVObjects may not have the correct flags set and might
+            return SVERR_ACTION_NOT_SUPPORTED nevertheless
+  */
+
+
+CONST SVO_FLAG_READS_TO_BUFFER=0 /* allows reading to SV_GfxBuffer */
+CONST SVO_FLAG_READS_TO_SCREEN=1 /* allows displaying on Screen    */
+
+CONST SVO_FLAG_WRITES_FROM_BUFFER=2 /* writes SV_GfxBuffer to file    */
+CONST SVO_FLAG_WRITES_FROM_SCREEN=4 /* writes Screen to file          */
+
+CONST SVO_FLAG_SUPPORTS_SVDRIVER=8 /* uses default SVDriver,         */
+                                           /* if available                   */
+CONST SVO_FLAG_NEEDS_SVDRIVER=16   /* needs valid default SVDriver   */
+                                           /* for working. Developers :      */
+                                           /* Set SVO_FLAG_SVDRIVER instead  */
+
+CONST SVO_FLAG_SVDRIVER=24
+
+
+ /* This structure has to be passed to SVObject&#x27;s SVO_CheckFileType()
+    function, if media other than AKO_MEDIUM_DISK are used for reading.
+    This is supported since superview.library V4 and may be ignored by
+    SVObjects for compatibility reasons. To prevent older SVO_CheckFileType()
+    functions from crashing, superview.library will create a dummy-file and
+    pass it&#x27;s handle also ...
+    (&quot;You wanna something to check ? - Here you get it !&quot;)
+
+     In the V3-SVObject specification this structure will HAVE TO be
+     examined, then. In the current V2-specification this is not the case.
+  */
+    
+OBJECT svocheckfile
+ medium:LONG   /* AKO_MEDIUM_... */
+ future:LONG   /* as usual       */
+ENDOBJECT
+/**/
+DEF strsource[256]:STRING
+DEF strdestin[256]:STRING
+DEF listf=FALSE
+DEF c_f=NIL
+DEF showdest=FALSE
+/*&quot;main()&quot;*/
+PROC main() HANDLE
+    DEF tm
+    IF wbmessage&lt;&gt;NIL THEN Raise(ER_ONLYCLI)
+    IF (tm:=p_OpenLibraries())&lt;&gt;ER_NONE THEN Raise(tm)
+    IF (tm:=p_StartCli())&lt;&gt;ER_NONE THEN Raise(tm)
+    IF ((c_f=NIL) AND (listf=FALSE))
+        p_ViewImage(strsource)
+        Raise(ER_NONE)
+    ELSEIF listf=TRUE
+        p_ListObj()
+        Raise(ER_NONE)
+    ENDIF
+    p_ConvertImage(strsource,strdestin,c_f)
+    IF showdest=TRUE THEN p_ViewImage(strdestin)
+    Raise(ER_NONE)
+EXCEPT
+    p_CloseLibraries()
+    SELECT exception
+        CASE ER_ONLYCLI;        WriteF(&#x27;Error: Only cli\n&#x27;)
+        CASE ER_SUPERVIEWLIB;   WriteF(&#x27;Error: superview.library ?\n&#x27;)
+        CASE ER_GADTOOLSLIB;    WriteF(&#x27;Error: gadtools.library ?\n&#x27;)
+    ENDSELECT
+ENDPROC
+/**/
+/*&quot;p_StartCli()&quot;*/
+PROC p_StartCli() HANDLE
+    DEF myargs:PTR TO LONG,rdargs=NIL
+    myargs:=[0,0,0,0,0]
+    IF rdargs:=ReadArgs(&#x27;Source,Destin,Convert/N,ListFormat/S,ShowDest/S&#x27;,myargs,NIL)
+        IF myargs[0] THEN StrCopy(strsource,myargs[0],ALL)
+        IF myargs[1] THEN StrCopy(strdestin,myargs[1],ALL)
+        IF myargs[2] THEN c_f:=Long(myargs[2])
+        IF myargs[3] THEN listf:=TRUE
+        IF myargs[4] THEN showdest:=TRUE
+    ELSE
+        Raise(ER_BADARGS)
+    ENDIF
+    Raise(ER_NONE)
+EXCEPT
+    RETURN exception
+ENDPROC
+/**/
+/*&quot;p_OpenLibraires()&quot;*/
+PROC p_OpenLibraries() HANDLE
+    IF (superviewbase:=OpenLibrary(&#x27;superview.library&#x27;,0))=NIL THEN Raise(ER_SUPERVIEWLIB)
+    IF (gadtoolsbase:=OpenLibrary(&#x27;gadtools.library&#x27;,0))=NIL THEN Raise(ER_GADTOOLSLIB)
+    Raise(ER_NONE)
+EXCEPT
+    RETURN exception
+ENDPROC
+/**/
+/*&quot;p_CloseLibraries()&quot;*/
+PROC p_CloseLibraries()
+    IF gadtoolsbase THEN CloseLibrary(gadtoolsbase)
+    IF superviewbase THEN CloseLibrary(superviewbase)
+ENDPROC
+/**/
+/*&quot;p_ViewImage(name)&quot;*/
+PROC p_ViewImage(name)
+    DEF handle
+    DEF w:PTR TO window
+    DEF retval=SVERR_NO_ERROR,count
+    DEF mess:PTR TO intuimessage,type
+    DEF tick=0
+    handle:=SvL_AllocHandle(NIL)
+    IF handle
+        retval:=SvL_InitHandleAsDOS(handle,NIL)
+        IF retval=0
+            retval:=SvL_SetWindowIDCMP(handle,IDCMP_INTUITICKS OR IDCMP_RAWKEY,NIL)
+            IF retval=0
+                /*
+                retval:=SvL_SetScreenType(handle,WBENCHSCREEN+PUBLICSCREEN,NIL)
+                IF retval=0
+                */
+                    WriteF(&#x27;SuperView() ?\n&#x27;)
+                    retval:=SvL_SuperView(handle,name)
+                    WriteF(&#x27;SuperView() ok\n&#x27;)
+                    IF retval=0
+                        retval:=SvL_GetWindowAddress(handle,{w},NIL)
+                        IF retval=0
+                            IF w
+                                start:
+                                WHILE mess:=Gt_GetIMsg(w.userport)
+                                    type:=mess.class
+                                    SELECT type
+                                        CASE IDCMP_RAWKEY; IF mess.code=69 THEN JUMP end
+                                        CASE IDCMP_INTUITICKS
+                                            tick:=tick+1
+                                            IF tick=50 THEN JUMP end
+                                    ENDSELECT
+                                    Gt_ReplyIMsg(mess)
+                                ENDWHILE
+                                JUMP start
+                                end:
+                            ENDIF
+                        ELSE
+                            WriteF(&#x27;\s\n&#x27;,SvL_GetErrorString(retval))
+                        ENDIF
+                    ELSE
+                        WriteF(&#x27;\s\n&#x27;,SvL_GetErrorString(retval))
+                    ENDIF
+                /*
+                ELSE
+                    WriteF(&#x27;\s\n&#x27;,SvL_GetErrorString(retval))
+                ENDIF
+                */
+            ELSE
+                WriteF(&#x27;\s\n&#x27;,SvL_GetErrorString(retval))
+            ENDIF
+        ELSE
+            WriteF(&#x27;\s\n&#x27;,SvL_GetErrorString(retval))
+        ENDIF
+        SvL_FreeHandle(handle)
+    ELSE
+        WriteF(&#x27;Alloc handle failed.\n&#x27;)
+    ENDIF
+ENDPROC
+/**/
+/*&quot;p_ListObj()&quot;*/
+PROC p_ListObj()
+   DEF l:PTR TO lh
+   DEF n:PTR TO ln
+   DEF o:PTR TO svobjectinfo
+   DEF of:PTR TO svobjectinfo
+   DEF retval
+   retval:=SvL_GetSVObjectList({o})
+   IF retval=0
+        of:=o
+        WHILE (o)
+            WriteF(&#x27;Name:\l\s[24] SubTypeCode:\d[2]\n&#x27;,o.typename,o.type)
+            o:=o.nextentry
+        ENDWHILE
+        SvL_FreeSVObjectList(of)
+    ELSE
+        WriteF(&#x27;\s\n&#x27;,SvL_GetErrorString(retval))
+    ENDIF
+ENDPROC
+/**/
+/*&quot;p_ConvertImage(s,d,t)&quot;*/
+PROC p_ConvertImage(s,d,t) HANDLE
+    DEF retval
+    DEF h_s=NIL,h_d=NIL
+    DEF s_screen=NIL,s_window=NIL
+    /*=== Source Allocation ===*/
+    h_s:=SvL_AllocHandle(NIL)
+    IF h_s=NIL THEN Raise(ER_HANDLE)
+    /*=========================*/
+    retval:=SvL_InitHandleAsDOS(h_s,NIL)
+    IF retval&lt;&gt;0 THEN Raise(retval)
+    /*=========================*/
+    retval:=SvL_SetWindowIDCMP(h_s,IDCMP_MOUSEBUTTONS+IDCMP_VANILLAKEY,NIL)
+    IF retval&lt;&gt;0 THEN Raise(retval)
+    /*=========================*/
+    retval:=SvL_SetScreenType(h_s,CUSTOMSCREEN,NIL)
+    IF retval&lt;&gt;0 THEN Raise(retval)
+    retval:=SvL_SuperView(h_s,s)
+    IF retval&lt;&gt;0 THEN Raise(retval)
+    retval:=SvL_GetScreenAddress(h_s,{s_screen},NIL)
+    IF retval&lt;&gt;0 THEN Raise(retval)
+    retval:=SvL_GetWindowAddress(h_s,{s_window},NIL)
+
+    /*=== Destination Allocation ===*/
+    h_d:=SvL_AllocHandle(NIL)
+    IF h_d=NIL THEN Raise(ER_HANDLE)
+    retval:=SvL_InitHandleAsDOS(h_d,NIL)
+    IF retval&lt;&gt;0 THEN Raise(retval)
+    retval:=SvL_SetWriteType(h_d,t,NIL)
+    IF retval&lt;&gt;0 THEN Raise(retval)
+    retval:=SvL_SetWriteName(h_d,d,NIL)
+    IF retval&lt;&gt;0 THEN Raise(retval)
+    retval:=SvL_SetWriteScreen(h_d,s_screen,NIL)
+    IF retval&lt;&gt;0 THEN Raise(retval)
+    retval:=SvL_SuperWrite(h_d)
+    IF retval&lt;&gt;0 THEN Raise(retval)
+    Delay(150)
+    IF h_d 
+        /*SvL_FreeResources(h_d)*/
+        SvL_FreeHandle(h_d)
+    ENDIF
+    IF h_s 
+        /*SvL_FreeResources(h_s)*/
+        SvL_FreeHandle(h_s)
+    ENDIF
+    Raise(ER_NONE)
+EXCEPT
+    IF exception&lt;&gt;ER_NONE
+        WriteF(&#x27;\s\n&#x27;,SvL_GetErrorString(exception))
+        IF h_d THEN SvL_FreeHandle(h_d)
+        IF h_s THEN SvL_FreeHandle(h_s)
+    ENDIF
+    RETURN exception
+ENDPROC
+/**/
+
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

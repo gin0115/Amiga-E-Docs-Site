@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>doublebuffer.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-dbuffer.html">dbuffer</a> &rsaquo; doublebuffer.e</div><h1>File: <code>doublebuffer.e</code></h1><p class="meta">65 lines · project <a href="../examples/pkg-dbuffer.html"><code>dbuffer</code></a></p><p class="pathctx">dbuffer/doublebuffer.e</p><p class="prose">my attempt at double buffering made easy</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/screens.html">intuition/screens</a></li></ul></div><h2>Source</h2><pre class="code">/*my attempt at double buffering made easy*/
+OPT MODULE
+OPT EXPORT
+MODULE &#x27;intuition/screens&#x27;,  -&gt; Screen data structures
+       &#x27;graphics/rastport&#x27;,  -&gt; RastPort and other structures
+       &#x27;graphics/view&#x27;,      -&gt; ViewPort and other structures
+       &#x27;graphics/gfx&#x27;        -&gt; BitMap and other structures
+
+OBJECT dscreen
+ screen:PTR TO screen
+ bm1:PTR TO bitmap
+ bm2:PTR TO bitmap
+ENDOBJECT
+
+PROC opendscreen(ns:PTR TO ns)
+DEF p:PTR TO dscreen
+DEF plane_num, planes:PTR TO LONG
+p:=New(SIZEOF dscreen)
+p.bm1:=New(SIZEOF bitmap)
+p.bm2:=New(SIZEOF bitmap)
+InitBitMap(p.bm1,ns.depth,ns.width,ns.height)
+InitBitMap(p.bm2,ns.depth,ns.width,ns.height)
+  planes:=p.bm1.planes
+  FOR plane_num:=0 TO ns.depth-1
+    planes[plane_num]:=AllocRaster(ns.width, ns.height)
+    BltClear(planes[plane_num], (ns.width/8)*ns.height, 1)
+  ENDFOR
+  planes:=p.bm2.planes
+  FOR plane_num:=0 TO ns.depth-1
+    planes[plane_num]:=AllocRaster(ns.width, ns.height)
+    BltClear(planes[plane_num], (ns.width/8)*ns.height, 1)
+  ENDFOR
+ns.custombitmap:=p.bm1
+ns.type:=ns.type OR $155
+p.screen:=OpenScreen(ns)
+p.screen.rastport.flags:=p.screen.rastport.flags OR RPF_DBUFFER
+SetStdRast(p.screen.rastport)
+dswitch(p)
+ENDPROC p
+
+PROC dswitch(p:PTR TO dscreen)
+DEF t
+t:=p.bm1
+p.bm1:=p.bm2
+p.bm2:=t
+MakeScreen(p.screen)
+RethinkDisplay()
+p.screen.rastport.bitmap:=p.bm1
+p.screen.viewport.rasinfo.bitmap:=p.bm1
+ENDPROC
+
+PROC closedscreen(p:PTR TO dscreen)
+DEF plane_num, planes:PTR TO LONG
+CloseScreen(p.screen)
+  planes:=p.bm1.planes
+  FOR plane_num:=0 TO p.bm1.depth-1
+    IF planes[plane_num] THEN FreeRaster(planes[plane_num], p.screen.width, p.screen.height)
+  ENDFOR
+  planes:=p.bm2.planes
+  FOR plane_num:=0 TO p.bm2.depth-1
+    IF planes[plane_num] THEN FreeRaster(planes[plane_num], p.screen.width, p.screen.height)
+  ENDFOR
+stdrast:=NIL
+ENDPROC
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

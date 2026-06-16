@@ -1,0 +1,366 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>binary.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-ecx-2-3-1-src.html">ECX_2.3.1-src</a> &rsaquo; binary.e</div><h1>File: <code>binary.e</code></h1><p class="meta">340 lines · project <a href="../examples/pkg-ecx-2-3-1-src.html"><code>ECX_2.3.1-src</code></a></p><p class="pathctx">ECX_2.3.1-src/ecx-2.3.1-src/binary.e</p><p class="prose">************************************************************************ ** ECX/binary.e. ** Copyright (c) Leif Salomonsson 2002-2008. ** Redistribution of this source is allowed as long as: ** 1. no copyright notice is removed or altered. ** 2. altered source must be clearly marked as such. *******</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/lists.html">exec/lists</a></li><li><a href="../modules/nodes.html">exec/nodes</a></li><li><a href="../modules/semaphores.html">exec/semaphores</a></li></ul></div><h2>Source</h2><pre class="code">/*************************************************************************
+** ECX/binary.e.
+** Copyright (c) Leif Salomonsson 2002-2008.
+** Redistribution of this source is allowed as long as:
+** 1. no copyright notice is removed or altered.
+** 2. altered source must be clearly marked as such.
+*************************************************************************/
+
+OPT MODULE
+OPT EXPORT
+OPT PREPROCESS
+
+MODULE &#x27;exec/semaphores&#x27;
+MODULE &#x27;exec/lists&#x27;
+MODULE &#x27;exec/nodes&#x27;
+
+EXPORT CONST MODULEVERSION = 1
+
+EXPORT ENUM CPU_NONE = -1, -&gt; 2.0
+            CPU_M68,-&gt; 1.10.0
+            CPU_PPC
+
+-&gt; v2.0  procedures/lfuncs
+ENUM PPCARGRTYPE_RX,
+     PPCARGRTYPE_STACKRX,
+     PPCARGRTYPE_FX,
+     PPCARGRTYPE_VX,
+     PPCARGRTYPE_RX2,
+     PPCARGRTYPE_STACKRX2
+
+-&gt; 2.3
+ENUM M68ARGTYPE_STACK,
+     M68ARGTYPE_FREG,
+     M68ARGTYPE_STACK_WIDE
+
+EXPORT OBJECT modulecache OF ss
+   ident:INT -&gt; 1.8.0 &quot;MC&quot; (was pad:INT)
+   modlist:mlh
+   rsrvd:LONG
+ENDOBJECT
+
+OBJECT modinfo
+   rsrvd:LONG
+   count:LONG
+   misc:LONG
+ENDOBJECT
+
+OBJECT modextens -&gt; internal structure, not actually part of moduleformat
+   codelist:LONG
+   rname:PTR TO CHAR
+   referenced:INT
+   secondary:INT
+ENDOBJECT
+
+ENUM OSID_NONE,
+     OSID_AMIGAOS,
+     OSID_AMIGAOS4,
+     OSID_MORPHOS,
+     OSID_AROS,
+     OSID_LINUX
+
+OBJECT moduleheader
+   succ:PTR TO moduleheader  -&gt; NIL on disk
+   pred:PTR TO moduleheader  -&gt; NIL on disk
+   identification:LONG -&gt; &quot;ECXM&quot;
+   mname:PTR TO CHAR -&gt; name of module
+   mnamelen:INT     -&gt; len of name
+   headsize:INT     -&gt; SIZEOF moduleheader
+   modextens:PTR TO modextens -&gt; v45
+   rsrvd[16]:ARRAY
+   checksum:LONG
+   checksumstart[1]:ARRAY OF LONG
+   cpu:INT        -&gt; 0=68k, 1=ppc
+   cpubits:INT -&gt; flags, currently NIL.
+   modsize:LONG        -&gt; total size of module
+   stacksize:LONG
+   osversion:INT
+   modversion:INT -&gt; v45: 1
+   keepnil:LONG -&gt; WAS oschars[4]:ARRAY OF CHAR (DONTUSE THIS) -&gt; 1.5.6 &quot;\0\0\0\0&quot;/&quot;AOS3&quot;/&quot;ABOX&quot;/&quot;AOS4&quot;/&quot;AROS&quot;
+   dummymod:LONG -&gt; TRUE if dummy modulehead in cache (1.10.0)
+   rsrvd2:LONG
+   osid:LONG -&gt; 2.0, OSID_XXX
+   strtabinfo
+   macroinfo
+   libiinfo
+   constinfo
+   procinfo
+   objectinfo
+   moduleinfo
+   codeinfo
+   ifuncinfo
+   xrefginfo
+   dreldinfo
+   globinfo
+   datainfo
+   relocinfo
+   lineinfo
+   debuginfo
+   const64info -&gt; 1.8.0  (not used yet)
+   relainfo -&gt; 1.10.0 -&gt; elf relocations (to support HA/LO type relocs)  (not used yet)
+   globinitinfo -&gt; 2.2
+   xglobderefinfo -&gt; 2.2
+ENDOBJECT /* SIZEOF = 160 */
+
+OBJECT modmacro -&gt; compatible with macro !
+   rsrvd:INT
+   totalsize:INT -&gt; to skip to next
+   name:LONG
+   type:CHAR -&gt; 0:define macro, 1:define macro function, 2:asm macro, 3:varargs macor
+   nrofargs:CHAR
+   bodysize:INT -&gt; including longalign+nilterm
+   pad:LONG -&gt; used internally
+-&gt; IF Odd(type) THEN args[nrofargs]:ARRAY OF LONG
+-&gt; body[bodysize]:ARRAY OF CHAR
+ENDOBJECT
+
+OBJECT modlibi
+   basename:LONG
+   totalsize:LONG
+   nroflfuncs:INT
+   rsrvd:INT
+-&gt; lfuncs[nroflfuncs]:ARRAY OF modlfunc
+ENDOBJECT
+
+OBJECT lfuncarg  -&gt; v45
+   name:LONG  -&gt; v46
+   rsrvd:CHAR
+   rtype:CHAR
+   rnum:INT
+ENDOBJECT
+
+OBJECT modlfunc  -&gt; compatible with lfunc !
+   rsrvd:INT
+   totalsize:INT -&gt; v44
+   name:LONG
+   nrofargs:CHAR
+   type:CHAR -&gt; 0=68k abi, 1=ppc sysv abi
+   baseofs:INT
+   basernum:CHAR -&gt; for ppc sysv
+   return:CHAR -&gt; sysv: o=rx, 1=fx, 2:vx, 3:wide
+   basertype:CHAR -&gt; 0:rx, 1:stack, 255:monolithic calling
+   flags:CHAR -&gt;1.7.1 LFFLAG_XXX
+   dummy[2]:ARRAY OF LONG -&gt; we need extra space internally
+-&gt; regs[nrofparams]:ARRAY OF lfuncarg
+ENDOBJECT
+
+SET LFFLAG_KERNELFUNC,
+    LFFLAG_VARARGS -&gt; 2.0
+
+OBJECT modconst
+   name:LONG
+   value:LONG
+ENDOBJECT
+
+OBJECT double
+   high:LONG
+   low:LONG
+ENDOBJECT
+
+OBJECT modconst64 -&gt; not used yet
+   name:LONG
+   flags:LONG
+   value:double
+ENDOBJECT
+
+SET PROCF_EMPTY,  -&gt; not really used yet
+    PROCF_CLMETH
+
+OBJECT modlabel
+   name:LONG
+   offset:LONG
+   rsrvd:CHAR
+   flags:CHAR -&gt; v46,47 PROCF_XXX
+   totalsize:INT -&gt; if 12, then we are a label, and no more data.
+ENDOBJECT
+
+OBJECT modproc OF modlabel -&gt; also used for methods and labels
+   nrofargs:CHAR
+   nrofdefaults:CHAR
+   return:CHAR -&gt; 0:integer reg, 1:double reg, 2:vector, 3:wide
+   selfreg:CHAR -&gt; v45, for methods
+-&gt; params[nrofparams]:ARRAY OF modarg
+ENDOBJECT
+
+/*
+OBJECT oldmodstatic OF modlabel
+   -&gt; up till now compatible with modproc
+   nrofargs:CHAR -&gt; 0, to be compatible with older tools
+   statflags:CHAR -&gt; MEMBF_XXX
+   statesize:CHAR -&gt; 1,2,4,8,255
+   unused:CHAR
+   -&gt; at this point same size as modproc
+   statobj:LONG -&gt; name of object if any.
+ENDOBJECT  /* SIZEOF = 20 */
+*/
+
+-&gt; changed v2.2
+OBJECT modstatic OF modlabel
+   -&gt; up till now compatible with modproc
+   nrofargs:CHAR -&gt; 0, to be compatible with older tools
+   statflags:CHAR -&gt; MEMBF_XXX
+   keepnil:CHAR -&gt; NIL, this is proc.return to old code.
+   statesize:CHAR -&gt; 1,2,4,8,255
+   -&gt; at this point same size as modproc
+   statobj:LONG -&gt; name of object if any.
+   sizeof:LONG   -&gt; yeah.. for SIZEOF support
+ENDOBJECT /* SIZEOF = 24 */
+
+-&gt; v49
+#define MODPROC_RETURN1(ret) (ret AND $3)
+#define MODPROC_RETURN2(ret) (Shr(ret,2) AND $3)
+#define MODPROC_RETURN3(ret) (Shr(ret,4) AND $3)
+#define MODPROC_RETURN4(ret) (Shr(ret,6) AND $3)
+#define MAKE_MODPROC_RETURN(r1,r2,r3,r4) r1 \
+                                         OR Shl(r2,2)\
+                                         OR Shl(r3,4)\
+                                         OR Shl(r4,6)
+
+OBJECT modarg
+   name:LONG -&gt;
+   defval:LONG
+   rsrvd:CHAR
+   rtype:CHAR -&gt; 0:rx, 1:stack, 2:fx, 3:vector
+   rnum:INT  -&gt; regnum or stackoffset or nil CHANGED v46
+ENDOBJECT
+
+SET OFLAG_NOCLASSINFO -&gt; 1.8.1, set for object with only class methods. useful at new/end
+
+OBJECT modobject
+   name:LONG
+   nrofmembers:INT
+   nrofmethods:INT
+   sizeof:INT
+   flags:CHAR -&gt; OFLAG_XXX (was: rsrvd)
+   alignment:CHAR -&gt; v1.5
+   totalsize:LONG -&gt; of modobject
+-&gt; members[nrofmembers]:ARRAY OF modmember
+-&gt; IF nrofmethods THEN modclass:modclass
+ENDOBJECT
+
+OBJECT modclass
+   classofs:INT  -&gt; classinfo in object
+   destofs:INT   -&gt; destructor ( .end() ), or -1
+   offset:LONG -&gt; classinfo in code
+   supername:LONG -&gt; 1.10.0 it is back. only for inheritation inside same module, otherwise see ref_inherit
+   rsrvd2:LONG
+-&gt; methods[modobject.nrofmethods]:ARRAY OF modproc
+ENDOBJECT
+
+-&gt; v48
+SET MEMBF_PRIVATE, -&gt; only used internally in ECX
+    MEMBF_FLOAT,    -&gt; set if DOUBLE, PTR TO DOUBLE, ARRAY OF DOUBLE
+    MEMBF_SIGNED, -&gt; v49. signed/unsigned (LONG/INT, PTR TO LONG/INT, ARRAY OF LONG/INT)
+    MEMBF_VECTOR -&gt; was &quot;forgotten&quot; added 1.7
+
+OBJECT modmember -&gt; same as &quot;member&quot; !! v44
+   size:CHAR, esize:CHAR, numes:INT
+   object:LONG
+   offset:INT
+   flags:INT -&gt; (was: rsrvd) v48: MEMBF_XXX or NIL
+   name:LONG
+ENDOBJECT
+
+OBJECT vdbghead   -&gt; used in executables
+   vdbgid:LONG -&gt; &quot;VDBG&quot;
+   namelongs:LONG
+   strtablongs:LONG
+   numdebugs:LONG
+   rsrvd:LONG -&gt; NIL
+ENDOBJECT
+-&gt; sourcename[namelongs]:ARRAY OF LONG
+-&gt; strtab[strtablongs]:ARRAY OF LONG
+-&gt; debugs[numdebugs]:ARRAY OF vardbg
+
+
+OBJECT vardbg -&gt; changed again v50
+   name:LONG -&gt; name of variable
+   inproc:LONG -&gt; name of procedure
+   ofobject:LONG -&gt; name of methods object, if variable of method
+   scope:CHAR -&gt; 0:internglob, 1:relocglob, 2:xrefglob, 3:global
+   varsize:CHAR -&gt;  0/1/2/4/8/16
+   varesize:CHAR -&gt; 0/1/2/4/8/16/255
+   varreg:CHAR    -&gt; D0-D7:0-7 / A0-A7:8-15 / R0-R31:0-31
+   varofs:INT     -&gt; -1:variable is register, else ofs(reg).
+   varflags:INT   -&gt; MEMBF_SIGNED, MEMBF_FLOAT, MEMBF_VECTOR, or NIL
+   varobject:LONG -&gt; if type.esize=255, else NIL
+ENDOBJECT /* SIZEOF = 24 */
+
+ENUM VDSCOPE_INTERN,  -&gt; modules / main
+     VDSCOPE_RELOC,   -&gt; modules only
+     VDSCOPE_XREF,    -&gt; modules only
+     VDSCOPE_GLOBAL,  -&gt; main (exe)
+     VDSCOPE_PROC
+
+OBJECT modmodule
+   name:LONG -&gt; negative names are relative !
+   totalsize:LONG -&gt; total size of this modmodule
+   rsrvd:INT
+   numsymbs:INT -&gt; nr of symbols referenced
+-&gt; modrefs[numsymbs]:ARRAY OF modref
+ENDOBJECT
+
+OBJECT modref
+   name:LONG  -&gt; or &quot;num&quot; for ifuncs
+   ltype:CHAR -&gt; NIL for ifuncs
+   info:CHAR  -&gt; numparams for PROC, NIL for ifuncs
+   numrefs:INT
+-&gt; refs[numrefs]:ARRAY OF LONG -&gt; [type:8, offset:24]
+ENDOBJECT
+
+
+CONST REF32 = 0,
+      REF24 = 1,
+      REFADR = 2,
+      REF1616 = 3,
+      REF_INHERIT = 4,   -&gt;  V47 class inheritation between modules
+      /* internal types */
+      REF16 = 5,
+      REF14 = 6
+
+
+CONST LTYPE_LAB = 0,
+      LTYPE_PROC = 1,
+      LTYPE_CLASS = 2,
+      LTYPE_STATIC = 3-&gt; 1.9.0
+
+-&gt; 2.2
+
+OBJECT xglobderef
+   totalsize:LONG -&gt; SIZEOF xglobderef
+   name:LONG
+   esize:CHAR
+   rsrvd1:CHAR
+   rsrvd2:INT
+   object:LONG
+ENDOBJECT
+
+
+
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

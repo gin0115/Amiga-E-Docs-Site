@@ -1,0 +1,513 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>popmisc.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-easyplugins.html">EasyPLUGINs</a> &rsaquo; popmisc.e</div><h1>File: <code>popmisc.e</code></h1><p class="meta">487 lines · project <a href="../examples/pkg-easyplugins.html"><code>EasyPLUGINs</code></a></p><p class="pathctx">EasyPLUGINs/EasyPLUGINs/source/popmisc.e</p><p class="prose">$VER: popmisc_plugin 1.1 (25.2.98) Author: Ali Graham ($01) &lt;agraham@hal9000.net.au&gt; <a href="../modules/easygui.html#const-plugin">PLUGIN</a> id: $06 Desc.: Pop-up a <a href="../modules/listview.html">listview</a> containing various system entities. Tags: <a href="../modules/popmisc.html#const-pla-popmisc-buttontext">PLA_PopMisc_ButtonText</a> [ISG] <a href="../modules/popmisc.html#const-pla-popmisc-stringtext">PLA_PopMisc_StringText</a> [ISG] <a href="../modules/popmisc.html#const-pla-popmisc-casesensitive">PLA_PopMisc_CaseSensitive</a> [ISG] <a href="../modules/popmisc.html#const-pla-popmisc-removeduplicates">PLA_PopMisc_RemoveDuplicates</a> [ISG] PLA_PopM</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/dclistview.html">easyplugins/dclistview</a></li><li><a href="../modules/nodes.html">exec/nodes</a></li><li><a href="../modules/easygui.html">tools/easygui</a></li></ul></div><h2>Source</h2><pre class="code">
+/*
+
+    $VER: popmisc_plugin 1.1 (25.2.98)
+
+    Author:         Ali Graham ($01)
+                    &lt;agraham@hal9000.net.au&gt;
+
+    PLUGIN id:      $06
+
+    Desc.:          Pop-up a listview containing various system entities.
+
+    Tags:           PLA_PopMisc_ButtonText                      [ISG]
+                    PLA_PopMisc_StringText                      [ISG]
+                    PLA_PopMisc_CaseSensitive                   [ISG]
+                    PLA_PopMisc_RemoveDuplicates                [ISG]
+                    PLA_PopMisc_ListType                        [I..]
+                    PLA_PopMisc_ListViewX                       [I..]
+                    PLA_PopMisc_ListViewY                       [I..]
+                    PLA_PopMisc_Disabled                        [ISG]
+
+    Values:         PLV_PopMisc_TasksList
+                    PLV_PopMisc_PortsList
+                    PLV_PopMisc_LibrariesList
+                    PLV_PopMisc_DevicesList
+                    PLV_PopMisc_ResourcesList
+                    PLV_PopMisc_MemNodesList
+
+*/
+
+OPT MODULE, OSVERSION=37
+
+-&gt;&gt; popmisc_plugin: modules
+
+MODULE &#x27;tools/easygui&#x27;, &#x27;intuition/intuition&#x27;,
+       &#x27;graphics/text&#x27;, &#x27;intuition/gadgetclass&#x27;,
+       &#x27;gadtools&#x27;, &#x27;libraries/gadtools&#x27;,
+       &#x27;utility&#x27;, &#x27;utility/tagitem&#x27;,
+       &#x27;tools/textlen&#x27;
+
+MODULE &#x27;exec/nodes&#x27;, &#x27;exec/execbase&#x27;, &#x27;exec/lists&#x27;,
+       &#x27;exec/ports&#x27;, &#x27;exec/tasks&#x27;, &#x27;amigalib/lists&#x27;
+
+MODULE &#x27;easyplugins/dclistview&#x27;
+
+-&gt;&lt;
+
+-&gt;&gt; popmisc_plugin: definitions
+
+CONST NAME_LENGTH=64
+
+EXPORT OBJECT popmisc_plugin OF plugin PRIVATE
+
+    but_contents:PTR TO CHAR
+    str_contents[NAME_LENGTH]:ARRAY OF CHAR
+    case_sensitive
+    remove_duplicates
+    list_type
+    listview_x, listview_y
+    disabled
+
+    but_width
+
+    gad_str:PTR TO gadget
+    gad_but:PTR TO gadget
+
+    font:PTR TO textattr
+
+    iaddress
+
+    list:PTR TO mlh
+
+ENDOBJECT
+
+OBJECT pm_node OF ln
+
+    pm_name[NAME_LENGTH]:ARRAY OF CHAR
+
+ENDOBJECT
+
+-&gt; PROGRAMMER_ID | MODULE_ID
+-&gt;      $01      |   $06
+
+
+EXPORT ENUM PLA_PopMisc_ButtonText=$81006001,   -&gt;[ISG]
+            PLA_PopMisc_StringText,             -&gt;[ISG]
+            PLA_PopMisc_CaseSensitive,          -&gt;[ISG]
+            PLA_PopMisc_RemoveDuplicates,       -&gt;[ISG]
+            PLA_PopMisc_ListType,               -&gt;[I..]
+            PLA_PopMisc_ListViewX,              -&gt;[I..]
+            PLA_PopMisc_ListViewY,              -&gt;[I..]
+            PLA_PopMisc_Disabled                -&gt;[ISG]
+
+EXPORT ENUM PLV_PopMisc_TasksList=0,
+            PLV_PopMisc_PortsList,
+            PLV_PopMisc_LibrariesList,
+            PLV_PopMisc_DevicesList,
+            PLV_PopMisc_ResourcesList,
+            PLV_PopMisc_MemNodesList
+
+-&gt;&lt;
+
+/* &amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp; */
+
+-&gt;&gt; popmisc_plugin: popmisc() &amp; end()
+
+PROC popmisc(tags=NIL:PTR TO tagitem) OF popmisc_plugin
+
+    DEF name:PTR TO CHAR, type
+
+    IF utilitybase
+
+        self.list_type      := GetTagData(PLA_PopMisc_ListType, PLV_PopMisc_TasksList, tags)
+
+        type:=self.list_type
+
+        SELECT type
+
+            CASE PLV_PopMisc_TasksList;         name:=&#x27;Task...&#x27;
+            CASE PLV_PopMisc_PortsList;         name:=&#x27;Port...&#x27;
+            CASE PLV_PopMisc_LibrariesList;     name:=&#x27;Library...&#x27;
+            CASE PLV_PopMisc_DevicesList;       name:=&#x27;Device...&#x27;
+            CASE PLV_PopMisc_ResourcesList;     name:=&#x27;Resource...&#x27;
+            CASE PLV_PopMisc_MemNodesList;      name:=&#x27;MemNode...&#x27;
+
+            DEFAULT;                            Raise(&quot;baty&quot;)
+
+        ENDSELECT
+
+        self.but_contents   := GetTagData(PLA_PopMisc_ButtonText, name, tags)
+
+        AstrCopy(self.str_contents, GetTagData(PLA_PopMisc_StringText, &#x27;&#x27;, tags))
+
+        self.case_sensitive     := GetTagData(PLA_PopMisc_CaseSensitive, FALSE, tags)
+        self.remove_duplicates  := GetTagData(PLA_PopMisc_RemoveDuplicates, TRUE, tags)
+
+        self.listview_x     := GetTagData(PLA_PopMisc_ListViewX, 15, tags)
+        self.listview_y     := GetTagData(PLA_PopMisc_ListViewY, 6, tags)
+
+        self.disabled       := GetTagData(PLA_PopMisc_Disabled, FALSE, tags)
+
+    ELSE
+
+        Raise(&quot;util&quot;)
+
+    ENDIF
+
+    NEW self.list
+
+    newList(self.list)
+
+ENDPROC
+
+PROC end() OF popmisc_plugin
+
+    popmisc_private_clear(self)
+
+    END self.list
+
+ENDPROC
+-&gt;&lt;
+
+-&gt;&gt; popmisc_plugin: set() &amp; get()
+
+PROC set(attr, value) OF popmisc_plugin
+
+    SELECT attr
+
+        CASE PLA_PopMisc_ButtonText
+
+            IF self.but_contents&lt;&gt;value
+
+                self.but_contents:=value
+
+                IF self.gad_but AND self.gh.wnd
+
+                    Gt_SetGadgetAttrsA(self.gad_but, self.gh.wnd, NIL, [GA_TEXT, self.but_contents, TAG_DONE])
+
+                ENDIF
+
+            ENDIF
+
+        CASE PLA_PopMisc_StringText
+
+            IF self.str_contents&lt;&gt;value
+
+                AstrCopy(self.str_contents, value)
+
+                IF self.gad_str AND self.gh.wnd
+
+                    Gt_SetGadgetAttrsA(self.gad_str, self.gh.wnd, NIL, [GTST_STRING, self.str_contents, TAG_DONE])
+
+                ENDIF
+
+            ENDIF
+
+        CASE PLA_PopMisc_CaseSensitive
+
+            IF self.case_sensitive&lt;&gt;value THEN self.case_sensitive:=value
+
+        CASE PLA_PopMisc_RemoveDuplicates
+
+            IF self.remove_duplicates&lt;&gt;value THEN self.remove_duplicates:=value
+
+        CASE PLA_PopMisc_Disabled
+
+            IF self.disabled&lt;&gt;value
+
+                self.disabled:=value
+
+                IF ((self.gad_str AND self.gad_but) AND self.gh.wnd)
+
+                    Gt_SetGadgetAttrsA(self.gad_but, self.gh.wnd, NIL, [GA_DISABLED, self.disabled, TAG_DONE])
+                    Gt_SetGadgetAttrsA(self.gad_str, self.gh.wnd, NIL, [GA_DISABLED, self.disabled, TAG_DONE])
+
+                ENDIF
+
+            ENDIF
+
+    ENDSELECT
+
+ENDPROC
+
+PROC get(attr) OF popmisc_plugin
+
+    SELECT attr
+
+        CASE PLA_PopMisc_ButtonText;       RETURN self.but_contents, TRUE
+        CASE PLA_PopMisc_StringText;       RETURN self.str_contents, TRUE
+        CASE PLA_PopMisc_CaseSensitive;    RETURN self.case_sensitive, TRUE
+        CASE PLA_PopMisc_RemoveDuplicates; RETURN self.remove_duplicates, TRUE
+        CASE PLA_PopMisc_Disabled;         RETURN self.disabled, TRUE
+
+    ENDSELECT
+
+ENDPROC -1, FALSE
+-&gt;&lt;
+
+/* &amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp; */
+
+-&gt;&gt; popmisc_plugin: min_size() &amp; will_resize()
+PROC min_size(ta:PTR TO textattr, fh) OF popmisc_plugin
+
+   self.but_width:=textlen(self.but_contents,ta)+8
+
+ENDPROC (self.but_width+(fh*8)),(fh+6)
+
+PROC will_resize() OF popmisc_plugin IS RESIZEX
+-&gt;&lt;
+
+-&gt;&gt; popmisc_plugin: gtrender() &amp; clear_render()
+PROC gtrender(gl, vis, ta:PTR TO textattr, x, y, xs, ys, win:PTR TO window) OF popmisc_plugin
+
+    self.font:=ta
+
+    self.gad_but:=CreateGadgetA(BUTTON_KIND, gl,
+                                [x, y, self.but_width, ys, self.but_contents, ta, 1, 0, vis, 0]:newgadget,
+                                [GA_DISABLED, self.disabled, TAG_DONE])
+
+    self.gad_str:=CreateGadgetA(STRING_KIND, self.gad_but,
+                                [x+self.but_width+1, y, xs-self.but_width, ys, NIL, ta, 2, 0, vis, 0]:newgadget,
+                                [GA_DISABLED, self.disabled,
+                                 GTST_MAXCHARS, NAME_LENGTH,
+                                 GTST_STRING, self.str_contents,
+                                 TAG_DONE])
+
+ENDPROC self.gad_str
+
+PROC clear_render(win:PTR TO window) OF popmisc_plugin
+
+    IF self.gad_str THEN AstrCopy(self.str_contents, self.gad_str.specialinfo::stringinfo.buffer)
+
+ENDPROC
+
+-&gt;&lt;
+
+-&gt;&gt; popmisc_plugin: message_test() &amp; message_action()
+PROC message_test(imsg:PTR TO intuimessage, win:PTR TO window) OF popmisc_plugin
+
+    IF imsg.class=IDCMP_GADGETUP
+
+        self.iaddress:=imsg.iaddress
+
+        RETURN (imsg.iaddress=self.gad_but) OR (imsg.iaddress=self.gad_str)
+
+    ENDIF
+
+ENDPROC FALSE
+
+PROC message_action(class, qual, code, win:PTR TO window) OF popmisc_plugin
+
+    DEF exec:PTR TO execbase, dclv:PTR TO dclistview, type,
+        fnode:PTR TO pm_node, node:PTR TO pm_node, sel, a,
+        found=FALSE
+
+    IF self.iaddress=self.gad_but
+
+        exec:=execbase; type:=self.list_type
+
+        Disable()
+
+        SELECT type
+
+            CASE PLV_PopMisc_TasksList
+
+                popmisc_private_snapshot(self, exec.taskwait.head)
+                popmisc_private_snapshot(self, exec.taskready.head)
+
+            CASE PLV_PopMisc_PortsList
+
+                popmisc_private_snapshot(self, exec.portlist.head)
+
+            CASE PLV_PopMisc_LibrariesList
+
+                popmisc_private_snapshot(self, exec.liblist.head)
+
+            CASE PLV_PopMisc_DevicesList
+
+                popmisc_private_snapshot(self, exec.devicelist.head)
+
+            CASE PLV_PopMisc_ResourcesList
+
+                popmisc_private_snapshot(self, exec.resourcelist.head)
+
+            CASE PLV_PopMisc_MemNodesList
+
+                popmisc_private_snapshot(self, exec.memlist.head)
+
+        ENDSELECT
+
+        Enable()
+
+        blockwin(self.gh)
+
+        IF fnode:=FindName(self.list, self.str_contents)
+
+            node:=self.list.head; a:=0
+
+            WHILE (node&lt;&gt;NIL) AND (found=FALSE)
+
+                IF fnode=node;  found:=TRUE
+                ELSE;           node:=node.succ; a:=a+1
+                ENDIF
+
+            ENDWHILE
+
+        ENDIF
+
+        NEW dclv.dclistview([DCLV_RELX,    self.listview_x,
+                            DCLV_RELY,     self.listview_y,
+                            DCLV_LIST,     self.list,
+                            DCLV_CURRENT,  (IF fnode THEN a ELSE -1),
+                            DCLV_TOP,      (IF fnode THEN a ELSE 0),
+                            TAG_DONE])
+
+        easyguiA(NIL, [DCLIST, {popmisc_private_listclick}, dclv, TRUE],
+                      [EG_WTYPE,  WTYPE_NOBORDER,
+                       EG_SCRN,   win.wscreen,
+                       EG_FONT,   self.font,
+                       EG_LEFT,   (win.leftedge + self.x),
+                       EG_TOP,    (win.topedge + self.y + self.ys),
+                       TAG_DONE])
+
+        sel:=dclv.get(DCLV_CURRENT)
+
+        END dclv
+
+        node:=self.list.head; a:=0
+
+        WHILE node AND (a&lt;sel)
+
+            node:=node.succ; a:=a+1
+
+        ENDWHILE
+
+        IF node THEN self.set(PLA_PopMisc_StringText, node.pm_name)
+
+        popmisc_private_clear(self)
+
+        unblockwin(self.gh)
+
+    ELSEIF self.iaddress=self.gad_str
+
+        AstrCopy(self.str_contents, self.gad_str.specialinfo::stringinfo.buffer)
+
+    ENDIF
+
+    self.iaddress:=NIL
+
+ENDPROC TRUE
+-&gt;&lt;
+
+/* &amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp; */
+
+-&gt;&gt; PRIVATE: clear(), snapshot() &amp; compare()
+PROC popmisc_private_clear(pt:PTR TO popmisc_plugin)
+
+    DEF node:PTR TO pm_node, tnode:PTR TO pm_node
+
+    node:=pt.list.head
+
+    WHILE tnode:=node.succ
+
+        END node; node:=tnode
+
+    ENDWHILE
+
+    newList(pt.list)
+
+ENDPROC
+
+PROC popmisc_private_snapshot(pt:PTR TO popmisc_plugin, src_node:PTR TO ln)
+
+  DEF tnode:PTR TO pm_node, node:PTR TO pm_node,
+      inserting, result
+
+    WHILE src_node.succ
+
+        NEW tnode
+
+        AstrCopy(tnode.pm_name, src_node.name, NAME_LENGTH)
+        tnode.name:=tnode.pm_name
+
+        node:=pt.list.head
+
+        IF (popmisc_private_compare(pt, node.pm_name, tnode.pm_name)&gt;0)
+
+            AddHead(pt.list, tnode)
+
+        ELSE
+
+            inserting:=TRUE
+
+            WHILE node.succ AND inserting
+
+                node:=node.succ
+
+                result:=popmisc_private_compare(pt, node.pm_name, tnode.pm_name)
+
+                IF (result=0) AND pt.remove_duplicates
+
+                    inserting:=FALSE
+
+                ELSEIF (result&gt;0)
+
+                    Insert(pt.list, tnode, node.pred)
+
+                    inserting:=FALSE
+
+                ENDIF
+
+            ENDWHILE
+
+            IF inserting=TRUE THEN AddTail(pt.list, tnode)
+
+        ENDIF
+
+        src_node:=src_node.succ
+
+    ENDWHILE
+    
+ENDPROC
+
+PROC popmisc_private_compare(pt:PTR TO popmisc_plugin, s:PTR TO CHAR, t:PTR TO CHAR)
+
+ENDPROC (IF pt.case_sensitive THEN Stricmp(s, t) ELSE Strnicmp(s, t, NAME_LENGTH))
+-&gt;&lt;
+
+/* &amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp; */
+
+-&gt;&gt; PRIVATE: listclick()
+
+PROC popmisc_private_listclick(gh:PTR TO guihandle, dclv:PTR TO dclistview)
+
+    DEF bool=FALSE, valid=FALSE
+
+    bool, valid:=dclv.get(DCLV_CLICK)
+
+    IF bool AND valid THEN quitgui()
+
+ENDPROC
+
+-&gt;&lt;
+
+/* &amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp; */
+
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

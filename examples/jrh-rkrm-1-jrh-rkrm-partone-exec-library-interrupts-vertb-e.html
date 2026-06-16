@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>vertb.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-jrh-rkrm-1.html">JRH-RKRM-1</a> &rsaquo; vertb.e</div><h1>File: <code>vertb.e</code></h1><p class="meta">64 lines · project <a href="../examples/pkg-jrh-rkrm-1.html"><code>JRH-RKRM-1</code></a></p><p class="pathctx">JRH-RKRM-1/JRH-RKRM-PartOne/Exec_Library/Interrupts/vertb.e</p><p class="prose">vertb.e - Vertical blank interrupt <a href="../modules/server.html">server</a> example.</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/ecode.html">other/ecode</a></li></ul></div><h2>Source</h2><pre class="code">-&gt; vertb.e - Vertical blank interrupt server example.
+
+-&gt; E-Note: we need eCodeSoftInt() in order to execute E code as an interrupt
+-&gt;         (this wouldn&#x27;t be needed if we just used Assembly, see below)
+MODULE &#x27;other/ecode&#x27;,
+       &#x27;dos/dos&#x27;,
+       &#x27;exec/interrupts&#x27;,
+       &#x27;exec/memory&#x27;,
+       &#x27;exec/nodes&#x27;,
+       &#x27;hardware/intbits&#x27;
+
+ENUM ERR_NONE, ERR_ECODE
+
+PROC main() HANDLE
+  DEF vbint:PTR TO is, counter=0, endcount
+
+  -&gt; Allocate memory for interrupt node.
+  vbint:=NewM(SIZEOF is, MEMF_PUBLIC OR MEMF_CLEAR)
+  vbint.ln.type:=NT_INTERRUPT  -&gt; Initialise the node.
+  vbint.ln.pri:=-60
+  vbint.ln.name:=&#x27;VertB-Example&#x27;
+  vbint.data:={counter}
+  vbint.code:=eCodeIntServer({vertBServer})
+  IF vbint.code=NIL THEN Raise(ERR_ECODE)
+
+  AddIntServer(INTB_VERTB, vbint)  -&gt; Kick this interrupt server into life.
+
+  WriteF(&#x27;VBlank server will increment a counter every frame.\n&#x27;)
+  WriteF(&#x27;counter started at zero, CTRL-C to remove server\n&#x27;)
+
+  Wait(SIGBREAKF_CTRL_C)
+  endcount:=counter
+  WriteF(&#x27;\d vertical blanks occurred\nRemoving server\n&#x27;, endcount)
+
+  RemIntServer(INTB_VERTB, vbint)
+
+EXCEPT DO
+  -&gt; E-Note: not really necessary...
+  IF vbint THEN Dispose(vbint)
+  SELECT exception
+  CASE ERR_ECODE;  WriteF(&#x27;Error: Ran out of memory in eCodeIntServer()\n&#x27;)
+  CASE &quot;MEM&quot;;      WriteF(&#x27;Error: Ran out of memory\n&#x27;)
+  ENDSELECT
+ENDPROC
+
+-&gt; Entered with:       A0 == scratch (execpt for highest pri vertb server)
+-&gt;  D0 == scratch      A1 == is_Data
+-&gt;  D1 == scratch      A5 == vector to interrupt code (scratch)
+-&gt;                     A6 == scratch
+-&gt;
+-&gt; E-Note: we could use this Assembly, but we&#x27;ll show how to use a PROC instead
+-&gt;         (so we needed eCodeIntServer() above)
+-&gt;
+-&gt; vertBServer:
+-&gt;   ADDI.L #1, (A1)  -&gt; Increments counter is_Data points to
+-&gt;   MOVEQ.L #0, D0   -&gt; Set Z flag to continue to process other vb-servers
+-&gt;   RTS              -&gt; Return to exec
+
+-&gt; E-Note: we get vbint.data as an argument, and the PROC result should be
+-&gt;         zero to continue with other servers in this chain (the default),
+-&gt;         or non-zero (e.g., RETURN TRUE) to skip them
+PROC vertBServer(data:PTR TO LONG)
+  data[]:=data[]+1
+ENDPROC</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

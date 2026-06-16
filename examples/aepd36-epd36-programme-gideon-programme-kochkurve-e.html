@@ -1,0 +1,207 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>KOchkurve.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-aepd36.html">AEPD36</a> &rsaquo; KOchkurve.e</div><h1>File: <code>KOchkurve.e</code></h1><p class="meta">181 lines · project <a href="../examples/pkg-aepd36.html"><code>AEPD36</code></a></p><p class="pathctx">AEPD36/EPD36/Programme/gideon/Programme/KOchkurve.e</p><p class="prose">-- Programm : &quot;Von Koch&quot; - Kurve -- * * -- Autor : Daniel Kasmeroglu -- * * -- -- * * -- Dies ist eine Demonstration der Koch-Kurve in E. In diesem -- * * -- Beispiel werden die Seiten eines Dreiecks &quot;transformiert&quot;. -- * * -- Auch dieses Beispiel kann auf dem Papier nachvollzogen werden: -- * * -- </p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/screens.html">intuition/screens</a></li></ul></div><h2>Source</h2><pre class="code">/* -- Programm : &quot;Von Koch&quot; - Kurve                                  -- *
+ * -- Autor    : Daniel Kasmeroglu                                   -- *
+ * --                                                                -- *
+ * -- Dies ist eine Demonstration der Koch-Kurve in E. In diesem     -- *
+ * -- Beispiel werden die Seiten eines Dreiecks &quot;transformiert&quot;.     -- *
+ * -- Auch dieses Beispiel kann auf dem Papier nachvollzogen werden: -- *
+ * -- Man zeichnet eine beliebig lange Linie auf dem Papier. Dann    -- *
+ * -- teilt man diese Linie in drei gleichgroße Linienstücke. Über   -- *
+ * -- dem mittleren Linienstück wird ein gleichseitiges Dreieck      -- *
+ * -- aufgebaut, deren Seitenlänge eine Drittel der alten Linie      -- *
+ * -- entspricht. Nun nimmt man die zwei Seiten des Dreiecks als     -- *
+ * -- neue Linien und verfährt wie zuvor beschrieben.                -- */
+
+
+MODULE &#x27;intuition/screens&#x27;,  -&gt; einige einfache Module
+       &#x27;graphics/view&#x27;,
+       &#x27;tools/easygui&#x27;
+
+
+CONST KOCH_BREITE = 640,              -&gt; Parameter
+      KOCH_HOEHE  = 512,
+      KOCH_TIEFE  = 1,
+      KOCH_MODUS  = V_HIRES + V_LACE
+
+
+-&gt; Koordinaten der Eckpunkte und die Anzahl der &quot;Transformationen&quot;
+DEF glo_x1,glo_y1,glo_x2,glo_y2,glo_x3,glo_y3,glo_stufe
+
+
+-&gt; kleiner Requester für den User
+PROC eas_RequestParameter()
+DEF eas_gui : PTR TO LONG
+
+  eas_gui := [EQROWS,
+               [BEVELR,
+                 [EQROWS,
+                   [EQCOLS,
+                     [INTEGER,{x1},&#x27;X..:&#x27;,glo_x1,3], 
+                     [INTEGER,{y1},&#x27;Y..:&#x27;,glo_y1,3]],
+                   [EQCOLS,
+                     [INTEGER,{x2},&#x27;X..:&#x27;,glo_x2,3],
+                     [INTEGER,{y2},&#x27;Y..:&#x27;,glo_y2,3]],
+                   [EQCOLS,
+                     [INTEGER,{x3},&#x27;X..:&#x27;,glo_x3,3],
+                     [INTEGER,{y3},&#x27;Y..:&#x27;,glo_y3,3]],
+                   [INTEGER,{st},&#x27;Stufe...:&#x27;,glo_stufe,2]]],
+               [EQCOLS,
+                 [SBUTTON,1,&#x27;Kurve(n)&#x27;],
+                 [SBUTTON,2,&#x27;Abbruch&#x27;]]]
+
+ENDPROC easygui(&#x27;Von Koch Kurve:&#x27;,eas_gui)
+
+-&gt; hier werden die Eingaben des Requesters festgehalten
+PROC x1(i,x) IS glo_x1    := x
+PROC y1(i,x) IS glo_y1    := x
+PROC x2(i,x) IS glo_x2    := x
+PROC y2(i,x) IS glo_y2    := x
+PROC x3(i,x) IS glo_x3    := x
+PROC y3(i,x) IS glo_y3    := x
+PROC st(i,x) IS glo_stufe := x
+
+
+PROC main()
+DEF ma_screen : PTR TO screen
+DEF ma_title,ma_rport
+
+  -&gt; einige Initalisierungen
+  glo_x1    := 90  
+  glo_y1    := 370
+  glo_x2    := 510 
+  glo_y2    := 420
+  glo_x3    := 320
+  glo_y3    := 90
+  glo_stufe := 2     -&gt; Mitsubishi-Zeichen =;-O
+
+  -&gt; willste weiter ?
+  IF eas_RequestParameter() = 2 THEN RETURN 0
+
+  ma_title  := String(256)
+  ma_title  := &#x27;Von Koch Kurve (c) Autor : Daniel Kasmeroglu (1995)&#x27;
+
+
+  -&gt; Öffnen des Bildschirms
+  ma_screen := OpenScreenTagList(NIL,   -&gt; Es leben die Tags 8)
+  [SA_WIDTH,             KOCH_BREITE,
+   SA_HEIGHT,             KOCH_HOEHE,
+   SA_DEPTH,              KOCH_TIEFE,
+   SA_DISPLAYID,          KOCH_MODUS,
+   SA_TITLE,                ma_title,
+   NIL,                          NIL])
+
+
+  -&gt; hoffentlich erfolgreich
+  IF ma_screen = NIL THEN RETURN 5
+
+  ma_rport := SetStdRast(ma_screen.rastport)
+
+  SetAPen(stdrast,1) 
+  SetBPen(stdrast,0)
+  SetDrMd(stdrast,1)
+
+  -&gt; Aufbau der Kurve für alle drei Seiten
+  kochkurve(glo_x1,glo_y1,glo_x2,glo_y2,glo_stufe)
+  kochkurve(glo_x2,glo_y2,glo_x3,glo_y3,glo_stufe)
+  kochkurve(glo_x3,glo_y3,glo_x1,glo_y1,glo_stufe)
+
+  TextF(20,20,&#x27;Linke Maus-Taste drücken !&#x27;)
+
+  -&gt; kleine Warteschleife
+  WHILE Mouse() &lt;&gt; 1 DO Delay(0)
+
+
+  -&gt; alles rückgängig machen
+  SetStdRast(ma_rport)
+  CloseScreen(ma_screen)
+
+ENDPROC
+
+
+PROC kochkurve(x1,y1,x2,y2,tiefe)
+DEF nx1,ny1,nx2,ny2,nx3,ny3,dx,dy
+
+  -&gt; Abbruchbedingung
+  IF tiefe = 0 THEN RETURN
+
+  -&gt; kurz vor Schluß wird die Strecke gezeichnet
+  IF tiefe = 1
+    Move(stdrast,x1,y1)
+    Draw(stdrast,x2,y2)
+  ENDIF
+
+  -&gt; hier werden die Koordinaten der Eckpunkte bestimmt
+  dx  := Div(x2-x1,3)
+  dy  := Div(y2-y1,3)
+
+  nx1 := x1 + dx
+  ny1 := y1 + dy
+
+  nx2 := x2 - dx
+  ny2 := y2 - dy
+                       
+  nx3 := Div(nx1+nx2-ny1+ny2,2)
+  ny3 := Div(nx1-nx2+ny1+ny2,2)
+
+  -&gt; die Punkte müssen auch im Bildschirm liegen
+  nx1 := Max(0,nx1) ; nx1 := Min(KOCH_BREITE-1,nx1)
+  nx2 := Max(0,nx2) ; nx2 := Min(KOCH_BREITE-1,nx2)
+  nx3 := Max(0,nx3) ; nx3 := Min(KOCH_BREITE-1,nx3)
+
+  ny1 := Max(0,ny1) ; ny1 := Min(KOCH_HOEHE-1,ny1)
+  ny2 := Max(0,ny2) ; ny2 := Min(KOCH_HOEHE-1,ny2)
+  ny3 := Max(0,ny3) ; ny3 := Min(KOCH_HOEHE-1,ny3)
+
+  -&gt; die vier Teilstrecken sollen weiterbearbeitet werden
+  kochkurve(x1,y1,nx1,ny1,tiefe-1)   -&gt; &quot;Linke&quot; Seite  ; alte Linie
+  kochkurve(nx1,ny1,nx3,ny3,tiefe-1) -&gt; &quot;Linke&quot; Seite  ; Dreieck
+  kochkurve(nx3,ny3,nx2,ny2,tiefe-1) -&gt; &quot;Rechte&quot; Seite ; Dreieck
+  kochkurve(nx2,ny2,x2,y2,tiefe-1)   -&gt; &quot;Rechte&quot; Seite ; alte Linie
+
+
+/*                          /\
+                           /  \ 
+                          /    \
+                         /      \
+                 L D    /        \  R D
+                       /          \
+                      /            \
+                     /              \
+                    /                \
+    --------------------------------------------------
+    |    L   A     |     M  A         |  R   A       |
+
+  L: links
+  R: rechts
+  D: Dreieck
+  A: alte Linie    
+
+*/
+
+ENDPROC
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

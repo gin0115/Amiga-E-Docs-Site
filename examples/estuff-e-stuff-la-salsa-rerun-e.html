@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ReRun.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-estuff.html">Estuff</a> &rsaquo; ReRun.e</div><h1>File: <code>ReRun.e</code></h1><p class="meta">78 lines · project <a href="../examples/pkg-estuff.html"><code>Estuff</code></a></p><p class="pathctx">Estuff/e-stuff/la salsa/ReRun.e</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/startup.html">workbench/startup</a></li></ul></div><h2>Source</h2><pre class="code">MODULE &#x27;workbench/startup&#x27;, &#x27;intuition/intuition&#x27;
+
+PROC main()
+  DEF wb:PTR TO wbstartup, args:PTR TO wbarg
+  DEF olddir=NIL, string[300]:STRING, fh=NIL
+  DEF path[200]:STRING, file[200]:STRING
+  IF wbmessage&lt;&gt;NIL
+    wb:=wbmessage
+    args:=wb.arglist
+    args++
+    olddir:=CurrentDir(args[].lock)
+    GetCurrentDirName(string,args[].lock)
+    AddPart(string,args[].name,300)
+    sayme()
+    PrintF(IF script_or_exe(string) THEN &#x27;Running \a\s\a\n&#x27; ELSE &#x27;Executing script \a\s\a\n&#x27;, string)
+    IF (fh:=Open(&#x27;SYS:ReRun.tmp&#x27;,NEWFILE))
+      Write(fh,string,StrLen(string))
+      Close(fh)
+    ENDIF
+    CurrentDir(olddir)
+    Delay(150)
+    ColdReboot()
+  ELSE
+    IF (fh:=Open(&#x27;SYS:ReRun.tmp&#x27;,OLDFILE))
+      Read(fh,string,300)
+      Close(fh)
+      DeleteFile(&#x27;SYS:ReRun.tmp&#x27;)
+      StrCopy(file,FilePart(string))
+      StrCopy(path,string,StrLen(string)-StrLen(PathPart(string)))
+      PrintF(&#x27;\s\t\s\n&#x27;, path, file)
+      dofile(path,file)
+    ENDIF
+  ENDIF
+ENDPROC
+
+PROC script_or_exe(file:PTR TO LONG)
+  DEF fh=NIL, string[10]:STRING, exe
+  IF (fh:=Open(file,OLDFILE))
+    Read(fh,string,5)
+    Close(fh)
+    IF string[3]=$f3 THEN exe:=TRUE ELSE exe:=FALSE
+  ENDIF
+ENDPROC exe
+
+PROC dofile(path,file)
+  DEF lock, olddir=NIL, command[200]:STRING
+  DEF wn:PTR TO window
+  sayme()
+  IF (lock:=Lock(path,-2))
+    olddir:=CurrentDir(lock)
+    IF script_or_exe(file)=TRUE
+      PrintF(&#x27;Running \a\s\a\n&#x27;, file)
+      StringF(command,&#x27;&quot;\s&quot;&#x27;, file)
+      Execute(command,0,stdout)
+      PrintF(&#x27;\nPress mouse button.\n&#x27;)
+    ELSE
+      PrintF(&#x27;Executing script \a\s\a\n&#x27;, file)
+      StringF(command,&#x27;Execute &quot;\s&quot;&#x27;, file)
+      Execute(command,0,stdout)
+      PrintF(&#x27;\nPress mouse button.\n&#x27;)
+    ENDIF
+    CurrentDir(olddir)
+    UnLock(lock)
+  ENDIF
+  wn:=OpenWindowTagList(NIL,[WA_REPORTMOUSE,TRUE,WA_IDCMP,IDCMP_MOUSEBUTTONS,NIL])
+  stdrast:=wn.rport
+  Colour(1,0)
+  TextF(20,20,&#x27;Press LEFT Mouse button&#x27;)
+  WaitIMessage(wn)
+  CloseW(wn)
+  PrintF(&#x27;Rebooting!\n&#x27;)
+  ColdReboot()
+ENDPROC
+
+PROC sayme() IS PrintF(&#x27;\c\n\e[1mReRun\e[0m\eDBy Steven Goodgrove\n\n\n&#x27;, 12)
+
+CHAR 0, &#x27;$VER:ReRun v1.0&#x27;, 0
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

@@ -1,0 +1,1253 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>makelibmod.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-ecx-2-3-1-src.html">ECX_2.3.1-src</a> &rsaquo; makelibmod.e</div><h1>File: <code>makelibmod.e</code></h1><p class="meta">1227 lines · project <a href="../examples/pkg-ecx-2-3-1-src.html"><code>ECX_2.3.1-src</code></a></p><p class="pathctx">ECX_2.3.1-src/ecx-2.3.1-src/makelibmod.e</p><p class="prose">MakeLibMod. September 2008 new tool to <a href="../modules/convert.html">convert</a> FD/Protos =&gt; E module</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/lists.html">amigalib/lists</a></li><li><a href="../modules/dos.html">dos/dos</a></li><li><a href="../modules/lists.html">exec/lists</a></li><li><a href="../modules/nodes.html">exec/nodes</a></li></ul></div><h2>Source</h2><pre class="code">
+-&gt; MakeLibMod. September 2008
+-&gt; new tool to convert FD/Protos =&gt; E module
+
+-&gt; 3 modes:
+-&gt; a. FD only
+-&gt; b. Proto(s) only
+-&gt; c. FD+Proto(s)
+
+-&gt; basically two passes are used:
+-&gt; 1. read in files and create internal representation
+-&gt; 2. traverse internal representation and create result.
+
+-&gt; fd is read first if used, then proto(s)
+
+-&gt; prototypes override fd definitions with argtypes
+
+-&gt; prototypes does nothing in 68k mode
+
+-&gt; November 2009: crash on missing argument name fixed.
+-&gt; August 2010: stupid bug in executable fixed.
+
+MODULE &#x27;exec/nodes&#x27;
+MODULE &#x27;dos/dos&#x27;
+MODULE &#x27;exec/lists&#x27;
+MODULE &#x27;amigalib/lists&#x27;
+MODULE &#x27;*binary&#x27;
+MODULE &#x27;ls/picoxml&#x27;
+
+RAISE &quot;MEM&quot; IF String()=NIL
+
+-&gt; custom typedefs, either through #typedef, or through interactive input
+OBJECT typedef
+   type  -&gt; 0:Rx,1:FX,2:VX,3:RX2
+   name  -&gt;
+   next
+ENDOBJECT
+
+OBJECT lfunction OF modlfunc
+   args[16]:ARRAY OF lfuncarg
+   -&gt; local baseconfig here, set by FD
+   baseconfig
+ENDOBJECT
+
+DEF g_lfuncs[2048]:ARRAY OF LONG,
+    g_numlfuncs=0,
+    g_lfoffset,
+    g_offsetinc,
+    g_baseconfig, -&gt; 0, 1, -1, 2
+    g_abiconfig,  -&gt; 0, 1
+    g_linenum,
+    g_itemsarray[5000]:ARRAY OF LONG,  -&gt; protos
+    g_typedefs:PTR TO typedef,         -&gt; protos
+    g_fdused, -&gt; bool
+    g_namefix, -&gt; bool
+    g_verbose, -&gt; bool
+    g_syscall, -&gt; bool
+    g_tablestrlist:mlh,
+    g_prefix[50]:STRING,
+    g_basename[50]:STRING,
+    g_ifacename[50]:STRING
+
+
+OBJECT tablestr OF mln
+   string:PTR TO CHAR -&gt; estring
+ENDOBJECT
+
+-&gt; allocates unique string and puts in list
+PROC getTableStr(str)
+   DEF s:PTR TO tablestr
+   s := g_tablestrlist.head
+   WHILE s.succ
+      IF StrCmp(s.string, str)
+         RETURN s.string
+      ENDIF
+      s := s.succ
+   ENDWHILE
+   NEW s
+   s.string := String(StrLen(str))
+   IF s.string = NIL THEN Raise(&quot;MEM&quot;)
+   StrCopy(s.string, str)
+   AddTail(g_tablestrlist, s)
+ENDPROC s.string
+
+-&gt; get offset of string
+PROC getTableStrOfs(str)
+   DEF s:PTR TO tablestr, offset=0
+   s := g_tablestrlist.head
+   WHILE s.succ
+      IF StrCmp(s.string, str)
+         RETURN offset
+      ENDIF
+      offset := offset + EstrLen(s.string) + 1
+      s := s.succ
+   ENDWHILE
+   -&gt; shouldnt get here
+ENDPROC NIL
+
+-&gt; get size of string table  for writing to disk
+PROC getStrtabSize()
+   DEF s:PTR TO tablestr, offset=0
+   s := g_tablestrlist.head
+   WHILE s.succ
+      offset := offset + EstrLen(s.string) + 1
+      s := s.succ
+   ENDWHILE
+ENDPROC offset
+
+-&gt; copy stringtab into module in memory
+PROC copyStrtab(tomem)
+   DEF s:PTR TO tablestr, len
+   s := g_tablestrlist.head
+   WHILE s.succ
+      CopyMem(s.string, tomem, len := EstrLen(s.string) + 1)
+      tomem := tomem + len
+      s := s.succ
+   ENDWHILE
+ENDPROC tomem
+
+PROC newLfunc(name)
+   DEF lf:PTR TO lfunction, a
+   NEW lf
+   lf.name := getTableStr(name)
+   g_lfuncs[g_numlfuncs++] := lf
+ENDPROC lf
+
+PROC findLfunc(name)
+   DEF a, lf:PTR TO lfunction
+   FOR a := 0 TO g_numlfuncs-1
+      lf := g_lfuncs[a]
+      IF StrCmp(lf.name, name) THEN RETURN lf
+   ENDFOR
+ENDPROC NIL
+
+PROC getWordLen(str)
+   DEF c:REG, i:REG
+   i := 0
+   WHILE (c := str[i])
+      SELECT 128 OF c
+      CASE &quot;0&quot; TO &quot;9&quot;, &quot;A&quot; TO &quot;Z&quot;, &quot;a&quot; TO &quot;z&quot;, &quot;_&quot;, &quot;-&quot;
+         i++
+      DEFAULT
+         RETURN i
+      ENDSELECT
+   ENDWHILE
+ENDPROC i
+
+PROC reportErr(err, info=NIL)
+   WriteF(&#x27;ERROR at line \d: \s \s\s\s\n&#x27;, g_linenum, err,
+                                IF info THEN &#x27;&quot;&#x27; ELSE &#x27;&#x27;,
+                                IF info THEN info ELSE &#x27;&#x27;,
+                                IF info THEN &#x27;&quot;&#x27; ELSE &#x27;&#x27;)
+   Raise(&quot;ERR&quot;)
+ENDPROC
+
+
+
+-&gt; items: values &gt; 1000 : labels  (lowercase | uppercase | &quot;_&quot;), {lowercase | uppercase | digit | &quot;_&quot;}
+-&gt;        values &lt; 1000 : special chars: &quot;(&quot; &quot;)&quot; &quot;*&quot; &quot;,&quot;
+
+PROC scanProtos(s)
+   DEF incomment=FALSE
+   DEF c, t, pos, len, a
+   DEF iptr:PTR TO LONG
+   DEF lfunc:PTR TO lfunction, tstr[100]:STRING
+   DEF lfuncarg:PTR TO lfuncarg, ireg, freg, vreg, sofs:PTR TO LONG
+   DEF pnum
+
+   g_linenum := 1
+
+   iptr := g_itemsarray
+
+
+prcs_againhuh:
+
+   WHILE (c := s[])
+
+      IF incomment
+         SELECT c
+         CASE &quot;/&quot;
+            IF s[1] = &quot;*&quot;
+               s := s + 2
+               incomment++
+            ELSE
+               s++
+            ENDIF
+         CASE &quot;*&quot;
+            IF s[1] = &quot;/&quot;
+               s := s + 2
+               incomment--
+            ELSE
+               s++
+            ENDIF
+         CASE 10
+            s++
+            g_linenum++
+         DEFAULT
+            s++
+         ENDSELECT
+         JUMP prcs_againhuh
+      ELSEIF c = &quot;/&quot;
+         IF s[1] = &quot;*&quot;
+            s := s + 2
+            incomment := 1
+            JUMP prcs_againhuh
+         ELSEIF s[1] = &quot;/&quot;
+            pos := InStr(s, &#x27;\n&#x27;)
+            s := s + IF pos &gt; -1 THEN pos ELSE StrLen(s)
+            JUMP prcs_againhuh
+         ENDIF
+      ENDIF
+
+      SELECT 128 OF c
+      CASE &quot; &quot;, &quot;\t&quot;
+         s++
+      CASE &quot;\n&quot;
+         g_linenum++
+         s++
+         IF iptr[-1] &lt;&gt; &quot;,&quot; THEN iptr := g_itemsarray -&gt; line can be broken with &quot;,&quot;
+      CASE &quot;_&quot;, &quot;a&quot; TO &quot;z&quot;, &quot;A&quot; TO &quot;Z&quot;
+         len := getWordLen(s)
+         iptr[]++ := StrCopy(String(len), s)
+         s := s + len
+      CASE &quot;,&quot;, &quot;(&quot;, &quot;)&quot;, &quot;*&quot;
+         iptr[]++ := c
+         s++
+      CASE &quot;#&quot; -&gt; just skip lines beginning with this (preprocessor)
+         pos := InStr(s, &#x27;\n&#x27;)
+         s := s + IF pos &gt; -1 THEN pos ELSE StrLen(s)
+      CASE &quot;.&quot;
+         s++
+         IF s[] = &quot;.&quot;
+            s++
+            IF s[] = &quot;.&quot;
+               s++
+               iptr[]++ := &quot;.&quot; -&gt; &quot;.&quot; as item signals &quot;...&quot;
+            ENDIF
+         ENDIF
+      CASE &quot;;&quot;
+         -&gt; a prototype/typedef &quot;line&quot; has ended, lets parse the items
+         iptr[]++ := &quot;;&quot; -&gt; we need a termination
+         s++
+         iptr := g_itemsarray
+
+         IF iptr[] &lt; 1000
+
+         ELSEIF StrCmp(iptr[], &#x27;typedef&#x27;)
+
+            iptr++
+            IF iptr[] &lt; 256 THEN reportErr(&#x27;label expected&#x27;)
+            IF StrCmp(iptr[], &#x27;struct&#x27;)
+               iptr++
+               IF iptr[] &lt; 256 THEN reportErr(&#x27;label expected&#x27;)
+               addTypeDef(0, iptr[])
+               iptr++
+            ELSE
+               iptr, t := parsetype(iptr)
+               IF iptr[] &gt; 256 THEN addTypeDef(t, iptr[])
+            ENDIF
+         ELSE
+
+            iptr,t := parsetype(iptr)
+
+            IF iptr[] &gt; 1000
+               StrCopy(tstr, g_prefix)
+               StrAdd(tstr, iptr[]++)
+
+               IF g_namefix
+                  IF tstr[1] &lt; 91
+                     tstr[1] := tstr[1] + 32
+                     IF tstr[2] &lt; 91
+                        IF tstr[3] = &quot;_&quot;
+                           tstr[2] := tstr[2] + 32
+                        ENDIF
+                     ENDIF
+                  ENDIF
+               ENDIF
+
+
+               IF tstr[] &gt; &quot;Z&quot; THEN tstr[] := tstr[] - 32
+
+
+               IF g_verbose THEN WriteF(&#x27; \s\n&#x27;, tstr)
+
+               IF iptr[]++ = &quot;(&quot;
+                  lfunc := findLfunc(tstr)
+                  IF g_fdused = FALSE
+                     IF lfunc THEN reportErr(&#x27;double declaration of function&#x27;, tstr)
+                     lfunc := newLfunc(tstr)
+                     lfunc.type := 1
+                  ELSEIF lfunc
+                     IF lfunc.type = 0 THEN lfunc := NIL -&gt; skip 68k functions
+                  ENDIF
+               ELSE
+                  lfunc := NIL
+               ENDIF
+            ELSE
+               lfunc := NIL -&gt; not function
+            ENDIF
+
+            IF lfunc
+
+               lfunc.return := IF t = -1 THEN 0 ELSE t
+
+               lfuncarg := lfunc.args
+
+               ireg := 3
+               freg := 1
+               sofs := 8
+               vreg := 2
+               a := 0
+               pnum := 0
+
+               WHILE iptr[] &lt;&gt; &quot;)&quot;
+                  EXIT iptr[] = &quot;.&quot; -&gt; &quot;.&quot; is actually &quot;...&quot;
+                  IF iptr[] &lt; 1000 THEN reportErr(&#x27;label expected&#x27;)
+                  iptr, t := parsetype(iptr)
+                  EXIT t = -1 -&gt; VOID
+
+                  IF (g_fdused &lt;&gt; FALSE) AND (lfunc.baseconfig = 1) AND (a=0)
+                     a := 1
+                     ireg++
+                  ELSEIF (g_fdused=FALSE) AND (g_baseconfig = 1) AND (a=0)
+                     a := 1
+                     ireg++
+                  ENDIF
+
+                  IF iptr[] &gt; 1000
+                     lfuncarg.name := getTableStr(iptr[]++)
+                  ENDIF
+
+                  IF t = 0
+                     lfuncarg.rtype := IF ireg &gt; 10 THEN PPCARGRTYPE_STACKRX ELSE PPCARGRTYPE_RX
+                     lfuncarg.rnum := IF ireg &gt; 10 THEN sofs++ ELSE ireg++
+                  ELSEIF t = 1
+                     lfuncarg.rtype := PPCARGRTYPE_FX
+                     lfuncarg.rnum := freg++
+                  ELSEIF t = 2
+                     lfuncarg.rtype := PPCARGRTYPE_VX
+                     lfuncarg.rnum := vreg++
+                  ELSEIF t = 3
+                     lfuncarg.rtype := PPCARGRTYPE_RX2
+                     IF ireg &lt; 10
+                        lfuncarg.rnum := ireg++
+                        ireg++
+                     ELSE
+                        lfuncarg.rtype := PPCARGRTYPE_STACKRX2
+                        lfuncarg.rnum := sofs++
+                        sofs++
+                     ENDIF
+                  ENDIF
+                  lfuncarg++
+                  pnum++
+
+                  EXIT iptr[] &lt;&gt; &quot;,&quot;
+                  iptr++
+               ENDWHILE
+
+               IF iptr[] = &quot;.&quot;
+                  iptr++
+                  lfunc.flags OR= LFFLAG_VARARGS -&gt; Oct 2008.
+               ENDIF
+
+               IF iptr[] &lt;&gt; &quot;)&quot; THEN reportErr(&#x27;&quot;)&quot; expected&#x27;)
+
+               IF g_fdused = FALSE
+                  lfunc.baseofs := g_lfoffset
+                  g_lfoffset := g_lfoffset + g_offsetinc
+               ELSE
+                  IF pnum &lt;&gt; lfunc.nrofargs THEN WriteF(&#x27;Warning: parameters mismatch FD/PROTO &quot;\s&quot;\n&#x27;, lfunc.name)
+               ENDIF
+
+               lfunc.nrofargs := pnum
+
+            ENDIF
+
+         ENDIF
+
+         iptr := g_itemsarray -&gt; reset
+         iptr[] := NIL -&gt; destroy old data incase another &quot;;&quot; immediately turns up
+
+      DEFAULT
+         s++
+      ENDSELECT
+
+   ENDWHILE
+
+      IF incomment &gt; 0 THEN reportErr(&#x27;start of comment without end&#x27;)
+
+
+ENDPROC
+
+PROC parsetype(iptr:PTR TO LONG)
+   DEF t=0, str[100]:STRING
+
+   StrCopy(str, iptr[])
+   LowerStr(str)
+
+   IF StrCmp(str, &#x27;const&#x27;)
+      iptr++
+      StrCopy(str, iptr[])
+      LowerStr(str)
+   ENDIF
+
+   IF StrCmp(str, &#x27;enum&#x27;)
+      iptr++
+      StrCopy(str, iptr[])
+      LowerStr(str)
+   ENDIF
+
+   IF StrCmp(str, &#x27;struct&#x27;)
+      t := 0
+      iptr++ -&gt; skip struct
+      iptr++ -&gt; skip structname
+      IF iptr[] = &quot;*&quot;
+         iptr++
+      ENDIF
+   ELSEIF StrCmp(str, &#x27;signed&#x27;)
+      iptr++
+      iptr++ -&gt; skip long/int/short/char
+      t := 0
+   ELSEIF StrCmp(str, &#x27;unsigned&#x27;)
+      iptr++
+      iptr++ -&gt; skip long/int/short/char
+      t := 0
+   ELSEIF StrCmp(str, &#x27;void&#x27;)
+      iptr++
+      t := -1
+   ELSEIF StrCmp(str, &#x27;long&#x27;)
+      iptr++
+      IF iptr[] &gt; 256
+         StrCopy(str, iptr[])
+         LowerStr(str)
+         IF StrCmp(str, &#x27;long&#x27;)
+            iptr++
+            t := 3
+         ELSE
+            t := 0
+         ENDIF
+      ELSE
+         t := 0
+      ENDIF
+   ELSEIF StrCmp(str, &#x27;int&#x27;)
+      iptr++
+      t := 0
+   ELSEIF StrCmp(str, &#x27;short&#x27;)
+      iptr++
+      t := 0
+   ELSEIF StrCmp(str, &#x27;char&#x27;)
+      iptr++
+      t := 0
+   ELSE
+      -&gt; integer or float as return
+      t := customtype(iptr[]++)
+   ENDIF
+
+   WHILE iptr[] = &quot;(&quot; -&gt; pointer to function stuff
+      t := 0
+      REPEAT
+         iptr++
+         IF iptr[] = &quot;;&quot; THEN reportErr(&#x27;&quot;)&quot; expected&#x27;)
+      UNTIL iptr[] = &quot;)&quot;
+      iptr++
+   ENDWHILE
+
+   WHILE iptr[] = &quot;*&quot;
+      iptr++
+      -&gt; pointer (integer) as return
+      t := 0
+   ENDWHILE
+
+ENDPROC iptr, t
+
+PROC customtype(str)
+   DEF t=0
+   DEF s[100]:STRING, rstr[10]:STRING
+   DEF td:PTR TO typedef
+
+   StrCopy(s, str)
+   UpperStr(s)
+
+   IF     StrCmp(s, &#x27;APTR&#x27;)            ; t := 0
+   ELSEIF StrCmp(s, &#x27;CONST_APTR&#x27;)      ; t := 0
+   ELSEIF StrCmp(s, &#x27;ULONG&#x27;)           ; t := 0
+   ELSEIF StrCmp(s, &#x27;LONGBITS&#x27;)        ; t := 0
+   ELSEIF StrCmp(s, &#x27;WORD&#x27;)            ; t := 0
+   ELSEIF StrCmp(s, &#x27;UWORD&#x27;)           ; t := 0
+   ELSEIF StrCmp(s, &#x27;WORDBITS&#x27;)        ; t := 0
+   ELSEIF StrCmp(s, &#x27;BYTE&#x27;)            ; t := 0
+   ELSEIF StrCmp(s, &#x27;UBYTE&#x27;)           ; t := 0
+   ELSEIF StrCmp(s, &#x27;BYTEBITS&#x27;)        ; t := 0
+   ELSEIF StrCmp(s, &#x27;RPTR&#x27;)            ; t := 0
+   ELSEIF StrCmp(s, &#x27;STRPTR&#x27;)          ; t := 0
+   ELSEIF StrCmp(s, &#x27;CONST_STRPTR&#x27;)    ; t := 0
+   ELSEIF StrCmp(s, &#x27;SHORT&#x27;)           ; t := 0
+   ELSEIF StrCmp(s, &#x27;USHORT&#x27;)          ; t := 0
+   ELSEIF StrCmp(s, &#x27;COUNT&#x27;)           ; t := 0
+   ELSEIF StrCmp(s, &#x27;UCOUNT&#x27;)          ; t := 0
+   ELSEIF StrCmp(s, &#x27;CPTR&#x27;)            ; t := 0
+   ELSEIF StrCmp(s, &#x27;FLOAT&#x27;)           ; t := 1
+   ELSEIF StrCmp(s, &#x27;DOUBLE&#x27;)          ; t := 1
+   ELSEIF StrCmp(s, &#x27;BOOL&#x27;)            ; t := 0
+   ELSEIF StrCmp(s, &#x27;TEXT&#x27;)            ; t := 0
+   ELSEIF StrCmp(s, &#x27;CLASS&#x27;)           ; t := 0
+   ELSEIF StrCmp(s, &#x27;MSG&#x27;)             ; t := 0
+   ELSEIF StrCmp(s, &#x27;OBJECT&#x27;)          ; t := 0
+   ELSEIF StrCmp(s, &#x27;ENUM&#x27;)            ; t := 0
+
+   ELSEIF StrCmp(s, &#x27;IPTR&#x27;)            ; t := 0
+   ELSEIF StrCmp(s, &#x27;BPTR&#x27;)            ; t := 0
+
+   ELSEIF StrCmp(s, &#x27;TAG&#x27;)             ; t := 0
+   ELSEIF StrCmp(s, &#x27;INT32&#x27;)           ; t := 0
+   ELSEIF StrCmp(s, &#x27;INT16&#x27;)           ; t := 0
+   ELSEIF StrCmp(s, &#x27;INT8&#x27;)            ; t := 0
+   ELSEIF StrCmp(s, &#x27;UINT&#x27;)            ; t := 0
+   ELSEIF StrCmp(s, &#x27;UINT32&#x27;)          ; t := 0
+   ELSEIF StrCmp(s, &#x27;UINT16&#x27;)          ; t := 0
+   ELSEIF StrCmp(s, &#x27;UINT8&#x27;)           ; t := 0
+   ELSEIF StrCmp(s, &#x27;INT64&#x27;)           ; t := 3
+   ELSEIF StrCmp(s, &#x27;UINT64&#x27;)          ; t := 3
+   ELSEIF StrCmp(s, &#x27;UQUAD&#x27;)           ; t := 3
+   ELSEIF StrCmp(s, &#x27;QUAD&#x27;)            ; t := 3
+
+   ELSE
+
+      td := g_typedefs
+      WHILE td
+         t := td.type
+         EXIT StrCmp(s, td.name)
+         td := td.next
+      ENDWHILE
+
+      IF td = NIL
+         -&gt; oh, not recognized, lets ask user then..
+         WriteF(&#x27;Type &quot;\s&quot; is not recognized.. should it go into (i)nteger, (f)loat, (v)ector, (w)ide register ?: &#x27;, s)
+         ReadStr(stdin, rstr)
+         t := rstr[]
+         SELECT t
+         CASE &quot;i&quot; ; t := 0
+         CASE &quot;f&quot; ; t := 1
+         CASE &quot;v&quot; ; t := 2
+         CASE &quot;w&quot; ; t := 3
+         DEFAULT  ; WriteF(&#x27;bad choice! Lets say you ment &quot;i&quot; then..\n&#x27;) ; t := 0
+         ENDSELECT
+         addTypeDef(t, s)
+      ENDIF
+
+   ENDIF
+
+ENDPROC t
+
+PROC addTypeDef(type, name)
+   DEF td:PTR TO typedef
+   NEW td
+   td.type := type
+   td.name := StrCopy(String(StrLen(name)), name)
+   UpperStr(td.name)
+   td.next := g_typedefs
+   g_typedefs := td
+ENDPROC
+
+PROC scanFD(s)
+   DEF c, t, v, r, public=TRUE, iptr:PTR TO LONG
+   DEF ireg, sofs:PTR TO LONG, str[300]:STRING
+   DEF lfunc:PTR TO lfunction, pnum, rnum
+
+   g_linenum := 0
+
+   iptr := g_itemsarray
+
+   WHILE (c := s[])
+      SELECT 128 OF c
+      CASE &quot;*&quot;
+         t := InStr(s, &#x27;\n&#x27;)
+         IF t &lt; 1 THEN reportErr(&#x27;comment not terminated&#x27;)
+         IF g_verbose
+            StrCopy(str, s, t+1)
+            WriteF(str)
+         ENDIF
+         s := s + t + 1
+         g_linenum++
+      CASE &quot; &quot;, &quot;\t&quot;, &quot;,&quot;, &quot;/&quot;
+         s++
+      CASE &quot;\n&quot;
+         g_linenum++
+         s++
+         iptr[] := NIL -&gt; terminate line
+         -&gt; lets see what this line holds..
+         iptr := g_itemsarray
+         IF iptr[] &gt; 1000  -&gt; label ?
+            IF public
+               StrCopy(str, g_prefix)
+               StrAdd(str, iptr[]++)
+               IF g_namefix
+                  IF str[1] &lt; 91
+                     str[1] := str[1] + 32
+                     IF str[2] &lt; 91
+                        IF str[3] = &quot;_&quot;
+                           str[2] := str[2] + 32
+                        ENDIF
+                     ENDIF
+                  ENDIF
+               ENDIF
+               IF str[0] &gt; 96 THEN str[0] := str[0]  - 32
+               IF g_verbose
+                  WriteF(&#x27;\s\n&#x27;, str)
+               ENDIF
+               IF findLfunc(str) THEN reportErr(&#x27;double declaration of function&#x27;, str)
+               lfunc := newLfunc(str)
+               -&gt; parse argnames
+               IF iptr[]++ &lt;&gt; &quot;(&quot; THEN reportErr(&#x27;&quot;(&quot; expected&#x27;)
+               pnum := 0
+               WHILE iptr[] &lt;&gt; &quot;)&quot;
+                  EXIT iptr[] = &quot;.&quot;
+                  IF iptr[] &lt; 1000 THEN reportErr(&#x27;label expected&#x27;)
+                  lfunc.args[pnum++].name := getTableStr(iptr[]++)
+               ENDWHILE
+               IF iptr[] = &quot;.&quot;
+                  iptr++
+                  lfunc.flags OR=LFFLAG_VARARGS
+               ENDIF
+               iptr++  -&gt; skip &quot;)&quot;
+               lfunc.nrofargs := pnum
+               -&gt; parse registers/abi
+               IF iptr[]++ &lt;&gt; &quot;(&quot; THEN reportErr(&#x27;&quot;(&quot; expected&#x27;)
+               rnum := 0
+               ireg := 0
+               sofs := 8
+               WHILE iptr[] &gt; 1000
+                  LowerStr(iptr[])
+                  SELECT 128 OF Char(iptr[])
+                  CASE &quot;a&quot; -&gt; an
+                     lfunc.args[rnum].rtype := 1
+                     lfunc.args[rnum].rnum := Char(iptr[]+1) - 48
+                  CASE &quot;d&quot; -&gt; dn
+                     lfunc.args[rnum].rtype := 0
+                     lfunc.args[rnum].rnum := Char(iptr[]+1) - 48
+                  CASE &quot;b&quot; -&gt; base
+                     lfunc.type := 1
+                     IF rnum = 0
+                        ireg := 4
+                        lfunc.basertype := 0
+                        lfunc.basernum := 3
+                        lfunc.baseconfig := 1
+                     ELSE -&gt; rnum=1 (and sysv@0)
+                        ireg := 3
+                        lfunc.basertype := IF pnum &lt; 8 THEN 0 ELSE 1
+                        lfunc.basernum := IF pnum &lt; 8 THEN 3+pnum ELSE pnum-8*4+8
+                        lfunc.baseconfig := -1
+                     ENDIF
+                  CASE &quot;s&quot; -&gt; sysv
+                     lfunc.type := 1
+                     IF rnum = 0
+                        ireg := 3
+                        lfunc.basertype := 0
+                        lfunc.basernum := 0
+                        lfunc.baseconfig := 0
+                     ENDIF
+                  CASE &quot;r&quot; -&gt; r12base
+                     lfunc.type := 1
+                     ireg := 3
+                     lfunc.basertype := 0
+                     lfunc.basernum := 12
+                     lfunc.baseconfig := 2
+                  ENDSELECT
+                  rnum++
+                  iptr++
+               ENDWHILE
+               IF lfunc.type = 1
+                  FOR c := 0 TO pnum-1
+                     IF ireg &lt; 11
+                        lfunc.args[c].rtype := 0
+                        lfunc.args[c].rnum := ireg++
+                     ELSE
+                        lfunc.args[c].rtype := 1
+                        lfunc.args[c].rnum := sofs++
+                     ENDIF
+                  ENDFOR
+               ENDIF
+               lfunc.baseofs := g_lfoffset + IF lfunc.type=1 THEN 2 ELSE 0
+            ELSE
+               IF g_verbose THEN WriteF(&#x27;private &quot;\s&quot;\n&#x27;, iptr[])
+            ENDIF
+            g_lfoffset := g_lfoffset + g_offsetinc
+         ELSEIF (iptr[] = &quot;#&quot;) AND (iptr[1] = &quot;#&quot;)
+            iptr++
+            iptr++
+            IF iptr[] &lt; 1000 THEN reportErr(&#x27;directive name expected&#x27;)
+            IF     StrCmp(iptr[], &#x27;base&#x27;)
+               iptr++
+               IF iptr[] &lt; 1000 THEN reportErr(&#x27;base name expected&#x27;)
+               IF EstrLen(g_basename) = 0
+                  IF Char(iptr[]) = &quot;_&quot;
+                     StrCopy(g_basename, iptr[]+1)
+                  ELSE
+                     StrCopy(g_basename, iptr[])
+                  ENDIF
+                  LowerStr(g_basename)
+               ENDIF
+               iptr++
+            ELSEIF StrCmp(iptr[], &#x27;bias&#x27;)
+               iptr++
+               IF iptr[] &lt; 1000 THEN reportErr(&#x27;value expected&#x27;)
+               v,r := Val(iptr[])
+               IF r = NIL THEN reportErr(&#x27;value expected&#x27;)
+               g_lfoffset := -v
+               iptr++
+            ELSEIF StrCmp(iptr[], &#x27;public&#x27;)
+               iptr++
+               public := TRUE
+            ELSEIF StrCmp(iptr[], &#x27;private&#x27;)
+               iptr++
+               public := FALSE
+            ELSEIF StrCmp(iptr[], &#x27;end&#x27;)
+               s[] := NIL
+            ELSE
+               reportErr(&#x27;unknown directive&#x27;)
+            ENDIF
+         ELSEIF iptr[] &lt;&gt; NIL
+            reportErr(&#x27;unknown directive&#x27;)
+         ENDIF
+         iptr := g_itemsarray
+      CASE &quot;#&quot;, &quot;(&quot;, &quot;)&quot;
+         s++
+         iptr[]++ := c
+      CASE &quot;_&quot;, &quot;a&quot; TO &quot;z&quot;, &quot;A&quot; TO &quot;Z&quot;, &quot;0&quot;, &quot;1&quot; TO &quot;9&quot;
+         t := getWordLen(s)
+         iptr[]++ := StrCopy(String(t), s, t)
+         s := s + t
+     CASE &quot;.&quot;
+         s++
+         IF s[] = &quot;.&quot;
+            s++
+            IF s[] = &quot;.&quot;
+               s++
+               iptr[]++ := &quot;.&quot; -&gt; &quot;.&quot; as item signals &quot;...&quot;
+            ENDIF
+         ENDIF
+      DEFAULT
+         reportErr(&#x27;unexpected characters&#x27;)
+      ENDSELECT
+
+   ENDWHILE
+
+ENDPROC
+
+
+
+OBJECT args
+   fd
+   to
+   namefix
+   prefix
+   basename
+   abiconfig
+   baseconfig
+   verbose
+   ifacename
+   inc
+   offset
+   syscall
+   interface
+   protos
+ENDOBJECT
+
+PROC main()  HANDLE
+   DEF args:PTR TO args, rdargs=NIL, pnames:PTR TO LONG
+   DEF buf, modname[256]:STRING, mod, size
+
+   NEW args
+
+   WriteF(&#x27;\s\n&#x27;, {version})
+
+   /* read args */
+   rdargs := ReadArgs(
+   &#x27;FD/K,&#x27;+
+   &#x27;TO/A,&#x27;+
+   &#x27;NAMEFIX/S,&#x27;+
+   &#x27;PREFIX/K,&#x27;+
+   &#x27;BASENAME/K,&#x27;+
+   &#x27;ABICONFIG/N,&#x27;+
+   &#x27;BASECONFIG/N,&#x27;+
+   &#x27;VERBOSE/S,&#x27;+
+   &#x27;IFACENAME/K,&#x27;+
+   &#x27;INC/N,&#x27;+
+   &#x27;OFFSET/N,&#x27;+
+   &#x27;SYSCALL/S,&#x27;+
+   &#x27;INTERFACE/K,&#x27;+
+   &#x27;PROTOS/M&#x27;,
+    args, NIL)
+
+   IF rdargs = NIL THEN Raise(&quot;ARGS&quot;)
+
+   g_syscall := args.syscall
+
+   g_verbose := args.verbose
+
+   g_namefix := args.namefix
+
+   IF args.prefix THEN StrCopy(g_prefix, args.prefix)
+
+   StrCopy(modname, args.to)
+
+   IF args.basename THEN StrCopy(g_basename, args.basename)
+
+   IF args.ifacename THEN StrCopy(g_ifacename, args.ifacename)
+
+   IF args.abiconfig
+      g_abiconfig := Long(args.abiconfig)
+   ELSE
+      -&gt; 0=68k,1=ppcsysv
+      g_abiconfig := 0
+   ENDIF
+
+   IF args.inc
+      g_offsetinc := Long(args.inc)
+   ELSE
+      g_offsetinc := -6
+   ENDIF
+
+   IF args.offset
+      g_lfoffset := Long(args.offset)
+   ELSE
+      g_lfoffset := -30
+   ENDIF
+
+   IF args.baseconfig
+   -&gt; 0=nobase, 1=arg1, -1=argn, 2=r12
+      g_baseconfig := Long(args.baseconfig)
+   ELSE
+      g_baseconfig := 0
+   ENDIF
+
+   newList(g_tablestrlist)
+
+   IF args.fd
+      buf := loadFile(args.fd)
+      WriteF(&#x27;Scanning FD &quot;\s&quot;..\n&#x27;, args.fd)
+      scanFD(buf)
+      g_fdused := TRUE
+   ENDIF
+
+   IF args.protos
+      pnames := args.protos
+      WHILE pnames[]
+         buf := loadFile(pnames[])
+         WriteF(&#x27;Scanning prototypes in &quot;\s&quot;..\n&#x27;, pnames[])
+         scanProtos(buf)
+         pnames++
+      ENDWHILE
+   ELSEIF args.interface
+      IF g_fdused THEN Raise(&quot;ARGS&quot;)
+      buf := loadFile(args.interface)
+      WriteF(&#x27;Scanning interface &quot;\s&quot;..\n&#x27;, args.interface)
+      scanInterface(buf)
+   ENDIF
+
+   getTableStr(g_basename)
+   getTableStr(g_ifacename)
+
+   WriteF(&#x27;Making module &quot;\s&quot;..\n&#x27;, modname)
+
+   mod, size := makeModule()
+
+   writeNewFile(mod, size, modname)
+
+   WriteF(&#x27;Done! (\d bytes)\n&#x27;, size)
+
+EXCEPT DO
+
+   SELECT exception
+   CASE &quot;ARGS&quot; ; WriteF(&#x27;error: wrong arguments\n&#x27;)
+   CASE &quot;OPEN&quot; ; WriteF(&#x27;error: could not open &quot;\s&quot;\n&#x27;, exceptioninfo)
+   CASE &quot;READ&quot; ; WriteF(&#x27;error: could not read &quot;\s&quot;\n&#x27;, exceptioninfo)
+   CASE &quot;WRIT&quot; ; WriteF(&#x27;error: could not write &quot;\s&quot;\n&#x27;, exceptioninfo)
+   CASE &quot;EXAM&quot; ; WriteF(&#x27;error: could not examine &quot;\s&quot;\n&#x27;, exceptioninfo)
+   CASE &quot;MEM&quot;  ; WriteF(&#x27;error: not enough memory\n&#x27;)
+   CASE &quot;ERR&quot;
+   CASE NIL
+   DEFAULT     ; WriteF(&#x27;error: unknown\n&#x27;)
+   ENDSELECT
+
+   IF rdargs THEN FreeArgs(rdargs)
+
+ENDPROC IF exception THEN 10 ELSE 0
+
+CHAR 0, 0, &#x27;$VER: &#x27;
+version:
+CHAR &#x27;MakeLibMod 1.1 by LS 2008-2010&#x27;, 0
+
+
+PROC setsum(m:PTR TO moduleheader)
+   DEF lptr:REG PTR TO LONG, longsize:REG, sum=NIL:REG
+
+   lptr := m.checksumstart
+   longsize := Div(m + m.modsize - lptr,4) + 1
+
+   WHILE longsize-- DO sum := sum + lptr[]++
+
+   m.checksum := sum
+
+ENDPROC
+
+
+PROC makeModule()
+   DEF m:PTR TO moduleheader, size=0, lf:PTR TO lfunction, arg:PTR TO lfuncarg
+   DEF info:PTR TO modinfo, mref:PTR TO modref, libi:PTR TO modlibi, ptr, t, a
+   DEF b
+
+   size += SIZEOF moduleheader
+   size += SIZEOF modinfo -&gt; libi
+   size += SIZEOF modlibi
+   size += SIZEOF modinfo -&gt; strtab
+   IF g_ifacename[]
+      size += SIZEOF modinfo
+      size += SIZEOF modref
+   ENDIF
+
+   -&gt; compute size of modlfuncs and turn name-pointers into disk-offsets
+   FOR a := 0 TO g_numlfuncs-1
+      lf := g_lfuncs[a]
+      lf.name := getTableStrOfs(lf.name)
+      lf.totalsize := SIZEOF modlfunc + (SIZEOF lfuncarg * lf.nrofargs)
+      size += SIZEOF modlfunc
+      FOR b := 0 TO lf.nrofargs-1
+         arg := lf.args[b]
+         IF arg.name THEN arg.name := getTableStrOfs(arg.name)
+         size += SIZEOF lfuncarg
+      ENDFOR
+   ENDFOR
+
+   size += getStrtabSize()
+   size := size + 3 AND -4
+
+   -&gt; alloc mem
+   m := NewR(size)
+
+   -&gt; create module
+
+   m.modsize := size
+   m.identification := &quot;ECXM&quot;
+   m.headsize := SIZEOF moduleheader
+   m.modversion := 1
+   IF g_ifacename[] THEN m.osid := OSID_AMIGAOS4
+
+   info := m + SIZEOF moduleheader
+   m.libiinfo := info - m
+   info.count := 1
+   info.rsrvd := NIL
+   info.misc := NIL
+   libi := info + SIZEOF modinfo
+   libi.basename := getTableStrOfs(IF g_ifacename[] THEN g_ifacename ELSE g_basename)
+   libi.nroflfuncs := g_numlfuncs
+   ptr := libi + SIZEOF modlibi
+
+   FOR a := 0 TO g_numlfuncs-1
+      lf := g_lfuncs[a]
+      CopyMem(lf, ptr, lf.totalsize)
+      ptr := ptr + lf.totalsize
+   ENDFOR
+   libi.totalsize := ptr - libi
+
+   IF g_ifacename[]
+      info := ptr
+      m.xrefginfo := info - m
+      info.count := 1
+      info.rsrvd := NIL
+      info.misc := NIL
+      mref := info + SIZEOF modinfo
+      mref.name := getTableStrOfs(g_basename)
+      mref.ltype := 4
+      mref.info := NIL
+      mref.numrefs := 0
+      ptr := mref + SIZEOF modref -&gt; (8)
+   ENDIF
+
+   info := ptr
+   info.count := NIL
+   info.rsrvd := NIL
+   info.misc := NIL
+   m.strtabinfo := info - m
+   ptr := info + SIZEOF modinfo
+
+   copyStrtab(ptr)
+
+   setsum(m)
+
+ENDPROC m, size
+
+
+/* FILE IO */
+
+PROC writeNewFile(buf, size, name) HANDLE
+   DEF fh=NIL
+
+   fh := Open(name, NEWFILE)
+   IF fh = NIL THEN Throw(&quot;OPEN&quot;, name)
+
+   IF Write(fh, buf, size) &lt;&gt; size THEN Throw(&quot;WRIT&quot;, name)
+
+EXCEPT DO
+
+   IF fh THEN Close(fh)
+
+   ReThrow()
+
+ENDPROC size
+
+PROC loadFile(name) HANDLE
+   DEF fh=NIL, fib:fileinfoblock, buf=NIL
+   fh := Open(name, OLDFILE)
+   IF fh = NIL THEN Throw(&quot;OPEN&quot;, name)
+   IF ExamineFH(fh, fib) = NIL THEN Throw(&quot;EXAM&quot;, name)
+   buf := NewR(fib.size+1)
+   IF Read(fh, buf, fib.size) &lt;&gt; fib.size THEN Throw(&quot;READ&quot;, name)
+   Close(fh)
+   fh := NIL
+EXCEPT
+   IF fh THEN Close(fh)
+   ReThrow()
+ENDPROC buf
+
+
+PROC scanInterface(ascii) HANDLE
+   DEF pxml:picoxml, libe:PTR TO xelem, ifacee:PTR TO xelem
+   DEF methode:PTR TO xelem, arge:PTR TO xelem
+   DEF nameid, opennameid, basenameid
+   DEF includeid, libraryid, interfaceid, structid
+   DEF methodid, resultid, argid,varargid, typeid
+   DEF dum, a, b, tstr[128]:STRING, lfunc:PTR TO lfunction
+   DEF pnum, ireg, freg, vreg, sofs:PTR TO LONG, t
+   DEF lfuncarg:PTR TO lfuncarg, err, s , d:PTR TO xdocu, succ
+
+   pxml.new(PXF_NOCOMMENTS)
+
+   err, d, s := pxml.scan_document(ascii)
+   IF err THEN Throw(&quot;XML&quot;, err)
+
+   nameid := pxml.merge_name(&#x27;name&#x27;)
+   opennameid := pxml.merge_name(&#x27;openname&#x27;)
+   basenameid := pxml.merge_name(&#x27;basename&#x27;)
+   includeid := pxml.merge_name(&#x27;include&#x27;)
+   libraryid := pxml.merge_name(&#x27;library&#x27;)
+   interfaceid := pxml.merge_name(&#x27;interface&#x27;)
+   structid := pxml.merge_name(&#x27;struct&#x27;)
+   methodid := pxml.merge_name(&#x27;method&#x27;)
+   resultid := pxml.merge_name(&#x27;result&#x27;)
+   argid := pxml.merge_name(&#x27;arg&#x27;)
+   varargid := pxml.merge_name(&#x27;vararg&#x27;)
+   typeid := pxml.merge_name(&#x27;type&#x27;)
+
+   libe := findElement(d.data, libraryid)
+   IFN libe THEN reportErr(&#x27;missing library element&#x27;)
+
+   IFN libe.getAttrs([basenameid, {a}])
+      reportErr(&#x27;failed to get attribute(s) from element&#x27;, libe.name)
+   ENDIF
+   IF g_basename[] = NIL
+      StrCopy(g_basename, a)
+      LowerStr(g_basename)
+   ENDIF
+
+   ifacee := findElement(libe.data, interfaceid)
+   IFN ifacee THEN reportErr(&#x27;missing interface element&#x27;)
+
+   IFN ifacee.getAttrs([structid, {a}])
+      reportErr(&#x27;failed to get attribute(s) from element&#x27;, ifacee.name)
+   ENDIF
+
+   IF g_ifacename[] = NIL
+      StrCopy(g_ifacename, a)
+      LowerStr(g_ifacename)
+   ENDIF
+
+   g_lfoffset := 60
+   g_offsetinc := 4
+
+   methode := ifacee.data.head
+   WHILE methode.succ
+      IF methode.type = XNTYPE_ELEMENT
+         IF methode.name = methodid
+            IFN methode.getAttrs([nameid, {a}, resultid, {b}])
+               reportErr(&#x27;failed to get attribute(s) from element&#x27;, methode.name)
+            ENDIF
+            IF (g_lfoffset &lt; 76) OR StrCmp(a, &#x27;Private&#x27;, STRLEN) OR StrCmp(a, &#x27;Reserved&#x27;, STRLEN)
+               -&gt; prepend the first four functions with ifacename
+               -&gt; or if function is private/reserved
+               StrCopy(tstr, g_ifacename)
+               UpperStr(tstr)
+               StrAdd(tstr, &#x27;_&#x27;)
+               StrAdd(tstr, a)
+            ELSE
+               StrCopy(tstr, a)
+               IF g_namefix
+                  IF tstr[1] &lt; 91
+                     tstr[1] := tstr[1] + 32
+                     IF tstr[2] &lt; 91
+                        IF tstr[3] = &quot;_&quot;
+                           tstr[2] := tstr[2] + 32
+                        ENDIF
+                     ENDIF
+                  ENDIF
+               ENDIF
+               IF tstr[] &gt; &quot;Z&quot; THEN tstr[] := tstr[] - 32
+            ENDIF
+
+            IF g_verbose THEN WriteF(&#x27; \s\n&#x27;, tstr)
+
+            lfunc := findLfunc(tstr)
+            IF lfunc THEN reportErr(&#x27;double declaration of function&#x27;, tstr)
+            lfunc := newLfunc(tstr)
+            lfunc.type := 1
+            lfunc.basertype := 0
+            lfunc.basernum := 3
+
+            itemizeTypeStr(b) -&gt; to g_itemsarray
+            dum, t := parsetype(g_itemsarray)
+            lfunc.return := IF t = -1 THEN 0 ELSE t
+
+            ireg := 4
+            freg := 1
+            vreg := 2
+            sofs := 8
+            lfuncarg := lfunc.args
+            pnum := 0
+
+            arge := methode.data.head
+            WHILE arge.succ
+               IF arge.type = XNTYPE_ELEMENT
+                  IF (arge.name = argid) OR (arge.name = varargid)
+                     IFN arge.getAttrs([nameid, {a}, typeid, {b}])
+                        reportErr(&#x27;failed to get attribute(s) from arg&#x27;, methode.name)
+                     ENDIF
+                     -&gt;WriteF(&#x27;arg=\s\n&#x27;, a)
+                     lfuncarg.name := getTableStr(a)
+                     itemizeTypeStr(b) -&gt; to g_itemsarray
+                     dum, t := parsetype(g_itemsarray)
+                     IF t = 0
+                        lfuncarg.rtype := IF ireg &gt; 10 THEN PPCARGRTYPE_STACKRX ELSE PPCARGRTYPE_RX
+                        lfuncarg.rnum := IF ireg &gt; 10 THEN sofs++ ELSE ireg++
+                     ELSEIF t = 1
+                        lfuncarg.rtype := PPCARGRTYPE_FX
+                        lfuncarg.rnum := freg++
+                     ELSEIF t = 2
+                        lfuncarg.rtype := PPCARGRTYPE_VX
+                        lfuncarg.rnum := vreg++
+                     ELSEIF t = 3
+                        lfuncarg.rtype := PPCARGRTYPE_RX2
+                        IF ireg &lt; 10
+                           lfuncarg.rnum := ireg++
+                           ireg++
+                        ELSE
+                           lfuncarg.rtype := PPCARGRTYPE_STACKRX2
+                           lfuncarg.rnum := sofs++
+                           sofs++
+                        ENDIF
+                     ENDIF
+                     lfuncarg++
+                     pnum++
+                     IF arge.name = varargid
+                        pnum--
+                        lfunc.flags OR= LFFLAG_VARARGS -&gt; Oct 2008.
+                     ENDIF
+                  ENDIF
+               ENDIF
+               arge := arge.succ
+            ENDWHILE
+            lfunc.baseofs := g_lfoffset
+            g_lfoffset := g_lfoffset + g_offsetinc
+            lfunc.nrofargs := pnum
+         ENDIF
+      ENDIF
+      methode := methode.succ
+   ENDWHILE
+
+
+EXCEPT DO
+
+   END d
+
+   SELECT exception
+   CASE &quot;XML&quot;     ; WriteF(&#x27;XML error: \s\n&#x27;, pxmlErr2Str(exceptioninfo))
+   ENDSELECT
+
+   ReThrow()
+
+ENDPROC
+
+PROC itemizeTypeStr(str)
+   DEF iptr:PTR TO PTR, t, c
+   iptr := g_itemsarray
+   WHILE c := str[]
+      SELECT 128 OF c
+      CASE &quot; &quot;, &quot;\t&quot;, 10, 12, 13
+         str++
+      CASE &quot;A&quot; TO &quot;Z&quot;, &quot;a&quot; TO &quot;z&quot;, &quot;_&quot;
+         t := getWordLen(str)
+         iptr[] := String(t)
+         IFN iptr[] THEN Raise(&quot;MEM&quot;)
+         StrCopy(iptr[]++, str, t)
+         str += t
+      CASE &quot;*&quot;, &quot;(&quot;, &quot;)&quot;, &quot;,&quot;
+         iptr[]++ := c
+         str++
+      DEFAULT
+         reportErr(&#x27;unknown character in type str&#x27;)
+      ENDSELECT
+   ENDWHILE
+   iptr[]++ := NIL
+ENDPROC
+
+
+PROC findElement(list:PTR TO mlh, nameid)
+   DEF e:PTR TO xelem
+   e := list.head
+   WHILE e.succ
+      IF e.type = XNTYPE_ELEMENT
+         IF e.name = nameid THEN RETURN e
+      ENDIF
+      e := e.succ
+   ENDWHILE
+ENDPROC NIL
+
+
+
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

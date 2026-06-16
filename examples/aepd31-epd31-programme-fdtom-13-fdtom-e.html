@@ -1,0 +1,491 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>FDtoM.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-aepd31.html">AEPD31</a> &rsaquo; FDtoM.e</div><h1>File: <code>FDtoM.e</code></h1><p class="meta">465 lines · project <a href="../examples/pkg-aepd31.html"><code>AEPD31</code></a></p><p class="pathctx">AEPD31/EPD31/Programme/FDtoM_13/FDtoM.e</p><h2>Source</h2><pre class="code">4 THEN error(ER_OUT)
+ENDPROC
+
+PROC tmpword(dummy)
+  IF (Write(tmphandle,dummy+2,2))&lt;&gt;2 THEN error(ER_TMP)
+ENDPROC
+
+PROC tmplong(dummy)
+  IF (Write(tmphandle,dummy,4))&lt;&gt;4 THEN error(ER_TMP)
+ENDPROC
+
+/* ######################### */
+/* Changed in V1.3 for Speed */
+
+PROC getline()
+  IF (KickVersion(36))
+	  noeof:=(Fgets(fdhandle,fdline,254))
+  ELSE
+	  noeof:=(ReadStr(fdhandle,fdline)&lt;&gt;-1)
+  ENDIF
+
+  MOVE.L	fdline,A0			/* Get Line-Start */
+  MOVEQ		#0,D1
+  NOT.B		D1					/* Max-len = 255 */
+getline_find0:
+  TST.B	(A0)+
+  DBEQ.S	D1,getline_find0
+  CLR.B		-2(A0)				/* Remove Linefeed */
+
+  ADDQ.L	#1,line
+  IF  (dosnum:=IoErr())&gt;0 THEN error(ER_FD)
+ENDPROC
+
+
+/*#################################################*/
+/* Version-String */
+
+version_txt:
+CHAR	0,&#x27;$VER: FDtoM 1.3 (3.10.94) by Detlef Riekenberg&#x27;,0
+
+/*#################################################*/
+
+PROC main()
+  myargs:=[0,0,0,0,0,0]
+
+  IF wbmessage&lt;&gt;0 THEN error(ER_ARGS)
+
+  WriteF(&#x27;\n\e[1m\s.\e[0m\n&#x27;,{version_txt}+7)
+
+/* Use DOS to Support Multiple Filename&#x27;s */
+  IF (KickVersion(36))
+	IF (rdargs:=ReadArgs(&#x27;FILE/A/M,RESOURCE/S,DEVICE/S,ASM/S&#x27;,myargs,NIL))=0 THEN error(ER_ARGS)
+  ELSE
+	/* Remove SPACE &amp; TAB */
+	MOVE.L	arg,A0
+	MOVEQ	#32,D1
+	MOVEQ	#9,D2
+
+parse_old_loop:
+	MOVE.B	(A0)+,D0
+	BEQ.S	parse_old_end
+	CMP.B	D0,D1
+	BEQ.S	parse_old_loop
+	CMP.B	D0,D2
+	BEQ.S	parse_old_loop
+parse_old_end:
+	SUBQ.L	#1,A0
+	MOVE.L	A0,a
+	MOVE.L	A0,D2
+
+    MOVE.L	myargs,A1					/* Create Fake File/A/M-Arg */
+	LEA		16(A1),A2
+	MOVE.L	A2,(A1)+
+	CLR.L	(A1)+
+	MOVE.L	A0,(A1)+
+	CLR.L	(A1)+
+	CLR.L	rdargs
+  ENDIF
+
+  resource:=myargs[1]
+  device:=myargs[2]
+  asmflag:=myargs[3]
+
+  IF (names:=myargs[0])=0 THEN error(ER_ARGS)
+  StrCopy(fdname,Long(names),ALL)
+  IF (StrCmp(fdname,&#x27;?&#x27;,ALL)) OR ((StrLen(fdname))=0) THEN error(ER_ARGS)
+
+/*---------------------*/
+/* Loop for every Name */
+/*---------------------*/
+
+  WHILE (thisname:=Long(names))
+
+	libraryname[]:=0
+	basename[]:=0
+	CLR.L	line
+
+	StrCopy(fdname,thisname,ALL)
+
+
+/*---------------------------*/
+/* fpart:=FilePart(FileName) */
+/*---------------------------*/
+
+
+	MOVE.L	thisname,A0
+	MOVEQ	#&quot;:&quot;,D0
+	MOVEQ	#&quot;:&quot;,D1
+	MOVEQ	#&quot;/&quot;,D2
+partloop:
+	CMP.B	D0,D1				/* Remove Drive: */
+	BEQ.S	partloop1
+	CMP.B	D0,D2				/* Remove Directory/ */
+	BNE.S	partloop2
+partloop1:
+	MOVE.L	A0,A1				/* A1=Filename-Start-Address */
+partloop2:
+	MOVE.B	(A0)+,D0			/* Get Next Char. End of Filename ? */
+	BNE.S	partloop
+	MOVE.L	A1,fpart
+
+	l:=StrLen(fpart)
+	a:=EstrLen(fdname)
+
+/*---------------------*/
+/* Test File-extension */
+/*---------------------*/
+	linelen:=7
+	IF	linelen&gt;l THEN linelen:=l
+
+	RightStr(tmpline,fdname,linelen)				/* &quot;_LIB.FD&quot; = 7 Char */
+	UpperStr(tmpline)
+	IF	linelen&gt;2
+		IF (StrCmp(tmpline+linelen-3,&#x27;.FD&#x27;,3))
+			SUBQ.L	#3,l							/* String-Len without &quot;.fd&quot; */
+			SUBQ.L	#3,linelen
+			SUBQ.L	#3,a
+		ENDIF
+	ENDIF
+
+	IF	linelen&gt;3
+		IF (StrCmp(tmpline+linelen-4,&#x27;_LIB&#x27;,4))
+			SUBQ.L	#4,l							/* Len without &quot;_lib.fd&quot; */
+		ENDIF
+	ENDIF
+
+
+/*----------------*/
+/* Open .fd-File  */
+/*----------------*/
+	SetStr(fdname,a)
+
+	IF (fdhandle:=Open(fdname,OLDFILE))=NIL
+
+		IF ( (dosnum:=IoErr() )&lt;&gt;ERROR_OBJECT_NOT_FOUND) THEN error(ER_FD)
+
+		StrAdd(fdname,&#x27;.fd&#x27;,ALL)					/* Try with extension */
+		IF (fdhandle:=Open(fdname,OLDFILE))=NIL
+			SetStr(fdname,a)
+			StrAdd(fdname,&#x27;_lib.fd&#x27;,ALL)			/* Try with extension */
+			IF (fdhandle:=Open(fdname,OLDFILE))=NIL THEN error(ER_FD)
+		ENDIF
+	ENDIF
+
+/*--------------------*/
+/* Make New Filenames */
+/*--------------------*/
+	StrCopy(tmpname,fpart,l)
+	StrAdd(tmpname,&#x27;_lvo.m&#x27;,ALL)
+
+	StrCopy(lvoname,fpart,l)
+	StrAdd(lvoname,&#x27;_lvo.i&#x27;,ALL)
+
+	StrCopy(outname,fpart,l)
+	StrAdd(outname,&#x27;.m&#x27;,ALL)
+
+/*--------------*/
+/* File valid ? */
+/*--------------*/
+
+ 	IF (linelen:=FileLength(fdname))&lt;=0 THEN error(ER_FD)
+	WriteF(&#x27;Now trying to convert &lt;\s&gt;.\n\e[0 p&#x27;,fdname)
+
+	IF (outhandle:=Open(outname,NEWFILE))=NIL THEN error(ER_OUT)
+	IF (tmphandle:=Open(tmpname,NEWFILE))=NIL THEN error(ER_TMP)
+	IF	asmflag
+		IF (lvohandle:=Open(lvoname,NEWFILE))=NIL THEN error(ER_LVO)
+
+		StrCopy(tmpline,fpart,l)
+		UpperStr(tmpline)
+		StringF(outline,&#x27;\n;* Generated by \s *\n\n\tIFND \s_LVO_I\n\s_LVO_I\tSET 1\n\n&#x27;,{version_txt}+7,tmpline,tmpline)
+		a:=EstrLen(outline)
+		IF (Write(lvohandle,outline,a))&lt;a THEN error(ER_LVO)
+
+	ENDIF
+
+/*-------------*/
+/* File Ident. */
+/*-------------*/
+
+	outlong(&#x27;EMOD&#x27;)
+	outword([T_LIBRARY])
+
+	tmplong(&#x27;EMOD&#x27;)
+	tmpword([T_CONST])
+
+	makemodule()
+
+/*---------*/
+/* CleanUp */
+/*---------*/
+
+	IF fdhandle
+		Close(fdhandle)
+		CLR.L	fdhandle
+	ENDIF
+	IF tmphandle
+		Close(tmphandle)
+		CLR.L	tmphandle
+	ENDIF
+	IF lvohandle
+		Close(lvohandle)
+		CLR.L	lvohandle
+	ENDIF
+	IF outhandle
+		Close(outhandle)
+		CLR.L	outhandle
+	ENDIF
+	ADDQ.L	#4,names			/* PTR to the next Name or 0 */
+  ENDWHILE
+  error(ER_NONE)
+ENDPROC
+
+
+/* ####################### */
+/* The Converting Funktion */
+/* ####################### */
+
+PROC makemodule()
+DEF	fdtmp[256]:STRING,			/* Line to Ucase(varname) */
+	bias=30,					/* Default&#x27;s */
+	newbias,
+	pos:PTR TO CHAR,
+	pos2,
+	c
+
+/* Added in V1.2 for correct Bias*/
+  IF resource THEN bias:=6
+
+  WriteF(&#x27;\n\e[ALine:      :&#x27;)		/* Changed in V1.3 for Speed */
+
+  getline()
+  WHILE	(noeof)
+	IF CtrlC() THEN error(ER_BREAK)
+	WriteF(&#x27;\e[4D\d[4]&#x27;,line)		/* Changed in V1.3 for Speed */
+	StrCopy(fdtmp,fdline,ALL)
+
+	UpperStr(fdtmp)
+	c:=fdtmp[0]
+	IF (c=&quot;#&quot;)
+		IF fdtmp[1]&lt;&gt;&quot;#&quot; THEN error(ER_FORM)
+		IF	(StrCmp(fdtmp+2,&#x27;BASE&#x27;,4))
+			IF basename[] THEN error(ER_BASE)
+			MOVE.L	fdtmp,A0
+			MOVEQ	#&quot; &quot;,D0
+			MOVEQ	#5,D1
+clrloop1:
+			MOVE.B	D0,(A0)+
+			DBRA	D1,clrloop1
+			pos:=TrimStr(fdtmp)
+			IF (StrCmp(pos,&#x27;_&#x27;,1)) THEN ADDQ.L	#1,pos
+
+			StrCopy(basename,pos,ALL)
+			LowerStr(basename)
+			l:=EstrLen(basename)
+			StrCopy(libraryname,basename,l-4)
+
+/* changed in V1.2 for correct Name in the Header.*/
+
+			IF	resource
+				StrAdd(libraryname,&#x27;.resource&#x27;,ALL)
+				ADDQ.L	#1,l
+			ELSEIF	device
+				StrAdd(libraryname,&#x27;.device&#x27;,ALL)
+				SUBQ.L	#1,l
+			ELSE
+				StrAdd(libraryname,&#x27;.library&#x27;,ALL)
+			ENDIF
+
+/* End of V1.2-change */
+
+			StrCopy(outline,libraryname,ALL)
+			StrAdd(outline,&#x27; &#x27;,1)
+			StrAdd(outline,basename,ALL)
+			StrAdd(outline,&#x27; &#x27;,1)
+			a:=EstrLen(outline)
+			outline[l+4]:=0
+			outline[a-1]:=0
+			IF Write(outhandle,outline,a)&lt;a THEN error(ER_OUT)
+
+		ELSEIF (StrCmp(fdtmp+2,&#x27;BIAS&#x27;,4))
+			IF (pos:=InStr(fdtmp,&#x27;=&#x27;,6))=-1 THEN pos:=6
+
+			newbias:=Val(pos+fdtmp,{a})
+
+/*			WriteF(&#x27;\n bias: \d newbias: \d\n&#x27;,bias,newbias)	/* Debug-Info */*/
+
+			IF (newbias &lt; bias) OR (a=0) THEN error(ER_BIAS)
+			StrCopy(fdtmp,&#x27;Dum.&#x27;,ALL)
+			fdtmp[3]:=16
+			WHILE newbias &gt; bias
+				outlong(fdtmp)
+				ADDQ.L	#6,bias
+			ENDWHILE
+			IF newbias &lt;&gt; bias THEN error(ER_BIAS)
+		ELSEIF	(StrCmp(fdtmp+2,&#x27;END&#x27;,3)) ; CLR.L	noeof
+		ELSEIF	(StrCmp(fdtmp+2,&#x27;PUBLIC&#x27;,6)) ; NOP
+		ELSEIF	(StrCmp(fdtmp+2,&#x27;PRIVATE&#x27;,7)) ; NOP
+		ELSE
+			error(ER_CMD)
+		ENDIF
+	ELSEIF (c=&quot;*&quot;)
+		NOP
+	ELSE
+		IF (l:=InStr(fdtmp,&#x27;(&#x27;,0))=-1 THEN error(ER_NAME)
+		StrCopy(outline,fdline,l)
+
+		StrCopy(tmpline,&#x27;LVO&#x27;,ALL)
+		StrAdd(tmpline,fdtmp,l)
+
+ 		tmpline[l+3]:=0				/* End-Marker */
+		tmpline[l+4]:=0				/* For Alingment */
+		MOVE.L	l,D0
+		ADDQ.W	#5,D0
+		AND.B	#$FE,D0				/* Needs even Name-Length */
+		MOVE.L	D0,a
+
+		newbias:=0-bias
+		tmpword([a])
+		tmplong([newbias])
+		IF (Write(tmphandle,tmpline,a))&lt;a THEN error(ER_TMP)
+
+		IF	asmflag
+			StringF(tmpline,&#x27;_LVO\s\tEQU \d\n&#x27;,outline,newbias)
+			a:=EstrLen(tmpline)
+			IF (Write(lvohandle,tmpline,a))&lt;a THEN error(ER_LVO)
+		ENDIF
+
+		MOVE.L	outline,A0
+		AND.B	#$DF,(A0)			/* First Char Ucase	*/
+		OR.B	#$20,1(A0)			/* Second : Lcase	*/
+
+		a:=l+outline
+		IF (pos2:=InStr(fdtmp,&#x27;)&#x27;,l))=-1 THEN error(ER_NAME)
+		IF (pos2-l)&gt;1				/* Data between the &quot;()&quot; */
+
+			IF (pos:=InStr(fdtmp,&#x27;(&#x27;,pos2))=-1 THEN error(ER_NAME)
+			ADDQ.L	#1,pos
+			IF (pos2:=InStr(fdtmp,&#x27;)&#x27;,pos))=-1 THEN error(ER_NAME)
+			pos :=pos	+fdtmp
+			pos2:=pos2	+fdtmp
+
+			WHILE pos&lt;pos2
+				REPEAT
+					c:=pos[]++
+				UNTIL (c&lt;&gt;$20)			/* Ignore Space */
+
+				CLR.L	l
+
+/* Small cleanup in v1.2 */
+				IF c=$41				;/* &#x27;A&#x27;*/
+					ADDQ.L	#8,l
+				ELSEIF c&lt;&gt;$44			;/* &#x27;D&#x27;*/
+					error(ER_NAME)
+				ENDIF
+
+				c:=pos[]++
+				IF (c&lt;$30) OR (c&gt;$37) THEN error(ER_NAME)
+				l:=l+(c AND 7)
+				MOVE.L	a,A0
+				MOVE.L	l,D0
+				MOVE.B	D0,(A0)+	/* Register-Number for Parameter */
+				MOVE.L	A0,a
+
+
+/* Seperator &quot;,&quot; OR &quot;/&quot; here */
+
+				c:=pos[]++
+				IF (pos&lt;pos2)
+					IF (c&lt;&gt;$2c) AND (c&lt;&gt;$2f) THEN error(ER_NAME)	/* Format-Error*/
+				ENDIF
+			ENDWHILE
+		ELSE
+			MOVE.L	a,A0
+			MOVE.B	#16,(A0)+	/* No Parameter */
+			MOVE.L	A0,a
+		ENDIF
+		a:=a-outline
+		IF	bias&gt;=30							/*	Resource-Handling added in 1.2 */
+			IF (Write(outhandle,outline,a))&lt;a THEN error(ER_OUT)
+		ENDIF
+		ADDQ.L	#6,bias
+	ENDIF
+	IF	(noeof) THEN getline()
+  ENDWHILE
+
+  tmpword([0])					/* End-Code */
+  IF	asmflag
+    IF (Write(lvohandle,&#x27;\n\tENDC\n&#x27;,7))&lt;7 THEN error(ER_LVO)	/* Ende */
+  ENDIF
+  MOVE.L	outline,A0
+  MOVE.B	#255,(A0)			/* End-Code */
+  IF (Write(outhandle,outline,1))&lt;=0 THEN error(ER_OUT)
+  WriteF(&#x27;\n&#x27;)
+ENDPROC
+
+/* ############################# */
+
+PROC error(ernum)
+  IF fdhandle	THEN Close(fdhandle)
+  IF lvohandle	THEN Close(lvohandle)
+  IF tmphandle	THEN Close(tmphandle)
+  IF outhandle	THEN Close(outhandle)
+  IF (rdargs)	THEN FreeArgs(rdargs)
+
+  WriteF(&#x27;\n\e[1m&#x27;)
+
+  tmpline[]:=0
+  IF (KickVersion(36)) AND (dosnum&lt;&gt;0) THEN Fault(dosnum,&#x27;\e[0m&#x27;,tmpline,120)
+
+  SELECT ernum
+    CASE ER_NONE;   WriteF(&#x27;\e[0mAll Done.\n&#x27;)
+    CASE ER_ARGS;   WriteF(&#x27;Usage: fdtom fdname[.fd]&#x27;)
+    CASE ER_FD;     WriteF(&#x27;Could not read &quot;\s&quot; \s&#x27;,fdname,tmpline)
+
+    CASE ER_TMP;    WriteF(&#x27;Could not write &quot;\s&quot; \s&#x27;,tmpname,tmpline)
+    CASE ER_LVO;    WriteF(&#x27;Could not write &quot;\s&quot; \s&#x27;,lvoname,tmpline)
+    CASE ER_OUT;    WriteF(&#x27;Could not write &quot;\s&quot; \s&#x27;,outname,tmpline)
+
+    CASE ER_MEM;    WriteF(&#x27;Could not allocate memory&#x27;)
+	CASE ER_BREAK;  WriteF(&#x27;******* User Break ******&#x27;)
+    CASE ER_FORM;   WriteF(&#x27;.fd file format error&#x27;)
+    CASE ER_CMD;	WriteF(&#x27;Unknown Command&#x27;)
+    CASE ER_NAME;	WriteF(&#x27;Name-Error&#x27;)
+    CASE ER_BIAS;	WriteF(&#x27;BIAS-Fault.&#x27;)
+    CASE ER_BASE;	WriteF(&#x27;BASE-Fault.&#x27;)
+  ENDSELECT
+
+  WriteF(&#x27;\e[0m\e[ p\n&#x27;)
+  IF wbmessage&lt;&gt;0 THEN WriteF(&#x27;CLI-Only.\nPress &quot;Return&quot; to Quit.&#x27;)
+  IF (ernum&gt;0) AND (line )
+	WriteF(&#x27;&quot;\s&quot;\nPress &quot;CTRL-C&quot; to Stop Deletion.\n&#x27;,fdline)
+	Delay(250)
+	IF	CtrlC()=0
+		DeleteFile(outname)				/* Return-Value not checked */
+		DeleteFile(lvoname)				/* dito. */
+		DeleteFile(tmpname)				/* dito. */
+	ENDIF
+  ENDIF
+  CleanUp(ernum)
+ENDPROC
+
+  ‹1953 bytes of embedded binary/non-text data elided›
+  ‹36 bytes of embedded binary/non-text data elided›
+  ‹57 bytes of embedded binary/non-text data elided›</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

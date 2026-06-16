@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>eTimer.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-epp-v1-4d.html">epp-v1_4d</a> &rsaquo; eTimer.e</div><h1>File: <code>eTimer.e</code></h1><p class="meta">105 lines · project <a href="../examples/pkg-epp-v1-4d.html"><code>epp-v1_4d</code></a></p><p class="pathctx">epp-v1_4d/EPP/PModules/eTimer.e</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/dos.html">dos/dos</a></li></ul></div><h2>Source</h2><pre class="code">OPT TURBO
+
+MODULE &#x27;dos/dos&#x27;
+PMODULE &#x27;PMODULES:stack&#x27;
+
+OBJECT et_procInfoType
+  visits:LONG
+  started:datestamp
+  elapsed:datestamp
+  name:LONG
+ENDOBJECT
+
+DEF et_procInfoArray:PTR TO et_procInfoType,
+    et_stack:st_stackType,
+    et_numberOfProcs=0,
+    et_idRunning=-1 /* Used to turn timer off/on in case of recursive */
+                     /* call.  Used by et_StartTime AND et_StopTime.  */
+
+PROC et_init(numberOfProcs)
+  DEF i, elapsed:PTR TO datestamp
+  et_numberOfProcs:=numberOfProcs+1
+  et_procInfoArray:=New(SIZEOF et_procInfoType*et_numberOfProcs)
+  FOR i:=0 TO numberOfProcs
+    et_procInfoArray[i].visits:=0
+    elapsed:=et_procInfoArray[i].elapsed
+    elapsed.minute:=0
+    elapsed.tick:=0
+  ENDFOR
+  st_init(et_stack)
+ENDPROC
+
+PROC et_startTimer(id, name)
+  DEF current:datestamp, started:PTR TO datestamp, elapsed:PTR TO datestamp
+  DateStamp(current)
+  /* Update the elapsed time of the proc that relinquished control to     */
+  /* child.  Init if et_idRunning = -1 (PROC main () is the *only* case.) */
+  IF et_idRunning=-1
+    et_init(id)
+  ELSE
+    started:=et_procInfoArray[et_idRunning].started
+    elapsed:=et_procInfoArray[et_idRunning].elapsed
+    IF current.tick&lt;started.tick
+      current.tick:=current.tick+3000
+      current.minute:=current.minute-1
+    ENDIF
+    elapsed.tick:=elapsed.tick+(current.tick-started.tick)
+    elapsed.minute:=elapsed.minute+(current.minute-started.minute)
+  ENDIF
+  st_push(et_stack,et_idRunning)
+  /* Update the start time of the child proc. */
+  started:=et_procInfoArray[id].started
+  started.minute:=current.minute
+  started.tick:=current.tick
+  et_procInfoArray[id].name:=IF name=NIL THEN &#x27;&#x27; ELSE name
+  et_idRunning:=id
+  et_procInfoArray[id].visits:=et_procInfoArray[id].visits+1
+ENDPROC
+
+PROC et_toMinutes(ticks) RETURN ticks/3000
+
+PROC et_report()
+  DEF i, totalMinute=0, totalTick=0, ds:PTR TO datestamp
+  FOR i:=0 TO (et_numberOfProcs-1)
+    ds:=et_procInfoArray[i].elapsed
+    ds.minute:=ds.minute+et_toMinutes(ds.tick)
+    ds.tick:=ds.tick-(et_toMinutes(ds.tick)*3000)
+    WriteF(&#x27;\nid=\d, visits=\d, minute=\d, tick=\d, name=\s&#x27;,
+            i, et_procInfoArray[i].visits, ds.minute, ds.tick,
+            et_procInfoArray[i].name)
+    totalMinute:=totalMinute+ds.minute
+    totalTick:=totalTick+ds.tick
+  ENDFOR
+  totalMinute:=totalMinute+et_toMinutes(totalTick)
+  totalTick:=totalTick-(et_toMinutes(totalTick)*3000)
+  WriteF(&#x27;\ntotalMinute=\d totalTick=\d\n&#x27;, totalMinute, totalTick)
+ENDPROC
+
+
+PROC et_stopTimer ()
+  DEF current:datestamp, started:PTR TO datestamp, elapsed:PTR TO datestamp
+  DateStamp(current)
+  /* Update the elapsed time of the child proc that id returning control */
+  /* to the parent.  None if et_idRunning = -1 (PROC main () is the      */
+  /* *only* case.)                                                       */
+  started:=et_procInfoArray[et_idRunning].started
+  elapsed:=et_procInfoArray[et_idRunning].elapsed
+    IF current.tick&lt;started.tick
+      current.tick:=current.tick+(50*60)
+      current.minute:=current.minute-1
+    ENDIF
+  elapsed.tick:=elapsed.tick+(current.tick-started.tick)
+  elapsed.minute:=elapsed.minute+(current.minute-started.minute)
+  /* Update the start time of the parent proc.  None if et_idRunning = -1 */
+  /* (PROC main () is the *only* case.)                                   */
+  et_idRunning:=st_pop(et_stack)
+  IF et_idRunning&gt;-1
+    started:=et_procInfoArray[et_idRunning].started
+    started.minute:=current.minute
+    started.tick:=current.tick
+  ELSE
+    et_report()
+  ENDIF
+ENDPROC
+
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

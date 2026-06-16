@@ -1,0 +1,1074 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>TinyBasic.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-aepd05.html">AEPD05</a> &rsaquo; TinyBasic.e</div><h1>File: <code>TinyBasic.e</code></h1><p class="meta">1048 lines · project <a href="../examples/pkg-aepd05.html"><code>AEPD05</code></a></p><p class="pathctx">AEPD05/EPD05/Amiga_E-Programme/TinyBasic/TinyBasic.e</p><p class="prose">** Tiny BASIC Interpreter ** Dieser BASIC-Interpreter basiert auf einen Interpreter von David Benn. Konvertiert in Amiga_E und erweitert von Jörg Wach (=JCL_POWER) in 1994. Version 0.1: 13.01.1994 Lockere Übersetzung. Version 0.2: 21.01.94 - Ausbau des Gurus bei zwei Variablen - Änderungen aller Var</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/mathtrans.html">mathtrans</a></li></ul></div><h2>Source</h2><pre class="code">/* ** Tiny BASIC Interpreter **
+
+
+    Dieser BASIC-Interpreter basiert auf einen Interpreter von
+    David Benn.
+
+    Konvertiert in Amiga_E und erweitert von Jörg Wach (=JCL_POWER)
+    in 1994.
+
+    Version 0.1: 13.01.1994
+                 Lockere Übersetzung.
+
+    Version 0.2: 21.01.94
+                 - Ausbau des Gurus bei zwei Variablen
+                 - Änderungen aller Variablen auf FFP
+
+    Version 0.3: 24.01.94
+                 - EDIT-Mode
+                 - LIST-Befehl überarbeitet
+                 - RUN -Befehl überarbeitet
+                 - Save-Befehl überarbeitet
+                 - Load-Befehl überarbeitet
+                 - LABEL&#x27;s für GOTO
+                 - LET Befehl auch ohne LET
+
+    Version 0.4: 24.01.1994
+                 - SAVE - Befehl neu geschrieben.
+                 - LOAD - Befehl neu geschrieben.
+                 - PRINT- Befehl überarbeitet.
+                 - Vergleiche auf FFP umgestellt.
+                 - Stringliterale überarbeitet.
+
+    Version 0.5: 28.01.1994
+                 - INPUT-Befehl für begleitende Strings eingerichtet
+                 - PRINT Befehl erweitert um ?, &quot;,&quot;
+                 - FFP-Routinen für Wandlung angepasst.
+                 - Tuning vorgenommen.
+
+    Version 0.6: 29.01.1994
+                 - Zuweisungen für negative Zahlen korrigiert.
+
+*/
+
+MODULE &#x27;mathtrans&#x27;
+
+
+CONST MAXSTACK=100          /* Unser max. Stack. */
+CONST MAXFUNC=7             /* Unsere Anzahl an Funktionen -1. */
+CONST MAXSYM=35             /* maximale Anzahl an Symbolen -1. */
+
+                            /* Spezielle Symbole. */
+ENUM ALPHA=0, NUMBER, STRINGLITERAL, PLUS, MINUS, MULT, DIV,
+     POW,   LPAREN, RPAREN, EQ, LT, GT, LTOREQ, GTOREQ, NOTEQ,
+     COMMA, COLON, LABEL, EOS
+
+                            /* Reservierte Wörter. */
+ENUM CLSSYM=20 , ELSESYM, GOTOSYM, IFSYM, INPUTSYM, LETSYM, LISTSYM,
+     LOADSYM, NEWSYM, PRINTSYM, RUNSYM, SAVESYM, STOPSYM, THENSYM,
+     EDITSYM, UNDEF
+
+CONST MAXWORD = 14          /* Max. Anzahl reservierter Wörter -1. */
+
+                            /* Unsere möglichen Fehler. */
+ENUM  DIVBYZERO=1, SYNTAX, STKOVFL, STKUFL, LINEOUTOFRANGE, NOLABEL,
+      OUTOFMEMORY, CANNOTOPENFILE, FILENOTFOUND, NOMATHTRANS, NOCON,
+      FFPFMT, NOMEM, NOASSIGN
+
+CONST MAXLINES=1000         /* Max. Anzahl an Programmzeilen. */
+
+
+DEF stack[MAXSTACK]: ARRAY OF LONG  /* Der Stack wird definiert. */
+DEF stacktop                        /* Das Stackende. */
+DEF funcs: PTR TO LONG              /* Unsere Funktionswörter. */
+DEF word : PTR TO LONG              /* Unserer reservierten Wörter. */
+DEF bad                             /* Enthält die Fehlernummer. */
+
+DEF code_ptr[MAXLINES]: ARRAY OF LONG  /* Enthält die Zeiger auf die
+                                          Programmzeilen. Die Programmzeilen
+                                          wiederum sind EStrings! */
+
+DEF topline=0                       /* letzte Zeile. */
+
+DEF pc, old_pc                      /* Unser Programm-Counter. */
+
+                                    /* ... und sonstige globale Variablen. */
+DEF n, length, halt_requested, ch=0, ut_ch=0
+DEF buf[255]: STRING, ut_buf[255]: STRING, obj[255] : STRING,
+    sym = UNDEF, printstring[255]: STRING
+
+DEF var[25]: ARRAY OF LONG          /* Unsere Laufzeitvariablen. */
+DEF con                             /* Unser Fenster. */
+DEF debugger=FALSE                  /* Debugger an/aus */
+
+/* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
+/* Die Hauptsteuerung (MAIN)                                               */
+/* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
+
+PROC main()
+DEF i
+    mathtransbase:=OpenLibrary(&#x27;mathtrans.library&#x27;,0) /* Wir brauchen diese
+                                                         Lib. */
+    IF mathtransbase=NIL
+      error(NOMATHTRANS)
+      RETURN
+    ENDIF
+    IF (con:=Open(&#x27;con:0/0/640/200/Tiny Basic in E © 1994 Jörg Wach&#x27;,NEWFILE))= NIL
+       error(NOCON)
+       RETURN
+    ENDIF
+
+    con := SetStdOut(con)
+
+    initall() /* Alles initialisieren. */
+
+    REPEAT
+       WriteF(&#x27;-&gt;&#x27;)
+       pc:= 0
+       ReadStr(stdout,ut_buf)               /* Befehl einlesen. */
+       StrCopy(buf,ut_buf,ALL)
+       UpperStr(buf)
+       SetStr(buf,EstrLen(ut_buf))          /* Um den Bufferzähler auf den
+                                               richtigen Wert zu bringen. */
+       IF finished()=FALSE THEN parse_line()   /* Wir machen so lange einen
+                                                  Parse, bis wir das Ende
+                                                  erreicht haben. */
+    UNTIL finished()=TRUE
+
+    /* Wir löschen unsere Strings. */
+    FOR i:=0 TO MAXLINES
+        IF code_ptr[i]&lt;&gt; NIL THEN SetStr(code_ptr[i],0)
+    ENDFOR
+
+    Close(stdout)           /* Unser Arbeitsfenster schließen. */
+    CloseLibrary(mathbase)
+ENDPROC
+
+/* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
+/* Initialisiert alle Variablen.                                           */
+/* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
+
+PROC initall()
+/* initialisiert alle benötigten Variablen */
+
+DEF t1
+
+    /* Erstmal unsere Funktionen als PTR TO LONG, also Strings. */
+    funcs := [&#x27;SIN&#x27;, &#x27;COS&#x27;, &#x27;TAN&#x27;, &#x27;LOG&#x27;, &#x27;SQR&#x27;, &#x27;FIX&#x27;, &#x27;INT&#x27;, &#x27;RND&#x27;]
+
+    /* Und nun kommen die reservierten Wörter ran. */
+    word := [ &#x27;CLS&#x27;, &#x27;ELSE&#x27;, &#x27;GOTO&#x27;, &#x27;IF&#x27;, &#x27;INPUT&#x27;, &#x27;LET&#x27;, &#x27;LIST&#x27;,
+              &#x27;LOAD&#x27;, &#x27;NEW&#x27;, &#x27;PRINT&#x27;, &#x27;RUN&#x27;, &#x27;SAVE&#x27;, &#x27;STOP&#x27;, &#x27;THEN&#x27;,
+              &#x27;EDIT&#x27; ]
+
+    /* Wir löschen die Zeilen-Pointer. */
+    FOR t1:=0 TO MAXLINES DO code_ptr[t1]:=NIL
+
+    /* Wir löschen die Variablen-Inhalte. */
+    FOR t1:=0 TO 25 DO var[t1]:=0
+ENDPROC
+
+/* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
+/* Checkt, ob TinyBasic verlassen werden soll. Gibt bei Verlasen ein TRUE  */
+/* zurück.                                                                 */
+/* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
+
+PROC finished() RETURN IF InStr(buf,&#x27;SYSTEM&#x27;,0) = -1 THEN FALSE ELSE TRUE
+
+/* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
+/* cap - Proc für das umsetzen von kleinen Zeichen in große Zeichen */
+/* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
+
+PROC cap(c) RETURN IF (c &gt; 96) AND (c &lt; 123) THEN c := c - 32 ELSE c
+
+/* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
+/* parse_line sucht nach den Befehlen. Hauptsteuerung!                                     */
+/* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
+
+PROC parse_line()
+  ch := n :=0               /* Zeichen und Anzahl auf 0. */
+  length := EstrLen(buf)    /* Max. Länge. */
+  bad := FALSE
+  halt_requested := FALSE
+  stacktop := 0
+  nextch()                  /* Hole das erste Zeichen. */
+  REPEAT
+    insymbol()
+    statement()
+    IF (sym&lt;&gt;COLON) AND (sym&lt;&gt;EOS) THEN insymbol()
+  UNTIL sym&lt;&gt;COLON
+ENDPROC
+
+/* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
+/* Zentrale Fehlerausgabeprozedur.                                         */
+/* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
+
+PROC error(n)
+/* Ausgabe der Fehlertexte. */
+  IF bad THEN RETURN     /* Nur Ausgabe eines Fehlers pro Zeile. */
+  SELECT n
+    CASE DIVBYZERO
+         WriteF(&#x27;DIVISION BY ZERO &#x27;)
+    CASE SYNTAX
+         WriteF(&#x27;SYNTAX ERROR &#x27;)
+    CASE STKOVFL
+         WriteF(&#x27;STACK OVERFLOW &#x27;)
+    CASE STKUFL
+         WriteF(&#x27;STACK UNDERFLOW &#x27;)
+    CASE LINEOUTOFRANGE
+         WriteF(&#x27;LINE OUT OF RANGE 1 TO \d &#x27;,MAXLINES)
+    CASE NOLABEL
+         WriteF(&#x27;Kein passendes Label gefunden.&#x27;)
+    CASE OUTOFMEMORY
+         WriteF(&#x27;OUT OF MEMORY &#x27;)
+    CASE CANNOTOPENFILE
+         WriteF(&#x27;CAN\aT OPEN FILE FOR WRITING &#x27;)
+    CASE FILENOTFOUND
+         WriteF(&#x27;FILE NOT FOUND &#x27;)
+    CASE NOMATHTRANS
+         WriteF(&#x27;Keine Mathtrans-Library vorhanden!&#x27;)
+    CASE NOCON
+         WriteF(&#x27;Kein Arbeitsfenster zu öffnen!&#x27;)
+    CASE FFPFMT
+         WriteF(&#x27;Fehler beim FFP-Format!&#x27;)
+    CASE NOMEM
+         WriteF(&#x27;Kein Speicher für Alloc von String!&#x27;)
+    CASE NOASSIGN
+         WriteF(&#x27;Keine Variablenzuweisung möglich!&#x27;)
+
+  ENDSELECT
+  IF pc&lt;&gt;0 THEN WriteF(&#x27;IN LINE \d.\n&#x27;,old_pc) ELSE WriteF(&#x27;\n&#x27;)
+  bad:=TRUE
+ENDPROC
+
+/* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
+/* nextch()                                                                */
+/* Hole das nächsten Zeichen aus der Eingabe vom Bildschirm oder,          */
+/* wenn wir im RUN-Mode sind, das nächste Zeichen aus dem Programmspeicher.*/
+/* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
+
+PROC nextch()
+/* Holt das nächste Zeichen. */
+
+  IF n&lt;=length
+     ch := buf[n]
+     ut_ch := ut_buf[n]
+     n++
+  ELSE
+    ch := 0
+  ENDIF
+ENDPROC
+
+PROC rsvd_wd(x)
+/* Prüft den String x ab, ob es ein reserviertes Wort ist. */
+DEF i,num
+
+    i:=0
+    num := -1
+    WHILE (i &lt;= MAXWORD) AND (num=-1)
+        IF StrCmp(x,word[i],ALL) THEN num := i    /* Haben wir so ein Wort? */
+/*        debug(word[i],0,0) */
+        i++
+    ENDWHILE
+
+/*    debug(&#x27;rsvd_wd&#x27;,num,0) */
+    IF num=-1 THEN RETURN ALPHA ELSE RETURN (num+EOS+1)
+ENDPROC
+
+PROC insymbol()
+/* Prüft das Symbol ab. */
+DEF periods=0, tt1
+
+ obj[0] :=0
+ sym:=UNDEF                     /* Erstmal vorbelegen. */
+
+ /* Leerzeichen überspringen. */
+ IF (ch&lt;=&quot; &quot;) AND (ch&lt;&gt;0)
+   REPEAT
+     nextch()
+   UNTIL (ch&gt;&quot; &quot;) OR (ch=0)
+ ENDIF
+
+ /* Ende des Strings erreicht? */
+ IF ch=0
+    sym := EOS
+    debug(&#x27;Ende String&#x27;,0,0)
+    RETURN
+ ENDIF
+
+ /* Zeichen */
+ tt1 := n - 1
+ IF (ch&gt;=&quot;A&quot;) AND (ch&lt;=&quot;Z&quot;)
+    WHILE ((ch&gt;=&quot;A&quot;) AND (ch&lt;=&quot;Z&quot;)) OR ((ch&gt;=&quot;0&quot;) AND (ch&lt;=&quot;9&quot;))
+        nextch()
+    ENDWHILE
+    MidStr(obj,buf,tt1,n-tt1-1)
+    sym := rsvd_wd(obj)
+    debug(obj,sym,0)
+ ELSE
+   /* Vorzeichenlose Zahlen. */
+   IF ((ch&gt;=&quot;0&quot;) AND (ch&lt;=&quot;9&quot;)) OR (ch=&quot;.&quot;)
+    debug(&#x27;insymbol-zahl&#x27;,0,0)
+     sym := NUMBER
+     WHILE ((ch&gt;=&quot;0&quot;) AND (ch&lt;=&quot;9&quot;)) OR (ch=&quot;.&quot;)
+       IF ch=&quot;.&quot; THEN periods++
+       nextch()
+     ENDWHILE
+     MidStr(obj,buf,tt1,n-tt1-1)
+     debug(obj,0,0)
+     IF periods &gt; 1         /* Dezimalpunkt mehrmals gefunden. */
+       sym := UNDEF
+       error(SYNTAX)
+     ENDIF
+   ELSE
+     /* Ein Text-Literal. */
+     IF ch=34
+       INC tt1
+       sym := STRINGLITERAL
+       nextch()
+       WHILE (ch&lt;&gt;34) AND (ch&lt;&gt;0)
+         nextch()
+       ENDWHILE
+       MidStr(obj,ut_buf,tt1,n-tt1-1)
+       debug(obj,0,0)
+       IF ch&lt;&gt;34
+          error(SYNTAX);sym := UNDEF; RETURN
+       ENDIF
+       nextch()
+     ELSE
+       /* Ein einzelnes Zeichen. */
+    debug(&#x27;insymbol-zeichen&#x27;,buf[tt1],0)
+       MidStr(obj,buf,tt1,1)
+       SELECT ch
+         CASE &quot;+&quot;
+             sym := PLUS
+         CASE &quot;-&quot;
+             sym := MINUS
+         CASE &quot;*&quot;
+             sym := MULT
+         CASE &quot;/&quot;
+             sym := DIV
+         CASE &quot;^&quot;
+             sym := POW
+         CASE &quot;(&quot;
+             sym := LPAREN
+         CASE &quot;)&quot;
+             sym := RPAREN
+         CASE &quot;=&quot;
+             sym := EQ
+         CASE &quot;&lt;&quot;
+             sym := LT
+         CASE &quot;&gt;&quot;
+             sym := GT
+         CASE &quot;,&quot;
+             sym := COMMA
+         CASE &quot;:&quot;
+             sym := COLON
+         CASE &quot;?&quot;
+             sym := PRINTSYM
+
+       ENDSELECT
+
+       nextch()
+
+       /* &lt;= &lt;&gt; &gt;= ? */
+       IF (sym=LT) AND (ch=&quot;=&quot;)
+         sym := LTOREQ;nextch()
+       ELSE
+         IF (sym=LT) AND (ch=&quot;&gt;&quot;)
+           sym := NOTEQ;nextch()
+         ELSE
+           IF (sym=GT) AND (ch=&quot;=&quot;)
+             sym := GTOREQ;nextch()
+           ENDIF
+         ENDIF
+       ENDIF
+
+       IF sym=UNDEF THEN error(SYNTAX)
+     ENDIF
+   ENDIF
+ ENDIF
+ENDPROC
+
+PROC push(x)
+/* Packe auf den Stack. */
+
+  IF stacktop&gt;MAXSTACK
+    error(STKOVFL)
+  ELSE
+    stack[stacktop] := x
+    stacktop++
+  ENDIF
+ENDPROC
+
+PROC pop()
+/* Hole vom Stack. */
+
+  stacktop--
+  IF stacktop&lt;0
+     error(STKUFL)
+  ELSE
+     RETURN stack[stacktop]
+  ENDIF
+
+ENDPROC
+
+PROC func()
+/* Funktionsauswertungen. */
+DEF found, funct, i
+
+  /* Suche nach der Funktion. */
+  found := funct := FALSE
+  i := 0
+  WHILE (i&lt;=MAXFUNC) AND (found = FALSE)
+    IF StrCmp(funcs[i],obj,ALL)
+       funct := i; found := TRUE
+    ELSE
+       INC i
+    ENDIF
+  ENDWHILE
+
+  IF funct = FALSE THEN RETURN FALSE        /* Variable. */
+
+  /* Push das Argument. */
+  IF funct&lt;8
+    insymbol()
+    IF sym&lt;&gt;LPAREN
+      error(SYNTAX)
+      funct := 0
+    ELSE
+      insymbol()
+      expr()
+      IF bad THEN RETURN FALSE
+      IF sym&lt;&gt;RPAREN
+         error(SYNTAX)
+         funct := 0
+      ENDIF
+    ENDIF
+  ENDIF
+
+  /* Ausführbare Funktion. */
+  SELECT funct
+    CASE 0 ; push(SpSin(pop()))
+    CASE 1 ; push(SpCos(pop()))
+    CASE 2 ; push(SpTan(pop()))
+    CASE 3 ; push(SpLog(pop()))
+    CASE 4 ; push(SpSqrt(pop()))
+    CASE 5 ; push(SpFloor(pop()))
+    CASE 7
+           i := SpFix(pop())
+           i := Rnd(i)
+           i := SpDiv(100000|,SpFlt(i))
+           push(i)
+  ENDSELECT
+
+ENDPROC TRUE
+
+PROC var_index(x) RETURN x-&quot;A&quot;
+
+PROC factor()
+
+  debug(obj,sym,20)
+  IF sym=NUMBER
+    /* Numerisches Literal. */
+    debug(&#x27;factor0&#x27;,0,0)
+    push(make_float(obj))
+  ELSE
+    /* Klammerausdruck? */
+    IF sym=LPAREN
+    debug(&#x27;factor1&#x27;,0,0)
+      insymbol()
+      IF sym=EOS
+         error(SYNTAX);RETURN
+      ENDIF
+      expr()
+      IF bad THEN RETURN
+      IF sym&lt;&gt;RPAREN
+         error(SYNTAX);RETURN
+      ENDIF
+    ELSE
+      /* Funktion oder Variable? */
+    debug(&#x27;factor2&#x27;,0,0)
+      IF func() = FALSE
+    debug(&#x27;factor3&#x27;,sym,0)
+        IF sym=ALPHA THEN push(var[var_index(obj[0])]) ELSE error(SYNTAX)
+    debug(&#x27;factor4&#x27;,0,0)
+      ENDIF
+    ENDIF
+  ENDIF
+  insymbol()
+ENDPROC
+
+PROC expterm()
+DEF op1, op2
+
+  factor()
+  debug(&#x27;expterm0&#x27;,0,0)
+  WHILE sym=POW
+    insymbol()
+    factor()
+    IF bad THEN RETURN
+    op2:=pop()
+    op1:=pop()
+    push(SpPow(op2,op1))
+  ENDWHILE
+  debug(&#x27;expterm1&#x27;,0,0)
+ENDPROC
+
+PROC negterm()
+DEF negate
+  negate := FALSE
+  IF sym=MINUS
+    negate := TRUE
+    insymbol()
+  ELSE
+    IF sym=PLUS THEN insymbol()
+  ENDIF
+  expterm()
+  IF bad THEN RETURN
+  IF negate THEN push(SpNeg(pop()))
+ENDPROC
+
+PROC term()
+DEF op, op1, op2
+  negterm()
+  debug(&#x27;term0&#x27;,0,0)
+  WHILE (sym=MULT) OR (sym=DIV)
+    op := sym
+    insymbol()
+    negterm()
+    IF bad THEN RETURN
+    op2 := pop()
+    op1 := pop()
+    IF op=MULT
+      push(SpMul(op2,op1))
+    ELSE
+      IF SpTst(op2)&lt;&gt;0 THEN push(SpDiv(op2,op1)) ELSE error(DIVBYZERO)
+    ENDIF
+  ENDWHILE
+  debug(&#x27;term1&#x27;,0,0)
+ENDPROC
+
+PROC simple_expr()
+DEF op, op1, op2
+  term()
+  debug(&#x27;simple_expr0&#x27;,0,0)
+  WHILE (sym=PLUS) OR (sym=MINUS)
+    op:=sym
+    insymbol()
+    term()
+    IF bad THEN RETURN
+    op2:=pop()
+    op1:=pop()
+    IF op=PLUS THEN push(SpAdd(op2,op1)) ELSE push(SpSub(op2,op1))
+  ENDWHILE
+  debug(&#x27;simple_expr1&#x27;,0,0)
+ENDPROC
+
+PROC expr()
+DEF op, op1, op2
+  simple_expr()
+  debug(&#x27;expr0&#x27;,0,0)
+  WHILE (sym=EQ) OR (sym=LT) OR (sym=GT) OR (sym=LTOREQ) OR
+        (sym=GTOREQ) OR (sym=NOTEQ)
+    op:=sym
+    insymbol()
+    simple_expr()
+    IF bad THEN RETURN
+    op2:=pop()
+    op1:=pop()
+    SELECT op
+      CASE EQ
+           IF SpCmp(op2,op1) = 0 THEN push(TRUE) ELSE push(FALSE)
+      CASE LT
+           IF SpCmp(op2,op1) = 1 THEN push(TRUE) ELSE push(FALSE)
+      CASE GT
+           IF SpCmp(op2,op1) = -1 THEN push(TRUE) ELSE push(FALSE)
+      CASE LTOREQ
+           IF (SpCmp(op2,op1) = 0) OR (SpCmp(op2,op1) = 1) THEN push(TRUE) ELSE push(FALSE)
+      CASE GTOREQ
+           IF (SpCmp(op2,op1) = 0) OR (SpCmp(op2,op1) = -1) THEN push(TRUE) ELSE push(FALSE)
+      CASE NOTEQ
+           IF SpCmp(op2,op1) &lt;&gt; 0 THEN push(TRUE) ELSE push(FALSE)
+    ENDSELECT
+  ENDWHILE
+  debug(&#x27;expr1&#x27;,0,0)
+ENDPROC
+
+/* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
+/* assign_to_variable                                                      */
+/* Erkennt eine Variable und weisst ihr einen Wert zu.                     */
+/* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
+PROC assign_to_variable(mit_let)
+DEF variable[255] :STRING
+
+ IF mit_let = TRUE THEN insymbol()             /* Hole die Variable. */
+ IF sym&lt;&gt;ALPHA
+   error(SYNTAX);RETURN
+ ENDIF
+ StrCopy(variable,obj,ALL)
+ insymbol()                 /* Hole die Zuweisung */
+    SELECT sym
+        CASE EQ
+             insymbol()
+             IF sym=EOS
+                error(SYNTAX);RETURN
+             ENDIF
+             expr()
+             IF bad THEN RETURN
+             var[var_index(variable[0])] := pop()
+        CASE COLON              /* Ist es ein Label? */
+             sym := LABEL
+        DEFAULT
+             error(NOASSIGN)
+    ENDSELECT
+ENDPROC
+
+/* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
+/* if_statement                                                            */
+/* Prüft eine Bedingung                                                    */
+/* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
+
+PROC if_statement()
+
+    /* IF ... THEN ... ELSE */
+
+    insymbol()
+    expr()
+    IF bad THEN RETURN          /* War nicht zu prüfen! */
+
+       /* THEN */
+
+    IF sym=THENSYM
+       IF pop() = TRUE
+          debug(&#x27;THENSYM&#x27;,0,0)
+          REPEAT
+            insymbol()
+            statement()
+          UNTIL sym=EOS
+          debug(&#x27;ENDE THENSYM&#x27;,0,0)
+       ELSE
+          WHILE (sym&lt;&gt;ELSESYM) AND (sym&lt;&gt;EOS) DO insymbol()
+
+      /* ELSE (optional) */
+
+         IF sym=ELSESYM
+           insymbol()
+           statement()
+         ENDIF
+       ENDIF
+    ELSE
+       error(SYNTAX)
+    ENDIF
+ENDPROC
+
+/* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
+/* modify_programm                                                         */
+/* Erstellt neue Zeilen bzw. löscht bestehende Zeilen im Programmfragment. */
+/* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
+
+PROC modify_program()
+DEF strptr, x[255]:STRING
+DEF num, ln
+
+    WriteF(&#x27;Edit-Mode\n---------\n&#x27;)
+  LOOP
+    WriteF(&#x27;-»&#x27;)
+    IF topline  = MAXLINES              /* Haben wir schon die letzte Zeile */
+       error(LINEOUTOFRANGE);RETURN     /* zu fassen? */
+    ENDIF
+
+    num := topline                      /* Und in num übergeben. */
+
+    strptr := code_ptr[num]             /* zeiger auf die Zeile holen     */
+    IF strptr                           /* und wenn was drinsteht erstmal */
+       SetStr(strptr,0)                 /* löschen.                       */
+       code_ptr[num] := NIL
+    ENDIF
+
+    ReadStr(stdout,x)                   /* Jetzt lesen wir die neue Zeile */
+    IF InStr(x,&#x27;EDIT&#x27;,0) &lt;&gt;-1 THEN RETURN                   /* ENDE EDIT? */
+    IF InStr(x,&#x27;edit&#x27;,0) &lt;&gt;-1 THEN RETURN                   /* ENDE EDIT? */
+
+    basic_line(x)
+
+     strptr := String(ln)               /* Speicher für neue Zeile holen. */
+     IF strptr=NIL
+        error(OUTOFMEMORY);RETURN
+     ENDIF
+     code_ptr[num] := strptr            /* Speicherpointer übergeben. */
+     StrCopy(strptr,x,ALL)              /* und ... kopieren.          */
+     INC topline                        /* Neue Zeile. */
+   ENDLOOP
+ENDPROC
+
+/* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
+/* list_programm()                                                         */
+/* Listet unser Programm auf den Bildschirm.                               */
+/* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
+
+PROC list_program()
+DEF strptr, i
+
+  i :=0
+  WHILE i&lt;=topline
+    strptr := code_ptr[i]
+    IF strptr THEN WriteF(&#x27;\d\t \s\n&#x27;,i,strptr)
+    INC i
+  ENDWHILE
+ENDPROC
+
+/* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
+/* clear_programm()                                                        */
+/* Löscht den Programmspeicher.                                            */
+/* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
+
+PROC clear_program()
+DEF strptr, i
+
+  /*{ clear program memory } */
+
+  FOR i:=0 TO MAXLINES
+    strptr := code_ptr[i]
+    IF strptr
+      SetStr(strptr,0)
+      code_ptr[i] := NIL
+    ENDIF
+  ENDFOR
+
+  topline := 0
+ENDPROC
+
+/* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
+/* run_programm()                                                          */
+/* Führt ein gespeichertes Programm aus.                                   */
+/* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
+
+PROC run_program()
+DEF strptr
+
+    IF topline=0 THEN RETURN        /* War wohl nichts. */
+
+    pc:=0
+    REPEAT
+        strptr := code_ptr[pc]
+        old_pc := pc
+        INC pc
+        IF strptr
+           StrCopy(buf,strptr,ALL)
+           StrCopy(ut_buf,buf, ALL)
+           UpperStr(buf)
+           parse_line()
+        ENDIF
+    UNTIL (bad) OR (halt_requested) OR (pc&gt;topline)
+ENDPROC
+
+/* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
+/* load_programm()                                                         */
+/* Lädt ein gespeichertes Programm ein.                                    */
+/* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
+
+PROC load_program()
+DEF strptr, handle, x[255]:STRING
+
+    insymbol()
+    IF sym=STRINGLITERAL
+       handle := Open(obj,OLDFILE)
+        IF handle&lt;&gt;NIL
+           clear_program()
+           WriteF(&#x27;LOADING \s ..\n&#x27;,obj)
+            WHILE ReadStr(handle,x) &lt;&gt; -1
+                IF (strptr:=String(EstrLen(x))) = NIL
+                   error(OUTOFMEMORY)
+                   Close(handle)
+                   RETURN
+                ENDIF
+                StrCopy(strptr,x,ALL)
+                basic_line(strptr)
+                code_ptr[topline] := strptr
+                INC topline
+                IF topline&gt; MAXLINES        /* Zu viele Zeilen ?*/
+                   error(LINEOUTOFRANGE)
+                   Close(handle)
+                   RETURN
+                ENDIF
+            ENDWHILE
+           Close(handle)
+           WriteF( &#x27;PROGRAM LOADED.\n&#x27;)
+        ELSE
+           error(FILENOTFOUND)
+        ENDIF
+    ELSE
+        error(SYNTAX)
+    ENDIF
+ENDPROC
+
+/* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
+/* save_programm()                                                         */
+/* Speichert ein eingegebenes Programm ab.                                 */
+/* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
+PROC save_program()
+DEF strptr,handle,i
+
+    IF topline=0 THEN RETURN    /* War wohl nichts. */
+
+    insymbol()
+    IF sym=STRINGLITERAL
+       handle := Open(obj,NEWFILE)
+       IF handle&lt;&gt;NIL
+          WriteF( &#x27;SAVING \s..\n&#x27;,obj)
+          FOR i:=0 TO topline
+              strptr := code_ptr[i]
+              IF strptr
+                 Fputs(handle,strptr)
+                 FputC(handle,10)
+              ENDIF
+          ENDFOR
+          WriteF(&#x27;PROGRAM SAVED.\n&#x27;)
+          Close(handle)
+       ELSE
+           error(CANNOTOPENFILE)
+       ENDIF
+    ELSE
+       error(SYNTAX)
+    ENDIF
+ENDPROC
+
+PROC statement()
+DEF tt[255]:STRING, tt1
+
+ /* &#x27;..EMPTY STATEMENT */
+ IF sym=EOS THEN RETURN
+
+ /* EDIT : Einfügen von Programmzeilen */
+ IF sym=EDITSYM
+    modify_program()
+    RETURN
+ ENDIF
+
+ /* &#x27;..CLS */
+ IF sym=CLSSYM
+    WriteF(&#x27;\c&#x27;,7);RETURN
+ ENDIF
+
+ /* &#x27;..GOTO */
+ IF sym=GOTOSYM
+   insymbol()
+   IF sym=EOS
+      error(SYNTAX); RETURN
+   ENDIF
+   debug(obj,99,0)
+   FOR tt1:=0 TO topline
+       debug(code_ptr[tt1],100,0)
+       IF StrCmp(code_ptr[tt1],obj,EstrLen(obj)) = TRUE
+          pc := tt1
+          RETURN
+       ENDIF
+   ENDFOR
+   error(NOLABEL)
+   RETURN
+ ENDIF
+
+ /* &#x27;..IF */
+ IF sym=IFSYM
+   if_statement()
+   RETURN
+ ENDIF
+
+    /* &#x27;..INPUT */
+     IF sym=INPUTSYM
+        insymbol()
+        IF sym=EOS
+           error(SYNTAX);RETURN
+        ENDIF
+        IF sym=STRINGLITERAL    /* Ist ein Text auszugeben? */
+           WriteF(&#x27;\s&#x27;, obj)
+           insymbol()           /* Komma überspringen. */
+           insymbol()           /* Variable holen. */
+        ENDIF
+        IF sym=ALPHA
+           ReadStr(stdout,tt)
+           var[var_index(obj[0])] := make_float(tt)
+        ELSE
+           error(SYNTAX)
+        ENDIF
+        RETURN
+    ENDIF
+
+ /* &#x27;..LET */
+ IF sym=LETSYM
+   assign_to_variable(TRUE)
+   RETURN
+ ENDIF
+
+ /* &#x27;..LIST */
+ IF sym=LISTSYM
+   list_program()
+   RETURN
+ ENDIF
+
+ /* &#x27;..LOAD */
+ IF sym=LOADSYM
+   load_program()
+   RETURN
+ ENDIF
+
+ /* &#x27;..NEW */
+ IF sym=NEWSYM
+   clear_program()
+   RETURN
+ ENDIF
+
+    /* &#x27;..PRINT */
+   IF sym=PRINTSYM
+      tt1 := TRUE
+      insymbol()
+      IF sym=EOS
+         error(SYNTAX);RETURN
+      ENDIF
+      REPEAT
+          SELECT sym
+            CASE STRINGLITERAL
+                 WriteF(&#x27;\s&#x27;, obj)
+                 insymbol()
+            CASE ALPHA
+                 expr()
+                 IF bad=FALSE
+                    get_float(pop())
+                    WriteF(&#x27;\s&#x27;,printstring)
+                 ENDIF
+            CASE COMMA
+                 WriteF(&#x27;\c&#x27;,9)
+                 insymbol()
+            DEFAULT
+                 WriteF(&#x27;\n&#x27;)
+                 tt1 := FALSE
+            ENDSELECT
+      UNTIL tt1 = FALSE
+      RETURN
+    ENDIF
+
+ /* &#x27;..RUN */
+ IF sym=RUNSYM
+   run_program()
+   RETURN
+ ENDIF
+
+ /* &#x27;..SAVE */
+ IF sym=SAVESYM
+   save_program()
+   RETURN
+ ENDIF
+
+ /* &#x27;..STOP */
+ IF sym=STOPSYM
+   halt_requested := TRUE
+   RETURN      /* &#x27;..see run_program */
+ ENDIF
+
+    /* + + + + + + + + + + + + + + + + + + + + + + + + + + + + + + + + + +
+       ALPHA-Symbol
+       Hier machen wir nochmal eine Prüfung, ob es
+        - ein LABEL ist
+        oder
+        - eine Variablen-Zuweisung.
+     + + + + + + + + + + + + + + + + + + + + + + + + + + + + + + + + + + */
+
+    IF sym = ALPHA
+       assign_to_variable(FALSE)
+       RETURN
+    ENDIF
+
+
+ /* &#x27;..UNKNOWN */
+ error(SYNTAX)
+ENDPROC
+
+PROC debug(string, op1, op2)
+/* Zeigt die übergebenen Zeichen an. */
+
+    IF debugger THEN WriteF(&#x27;\s,\d,\d\n&#x27;, string, op1, op2)
+
+/*    Delay(50) */
+ENDPROC
+
+PROC make_float(str)
+/* floatvalue: in goes a nil-terminated string, out comes an FFP float!
+   note that &quot;num&quot; and &quot;com&quot; contain the float in int format: com is
+   the amount num should be divided with to obtain the float value.
+   NOTE: this function raises an ER_FLOAT if something goes wrong.
+   Modifiziert, da für FFP nur 6-Stellen erlaubt sind!!! Inkl.
+   Nachkommastellen. Jörg Wach in 1994. */
+
+  DEF num=0,com=1,tt1=0,neg=FALSE
+  WHILE str[]=&quot; &quot; DO INC str            /* deal with leading spaces */
+  IF str[]=&quot;-&quot;
+    INC str
+    neg:=TRUE
+  ENDIF
+
+  WHILE (str[]&gt;=&quot;0&quot;) AND (str[]&lt;=&quot;9&quot;) AND (tt1&lt;7)
+        num:=str[]++-&quot;0&quot;+(num*10)
+        INC tt1
+  ENDWHILE
+  IF str[]=&quot;.&quot;
+    INC str
+    WHILE (str[]&gt;=&quot;0&quot;) AND (str[]&lt;=&quot;9&quot;) AND (tt1&lt;7)
+      num:=str[]++-&quot;0&quot;+(num*10)
+      com:=Mul(com,10)
+      INC tt1
+    ENDWHILE
+  ENDIF
+  IF neg = TRUE THEN num:= -num
+ENDPROC SpDiv(SpFlt(com),SpFlt(num))
+
+PROC get_float(ffp)
+/* Macht aus einer 32-Bit-FFP-Zahl einen String. Der gewandelte String steht
+   in printstring.
+*/
+  DEF tt1, tt2
+  tt1 := SpFix(ffp)                     /* Vorkommazahl holen */
+  tt2 := SpSub(SpFlt(tt1),ffp)          /* und von FFP-Zahl abziehen =
+                                           Nachkommazahl */
+  tt2 := (SpFix(SpMul(tt2,1000000|)))   /* Nachkommazahl auf 6-Stellen
+                                           LONG bringen */
+  StringF(printstring,&#x27;\d.\d&#x27;,tt1,tt2)  /* Und ab in den String. */
+ENDPROC
+
+PROC basic_line(string)
+/* Übersetzt eingabezeilen unter Beachtung von strings, in Große Buchstaben.
+*/
+DEF tt=0, tt1
+                                        /* Nun suchen wir nach Anführungs-*/
+                                        /* striche, da diese nicht in     */
+                                        /* Großbuchstaben übersetzt werden*/
+                                        /* dürfen.                        */
+     tt1:=EstrLen(string)
+     WHILE tt&lt;=tt1
+        IF string[tt] = 34
+           REPEAT
+              INC tt
+           UNTIL string[tt] = 34
+        ELSE
+           string[tt] := cap(string[tt])
+        ENDIF
+        INC tt
+     ENDWHILE
+ENDPROC
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

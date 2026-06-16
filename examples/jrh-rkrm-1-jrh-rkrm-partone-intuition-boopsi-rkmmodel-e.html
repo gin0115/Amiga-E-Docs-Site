@@ -1,0 +1,170 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>rkmmodel.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-jrh-rkrm-1.html">JRH-RKRM-1</a> &rsaquo; rkmmodel.e</div><h1>File: <code>rkmmodel.e</code></h1><p class="meta">144 lines · project <a href="../examples/pkg-jrh-rkrm-1.html"><code>JRH-RKRM-1</code></a></p><p class="pathctx">JRH-RKRM-1/JRH-RKRM-PartOne/Intuition/Boopsi/rkmmodel.e</p><p class="prose">RKMModel.e - A simple <a href="../modules/custom.html">custom</a> modelclass subclass.</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/utility.html">utility</a></li></ul></div><h2>Source</h2><pre class="code">-&gt; RKMModel.e - A simple custom modelclass subclass.
+
+OPT MODULE
+OPT PREPROCESS
+
+OPT OSVERSION=37
+
+MODULE &#x27;utility&#x27;,
+       &#x27;amigalib/boopsi&#x27;,
+       &#x27;tools/installhook&#x27;,
+       &#x27;intuition/classes&#x27;,
+       &#x27;intuition/classusr&#x27;,
+       &#x27;utility/hooks&#x27;,
+       &#x27;utility/tagitem&#x27;
+
+-&gt; The attributes defined by this class
+EXPORT ENUM RKMMOD_DUMMY=TAG_USER,
+            RKMMOD_CURRVAL, -&gt; This attribute is the current value of the model.
+            RKMMOD_UP,   -&gt; These two are fake attributes that rkmmodelclass
+            RKMMOD_DOWN, -&gt; uses as pulse values to increment/decrement the
+                         -&gt; rkmmodel&#x27;s RKMMOD_CURRVAL attribute.
+            RKMMOD_LIMIT -&gt; This attribute contains the upper bound of the
+                         -&gt; rkmmodel&#x27;s RKMMOD_CURRVAL.  The rkmmodel has a
+                         -&gt; static lower bound of zero.
+
+-&gt; If the programmer doesn&#x27;t set RKMMOD_LIMIT, it defaults to this.
+CONST DEFAULTVALLIMIT=100
+
+OBJECT rkmModData
+  currval, vallimit  -&gt; The instance data for this class
+ENDOBJECT
+
+-&gt; Initialise the class
+EXPORT PROC initRKMModClass() -&gt; Make the class and set up the dispatcher&#x27;s hook
+  DEF cl:PTR TO iclass
+  IF cl:=MakeClass(NIL, &#x27;modelclass&#x27;, NIL, SIZEOF rkmModData, 0)
+    -&gt; E-Note: use installhook to set up the hook
+    installhook(cl.dispatcher, {dispatchRKMModel})  -&gt; Initialise the Hook
+  ENDIF
+ENDPROC cl
+
+-&gt; Free the class
+EXPORT PROC freeRKMModClass(cl) IS FreeClass(cl)
+
+-&gt; The class Dispatcher
+PROC dispatchRKMModel(cl:PTR TO iclass, o, msg:PTR TO msg)
+  DEF mmd:PTR TO rkmModData, id, ti:PTR TO tagitem, tstate, tag,
+      retval=NIL -&gt; A generic return value used by this class&#x27;s methods.  The
+                 -&gt; meaning of this field depends on the method.  For example,
+                 -&gt; OM_GET uses this as a boolean return value, while OM_NEW
+                 -&gt; uses it as a pointer to the new object.
+  -&gt; E-Note: installhook makes sure A4 is set-up properly
+  id:=msg.methodid
+  IF id=OM_SET THEN id:=OM_UPDATE -&gt; E-Note: handled the same in this class
+  SELECT id
+  CASE OM_NEW -&gt; Pass message onto superclass first so it can set aside memory
+              -&gt; for the object and take care of superclass instance data.
+    IF retval:=doSuperMethodA(cl, o, msg)
+      -&gt; For the OM_NEW method, the object pointer passed to the dispatcher
+      -&gt; does not point to an object (how could it?  The object doesn&#x27;t exist
+      -&gt; yet.).  doSuperMethodA() returns a pointer to a newly created object.
+      -&gt; INST_DATA() is a macro defined in &#x27;intuition/classes&#x27; that returns a
+      -&gt; pointer to the object&#x27;s instance data that is local to this class. For
+      -&gt; example, the instance data local to this class is the rkmModData
+      -&gt; structure defined above.
+      mmd:=INST_DATA(cl, retval)
+      -&gt; Initialise object&#x27;s attributes
+      -&gt; E-Note: &quot;opnew&quot; is really &quot;opset&quot;
+      mmd.currval:=GetTagData(RKMMOD_CURRVAL, 0, msg::opnew.attrlist)
+      mmd.vallimit:=GetTagData(RKMMOD_LIMIT,DEFAULTVALLIMIT,msg::opnew.attrlist)
+    ENDIF
+  CASE OM_UPDATE -&gt; E-Note: includes OM_SET (see &quot;IF id=..&quot; above)
+    mmd:=INST_DATA(cl, o)
+    doSuperMethodA(cl,o,msg) -&gt; Let the superclasses set their attributes first
+    tstate:=msg::opset.attrlist
+    -&gt; Step through all of the attribute/value pairs in the list.  Use the
+    -&gt; utility.library tag functions to do this so they can properly process
+    -&gt; special tag IDs like TAG_SKIP, TAG_IGNORE, etc.
+    WHILE ti:=NextTagItem({tstate})
+      tag:=ti.tag
+      SELECT tag
+      CASE RKMMOD_CURRVAL
+        IF ti.data&gt;mmd.vallimit THEN ti.data:=mmd.vallimit
+        mmd.currval:=ti.data
+        notifyCurrVal(cl, o, msg, mmd)
+        retval:=1 -&gt; Changing RKMMOD_CURRVAL can cause a visual change to the
+                  -&gt; gadgets in the rkmmodel&#x27;s broadcast list.  The rkmmodel has
+                  -&gt; to tell the application by returning a value besides zero.
+      CASE RKMMOD_UP
+        mmd.currval:=mmd.currval+1
+        -&gt; Make sure the current value is not greater than value limit.
+        IF mmd.currval&gt;mmd.vallimit THEN mmd.currval:=mmd.vallimit
+        notifyCurrVal(cl, o, msg, mmd)
+        retval:=1 -&gt; Changing RKMMOD_UP can cause a visual change to the gadgets
+                  -&gt; in the rkmmodel&#x27;s broadcast list.  The rkmmodel has to tell
+                  -&gt; the application by returning a value besides zero.
+      CASE RKMMOD_DOWN
+        mmd.currval:=mmd.currval-1
+        -&gt; Make sure the currval didn&#x27;t go negative
+        IF mmd.currval&lt;0 THEN mmd.currval:=0
+        notifyCurrVal(cl, o, msg, mmd)
+        retval:=1 -&gt; Changing RKMMOD_DOWN can cause a visual change to gadgets
+                  -&gt; in the rkmmodel&#x27;s broadcast list.  The rkmmodel has to tell
+                  -&gt; the application by returning a value besides zero.
+      CASE RKMMOD_LIMIT
+        mmd.vallimit:=ti.data -&gt; Set the limit.  Note that this does not do
+                              -&gt; bounds checking on the current
+                              -&gt; rkmModData.currval value.
+      ENDSELECT
+    ENDWHILE
+  CASE OM_GET             -&gt; The only attribute that is &quot;gettable&quot; in this class
+    mmd:=INST_DATA(cl, o) -&gt; or its superclasses is RKMMOD_CURRVAL.
+    IF msg::opget.attrid=RKMMOD_CURRVAL
+      msg::opget.storage[]:=mmd.currval
+      retval:=TRUE
+    ELSE
+      retval:=doSuperMethodA(cl, o, msg)
+    ENDIF
+  DEFAULT -&gt; rkmmodelclass does not recognise the methodID, so let the
+          -&gt; superclass&#x27;s dispatcher take a look at it.
+    retval:=doSuperMethodA(cl, o, msg)
+  ENDSELECT
+ENDPROC retval
+
+PROC notifyCurrVal(cl, o, msg:PTR TO opupdate, mmd:PTR TO rkmModData)
+  DEF notifymsg:PTR TO opnotify  -&gt; E-Note: &quot;opnotify&quot; is really &quot;opupdate&quot;
+  -&gt; If this is an OM_UPDATE method, make sure the part the OM_UPDATE message
+  -&gt; adds to the OM_SET message gets added.  That lets the dispatcher handle
+  -&gt; OM_UPDATE and OM_SET in the same case.
+  notifymsg:=[OM_NOTIFY, [RKMMOD_CURRVAL, mmd.currval, NIL], msg.ginfo,
+              IF msg.methodid=OM_UPDATE THEN msg.flags ELSE 0]:opnotify
+
+  -&gt; E-Note: A bug (?) in Intuition means that the methodid of an OM_NOTIFY
+  -&gt;         message may be altered, so you can&#x27;t get away with just using a
+  -&gt;         constant value in the above static list...
+  notifymsg.methodid:=OM_NOTIFY
+
+  -&gt; If the RKMMOD_CurrVal changes, we want everyone to know about it.
+  -&gt; Theoretically, the class is supposed to send itself a OM_NOTIFY message.
+  -&gt; Because this class lets its superclass handle the OM_NOTIFY message, it
+  -&gt; skips the middleman and sends the OM_NOTIFY directly to its superclass.
+  doSuperMethodA(cl, o, notifymsg)
+ENDPROC
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

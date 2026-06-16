@@ -1,0 +1,321 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>All.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-fr-all.html">FR-All</a> &rsaquo; All.e</div><h1>File: <code>All.e</code></h1><p class="meta">295 lines · project <a href="../examples/pkg-fr-all.html"><code>FR-All</code></a></p><p class="pathctx">FR-All/All.e</p><p class="prose">$VER: All 1.4 (28-9-97) © Frédéric Rodrigues - Registered Give wildcards and multiple <a href="../modules/arguments.html">arguments</a> to commands + Listing <a href="../modules/utility.html">utility</a> V1.0 (19-3-97)- first V1.1 (25-3-97)- replaced <a href="../modules/dos.html#fn-execute">Execute</a>() by <a href="../modules/dos.html#fn-systemtaglist">SystemTagList</a>() wich permits breaking of command executed different format of <a href="../modules/prefs.html">prefs</a> file, simpler corrected little</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/dos.html">dos/dos</a></li></ul></div><h2>Source</h2><pre class="code">/* $VER: All 1.4 (28-9-97) © Frédéric Rodrigues - Registered
+   Give wildcards and multiple arguments to commands + Listing utility
+
+   V1.0 (19-3-97)- first
+   V1.1 (25-3-97)- replaced Execute() by SystemTagList() wich permits
+                   breaking of command executed
+                   different format of prefs file, simpler
+                   corrected little bugs
+                   changed type strings and added new
+                   coded prefs file
+   V1.2 (5-4-97) - better work around against the bug on V36
+                   matchfirst()-matchend() functions : listing is now
+                   immediate
+                   added new types
+   V1.3 (9-4-97) - now TYPE option accepts a pattern
+                   added new types
+                   now display bytes free
+                   removed *=#? because of StarClick
+   V1.4 (28-9-97)- added command % : date,time,size,blocks,comment,
+                   protection,type,key
+                   modified little things
+                   introduced %% for % character
+                   now it is possible to choose the prefs file
+
+   Times (listing of all df0:) :
+   List of AmigaDos - 48 s
+   All V1.2 - 1 mn 41 s
+   All V1.1 - 2 mn 15 s
+*/
+
+OPT OSVERSION=36
+
+MODULE &#x27;dos/dos&#x27;,&#x27;dos/dosasl&#x27;,&#x27;dos/datetime&#x27;,&#x27;dos/dosextens&#x27;
+
+CONST MAX_PATH=256,MAX_OUTSTRING=1024
+ENUM ER_DOS=1,ER_MEM,ER_DATE,ER_CTRLC,ER_PREF
+ENUM ARG_FILES,ARG_COMMAND,ARG_SIZEMIN,ARG_SIZEMAX,ARG_DATEMIN,ARG_DATEMAX,
+     ARG_TYPEPATTERN,ARG_TYPESFILE,ARG_DO,ARG_ALL
+
+DEF fib:PTR TO fileinfoblock,myargs:PTR TO LONG,rdargs,files:PTR TO LONG,
+    anchor:PTR TO anchorpath,err,outstring[MAX_OUTSTRING]:STRING,
+    datetime:datetime,date[9]:STRING,time[8]:STRING,
+    nbfiles,sumsize,fh,type,
+    lentype,listcommands[1]:STRING,allname,types,sumfree,infodata:infodata,
+    protection[7]:STRING
+
+PROC main() HANDLE
+  DEF s,t,readtype,list,patternparsed
+  myargs:=[NIL,NIL,NIL,NIL,NIL,NIL,NIL,NIL,NIL,NIL]
+  IF (rdargs:=ReadArgs(&#x27;FILES/M,COM=COMMAND/K,SIZEMIN/N/K,SIZEMAX/N/K,DATEMIN/K,DATEMAX/K,TYPE=TYPEPATTERN/K,FILE=TYPESFILE/K,DO/S,ALL/S&#x27;,myargs,NIL))=NIL THEN Raise(ER_DOS)
+  IF myargs[ARG_FILES]=NIL
+    myargs[ARG_FILES]:=[&#x27;#?&#x27;,NIL]
+  ENDIF
+  IF myargs[ARG_COMMAND]=FALSE THEN WriteF(&#x27;\e[1;3;2m\s\e[22;23;39m\n\n&#x27;,{program})
+  IF readtype:=myargs[ARG_TYPEPATTERN] OR (myargs[ARG_COMMAND]=FALSE) OR (InStr(myargs[ARG_COMMAND],&#x27;%y&#x27;)&lt;&gt;-1)
+    IF (t:=myargs[ARG_TYPESFILE])=FALSE THEN t:=&#x27;ENV:All.prefs&#x27;
+    IF (s:=FileLength(t))=-1 THEN Raise(ER_PREF)
+    IF (types:=String(s+1))=NIL THEN Raise(ER_MEM)
+    IF (fh:=Open(t,OLDFILE))=NIL THEN Raise(ER_PREF)
+    IF Read(fh,types,s)&lt;=0 THEN Raise(ER_PREF)
+    Close(fh)
+    fh:=NIL
+    types[s]:=&quot;ÿ&quot;
+    MOVE.L s,D7
+    SUBQ.L #1,D7
+    s:=types+4
+    lentype:=^s
+    IF (type:=String(lentype))=NIL THEN Raise(ER_MEM)
+    /* decoding */
+    MOVEA.L types,A0
+a: NOT.B (A0)+
+   DBRA.L D7,a
+  ENDIF
+  IF myargs[ARG_TYPEPATTERN]
+    IF (patternparsed:=String(s:=2*StrLen(myargs[ARG_TYPEPATTERN])+2))=NIL THEN Raise(ER_MEM)
+    ParsePattern(myargs[ARG_TYPEPATTERN],patternparsed,s)
+  ENDIF
+  datetime.format:=FORMAT_DOS
+  datetime.flags:=DTF_SUBST
+  datetime.strday:=NIL
+  files:=myargs[ARG_FILES]
+  IF (anchor:=New(SIZEOF anchorpath+MAX_PATH))=NIL THEN Raise(ER_MEM)
+  anchor.breakbits:=SIGBREAKF_CTRL_C
+  anchor.strlen:=MAX_PATH
+  list:=listcommands
+  WHILE files[]
+    IF (err:=MatchFirst(files[]++,anchor))=0
+      Info(anchor.last.lock,infodata)
+      nbfiles:=0
+      sumsize:=0
+      sumfree:=infodata.bytesperblock*(infodata.numblocks-infodata.numblocksused)
+    ENDIF
+    WHILE err=0
+      fib:=anchor.info
+      IF fib.direntrytype&gt;0
+        IF ((anchor.flags AND APF_DIDDIR)=0) AND myargs[ARG_ALL] THEN
+          anchor.flags:=anchor.flags OR APF_DODIR
+        anchor.flags:=anchor.flags AND Not(APF_DIDDIR)
+      ELSE
+        IF s:=myargs[ARG_SIZEMIN] THEN IF fib.size&lt;^s THEN JUMP l
+        IF s:=myargs[ARG_SIZEMAX] THEN IF fib.size&gt;^s THEN JUMP l
+        datetime.strtime:=NIL
+        IF myargs[ARG_DATEMIN]
+          datetime.strdate:=myargs[ARG_DATEMIN]
+          IF StrToDate(datetime)=FALSE THEN Raise(ER_DATE)
+          IF CompareDates(datetime.stamp,fib.datestamp)&lt;0 THEN JUMP l
+        ENDIF
+        IF myargs[ARG_DATEMAX]
+          datetime.strdate:=myargs[ARG_DATEMAX]
+          IF StrToDate(datetime)=FALSE THEN Raise(ER_DATE)
+          IF CompareDates(datetime.stamp,fib.datestamp)&gt;0 THEN JUMP l
+        ENDIF
+        allname:=anchor+SIZEOF anchorpath
+        IF readtype
+          IF (fh:=Open(allname,OLDFILE))=NIL THEN Raise(ER_DOS)
+          IF (s:=Read(fh,type,lentype))&lt;0 THEN Raise(ER_DOS)
+          Close(fh)
+          fh:=NIL
+          dotype()
+        ENDIF
+        IF myargs[ARG_TYPEPATTERN] THEN IF MatchPattern(patternparsed,type)=FALSE THEN JUMP l
+        INC nbfiles
+        sumsize:=sumsize+fib.size
+        datetime.stamp.days:=fib.datestamp.days
+        datetime.stamp.minute:=fib.datestamp.minute
+        datetime.stamp.tick:=fib.datestamp.tick
+        datetime.strdate:=date
+        datetime.strtime:=time
+        DateToStr(datetime)
+        s:=protection
+        IF fib.protection AND FIBF_SCRIPT THEN s[]++:=&quot;s&quot;
+        IF fib.protection AND FIBF_PURE THEN s[]++:=&quot;p&quot;
+        IF fib.protection AND FIBF_ARCHIVE THEN s[]++:=&quot;a&quot;
+        IF (fib.protection AND FIBF_READ)=FALSE THEN s[]++:=&quot;r&quot;
+        IF (fib.protection AND FIBF_WRITE)=FALSE THEN s[]++:=&quot;w&quot;
+        IF (fib.protection AND FIBF_EXECUTE)=FALSE THEN s[]++:=&quot;e&quot;
+        IF (fib.protection AND FIBF_DELETE)=FALSE THEN s[]++:=&quot;d&quot;
+        s[]:=0
+        IF myargs[ARG_COMMAND]
+          makeoutstring()
+          IF myargs[ARG_DO]
+            IF (s:=String(MAX_OUTSTRING))=NIL THEN Raise(ER_MEM)
+            StrCopy(s,outstring,ALL)
+            Link(list,s)
+            list:=s
+          ELSE
+            PutStr(outstring)
+          ENDIF
+        ELSE
+          WriteF(&#x27;\e[1m\l\s[32]\e[22m \e[33m\s[8]\e[39m \r\d[7] \e[3m\l\s[7]\e[23m \s[9] \e[3m\s[8]\e[23m \e[3;2m\s\e[23;39m\n&#x27;,
+            IF StrLen(allname)&gt;32 THEN allname+StrLen(allname)-32 ELSE allname,
+            type,fib.size,protection,date,time,fib.comment)
+        ENDIF
+l:
+      ENDIF
+      err:=MatchNext(anchor)
+    ENDWHILE
+    IF err&lt;&gt;ERROR_NO_MORE_ENTRIES THEN Raise(ER_DOS)
+    MatchEnd(anchor)
+    IF myargs[ARG_COMMAND]=FALSE THEN WriteF(&#x27;\e[4m\d files - \d bytes listed - \d bytes free\e[24m\n\n&#x27;,nbfiles,sumsize,sumfree)
+  ENDWHILE
+  anchor:=NIL
+  IF myargs[ARG_COMMAND]
+    IF myargs[ARG_DO]
+      outstring:=listcommands
+      WHILE outstring:=Next(outstring)
+        IF CtrlC() THEN Raise(ER_CTRLC)
+        SystemTagList(outstring,0)
+      ENDWHILE
+    ENDIF
+  ENDIF
+EXCEPT DO
+  IF fh THEN Close(fh)
+  IF anchor THEN MatchEnd(anchor)
+  IF rdargs THEN FreeArgs(rdargs)
+  SELECT exception
+    CASE ER_DOS;PrintFault(IoErr(),{error});RETURN RETURN_ERROR
+    CASE ER_MEM;PrintFault(ERROR_NO_FREE_STORE,{error});RETURN RETURN_FAIL
+    CASE ER_DATE;WriteF(&#x27;\s: bad date\n&#x27;,{error});RETURN RETURN_ERROR
+    CASE ER_CTRLC;PrintFault(ERROR_BREAK,{error});RETURN RETURN_OK
+    CASE ER_PREF;WriteF(&#x27;\s: with prefs\n&#x27;,{error});RETURN RETURN_FAIL
+  ENDSELECT
+ENDPROC
+
+PROC makeoutstring()
+  DEF s,t,u,command,out,str[10]:STRING
+  command:=myargs[ARG_COMMAND]
+  out:=outstring
+  WHILE command[]&lt;&gt;0
+    IF command[]=&quot;%&quot;
+      INC command
+      IF command[]=&quot;%&quot;
+        out[]++:=command[]
+      ELSE
+        IF command[]=&quot;a&quot;
+          s:=allname
+          WHILE s[]&lt;&gt;0 DO out[]++:=s[]++
+        ELSEIF command[]=&quot;f&quot;
+          s:=fib.filename
+          WHILE s[]&lt;&gt;0 DO out[]++:=s[]++
+        ELSEIF command[]=&quot;m&quot;
+          s:=fib.filename
+          WHILE (s[]&lt;&gt;0) AND (s[]&lt;&gt;&quot;.&quot;) DO out[]++:=s[]++
+        ELSEIF command[]=&quot;e&quot;
+          s:=fib.filename
+          WHILE (s[]&lt;&gt;0) AND (s[]&lt;&gt;&quot;.&quot;) DO INC s
+          IF s[]&lt;&gt;0 THEN INC s
+          WHILE s[]&lt;&gt;0 DO out[]++:=s[]++
+        ELSEIF command[]=&quot;p&quot;
+          t:=NIL
+          s:=u:=allname
+          WHILE s[]&lt;&gt;0
+            IF s[]=&quot;/&quot; THEN t:=s+1
+            IF s[]=&quot;:&quot; THEN u:=s+1
+            INC s
+          ENDWHILE
+          IF t
+            s:=u
+            DEC t
+            WHILE s&lt;&gt;t DO out[]++:=s[]++
+          ENDIF
+        ELSEIF command[]=&quot;v&quot;
+          t:=NIL
+          s:=allname
+          WHILE s[]&lt;&gt;0
+            IF s[]=&quot;:&quot; THEN t:=s
+            INC s
+          ENDWHILE
+          IF t
+            s:=allname
+            WHILE s&lt;&gt;t DO out[]++:=s[]++
+          ENDIF
+        ELSEIF command[]=&quot;c&quot;
+          s:=fib.comment
+          WHILE s[]&lt;&gt;0 DO out[]++:=s[]++
+        ELSEIF command[]=&quot;d&quot;
+          s:=date
+          WHILE s[]&lt;&gt;0 DO out[]++:=s[]++
+        ELSEIF command[]=&quot;t&quot;
+          s:=time
+          WHILE s[]&lt;&gt;0 DO out[]++:=s[]++
+        ELSEIF command[]=&quot;s&quot;
+          StringF(str,&#x27;\d&#x27;,fib.size)
+          s:=str
+          WHILE s[]&lt;&gt;0 DO out[]++:=s[]++
+        ELSEIF command[]=&quot;y&quot;
+          s:=type
+          WHILE s[]&lt;&gt;0 DO out[]++:=s[]++
+        ELSEIF command[]=&quot;k&quot;
+          StringF(str,&#x27;\d&#x27;,fib.diskkey)
+          s:=str
+          WHILE s[]&lt;&gt;0 DO out[]++:=s[]++
+        ELSEIF command[]=&quot;b&quot;
+          StringF(str,&#x27;\d&#x27;,fib.numblocks)
+          s:=str
+          WHILE s[]&lt;&gt;0 DO out[]++:=s[]++
+        ELSEIF command[]=&quot;r&quot;
+          s:=protection
+          WHILE s[]&lt;&gt;0 DO out[]++:=s[]++
+        ENDIF
+      ENDIF
+    ELSE
+      out[]++:=command[]
+    ENDIF
+    INC command
+  ENDWHILE
+  out[]++:=&quot;\n&quot;
+  out[]:=0
+ENDPROC
+
+PROC dotype()
+  DEF s,t,known
+  s:=types+12
+  WHILE s[]&lt;&gt;&quot;ÿ&quot;
+    t:=type
+    known:=TRUE
+    WHILE s[]&lt;&gt;&quot;;&quot;
+      IF s[]&lt;&gt;&quot;?&quot; THEN IF s[]&lt;&gt;t[] THEN known:=FALSE
+      INC s
+      INC t
+    ENDWHILE
+    INC s
+    IF known
+      StrCopy(type,s,ALL)
+      RETURN
+    ENDIF
+    WHILE s[]++&lt;&gt;0 DO NOP
+  ENDWHILE
+  StrCopy(type,&#x27;UNKNOWN&#x27;,ALL)
+ENDPROC
+
+CHAR &#x27;$VER: &#x27;
+program: CHAR &#x27;All 1.4 (28-9-97) © Frédéric Rodrigues - Registered\nGive wildcards and multiple arguments to commands + Listing utility&#x27;,0
+error: CHAR &#x27;All error&#x27;,0
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

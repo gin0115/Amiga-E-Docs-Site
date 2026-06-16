@@ -1,0 +1,169 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>usercopperexample.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-aepd35.html">AEPD35</a> &rsaquo; usercopperexample.e</div><h1>File: <code>usercopperexample.e</code></h1><p class="meta">143 lines · project <a href="../examples/pkg-aepd35.html"><code>AEPD35</code></a></p><p class="pathctx">AEPD35/EPD35/Programme/JRH-RKRM-2/RKRM_PartTwo/Graphics_Libraries/Primitives/usercopperexample.e</p><p class="prose">clipftxt.e - Writes ASCII text to <a href="../modules/clipboard.html">clipboard</a> unit as FTXT (All <a href="../modules/clipboard.html">clipboard</a> data must be IFF)  Usage: clipftxt unitnumber  To <a href="../modules/convert.html">convert</a> to an example of reading only, comment out #define WRITEREAD</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/iffparse.html">iffparse</a></li></ul></div><h2>Source</h2><pre class="code">-&gt; clipftxt.e - Writes ASCII text to clipboard unit as FTXT
+-&gt;              (All clipboard data must be IFF)
+-&gt;
+-&gt; Usage: clipftxt unitnumber
+-&gt;
+-&gt; To convert to an example of reading only, comment out #define WRITEREAD
+
+-&gt;&gt;&gt; Header (globals)
+OPT PREPROCESS
+
+MODULE &#x27;iffparse&#x27;,
+       &#x27;libraries/iffparse&#x27;,
+       &#x27;other/split&#x27;
+
+ENUM ERR_NONE, ERR_ARGS, ERR_CLIP, ERR_IFF, ERR_LIB, ERR_OIFF, ERR_STOP,
+     ERR_USE, ERR_WRIT
+
+RAISE ERR_CLIP IF OpenClipboard()=NIL,
+      ERR_IFF  IF AllocIFF()=NIL,
+      ERR_LIB  IF OpenLibrary()=NIL,
+      ERR_OIFF IF OpenIFF()&lt;&gt;0,
+      ERR_STOP IF StopChunk()&lt;&gt;FALSE
+
+-&gt; Causes example to write FTXT first, then read it back.
+-&gt; Comment out to create a reader only
+#define WRITEREAD
+
+-&gt; E-Note: using argSplit() so one arg count is one less than C&#x27;s argv
+CONST MINARGS=1, RBUFSZ=512, ID_FTXT=&quot;FTXT&quot;, ID_CHRS=&quot;CHRS&quot;
+
+DEF usage, errormsgs:PTR TO LONG, mytext
+-&gt;&gt;&gt;
+
+-&gt;&gt;&gt; PROC main()
+PROC main() HANDLE
+  DEF iff=NIL:PTR TO iffhandle, cn:PTR TO contextnode, error=0, unitnumber=0,
+      rlen, textlen, readbuf[RBUFSZ]:ARRAY, arglist:PTR TO LONG, going=TRUE
+  -&gt; E-Note: set-up globals
+  usage:=&#x27;Usage: clipftxt unitnumber (use zero for primary unit)\n&#x27;
+  -&gt; Text error messages for possible IFFERR_#? returns from various IFF
+  -&gt; routines.  To get the index into this array, take your IFFERR code,
+  -&gt; negate it, and subtract one.
+  -&gt;  idx = -error - 1;
+  errormsgs:=[&#x27;End of file (not an error).&#x27;, &#x27;End of context (not an error).&#x27;,
+              &#x27;No lexical scope.&#x27;, &#x27;Insufficient memory.&#x27;,
+              &#x27;Stream read error.&#x27;, &#x27;Stream write error.&#x27;,
+              &#x27;Stream seek error.&#x27;, &#x27;File is corrupt.&#x27;, &#x27;IFF syntax error.&#x27;,
+              &#x27;Not an IFF file.&#x27;, &#x27;Required call-back hook missing.&#x27;,
+              &#x27;Return to client.  You should never see this.&#x27;]:LONG
+  mytext:=&#x27;This FTXT written to clipboard by clipftxt example.\n&#x27;
+  textlen:=STRLEN
+  IF NIL=(arglist:=argSplit()) THEN Raise(ERR_ARGS)
+  -&gt; If not enough args or &quot;?&quot;, print usage
+  IF ListLen(arglist)&lt;&gt;MINARGS THEN Raise(ERR_USE)
+  IF arglist[][]=&quot;?&quot; THEN Raise(ERR_USE)
+  unitnumber:=Val(arglist[])
+
+  iffparsebase:=OpenLibrary(&#x27;iffparse.library&#x27;, 0)
+
+  -&gt; Allocate IFF_File OBJECT
+  iff:=AllocIFF()
+
+  -&gt; Set up IFF_File for Clipboard I/O.
+  iff.stream:=OpenClipboard(unitnumber)
+  InitIFFasClip(iff)
+  WriteF(&#x27;Opened clipboard unit \d\n&#x27;, unitnumber)
+
+  InitIFFasClip(iff)
+
+#ifdef WRITEREAD
+
+  -&gt; Start the IFF transaction.
+  OpenIFF(iff, IFFF_WRITE)
+                
+  -&gt; Write our text to the clipboard as CHRS chunk in FORM FTXT
+  -&gt;
+  -&gt; First, write the FORM ID (FTXT)
+  IF FALSE=(error:=PushChunk(iff, ID_FTXT, ID_FORM, IFFSIZE_UNKNOWN))
+    -&gt; Now the CHRS chunk ID followed by the chunk data.  We&#x27;ll just write one
+    -&gt; CHRS chunk.  You could write more chunks.
+    IF FALSE=(error:=PushChunk(iff, 0, ID_CHRS, IFFSIZE_UNKNOWN))
+      -&gt; Now the actual data (the text)
+      IF WriteChunkBytes(iff, mytext, textlen)&lt;&gt;textlen
+        WriteF(&#x27;Error writing CHRS data.\n&#x27;)
+        error:=IFFERR_WRITE
+      ENDIF
+    ENDIF
+    IF FALSE=error THEN error:=PopChunk(iff)
+  ENDIF
+  IF FALSE=error THEN error:=PopChunk(iff)
+
+  IF error THEN Raise(ERR_WRIT)
+
+  WriteF(&#x27;Wrote text to clipboard as FTXT\n&#x27;)
+  
+  -&gt; Now let&#x27;s close it, then read it back.  First close the write handle, then
+  -&gt; close the clipboard.
+  CloseIFF(iff)
+  IF iff.stream THEN CloseClipboard(iff.stream)
+  iff.stream:=NIL  -&gt; E-Note: reinitialise it to NIL to help error trapping
+
+  iff.stream:=OpenClipboard(unitnumber)
+  WriteF(&#x27;Reopened clipboard unit \d\n&#x27;, unitnumber)
+
+#endif -&gt; WRITEREAD
+
+  OpenIFF(iff, IFFF_READ)
+                
+  -&gt; Tell iffparse we want to stop on FTXT CHRS chunks
+  StopChunk(iff, ID_FTXT, ID_CHRS)
+                
+  -&gt; Find all of the FTXT CHRS chunks
+  -&gt; E-Note: the going flag makes this easier to understand
+  WHILE going
+    error:=ParseIFF(iff, IFFPARSE_SCAN)
+    IF error=IFFERR_EOC  -&gt; Enter next context
+    ELSEIF error
+      going:=FALSE
+    ELSE
+      -&gt; We only asked to stop at FTXT CHRS chunks.  If no error we&#x27;ve hit a
+      -&gt; stop chunk.  Read the CHRS chunk data
+      cn:=CurrentChunk(iff)
+
+      IF cn
+        IF (cn.type=ID_FTXT) AND (cn.id=ID_CHRS)
+          WriteF(&#x27;CHRS chunk contains:\n&#x27;)
+          WHILE (rlen:=ReadChunkBytes(iff, readbuf, RBUFSZ)) &gt; 0
+            -&gt; E-Note: stdout is safe since WriteF() has been used above
+            Write(stdout, readbuf, rlen)
+          ENDWHILE
+          IF rlen&lt;0 THEN error:=rlen
+        ENDIF
+      ENDIF
+    ENDIF
+  ENDWHILE
+
+  IF error AND (error&lt;&gt;IFFERR_EOF)
+    WriteF(&#x27;IFF read failed, error \d: \s\n&#x27;, error, errormsgs[-error-1])
+  ENDIF
+EXCEPT DO
+  IF iff
+    -&gt; Terminate the IFF transaction with the stream.  Free all associated
+    -&gt; </pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

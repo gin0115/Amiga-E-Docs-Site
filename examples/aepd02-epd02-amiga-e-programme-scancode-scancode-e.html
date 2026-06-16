@@ -1,0 +1,1602 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>scancode.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-aepd02.html">aepd02</a> &rsaquo; scancode.e</div><h1>File: <code>scancode.e</code></h1><p class="meta">1576 lines · project <a href="../examples/pkg-aepd02.html"><code>aepd02</code></a></p><p class="pathctx">aepd02/EPD02/Amiga_E-Programme/Scancode/scancode.e</p><p class="prose">Scancode Dieses ist ein Programm, welches die benötigte Zeit von Assemblerbefehlen dokumentieren soll. Hieraus lassen sich leicht Optimierungen in Richtung Laufzeit ermitteln. Alle Befehle, die sich nicht in der Tabelle befinden, werden überlesen.</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/dos.html">dos/dos</a></li></ul></div><h2>Source</h2><pre class="code">/*
+
+    Scancode
+
+Dieses ist ein Programm, welches die benötigte Zeit von Assemblerbefehlen
+dokumentieren soll.
+
+Hieraus lassen sich leicht Optimierungen in Richtung Laufzeit ermitteln.
+
+Alle Befehle, die sich nicht in der Tabelle befinden, werden überlesen.
+
+*/
+OPT LARGE
+
+MODULE &#x27;dos/dos&#x27;,
+       &#x27;exec/memory&#x27;, &#x27;exec/interrupts&#x27;, &#x27;exec/nodes&#x27;,
+       &#x27;hardware/intbits&#x27;
+
+CONST TABCOUNT = 274 /* Anzahl der in der Tabelle enthaltenen Befehle */
+
+OBJECT  tabellendef
+        befehl      : LONG      /* Hier stehen die 68000 Befehle */
+        sourceop    : LONG      /* Bestimmt, welcher Operand (1 oder 2)
+                                  für die Ermittlung der Taktzyklen
+                                  herangezogen wird. Ist es keiner, so
+                                  muß hier eine 0 stehen und die An-
+                                  zahl der Taktzyklen steht im ersten
+                                  Feld. Gibts es keine weiteren Operan-
+                                  den für den Befehl so muß hier eine
+                                  9 stehen und die Anzahl der Zyklen
+                                  steht im ersten Feldelement. Besteht
+                                  der Fall wie oben beschrieben und es
+                                  gibt eine Abhängigkeit zu dem folgen-
+                                  den Operanden, so muß eine 8
+                                  drin stehen.*/
+        sourceopin  : LONG      /* und was darin stehn muß (A = Adress-
+                                  Register, D = Datenregister, &#x27;(&#x27; =
+                                  (ax), &#x27;+&#x27; = (ax)+, &#x27;-&#x27; = -(ax), &#x27;)&#x27; =
+                                  d(ax), &#x27;&amp;&#x27; = d(ax,Rx), &#x27;w&#x27; = $xx.W,
+                                  &#x27;l&#x27; = $xxxx.L, &#x27;c&#x27; = CCR, &#x27;s&#x27; = SR,
+                                  &#x27;u&#x27; = USP, &#x27;r&#x27; = Registerliste, &#x27;#&#x27;
+                                  = # - absolut, &#x27; &#x27;
+                                  = Inhalt ist egal */
+
+        z1          : LONG   /* Taktzyklen Datenregister (z.B. d1) */
+        z2          : LONG   /* Taktzyklen Adressregister (z.B. a1) */
+        z3          : LONG   /* Taktzyklen Adressregister indirekt (z.B. (a0))  */
+        z4          : LONG   /* Taktzyklen Adressregister indirekt mit inkrement (z.B. (a0)+) */
+        z5          : LONG   /* Taktzyklen Adressregister indirekt mit dekrement (z.B. -(a0)) */
+        z6          : LONG   /* Taktzyklen Adressregister indirekt mit Distanz (z.B. 10(a0)) */
+        z7          : LONG   /* Taktzyklen Adressregister indirekt mit Distanz und Register (z.B. 10(a0,d0)) */
+        z8          : LONG   /* Taktzyklen Speicher mit Word (z.B. 4711) */
+        z9          : LONG   /* Taktzyklen Speicher mit Long (z.B. 47114711) */
+        z10         : LONG   /* Taktzyklen Programcounter und Distanz (z.B. 10(pc)) */
+        z11         : LONG   /* Taktzyklen Programcounter und Distanz und Register (z.B. 10(pc,a0)) */
+        z12         : LONG   /* Taktzyklen absolut (z.B. #10) */
+        z13         : LONG   /* Taktzyklen Conditioncode Register/ Supervisor Stackpointer */
+ENDOBJECT
+
+/* +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ */
+/*                Variablen für readstrbuf                                 */
+/* +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ */
+
+CONST   STRBUFSIZE=512     /* Hier steht die variable Buffergröße. */
+
+DEF strbuf = NIL, bufpos = 0, bufend = STRBUFSIZE /* Globale Variablen. */
+/* +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ */
+
+DEF inputline[255]: STRING, inputfilename[255] : STRING, inputfile,
+    outputline[255] : STRING, outputfilename[255] : STRING, outputfile,
+    kennzeichen[255] : STRING, asbefehl [10]: STRING
+
+DEF total, zwisch, ergebnis,
+    verarb,          /* Kennzeichnet ob eine Zwischensumme gebildet wird. */
+    verarb1          /* Kennzeichnet ob auf rts, rtr, rte, jsr, jmp
+                        oder test reagiert wird. */
+
+DEF dummy1          /* Nur Zwischenvariable. */
+
+DEF datum : datestamp /* Für die Darstellung des Datums */
+DEF d1,d2,dd1,dd2
+
+DEF von, bis              /* Globale Variablen für die Ermittlung der Position */
+DEF op1, op2              /* Globale Variablen für die Ermittlung der Operanden */
+
+
+DEF tabelle[29]:ARRAY OF tabellendef      /* Hier definieren wir die Arbeitstabelle */
+DEF tab[9]:ARRAY OF LONG
+
+DEF vbint : PTR TO is, vbcounter, timer1
+
+PROC main()
+
+DEF i, ii, iii, dummy2=TRUE
+
+    VOID &#x27;Copyright = © Jörg Wach &#x27;
+    VOID &#x27;CopyrightVersion = Version 1.64&#x27;
+    VOID &#x27;Copyrightdate = Date 20.06.1993 &#x27;
+
+    inittab()   /* Erstmal die Tabelle initialisieren. */
+
+    WriteF(&#x27;\e[1;32;41m&#x27;);
+    WriteF(&#x27;+----------------------------------------------------------------+\n&#x27;);
+    WriteF(&#x27;\e[1;31;40m&#x27;);
+    WriteF(&#x27;\e[1;32;41m&#x27;);
+    WriteF(&#x27;! ScanCode Version 1.64                                          !\n&#x27;);
+    WriteF(&#x27;! Copyright © 1992, 1993 by Jörg Wach (JCL POWER)                !\n&#x27;);
+    WriteF(&#x27;\e[1;31;40m&#x27;);
+    WriteF(&#x27;\e[1;32;41m&#x27;);
+    WriteF(&#x27;+----------------------------------------------------------------+\n&#x27;);
+    WriteF(&#x27;\e[0;31;40m&#x27;);
+
+    dummy1 := getargs(0,kennzeichen)
+    IF dummy1=-1 OR dummy1&gt;3  THEN anleitung()
+    dummy1 := getargs(1,kennzeichen)
+
+    bis := 0;
+    von := 0;
+    IF (kennzeichen[bis] = &quot;h&quot;) OR
+       (kennzeichen[bis] = &quot;H&quot;) OR
+       (kennzeichen[bis] = &quot;?&quot;) THEN anleitung()
+
+    verarb1 := 0;
+    REPEAT
+        IF kennzeichen[bis] = &quot;b&quot; THEN verarb1 := 1;
+        IF kennzeichen[bis] = &quot;j&quot; THEN verarb1 := verarb1 + 2;
+        IF kennzeichen[bis] = &quot;r&quot; THEN verarb1 := verarb1 + 4;
+        IF kennzeichen[bis] = &quot;t&quot; THEN verarb1 := verarb1 + 8;
+        IF kennzeichen[bis] = &quot;l&quot; THEN verarb1 := verarb1 + 16;
+
+    /* * Jetzt bleibt uns nur noch die Dialogverarbeitung oder die
+        Information über einen befehl. * */
+        IF kennzeichen[bis] = &quot;i&quot;
+           befinf()
+           RETURN
+        ENDIF
+
+        IF kennzeichen[bis] = &quot;d&quot;
+           WriteF(&#x27;Direktdialog - Ende mit \ax\a\n&#x27;);
+           REPEAT
+                WriteF(&#x27;Bitte befehl ---&gt; &#x27;);
+                ReadStr(stdout,inputline);
+                StrCopy(kennzeichen,&#x27; &#x27;,ALL)
+                StrAdd(kennzeichen, inputline,ALL);
+                StrCopy(inputline, kennzeichen,ALL);
+                LowerStr(inputline)
+                IF inputline[1] &lt;&gt; &quot;x&quot;
+                   bis := 0
+                   ergebnis := holetakt();
+                   IF (ergebnis = 0) OR (ergebnis = -1) THEN WriteF(&#x27;Kein Befehl!\n&#x27;);
+                   IF ergebnis = -2 THEN WriteF(&#x27;Falscher Befehl!\n&#x27;);
+                   IF ergebnis &gt; 0  THEN WriteF(&#x27;Taktzyklen: \d\n&#x27;,ergebnis);
+                ENDIF
+           UNTIL inputline[1] = &quot;x&quot;;
+           WriteF(&#x27;bye bye ...\n&#x27;);
+           CleanUp(0);
+        ENDIF
+        IF verarb1 = 0 THEN anleitung();
+        bis++
+    UNTIL bis &gt; StrLen(kennzeichen)
+
+    dummy1 := getargs(0,kennzeichen)
+    IF dummy1 = 2
+        dummy1 := getargs(2,inputfilename)
+        StrCopy(outputfilename,inputfilename,ALL);
+        StrAdd(outputfilename,&#x27;.TAKT&#x27;,ALL);
+    ELSE
+        dummy1 := getargs(2,inputfilename)
+        dummy1 := getargs(3,outputfilename)
+    ENDIF
+
+    IF (inputfile := Open(inputfilename, OLDFILE)) = 0
+        WriteF(&#x27;Could not open Input file: \s\n&#x27;, inputfilename);
+        RETURN 10
+    ENDIF
+
+    IF (outputfile := Open(outputfilename, NEWFILE)) = 0
+        WriteF(&#x27;Could not open output file: \s\n&#x27;, outputfilename);
+        RETURN 10
+    ENDIF
+
+    initvb()
+
+    DateStamp(datum);
+    d1 := datum.minute;
+    d2 := datum.tick;
+    d2 := d2 / 50;
+    dummy1 := SetStdOut(outputfile) /* Ausgabe auf Datei. */
+
+
+    WHILE dummy2
+        bis := readstrbuf(inputfile,inputline) /* Bis zum Ende lesen. * */
+        IF  bis &lt;&gt; -1
+
+            bis := 0
+            ergebnis := holetakt()
+
+            IF (ergebnis = 0) OR (ergebnis = 1) THEN WriteF(&#x27;\s\n&#x27;,inputline)
+            IF ergebnis = -2
+               WriteF(&#x27;\s&#x27;,inputline)
+               WriteF(&#x27;---&gt; Falscher befehl! &lt;---\n&#x27;)
+            ENDIF
+
+         /* * Jetzt gehts ans aufbereiten. * */
+
+            IF ergebnis &gt; 0
+               total  := total  + ergebnis
+               zwisch := zwisch + ergebnis
+
+               IF (verarb1 AND 8) = 8
+                  outputfile := SetStdOut(dummy1) /* Umlenken. */
+                  WriteF(&#x27;von= \d  &#x27;,bis);
+                  dummy1 := SetStdOut(outputfile) /* Ausgabe auf Datei. */
+               ENDIF
+
+               WHILE inputline[bis] &gt; &quot; &quot; DO bis++
+
+               IF (verarb1 AND 8) = 8
+                  outputfile := SetStdOut(dummy1) /* Umlenken. */
+                  WriteF(&#x27;bis= \d  &#x27;,bis);
+                  dummy1 := SetStdOut(outputfile) /* Ausgabe auf Datei. */
+               ENDIF
+
+               IF bis &gt; 60 THEN bis := 60
+
+               i := 0; ii := 0; iii := 0
+
+               REPEAT
+                    outputline[i] := inputline[i];
+                    IF iii &gt; 8 THEN iii := 0
+                    IF inputline[i] = 9
+                       ii := ii + 8 - iii
+                       iii := 0
+                    ENDIF
+                    iii++
+                    ii++
+                    i++
+               UNTIL (i &gt;= bis) OR (ii &gt;= 60)
+
+               FOR i := ii TO 60
+                   outputline[bis] := &quot; &quot;;
+                   bis++;
+               ENDFOR
+               outputline[bis] := 0;
+
+               WriteF(&#x27;\s&#x27;,outputline);
+               WriteF(&#x27;\d\n&#x27;,ergebnis);
+               FOR i := 0 TO 60 DO outputline[i] := &quot; &quot;
+            ENDIF
+
+            IF verarb = 1
+               WriteF( &#x27;                                 ----------------------- \n&#x27;)
+               WriteF( &#x27;                                 Zwischenergebnis: &#x27;)
+               WriteF(&#x27;\d\n&#x27;,zwisch)
+               WriteF( &#x27;                                 ======================= \n&#x27;)
+               zwisch := 0
+               verarb := 0
+            ENDIF
+
+        ELSE
+            dummy2 := FALSE
+        ENDIF
+    ENDWHILE
+    WriteF(&#x27;\n\n\n\n\n&#x27;)
+    WriteF(&#x27;Gesamte Anzahl Taktzyklen: \d\n&#x27;,total);
+    outputfile := SetStdOut(dummy1) /* Zurücksetzen. */
+
+    DateStamp(datum);
+    dd1 := datum.minute;
+    dd2 := datum.tick;
+    dd2 := dd2 / 50;
+    d1 := ((dd1*60) + dd2) - ((d1*60) + d2);
+    WriteF(&#x27;Verbrauchte Zeit in Sekunden: \d\n&#x27;,d1);
+
+    exitvb()
+    Close(inputfile);
+    Close(outputfile);
+
+ENDPROC /* MAIN */
+
+PROC inittab()
+
+tab[0] := [   &#x27;abcd.b&#x27;,1,&#x27;d&#x27;, 6,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,
+            &#x27;abcd.b&#x27;,1,&#x27;-&#x27;,-1,-1,-1,-1,18,-1,-1,-1,-1,-1,-1,-1,-1,
+
+            &#x27;add.b&#x27;,2,&#x27;d&#x27;,  4,-1, 8, 8,10,12,14,12,16,12,14, 8,-1,
+            &#x27;add.w&#x27;,2,&#x27;d&#x27;,  4, 4, 8, 8,10,12,14,12,16,12,14, 8,-1,
+            &#x27;add.l&#x27;,2,&#x27;d&#x27;,  6, 8,14,14,16,18,20,18,22,18,20,14,-1,
+
+            &#x27;add.b&#x27;,1,&#x27;d&#x27;,  4,-1,12,12,14,16,18,16,20,-1,-1,-1,-1,
+            &#x27;add.w&#x27;,1,&#x27;d&#x27;,  4,-1,12,12,14,16,18,16,20,-1,-1,-1,-1,
+            &#x27;add.l&#x27;,1,&#x27;d&#x27;,  6,-1,20,20,22,24,26,24,28,-1,-1,-1,-1,
+
+            &#x27;add.w&#x27;,2,&#x27;a&#x27;, 8, 8,12,12,14,16,18,16,20,16,18,12,-1,
+            &#x27;add.l&#x27;,2,&#x27;a&#x27;, 6, 8,14,14,16,18,20,18,22,20,20,14,-1,
+
+            &#x27;adda.w&#x27;,2,&#x27;a&#x27;, 8, 8,12,12,14,16,18,16,20,16,18,12,-1,
+            &#x27;adda.l&#x27;,2,&#x27;a&#x27;, 6, 8,14,14,16,18,20,18,22,20,20,14,-1,
+
+            &#x27;addi.b&#x27;,1,&#x27;#&#x27;, 8,-1,16,16,18,20,22,20,24,-1,-1,-1,-1,
+            &#x27;addi.w&#x27;,1,&#x27;#&#x27;, 8,-1,16,16,18,20,22,20,24,-1,-1,-1,-1,
+            &#x27;addi.l&#x27;,1,&#x27;#&#x27;,16,-1,28,28,30,32,34,32,36,-1,-1,-1,-1,
+
+            &#x27;add.b&#x27;,1,&#x27;#&#x27;, 8,-1,16,16,18,20,22,20,24,-1,-1,-1,-1,
+            &#x27;add.w&#x27;,1,&#x27;#&#x27;, 8,-1,16,16,18,20,22,20,24,-1,-1,-1,-1,
+            &#x27;add.l&#x27;,1,&#x27;#&#x27;,16,-1,28,28,30,32,34,32,36,-1,-1,-1,-1,
+
+            &#x27;addq.b&#x27;,1,&#x27;#&#x27;, 4,-1,12,12,14,16,18,16,20,-1,-1,-1,-1,
+            &#x27;addq.w&#x27;,1,&#x27;#&#x27;, 4, 8,12,12,14,16,18,16,20,-1,-1,-1,-1,
+            &#x27;addq.l&#x27;,1,&#x27;#&#x27;, 8, 8,20,20,22,24,26,24,28,-1,-1,-1,-1,
+
+            &#x27;addx.b&#x27;,1,&#x27;d&#x27;,  4,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,
+            &#x27;addx.w&#x27;,1,&#x27;d&#x27;,  4,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,
+            &#x27;addx.l&#x27;,1,&#x27;d&#x27;,  8,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,
+
+            &#x27;addx.b&#x27;,1,&#x27;-&#x27;, -1,-1,-1,-1,18,-1,-1,-1,-1,-1,-1,-1,-1,
+            &#x27;addx.w&#x27;,1,&#x27;-&#x27;, -1,-1,-1,-1,18,-1,-1,-1,-1,-1,-1,-1,-1,
+            &#x27;addx.l&#x27;,1,&#x27;-&#x27;, -1,-1,-1,-1,30,-1,-1,-1,-1,-1,-1,-1,-1,
+
+            &#x27;and.b&#x27;,2,&#x27;d&#x27;,  4,-1, 8, 8,10,12,14,12,16,12,14, 8,-1,
+            &#x27;and.w&#x27;,2,&#x27;d&#x27;,  4,-1, 8, 8,10,12,14,12,16,12,14, 8,-1,
+            &#x27;and.l&#x27;,2,&#x27;d&#x27;,  6,-1,14,14,16,18,20,18,22,18,20,14,-1]
+
+tab[1] := [   &#x27;and.b&#x27;,1,&#x27;d&#x27;,  4,-1,12,12,14,16,18,16,20,-1,-1,-1,-1,
+            &#x27;and.w&#x27;,1,&#x27;d&#x27;,  4,-1,12,12,14,16,18,16,20,-1,-1,-1,-1,
+            &#x27;and.l&#x27;,1,&#x27;d&#x27;,  6,-1,20,20,22,24,26,24,28,-1,-1,-1,-1,
+
+            &#x27;andi.b&#x27;,1,&#x27;#&#x27;,  8,-1,16,16,18,20,22,20,24,-1,-1,-1,20,
+            &#x27;andi.w&#x27;,1,&#x27;#&#x27;,  8,-1,16,16,18,20,22,20,24,-1,-1,-1,20,
+            &#x27;andi.l&#x27;,1,&#x27;#&#x27;, 16,-1,28,28,30,32,34,32,36,-1,-1,-1,-1,
+
+            &#x27;and.b&#x27;,1,&#x27;#&#x27;,  8,-1,16,16,18,20,22,20,24,-1,-1,-1,20,
+            &#x27;and.w&#x27;,1,&#x27;#&#x27;,  8,-1,16,16,18,20,22,20,24,-1,-1,-1,20,
+            &#x27;and.l&#x27;,1,&#x27;#&#x27;, 16,-1,28,28,30,32,34,32,36,-1,-1,-1,-1,
+
+            &#x27;asl.b&#x27;,2,&#x27;d&#x27;, 35,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,11,-1,
+            &#x27;asl.w&#x27;,2,&#x27;d&#x27;, 35,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,11,-1,
+            &#x27;asl.l&#x27;,2,&#x27;d&#x27;, 36,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,13,-1,
+
+            &#x27;asl.w&#x27;,8,&#x27; &#x27;, -1,-1,12,12,14,16,18,16,20,-1,-1,-1,-1,
+
+            &#x27;asr.b&#x27;,2,&#x27;d&#x27;, 35,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,11,-1,
+            &#x27;asr.w&#x27;,2,&#x27;d&#x27;, 35,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,11,-1,
+            &#x27;asr.l&#x27;,2,&#x27;d&#x27;, 36,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,13,-1,
+
+            &#x27;asr.w&#x27;,8,&#x27; &#x27;, -1,-1,12,12,14,16,18,16,20,-1,-1,-1,-1,
+
+            &#x27;bcc.s&#x27;,9,&#x27; &#x27;, 10,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,
+            &#x27;bcs.s&#x27;,9,&#x27; &#x27;, 10,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,
+
+            &#x27;bchg.b&#x27;,1,&#x27;d&#x27;,-1,-1,12,12,14,16,18,16,20,-1,-1,-1,-1,
+            &#x27;bchg.l&#x27;,1,&#x27;d&#x27;, 8,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,
+
+            &#x27;bchg.b&#x27;,1,&#x27;#&#x27;,-1,-1,16,16,18,20,22,20,24,-1,-1,-1,-1,
+            &#x27;bchg.l&#x27;,1,&#x27;#&#x27;,12,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,
+
+            &#x27;bclr.b&#x27;,1,&#x27;d&#x27;,-1,-1,12,12,14,16,18,16,20,-1,-1,-1,-1,
+            &#x27;bclr.l&#x27;,1,&#x27;d&#x27;, 8,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,
+
+            &#x27;bclr.b&#x27;,1,&#x27;#&#x27;,-1,-1,16,16,18,20,22,20,24,-1,-1,-1,-1,
+            &#x27;bclr.l&#x27;,1,&#x27;#&#x27;,12,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,
+
+            &#x27;beq.s&#x27;,9,&#x27; &#x27;, 10,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,
+            &#x27;bge.s&#x27;,9,&#x27; &#x27;, 10,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,
+            &#x27;bgt.s&#x27;,9,&#x27; &#x27;, 10,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1]
+
+tab[2] := [   &#x27;bhi.s&#x27;,9,&#x27; &#x27;, 10,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,
+            &#x27;ble.s&#x27;,9,&#x27; &#x27;, 10,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,
+            &#x27;bls.s&#x27;,9,&#x27; &#x27;, 10,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,
+            &#x27;blt.s&#x27;,9,&#x27; &#x27;, 10,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,
+            &#x27;bmi.s&#x27;,9,&#x27; &#x27;, 10,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,
+            &#x27;bne.s&#x27;,9,&#x27; &#x27;, 10,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,
+            &#x27;bpl.s&#x27;,9,&#x27; &#x27;, 10,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,
+            &#x27;bra.s&#x27;,9,&#x27; &#x27;, 10,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,
+
+            &#x27;bset.b&#x27;,1,&#x27;d&#x27;,-1,-1,12,12,14,16,18,16,20,-1,-1,-1,-1,
+            &#x27;bset.l&#x27;,1,&#x27;d&#x27;, 8,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,
+
+            &#x27;bset.b&#x27;,1,&#x27;#&#x27;,-1,-1,16,16,18,20,22,20,24,-1,-1,-1,-1,
+            &#x27;bset.l&#x27;,1,&#x27;#&#x27;,12,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,
+
+            &#x27;bsr.s&#x27;,9,&#x27; &#x27;, 18,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,
+
+            &#x27;btst.b&#x27;,1,&#x27;d&#x27;,-1,-1, 8, 8,10,12,14,12,16,12,14,-1,-1,
+            &#x27;btst.l&#x27;,1,&#x27;d&#x27;, 6,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,
+
+            &#x27;btst.b&#x27;,1,&#x27;#&#x27;,-1,-1,12,12,14,16,18,16,20,16,18,-1,-1,
+            &#x27;btst.l&#x27;,1,&#x27;#&#x27;,10,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,
+
+            &#x27;bvc.s&#x27;,9,&#x27; &#x27;, 10,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,
+            &#x27;bvs.s&#x27;,9,&#x27; &#x27;, 10,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,
+
+            &#x27;clr.b&#x27;,8,&#x27; &#x27;,  4,-1,12,12,14,16,18,16,20,-1,-1,-1,-1,
+            &#x27;clr.w&#x27;,8,&#x27; &#x27;,  4,-1,12,12,14,16,18,16,20,-1,-1,-1,-1,
+            &#x27;clr.l&#x27;,8,&#x27; &#x27;,  6,-1,20,20,22,24,26,24,28,-1,-1,-1,-1,
+
+            &#x27;cmp.b&#x27;,2,&#x27;d&#x27;,  4,-1, 8, 8,10,12,14,12,16,12,14, 8,-1,
+            &#x27;cmp.w&#x27;,2,&#x27;d&#x27;,  4, 4, 8, 8,10,12,14,12,16,12,14, 8,-1,
+            &#x27;cmp.l&#x27;,2,&#x27;d&#x27;,  6, 6,14,14,16,18,20,18,22,18,20,14,-1,
+
+            &#x27;cmp.w&#x27;,2,&#x27;a&#x27;, 6, 6,10,10,12,14,16,14,18,14,16, 8,-1,
+            &#x27;cmp.l&#x27;,2,&#x27;a&#x27;, 6, 6,14,14,16,18,20,18,22,18,20,18,-1,
+
+            &#x27;cmpa.w&#x27;,2,&#x27;a&#x27;, 6, 6,10,10,12,14,16,14,18,14,16, 8,-1,
+            &#x27;cmpa.l&#x27;,2,&#x27;a&#x27;, 6, 6,14,14,16,18,20,18,22,18,20,18,-1,
+
+            &#x27;cmpi.b&#x27;,1,&#x27;#&#x27;,  8,-1,12,12,14,16,18,16,20,-1,-1,-1,-1]
+
+tab[3] := [   &#x27;cmpi.w&#x27;,1,&#x27;#&#x27;,  8,-1,12,12,14,16,18,16,20,-1,-1,-1,-1,
+            &#x27;cmpi.l&#x27;,1,&#x27;#&#x27;, 14,-1,20,20,22,24,26,24,28,-1,-1,-1,-1,
+
+            &#x27;cmp.b&#x27;,1,&#x27;#&#x27;,  8,-1,12,12,14,16,18,16,20,-1,-1,-1,-1,
+            &#x27;cmp.w&#x27;,1,&#x27;#&#x27;,  8,-1,12,12,14,16,18,16,20,-1,-1,-1,-1,
+            &#x27;cmp.l&#x27;,1,&#x27;#&#x27;, 14,-1,20,20,22,24,26,24,28,-1,-1,-1,-1,
+
+            &#x27;cmpm.b&#x27;,1,&#x27;-&#x27;, -1,-1,-1,-1,12,-1,-1,-1,-1,-1,-1,-1,-1,
+            &#x27;cmpm.w&#x27;,1,&#x27;-&#x27;, -1,-1,-1,-1,12,-1,-1,-1,-1,-1,-1,-1,-1,
+            &#x27;cmpm.l&#x27;,1,&#x27;-&#x27;, -1,-1,-1,-1,20,-1,-1,-1,-1,-1,-1,-1,-1,
+
+            &#x27;dbcc.s&#x27;,9,&#x27; &#x27;, 14,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,
+            &#x27;dbcs.s&#x27;,9,&#x27; &#x27;, 14,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,
+            &#x27;dbeq.s&#x27;,9,&#x27; &#x27;, 14,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,
+            &#x27;dbf.s&#x27;,9,&#x27; &#x27;,  14,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,
+            &#x27;dbge.s&#x27;,9,&#x27; &#x27;, 14,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,
+            &#x27;dbgt.s&#x27;,9,&#x27; &#x27;, 14,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,
+            &#x27;dbhi.s&#x27;,9,&#x27; &#x27;, 14,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,
+            &#x27;dble.s&#x27;,9,&#x27; &#x27;, 14,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,
+            &#x27;dbls.s&#x27;,9,&#x27; &#x27;, 14,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,
+            &#x27;dblt.s&#x27;,9,&#x27; &#x27;, 14,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,
+            &#x27;dbmi.s&#x27;,9,&#x27; &#x27;, 14,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,
+            &#x27;dbne.s&#x27;,9,&#x27; &#x27;, 14,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,
+            &#x27;dbpl.s&#x27;,9,&#x27; &#x27;, 14,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,
+            &#x27;dbra.s&#x27;,9,&#x27; &#x27;, 14,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,
+            &#x27;dbvc.s&#x27;,9,&#x27; &#x27;, 14,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,
+            &#x27;dbvs.s&#x27;,9,&#x27; &#x27;, 14,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,
+
+            &#x27;divs.w&#x27;,2,&#x27;d&#x27;,158,-1,162,162,164,166,168,166,170,166,168,162,-1,
+            &#x27;divu.w&#x27;,2,&#x27;d&#x27;,140,-1,144,144,146,148,150,148,152,148,150,144,-1,
+
+            &#x27;eor.b&#x27;,1,&#x27;d&#x27;,  4,-1,12,12,14,16,18,16,20,-1,-1,-1,-1,
+            &#x27;eor.w&#x27;,1,&#x27;d&#x27;,  4,-1,12,12,14,16,18,16,20,-1,-1,-1,-1,
+            &#x27;eor.l&#x27;,1,&#x27;d&#x27;,  8,-1,20,20,22,24,26,24,28,-1,-1,-1,-1,
+
+            &#x27;eori.b&#x27;,1,&#x27;#&#x27;, 8,-1,16,16,18,20,22,20,24,-1,-1,-1,20]
+
+tab[4] := [   &#x27;eori.w&#x27;,1,&#x27;#&#x27;, 8,-1,16,16,18,20,22,20,24,-1,-1,-1,20,
+            &#x27;eori.l&#x27;,1,&#x27;#&#x27;,16,-1,28,28,30,32,34,32,36,-1,-1,-1,-1,
+
+            &#x27;eor.b&#x27;,1,&#x27;#&#x27;, 8,-1,16,16,18,20,22,20,24,-1,-1,-1,20,
+            &#x27;eor.w&#x27;,1,&#x27;#&#x27;, 8,-1,16,16,18,20,22,20,24,-1,-1,-1,20,
+            &#x27;eor.l&#x27;,1,&#x27;#&#x27;,16,-1,28,28,30,32,34,32,36,-1,-1,-1,-1,
+
+            &#x27;exg.l&#x27;,2,&#x27;d&#x27;,  6, 6,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,
+
+            &#x27;exg.l&#x27;,2,&#x27;a&#x27;, -1, 6,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,
+
+            &#x27;ext.w&#x27;,8,&#x27; &#x27;,  4,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,
+            &#x27;ext.l&#x27;,8,&#x27; &#x27;,  4,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,
+
+            &#x27;illegal&#x27;,9,&#x27; &#x27;, 34,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,
+
+            &#x27;jmp&#x27;,8,&#x27; &#x27;, -1,-1, 8,-1,-1,10,14,10,12,10,14,-1,-1,
+            &#x27;jsr&#x27;,8,&#x27; &#x27;, -1,-1,16,-1,-1,18,22,18,20,18,22,-1,-1,
+
+            &#x27;lea.l&#x27;,2,&#x27;a&#x27;, -1,-1, 4,-1,-1, 8,12, 8,12, 8,12,-1,-1,
+
+            &#x27;link&#x27;,9,&#x27; &#x27;,18,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,
+
+            &#x27;lsl.b&#x27;,2,&#x27;d&#x27;, 35,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,11,-1,
+            &#x27;lsl.w&#x27;,2,&#x27;d&#x27;, 35,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,11,-1,
+            &#x27;lsl.l&#x27;,2,&#x27;d&#x27;, 36,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,13,-1,
+
+            &#x27;lsl.w&#x27;,8,&#x27; &#x27;, -1,-1,12,12,14,16,18,16,20,-1,-1,-1,-1,
+
+            &#x27;lsr.b&#x27;,2,&#x27;d&#x27;, 35,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,11,-1,
+            &#x27;lsr.w&#x27;,2,&#x27;d&#x27;, 35,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,11,-1,
+            &#x27;lsr.l&#x27;,2,&#x27;d&#x27;, 36,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,13,-1,
+
+            &#x27;lsr.w&#x27;,8,&#x27; &#x27;, -1,-1,12,12,14,16,18,16,20,-1,-1,-1,-1,
+
+            &#x27;move.b&#x27;,2,&#x27;d&#x27;, 4,-1, 8, 8,10,12,14,12,16,12,14, 8,-1,
+            &#x27;move.w&#x27;,2,&#x27;d&#x27;, 4, 4, 8, 8,10,12,14,12,16,12,14, 8,-1,
+            &#x27;move.l&#x27;,2,&#x27;d&#x27;, 4, 4,12,12,14,14,18,16,20,16,18,12,-1,
+
+            &#x27;move.b&#x27;,2,&#x27;(&#x27;, 8,-1,12,12,14,16,18,16,20,16,18,12,-1,
+            &#x27;move.w&#x27;,2,&#x27;(&#x27;, 8, 8,12,12,14,16,18,16,20,16,18,12,-1,
+            &#x27;move.l&#x27;,2,&#x27;(&#x27;,12,12,20,20,22,24,26,24,28,24,26,20,-1,
+
+            &#x27;move.b&#x27;,2,&#x27;+&#x27;, 8,-1,12,12,14,16,18,16,20,16,18,12,-1,
+            &#x27;move.w&#x27;,2,&#x27;+&#x27;, 8, 8,12,12,14,16,18,16,20,16,18,12,-1 ]
+
+tab[5] := [ &#x27;move.l&#x27;,2,&#x27;+&#x27;,12,12,20,20,22,24,26,24,28,24,26,20,-1,
+
+            &#x27;move.b&#x27;,2,&#x27;-&#x27;, 8,-1,12,12,14,16,18,16,20,16,18,12,-1,
+            &#x27;move.w&#x27;,2,&#x27;-&#x27;, 8, 8,12,12,14,16,18,16,20,16,18,12,-1,
+            &#x27;move.l&#x27;,2,&#x27;-&#x27;,14,14,20,20,22,24,26,24,28,24,26,20,-1,
+
+            &#x27;move.b&#x27;,2,&#x27;)&#x27;,12,-1,16,16,18,20,22,20,24,20,22,16,-1,
+            &#x27;move.w&#x27;,2,&#x27;)&#x27;,12,12,16,16,18,20,22,20,24,20,22,16,-1,
+            &#x27;move.l&#x27;,2,&#x27;)&#x27;,16,16,24,24,26,28,30,28,32,28,30,24,-1,
+
+            &#x27;move.b&#x27;,2,&#x27;&amp;&#x27;,14,-1,18,18,20,22,24,22,26,22,24,18,-1,
+            &#x27;move.w&#x27;,2,&#x27;&amp;&#x27;,14,14,18,18,20,22,24,22,26,22,24,18,-1,
+            &#x27;move.l&#x27;,2,&#x27;&amp;&#x27;,18,18,26,26,28,30,32,20,34,30,32,26,-1,
+
+            &#x27;move.b&#x27;,2,&#x27;w&#x27;,12,-1,16,16,18,20,22,20,24,20,22,16,-1,
+            &#x27;move.w&#x27;,2,&#x27;w&#x27;,12,12,16,16,18,20,22,20,24,20,22,16,-1,
+            &#x27;move.l&#x27;,2,&#x27;w&#x27;,16,16,24,24,26,28,30,28,32,28,30,24,-1,
+
+            &#x27;move.b&#x27;,2,&#x27;l&#x27;,16,-1,20,20,22,24,26,24,28,24,26,20,-1,
+            &#x27;move.w&#x27;,2,&#x27;l&#x27;,16,16,20,20,22,24,26,24,28,24,26,20,-1,
+            &#x27;move.l&#x27;,2,&#x27;l&#x27;,20,20,28,28,30,32,34,32,36,32,34,28,-1,
+
+            &#x27;move.w&#x27;,2,&#x27;c&#x27;,12,-1,16,16,18,20,22,20,24,20,22,16,-1,
+
+            &#x27;move.w&#x27;,2,&#x27;s&#x27;,12,-1,16,16,18,20,22,20,24,20,22,16,-1,
+
+            &#x27;move.w&#x27;,1,&#x27;s&#x27;, 6,-1,12,12,14,16,18,16,20,-1,-1,-1,-1,
+
+            &#x27;move.l&#x27;,1,&#x27;u&#x27;,-1, 4,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,
+
+            &#x27;move.l&#x27;,2,&#x27;u&#x27;,-1, 4,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,
+
+            &#x27;move.w&#x27;,2,&#x27;a&#x27;, 4, 4, 8, 8,10,12,14,12,16,12,14, 8,-1,
+            &#x27;move.l&#x27;,2,&#x27;a&#x27;, 4, 4,12,12,14,16,18,16,20,16,18,12,-1,
+
+            &#x27;movea.w&#x27;,2,&#x27;a&#x27;, 4, 4, 8, 8,10,12,14,12,16,12,14, 8,-1,
+            &#x27;movea.l&#x27;,2,&#x27;a&#x27;, 4, 4,12,12,14,16,18,16,20,16,18,12,-1,
+
+            &#x27;movem.w&#x27;,2,&#x27;r&#x27;,-1,-1,12,12,-1,16,18,16,20,16,18,-1,-1,
+            &#x27;movem.l&#x27;,2,&#x27;r&#x27;,-1,-1,12,12,-1,16,18,16,20,16,18,-1,-1,
+
+            &#x27;movem.w&#x27;,1,&#x27;r&#x27;,-1,-1, 8,-1, 8,12,14,12,16,-1,-1,-1,-1,
+            &#x27;movem.l&#x27;,1,&#x27;r&#x27;,-1,-1, 8,-1, 8,12,14,12,16,-1,-1,-1,-1,
+
+            &#x27;movep.w&#x27;,8,&#x27; &#x27;,-1,-1,-1,-1,-1,16,-1,-1,-1,-1,-1,-1,-1 ]
+
+tab[6] :=   [ &#x27;movep.l&#x27;,8,&#x27; &#x27;,-1,-1,-1,-1,-1,24,-1,-1,-1,-1,-1,-1,-1,
+
+            &#x27;moveq.l&#x27;,2,&#x27;d&#x27;,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1, 4,-1,
+
+            &#x27;muls.w&#x27;,2,&#x27;d&#x27;,70,-1,74,74,76,78,80,78,82,78,80,74,-1,
+
+            &#x27;mulu.w&#x27;,2,&#x27;d&#x27;,70,-1,74,74,76,78,80,78,82,78,80,74,-1,
+
+            &#x27;nbcd.b&#x27;,8,&#x27; &#x27;, 6,-1,12,12,14,16,18,16,20,-1,-1,-1,-1,
+
+            &#x27;neg.b&#x27;,8,&#x27; &#x27;,  4,-1,12,12,14,16,18,16,20,-1,-1,-1,-1,
+            &#x27;neg.w&#x27;,8,&#x27; &#x27;,  4,-1,12,12,14,16,18,16,20,-1,-1,-1,-1,
+            &#x27;neg.l&#x27;,8,&#x27; &#x27;,  6,-1,20,20,22,24,26,24,28,-1,-1,-1,-1,
+
+            &#x27;nop&#x27;,0,&#x27; &#x27;,    4,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,
+
+            &#x27;not.b&#x27;,8,&#x27; &#x27;,  4,-1,12,12,14,16,18,16,20,-1,-1,-1,-1,
+            &#x27;not.w&#x27;,8,&#x27; &#x27;,  4,-1,12,12,14,16,18,16,20,-1,-1,-1,-1,
+            &#x27;not.l&#x27;,8,&#x27; &#x27;,  6,-1,20,20,22,24,26,24,28,-1,-1,-1,-1,
+
+            &#x27;or.b&#x27;,2,&#x27;d&#x27;,   4,-1, 8, 8,10,12,14,12,16,12,14, 8,-1,
+            &#x27;or.w&#x27;,2,&#x27;d&#x27;,   4,-1, 8, 8,10,12,14,12,16,12,14, 8,-1,
+            &#x27;or.l&#x27;,2,&#x27;d&#x27;,   6,-1,14,14,16,18,20,18,22,18,20,14,-1,
+
+            &#x27;or.b&#x27;,1,&#x27;d&#x27;,   4,-1, 8, 8,10,12,14,12,16,-1,-1,-1,-1,
+            &#x27;or.w&#x27;,1,&#x27;d&#x27;,   4,-1, 8, 8,10,12,14,12,16,-1,-1,-1,-1,
+            &#x27;or.l&#x27;,1,&#x27;d&#x27;,   6,-1,14,14,16,18,20,18,22,-1,-1,-1,-1,
+
+            &#x27;ori.b&#x27;,1,&#x27;#&#x27;,  8,-1,16,16,18,20,22,20,24,-1,-1,-1,20,
+            &#x27;ori.w&#x27;,1,&#x27;#&#x27;,  8,-1,16,16,18,20,22,20,24,-1,-1,-1,20,
+            &#x27;ori.l&#x27;,1,&#x27;#&#x27;, 16,-1,28,28,30,32,34,32,36,-1,-1,-1,-1,
+
+            &#x27;or.b&#x27;,1,&#x27;#&#x27;,  8,-1,16,16,18,20,22,20,24,-1,-1,-1,20,
+            &#x27;or.w&#x27;,1,&#x27;#&#x27;,  8,-1,16,16,18,20,22,20,24,-1,-1,-1,20,
+            &#x27;or.l&#x27;,1,&#x27;#&#x27;, 16,-1,28,28,30,32,34,32,36,-1,-1,-1,-1,
+
+            &#x27;pea.l&#x27;,8,&#x27; &#x27;, -1,-1,12,-1,-1,16,20,16,20,16,20,-1,-1,
+
+            &#x27;reset&#x27;,0,&#x27; &#x27;,124,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,
+
+            &#x27;rol.b&#x27;,2,&#x27;d&#x27;, 35,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,11,-1,
+            &#x27;rol.w&#x27;,2,&#x27;d&#x27;, 35,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,11,-1,
+            &#x27;rol.l&#x27;,2,&#x27;d&#x27;, 36,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,13,-1,
+
+            &#x27;rol.w&#x27;,8,&#x27; &#x27;, -1,-1,12,12,14,16,18,16,20,-1,-1,-1,-1]
+
+tab[7] := [ &#x27;ror.b&#x27;,2,&#x27;d&#x27;, 35,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,11,-1,
+            &#x27;ror.w&#x27;,2,&#x27;d&#x27;, 35,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,11,-1,
+            &#x27;ror.l&#x27;,2,&#x27;d&#x27;, 36,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,13,-1,
+
+            &#x27;ror.w&#x27;,8,&#x27; &#x27;, -1,-1,12,12,14,16,18,16,20,-1,-1,-1,-1,
+
+            &#x27;roxl.b&#x27;,2,&#x27;d&#x27;, 35,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,11,-1,
+            &#x27;roxl.w&#x27;,2,&#x27;d&#x27;, 35,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,11,-1,
+            &#x27;roxl.l&#x27;,2,&#x27;d&#x27;, 36,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,13,-1,
+
+            &#x27;roxl.w&#x27;,8,&#x27; &#x27;, -1,-1,12,12,14,16,16,16,20,-1,-1,-1,-1,
+
+            &#x27;roxr.b&#x27;,2,&#x27;d&#x27;, 35,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,11,-1,
+            &#x27;roxr.w&#x27;,2,&#x27;d&#x27;, 35,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,11,-1,
+            &#x27;roxr.l&#x27;,2,&#x27;d&#x27;, 36,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,13,-1,
+
+            &#x27;roxr.w&#x27;,8,&#x27; &#x27;, -1,-1,12,12,14,16,16,16,20,-1,-1,-1,-1,
+
+            &#x27;rte&#x27;,9,&#x27; &#x27;,  20,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,
+
+            &#x27;rtr&#x27;,9,&#x27; &#x27;,  20,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,
+
+            &#x27;rts&#x27;,9,&#x27; &#x27;,  12,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,
+
+            &#x27;sbcd.b&#x27;,1,&#x27;d&#x27;, 6,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,
+            &#x27;sbcd.b&#x27;,1,&#x27;-&#x27;,-1,-1,-1,-1,18,-1,-1,-1,-1,-1,-1,-1,-1,
+
+            &#x27;scc.b&#x27;,8,&#x27; &#x27;,   5,-1,12,12,14,16,18,16,20,-1,-1,-1,-1,
+            &#x27;scs.b&#x27;,8,&#x27; &#x27;,   5,-1,12,12,14,16,18,16,20,-1,-1,-1,-1,
+            &#x27;shi.b&#x27;,8,&#x27; &#x27;,   5,-1,12,12,14,16,18,16,20,-1,-1,-1,-1,
+            &#x27;seq.b&#x27;,8,&#x27; &#x27;,   5,-1,12,12,14,16,18,16,20,-1,-1,-1,-1,
+            &#x27;sge.b&#x27;,8,&#x27; &#x27;,   5,-1,12,12,14,16,18,16,20,-1,-1,-1,-1,
+            &#x27;sgt.b&#x27;,8,&#x27; &#x27;,   5,-1,12,12,14,16,18,16,20,-1,-1,-1,-1,
+            &#x27;shi.b&#x27;,8,&#x27; &#x27;,   5,-1,12,12,14,16,18,16,20,-1,-1,-1,-1,
+            &#x27;sle.b&#x27;,8,&#x27; &#x27;,   5,-1,12,12,14,16,18,16,20,-1,-1,-1,-1,
+            &#x27;sls.b&#x27;,8,&#x27; &#x27;,   5,-1,12,12,14,16,18,16,20,-1,-1,-1,-1,
+            &#x27;slt.b&#x27;,8,&#x27; &#x27;,   5,-1,12,12,14,16,18,16,20,-1,-1,-1,-1,
+            &#x27;smi.b&#x27;,8,&#x27; &#x27;,   5,-1,12,12,14,16,18,16,20,-1,-1,-1,-1,
+            &#x27;sne.b&#x27;,8,&#x27; &#x27;,   5,-1,12,12,14,16,18,16,20,-1,-1,-1,-1,
+            &#x27;spl.b&#x27;,8,&#x27; &#x27;,   5,-1,12,12,14,16,18,16,20,-1,-1,-1,-1]
+
+tab[8] := [ &#x27;sub.b&#x27;,2,&#x27;d&#x27;,   4,-1, 8, 8,10,12,14,12,16,12,14, 8,-1,
+            &#x27;sub.w&#x27;,2,&#x27;d&#x27;,   4, 4, 8, 8,10,12,14,12,16,12,14, 8,-1,
+            &#x27;sub.l&#x27;,2,&#x27;d&#x27;,   6, 8,14,14,16,18,20,18,22,18,20,14,-1,
+
+            &#x27;sub.b&#x27;,1,&#x27;d&#x27;,   4,-1,12,12,14,16,18,16,20,-1,-1,-1,-1,
+            &#x27;sub.w&#x27;,1,&#x27;d&#x27;,   4,-1,12,12,14,16,18,16,20,-1,-1,-1,-1,
+            &#x27;sub.l&#x27;,1,&#x27;d&#x27;,   6,-1,20,20,22,24,26,24,28,-1,-1,-1,-1,
+
+            &#x27;sub.w&#x27;,2,&#x27;a&#x27;,   8, 8,12,12,14,16,18,16,20,16,18,12,-1,
+            &#x27;sub.l&#x27;,2,&#x27;a&#x27;,   8, 8,14,14,16,18,20,18,22,18,20,14,-1,
+
+            &#x27;suba.w&#x27;,2,&#x27;a&#x27;,   8, 8,12,12,14,16,18,16,20,16,18,12,-1,
+            &#x27;suba.l&#x27;,2,&#x27;a&#x27;,   8, 8,14,14,16,18,20,18,22,18,20,14,-1,
+
+            &#x27;subi.b&#x27;,1,&#x27;#&#x27;,   8,-1,16,16,18,20,22,20,24,-1,-1,-1,-1,
+            &#x27;subi.w&#x27;,1,&#x27;#&#x27;,   8,-1,16,16,18,20,22,20,24,-1,-1,-1,-1,
+            &#x27;subi.l&#x27;,1,&#x27;#&#x27;,  16,-1,28,28,30,32,34,32,36,-1,-1,-1,-1,
+
+            &#x27;sub.b&#x27;,1,&#x27;#&#x27;,   8,-1,16,16,18,20,22,20,24,-1,-1,-1,-1,
+            &#x27;sub.w&#x27;,1,&#x27;#&#x27;,   8,-1,16,16,18,20,22,20,24,-1,-1,-1,-1,
+            &#x27;sub.l&#x27;,1,&#x27;#&#x27;,  16,-1,28,28,30,32,34,32,36,-1,-1,-1,-1,
+
+            &#x27;subq.b&#x27;,1,&#x27; &#x27;,   4,-1,12,12,14,16,18,16,20,-1,-1,-1,-1,
+            &#x27;subq.w&#x27;,1,&#x27; &#x27;,   4, 8,12,12,14,16,18,16,20,-1,-1,-1,-1,
+            &#x27;subq.l&#x27;,1,&#x27; &#x27;,   8, 8,20,20,22,24,26,24,28,-1,-1,-1,-1,
+
+            &#x27;subx.b&#x27;,1,&#x27;d&#x27;,  4,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,
+            &#x27;subx.w&#x27;,1,&#x27;d&#x27;,  4,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,
+            &#x27;subx.l&#x27;,1,&#x27;d&#x27;,  8,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,
+
+            &#x27;subx.b&#x27;,1,&#x27;-&#x27;, -1,-1,-1,-1,18,-1,-1,-1,-1,-1,-1,-1,-1,
+            &#x27;subx.w&#x27;,1,&#x27;-&#x27;, -1,-1,-1,-1,18,-1,-1,-1,-1,-1,-1,-1,-1,
+            &#x27;subx.l&#x27;,1,&#x27;-&#x27;, -1,-1,-1,-1,30,-1,-1,-1,-1,-1,-1,-1,-1,
+
+            &#x27;svc.b&#x27;,8,&#x27; &#x27;,   5,-1,12,12,14,16,18,16,20,-1,-1,-1,-1,
+            &#x27;svs.b&#x27;,8,&#x27; &#x27;,   5,-1,12,12,14,16,18,16,20,-1,-1,-1,-1,
+
+            &#x27;swap.w&#x27;,8,&#x27; &#x27;,   4,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,
+
+            &#x27;tas.b&#x27;,8,&#x27; &#x27;,    4,-1,14,14,16,18,20,18,22,-1,-1,-1,-1,
+
+            &#x27;trap&#x27;,9,&#x27; &#x27;,  34,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1]
+
+tab[9] := [ &#x27;tst.b&#x27;,8,&#x27; &#x27;,    4,-1, 8, 8,10,12,14,12,16,-1,-1,-1,-1,
+            &#x27;tst.w&#x27;,8,&#x27; &#x27;,    4,-1, 8, 8,10,12,14,12,16,-1,-1,-1,-1,
+            &#x27;tst.l&#x27;,8,&#x27; &#x27;,    4,-1,12,12,14,16,18,16,20,-1,-1,-1,-1,
+
+            &#x27;unlk.l&#x27;,8,&#x27; &#x27;,   -1,12,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1]
+ENDPROC
+
+
+/*************************************************************************/
+PROC anleitung();
+
+    WriteF(&#x27;\e[1;32;41m&#x27;);
+    WriteF(&#x27;Usage: Scancode Option(s) Inputfile [Outputfile]               \n&#x27;);
+    WriteF(&#x27;where                                                          \n&#x27;);
+    WriteF(&#x27;Options = b ---&gt; make after every branches a sum of the        \n&#x27;);
+    WriteF(&#x27;                 time befor.                                   \n&#x27;);
+    WriteF(&#x27;          j ---&gt; make after every jmp or jsr a sum of the      \n&#x27;);
+    WriteF(&#x27;                 time befor.                                   \n&#x27;);
+    WriteF(&#x27;          r ---&gt; make after every rte, rtr or rts a sum of the \n&#x27;);
+    WriteF(&#x27;                 time befor.                                   \n&#x27;);
+    WriteF(&#x27;          l ---&gt; take after every &quot;blank&quot; Line a sum           \n&#x27;);
+    WriteF(&#x27;          d ---&gt; direct dialog TO get the time of each machine-\n&#x27;);
+    WriteF(&#x27;                 command you entered.                          \n&#x27;);
+    WriteF(&#x27;          t ---&gt; only FOR intern use!                          \n&#x27;);
+    WriteF(&#x27;          i ---&gt; not realized (YET)!                           \n&#x27;);
+    WriteF(&#x27;Inputfile   ---&gt; must be a assembler-sourcecode.               \n&#x27;);
+    WriteF(&#x27;Outputfile  ---&gt; IF you do not enter it, Scancode will give    \n&#x27;);
+    WriteF(&#x27;                 his output TO a file naming your Inputfile    \n&#x27;);
+    WriteF(&#x27;                 with the appending .TAKT  .                   \n&#x27;);
+    WriteF(&#x27;Have a nice day .....                                          \n&#x27;);
+    WriteF(&#x27;\e[0;31;40m&#x27;);
+    Delay(50);  /* Und wir warten 2 Sekunden. */
+    CleanUp(0);
+ENDPROC /* Anleitung */
+
+/*************************************************************************/
+PROC lesetab(was, el)
+/*  lesetab ermittelt aufgrund des übergebenden Zeichens das entsprechen-
+    de Tabellenelement und gibt die Taktzyklen zurück. Tabelle muß dabei
+    auf die richtige Teiltabelle gesetzt sein. */
+
+    SELECT was
+    CASE   &quot;1&quot;
+           IF tabelle[el].z1 &lt;&gt; -1 THEN RETURN tabelle[el].z1
+    CASE   &quot;2&quot;
+           IF tabelle[el].z2 &lt;&gt; -1 THEN RETURN tabelle[el].z2;
+    CASE   &quot;3&quot;
+           IF tabelle[el].z3 &lt;&gt; -1 THEN RETURN tabelle[el].z3;
+    CASE   &quot;4&quot;
+           IF tabelle[el].z4 &lt;&gt; -1 THEN RETURN tabelle[el].z4;
+    CASE   &quot;5&quot;
+           IF tabelle[el].z5 &lt;&gt; -1 THEN RETURN tabelle[el].z5;
+    CASE   &quot;6&quot;
+           IF tabelle[el].z6 &lt;&gt; -1 THEN RETURN tabelle[el].z6;
+    CASE   &quot;7&quot;
+           IF tabelle[el].z7 &lt;&gt; -1 THEN RETURN tabelle[el].z7;
+    CASE   &quot;8&quot;
+           IF tabelle[el].z8 &lt;&gt; -1 THEN RETURN tabelle[el].z8;
+    CASE   &quot;9&quot;
+           IF tabelle[el].z9 &lt;&gt; -1 THEN RETURN tabelle[el].z9;
+    CASE   &quot;A&quot;
+           IF tabelle[el].z10 &lt;&gt; -1 THEN RETURN tabelle[el].z10;
+    CASE   &quot;B&quot;
+           IF tabelle[el].z11 &lt;&gt; -1 THEN RETURN tabelle[el].z11;
+    CASE   &quot;C&quot;
+           IF tabelle[el].z12 &lt;&gt; -1 THEN RETURN tabelle[el].z12;
+    CASE   &quot;D&quot;
+           IF tabelle[el].z13 &lt;&gt; -1 THEN RETURN tabelle[el].z13;
+    DEFAULT
+           RETURN -1
+    ENDSELECT
+
+    RETURN -1
+ENDPROC /* * lesetab * */
+
+/*************************************************************************/
+PROC testvaradr(tt1)
+/* Testet den STRING ab, ob eine Variable und eine Adressenadressierung
+   vorliegt. Wenn dieses der Fall ist enthält tt den entsprechenden
+   aufbereiteten Wert, ansonsten &#x27;x&#x27;. * */
+
+DEF tt
+
+    tt := &quot;x&quot;;
+    REPEAT
+    IF inputline[von] = &quot;(&quot;
+       von++;
+       IF (inputline[von] = &quot;a&quot;) OR (inputline[von] = &quot;A&quot;) OR (inputline[von] = &quot;s&quot;) OR (inputline[von] = &quot;S&quot;)
+                    von := von +2
+                    IF (inputline[von] = &quot;)&quot;) THEN tt := &quot;6&quot;;
+                    IF (inputline[von] = &quot;,&quot;) THEN tt := &quot;7&quot;;
+                    IF tt1 = 1 THEN op1 := tt ELSE op2 := tt
+                    IF tt &lt;&gt; &quot;x&quot; THEN RETURN;
+       ENDIF
+       IF (inputline[von] = &quot;p&quot;) OR (inputline[von] = &quot;P&quot;)
+                    von := von +2
+                    IF (inputline[von] = &quot;)&quot;) THEN tt := &quot;A&quot;;
+                    IF (inputline[von] = &quot;,&quot;) THEN tt := &quot;B&quot;;
+                    IF tt1 = 1 THEN op1 := tt ELSE op2 := tt
+                    IF tt &lt;&gt; &quot;x&quot; THEN RETURN;
+       ENDIF
+    ENDIF
+    von++
+    UNTIL (inputline[von] &lt;= &quot; &quot;) OR (inputline[von] = &quot;,&quot;) OR (tt &lt;&gt; &quot;x&quot;)
+ENDPROC  /* testvaradr */
+
+/*************************************************************************/
+PROC holebefehl()
+/*  Ermittelt den Befehl und gibt dessen Position in von - bis zurück.
+    Erfolgt von der PROC die Rückgabe von FALSE dann gabs keinen
+    Befehl.  */
+DEF tt
+
+    tt := von;
+    IF inputline[tt] = 0  /* * Leerzeilen überlesen * */
+       von := 0
+       IF (verarb1 AND 16) = 16 THEN verarb := 1
+       RETURN FALSE
+    ENDIF
+
+    IF (inputline[tt] = &quot;*&quot;) OR (inputline[tt] = &quot;;&quot;) /* * Kommentar überlesen * */
+       von := 0;
+       RETURN FALSE;
+    ENDIF
+
+    IF (inputline[tt] &gt; &quot; &quot;)    /* * Label überlesen * */
+          REPEAT
+            tt++;
+          UNTIL (inputline[tt] &lt;= &quot; &quot;)
+    ENDIF
+
+    /* * Jetzt müßten wir am Anfang des Befehls stehen oder .... * */
+    IF (inputline[tt] &lt;&gt; &quot;*&quot;)  AND
+       (inputline[tt] &lt;&gt; &quot;;&quot;)  AND
+       (inputline[tt] &lt;&gt; 0)
+       WHILE inputline[tt] &lt;= &quot; &quot;        /* Leerstelle oder sonstiges */
+             tt++;                  /* * Dann Zähler + 1 * */
+       ENDWHILE
+
+       /* * So, jetzt müßten wir am Anfang des Befehls stehen. Da
+           es aber auch eine Kommentarzeile sein kann, prüfen
+           wir dieses noch ab. * */
+       IF (inputline[tt] &lt;&gt; &quot;*&quot;) OR
+          (inputline[tt] &lt;&gt; &quot;;&quot;)
+          von := tt;   /* * Position merken. * */
+          REPEAT
+            tt++;
+          UNTIL (inputline[tt] &lt;= &quot; &quot;)
+          bis := tt
+          RETURN TRUE
+       ENDIF
+    ENDIF
+    von := 0;
+    RETURN FALSE
+ENDPROC /* holebefehl*/
+
+/*************************************************************************/
+PROC holeop()
+/* Die Funktion ermittelt ab der Position von die OperANDen und
+   bereitet sie auf. Wenn op1 oder op2 = &#x27; &#x27; dann gab es keinen
+   OperANDen. Gleichzeitig wird die letzte Stelle mitgegeben, wo das
+   letzte Zeilenzeichen steht.
+*/
+DEF tt
+
+    /* * OperANDen vORbesetzen. * */
+    op1 := &quot;x&quot;;
+    op2 := &quot;x&quot;;
+
+    /* * Wir suchen solange bis wir ein Zeichen oder EOL gefunden haben. * */
+    tt := TRUE;
+    WHILE tt
+        IF inputline[von] = 0
+           op1 := &quot; &quot;;
+           op2 := &quot; &quot;;
+           RETURN;
+        ENDIF
+        IF (inputline[von] = &quot;;&quot;) OR (inputline[von] = &quot;*&quot;)
+           op1 := &quot; &quot;;
+           op2 := &quot; &quot;;
+           RETURN;
+        ENDIF
+        IF inputline[von] &lt;= &quot; &quot; THEN von++
+        IF inputline[von] &gt; &quot; &quot; THEN tt := FALSE /* * Gefunden. * */
+    ENDWHILE
+
+    /* * Jetzt haben wir den Anfang des ersten OperANDen gefunden. Jetzt
+        gehts ans Auswerten. * */
+
+    /* Liegt eine Speicheradresse vor? */
+    IF (inputline[von] = &quot;$&quot;) OR ((inputline[von] &gt;= &quot;1&quot;) AND (inputline[von] &lt;= &quot;9&quot;))
+                REPEAT
+                    von++;
+                UNTIL (inputline[von] = &quot;(&quot;) OR (inputline[von] = &quot;,&quot;) OR
+                      (inputline[von] &lt;= &quot; &quot;)
+                IF inputline[von] = &quot;(&quot;
+                            von++;
+                            IF (inputline[von] = &quot;a&quot;) OR
+                               (inputline[von] = &quot;A&quot;) OR
+                               (inputline[von] = &quot;s&quot;) OR
+                               (inputline[von] = &quot;S&quot;)
+                               von := von +2   /* * Registernummer überspringen. * */
+                               IF (inputline[von] = &quot;)&quot;) THEN op1 := &quot;6&quot;;
+                               IF (inputline[von] = &quot;,&quot;)
+                                  op1 := &quot;7&quot;
+                                  von++
+                               ENDIF
+                            ENDIF
+                            IF (inputline[von] = &quot;p&quot;) OR
+                               (inputline[von] = &quot;P&quot;)
+                               von := von +2;   /* * &quot;C&quot; überspringen. * */
+                               IF (inputline[von] = &quot;)&quot;) THEN op1 := &quot;A&quot;;
+                               IF (inputline[von] = &quot;,&quot;)
+                                  op1 := &quot;B&quot;
+                                  von++
+                               ENDIF
+                            ENDIF
+                ELSEIF (inputline[von] &lt;= &quot; &quot;)
+                            op1 := &quot;9&quot;;
+                            op2 := &quot; &quot;;
+                            RETURN;
+                ELSE
+                       IF (inputline[von] = &quot;,&quot;) THEN op1 := &quot;9&quot;;
+                ENDIF
+    ELSEIF (inputline[von] = &quot;#&quot;)
+                op1 := &quot;C&quot;;
+    ELSEIF (inputline[von] = &quot;a&quot;) OR
+           (inputline[von] = &quot;A&quot;)
+                von++;
+                IF (inputline[von] &gt;= &quot;0&quot;) AND
+                   (inputline[von] &lt;= &quot;7&quot;)
+                   von++
+                   IF (inputline[von] = &quot;,&quot;) OR
+                      (inputline[von] = &quot; &quot;)
+                      op1 := &quot;2&quot;;
+                   ENDIF
+                   IF (inputline[von] = &quot;-&quot;) OR
+                      (inputline[von] = &quot;/&quot;)
+                      op1 := &quot;E&quot;;
+                   ENDIF
+                   IF inputline[von] = 0
+                      op1 := &quot;2&quot;;
+                      op2 := &quot; &quot;;
+                      RETURN;
+                   ENDIF
+                ENDIF
+                IF op1 = &quot;x&quot; THEN testvaradr(1);
+                IF op1 = &quot;x&quot; THEN op1 := &quot;9&quot;;
+    ELSEIF (inputline[von] = &quot;d&quot;) OR
+           (inputline[von] = &quot;D&quot;)
+                von++;
+                IF (inputline[von] &gt;= &quot;0&quot;) AND
+                   (inputline[von] &lt;= &quot;7&quot;)
+                   von++;
+                   IF (inputline[von] = &quot;,&quot;) OR
+                      (inputline[von] = &quot; &quot;)
+                      op1 := &quot;1&quot;;
+                   ENDIF
+                   IF (inputline[von] = &quot;-&quot;) OR
+                      (inputline[von] = &quot;/&quot;)
+                      op1 := &quot;E&quot;;
+                   ENDIF
+                   IF (inputline[von] = 0)
+                      op1 := &quot;1&quot;;
+                      op2 := &quot; &quot;;
+                      RETURN;
+                   ENDIF
+                ENDIF
+                IF op1 = &quot;x&quot; THEN testvaradr(1);
+                IF op1 = &quot;x&quot; THEN op1 := &quot;9&quot;;
+
+    ELSEIF (inputline[von] = &quot;-&quot;)
+                testvaradr(1);
+                IF op1 = &quot;x&quot; THEN op1 := &quot;9&quot;;
+
+    ELSEIF (inputline[von] = &quot;(&quot;)
+                von++;
+                IF (inputline[von] = &quot;a&quot;) OR
+                   (inputline[von] = &quot;A&quot;) OR
+                   (inputline[von] = &quot;s&quot;) OR
+                   (inputline[von] = &quot;S&quot;)
+                   von := von +2;    /*  Registernummer überspringen. * */
+                   IF inputline[von] = &quot;,&quot;
+                      op1 := &quot;7&quot;
+                      von++
+                   ELSEIF inputline[von] = &quot;)&quot;
+                       von++;
+                       IF (inputline[von] = &quot;+&quot;) THEN op1 := &quot;4&quot;
+                       IF (inputline[von] &lt;&gt; &quot;+&quot;) THEN op1 := &quot;3&quot;
+                   ENDIF
+                ENDIF
+    ELSEIF (inputline[von] = &quot;c&quot;) OR
+           (inputline[von] = &quot;C&quot;)
+                von++;
+                IF (inputline[von] = &quot;c&quot;) OR
+                   (inputline[von] = &quot;C&quot;)
+                   IF (inputline[von] = &quot;r&quot;) OR
+                      (inputline[von] = &quot;R&quot;)
+                      op1 := &quot;D&quot;;
+                   ENDIF
+                ENDIF
+                IF op1 = &quot;x&quot; THEN testvaradr(1);
+                IF op1 = &quot;x&quot; THEN op1 := &quot;9&quot;;
+
+    /* Kommt jetzt der Stackpointer (SP)? */
+    ELSEIF (inputline[von] = &quot;s&quot;) OR
+           (inputline[von] = &quot;S&quot;)
+                von++;
+                IF (inputline[von] = &quot;p&quot;) OR
+                   (inputline[von] = &quot;P&quot;)
+                   op1 := &quot;2&quot;;
+                ENDIF
+                IF (inputline[von] = &quot;r&quot;) OR
+                   (inputline[von] = &quot;R&quot;)
+                   op1 := &quot;D&quot;;
+                ENDIF
+                IF op1 = &quot;x&quot; THEN testvaradr(1);
+                IF op1 = &quot;x&quot; THEN op1 := &quot;9&quot;;
+    ELSE
+                testvaradr(1);
+                IF op1 = &quot;x&quot; THEN op1 := &quot;9&quot;;
+    ENDIF
+
+    /* * Dieses war der erste Streich und der zweite folgt zugleich. * */
+    /* * Jetzt suche wir solange bis wir ein EOL oder ein , gefunden
+        haben. * */
+    tt := TRUE;
+    von--;   /* * KORrektur wg. WHILE * */
+    WHILE tt
+        von++;
+        IF (inputline[von] = 39)
+           von := von +2;  /* * Das blöde Leerzeichen überspringen * */
+           IF (inputline[von] &lt;&gt; 39) THEN von := von +3;
+        ENDIF
+
+        IF (inputline[von] = 34)
+           von := von +2;  /* * Das blöde Leerzeichen überspringen * */
+           IF (inputline[von] &lt;&gt; 34) THEN von := von + 3;
+        ENDIF
+
+        IF (inputline[von] &lt;= &quot; &quot;) OR (inputline[von] = &quot;;&quot;)
+           op2 := &quot; &quot;;
+           RETURN;
+        ENDIF
+        IF inputline[von] = &quot;,&quot; THEN tt := FALSE  /* * Gefunden. * */
+    ENDWHILE
+
+    /* * Jetzt haben wir den Anfang des zweiten OperANDen gefunden. Jetzt
+        gehts ans Auswerten. * */
+
+    von++;   /* * Komma überspringen * */
+
+    IF (inputline[von] = &quot;$&quot;) OR ((inputline[von] &gt;= &quot;1&quot;) AND (inputline[von] &lt;= &quot;9&quot;))   /* * Zweiten OperANDen holen. * */
+                REPEAT
+                    von++
+                UNTIL (inputline[von] = &quot;(&quot;) OR (inputline[von] = &quot;,&quot;) OR
+                      (inputline[von] &lt;= &quot; &quot;)
+                IF inputline[von] = &quot;(&quot;
+                            von++
+                            IF (inputline[von] = &quot;a&quot;) OR
+                               (inputline[von] = &quot;A&quot;) OR
+                               (inputline[von] = &quot;s&quot;) OR
+                               (inputline[von] = &quot;S&quot;)
+                               von := von +2;   /* * Registernummer überspringen. * */
+                               IF (inputline[von] = &quot;)&quot;) THEN op2 := &quot;6&quot;;
+                               IF (inputline[von] = &quot;,&quot;)
+                                  op2 := &quot;7&quot;
+                                  von++
+                               ENDIF
+                            ENDIF
+                            IF (inputline[von] = &quot;p&quot;) OR
+                               (inputline[von] = &quot;P&quot;)
+                               von := von +2;   /* * &quot;C&quot; überspringen. * */
+                               IF (inputline[von] = &quot;)&quot;) THEN op2 := &quot;A&quot;;
+                               IF (inputline[von] = &quot;,&quot;)
+                                  op2 := &quot;B&quot;
+                                  von++
+                               ENDIF
+                            ENDIF
+                ELSEIF (inputline[von] &lt;= &quot; &quot;)
+                            op2 := &quot;9&quot;;
+                            RETURN;
+                ELSE
+                       IF (inputline[von] = &quot;,&quot;) THEN op2 := &quot;9&quot;
+                ENDIF
+    ELSEIF inputline[von] = &quot;#&quot;
+           op2 := &quot;C&quot;;
+    ELSEIF (inputline[von] = &quot;a&quot;) OR
+           (inputline[von] = &quot;A&quot;)
+                von++
+                IF (inputline[von] &gt;= &quot;0&quot;) AND
+                   (inputline[von] &lt;= &quot;7&quot;)
+                   von++
+                   IF (inputline[von] = &quot;,&quot;) OR
+                      (inputline[von] &lt;= &quot; &quot;)       /* Merken! */
+                      op2 := &quot;2&quot;;
+                   ENDIF
+                   IF (inputline[von] = &quot;-&quot;) OR
+                      (inputline[von] = &quot;/&quot;)
+                      op2 := &quot;E&quot;;
+                   ENDIF
+                   IF (inputline[von] = 0)
+                      op2 := &quot;2&quot;
+                      RETURN
+                   ENDIF
+                ENDIF
+                IF op2 = &quot;x&quot; THEN testvaradr(2);
+                IF op2 = &quot;x&quot; THEN op2 := &quot;9&quot;;
+    ELSEIF (inputline[von] = &quot;d&quot;) OR
+           (inputline[von] = &quot;D&quot;)
+                von++
+                IF (inputline[von] &gt;= &quot;0&quot;) AND
+                   (inputline[von] &lt;= &quot;7&quot;)
+                   von++
+                   IF (inputline[von] = &quot;,&quot;) OR
+                      (inputline[von] &lt;= &quot; &quot;)       /* Merken! */
+                      op2 := &quot;1&quot;;
+                   ENDIF
+                   IF (inputline[von] = &quot;-&quot;) OR
+                      (inputline[von] = &quot;/&quot;)
+                      op2 := &quot;E&quot;;
+                   ENDIF
+                   IF (inputline[von] = 0)
+                      op2 := &quot;1&quot;;
+                      RETURN;
+                   ENDIF
+                ENDIF
+                IF op2 = &quot;x&quot; THEN testvaradr(2);
+                IF op2 = &quot;x&quot; THEN op2 := &quot;9&quot;;
+
+    ELSEIF (inputline[von] = &quot;-&quot;)
+                testvaradr(2);
+                IF op2 = &quot;x&quot; THEN op2 := &quot;9&quot;;
+
+    ELSEIF (inputline[von] = &quot;(&quot;)
+                von++
+                IF (inputline[von] = &quot;a&quot;) OR
+                   (inputline[von] = &quot;A&quot;) OR
+                   (inputline[von] = &quot;s&quot;) OR
+                   (inputline[von] = &quot;S&quot;)
+                   von := von +2;    /** Registernummer überspringen. * */
+                   IF inputline[von] = &quot;,&quot;
+                      op2 := &quot;7&quot;
+                      von++
+                   ELSEIF inputline[von] = &quot;)&quot;
+                      von++
+                      IF (inputline[von] = &quot;+&quot;) THEN op2 := &quot;4&quot;;
+                      IF (inputline[von] &lt;&gt; &quot;+&quot;) THEN op2 := &quot;3&quot;;
+                   ENDIF
+                ENDIF
+    ELSEIF (inputline[von] = &quot;c&quot;) OR
+           (inputline[von] = &quot;C&quot;)
+                von++
+                IF (inputline[von] = &quot;c&quot;) OR
+                   (inputline[von] = &quot;C&quot;)
+                   IF (inputline[von] = &quot;r&quot;) OR
+                      (inputline[von] = &quot;R&quot;)
+                      op2 := &quot;D&quot;;
+                   ENDIF
+                ENDIF
+                IF op2 = &quot;x&quot; THEN testvaradr(2);
+                IF op2 = &quot;x&quot; THEN op2 := &quot;9&quot;;
+
+    /* Kommt jetzt der Stackpointer (SP)? */
+    ELSEIF (inputline[von] = &quot;s&quot;) OR
+           (inputline[von] = &quot;S&quot;)
+                von++
+                IF (inputline[von] = &quot;p&quot;) OR
+                   (inputline[von] = &quot;P&quot;)
+                   op2 := &quot;2&quot;;
+                ENDIF
+                IF (inputline[von] = &quot;r&quot;) OR
+                   (inputline[von] = &quot;R&quot;)
+                   op2 := &quot;D&quot;;
+                ENDIF
+                IF op2 = &quot;x&quot; THEN testvaradr(2);
+                IF op2 = &quot;x&quot; THEN op2 := &quot;9&quot;;
+    ELSE
+                testvaradr(2);
+                IF op2 = &quot;x&quot; THEN op2 := &quot;9&quot;;
+    ENDIF
+ENDPROC /* * Hole Op, Ufff. * */
+
+/*************************************************************************/
+PROC holetakt()
+/* * Ermittelt die Taktzyklen der einzelnen Befehle. Rückgabewerte:
+    0  : Kein Befehl in der Zeile,
+    -1 : Befehl konnte nicht ermittelt werden,
+    -2 : falsche Befehlsart.
+* */
+DEF tt, tt1, tt2, tt3, tt4,
+    tt6, tt7, ttflag
+DEF tt8, tt9
+
+    von := 0; bis := 0
+    ttflag := holebefehl()
+    tt := von
+    tt1 := bis
+
+    IF (verarb1 AND 8) = 8 THEN WriteF(&#x27;von \d bis \d &#x27;,tt,tt1);
+
+    IF ttflag = FALSE THEN RETURN 0; /* * Kein Befehl. * */
+    tt2 := bis-von
+    MidStr(asbefehl, inputline,von, tt2); /* * Befehl sichern. * */
+    LowerStr(asbefehl)
+
+    /* * Jetzt holen wir uns die Operanden und bis wohin die Zeile geht. * */
+    von := bis
+    holeop(); /* * Operanden aufbereiten. * */
+    bis := von
+    tt6 := op1
+    tt7 := op2
+
+    IF (verarb1 AND 8) = 8 THEN
+       WriteF(&#x27;Inhalt: op1 \d op2 \d Befehl \s\n&#x27;,tt6,tt7,asbefehl);
+
+    /* * Die Variablen enthalten jetzt folgende Werte:
+        tt1 ---&gt; Zeiger auf das letzte Zeilenzeichen nach dem letzten
+                 OperANDen,
+        asbefehl ---&gt; Befehl,
+        tt6 ---&gt; ersten OperANDen,
+        tt7 ---&gt; zweiten OperANDen.
+        Jetzt müßen wir uns den richtigen tabellenplatz holen.
+    * */
+    tt4 := 1;
+    FOR tt8:= 0 TO 9
+        tabelle := tab[tt8]
+        FOR tt9:= 0 TO 29
+            IF (tt8*30+tt9) &gt; TABCOUNT THEN RETURN -1
+            IF StrCmp(tabelle[tt9].befehl,asbefehl,StrLen(asbefehl)) = TRUE THEN JUMP holetakt1
+        ENDFOR
+    ENDFOR
+    /* Hier darf das Programm eigentlich nie hinkommen. */
+    RETURN -1
+
+holetakt1:
+    tt4 := tt9
+
+    /* * Jetzt prüfen wir, ob eine Zwischensumme ausgegeben wird. * */
+    IF (verarb1 AND 1) = 1
+       IF (StrCmp(tabelle[tt4].befehl, &#x27;bcc.s&#x27;,ALL)) OR
+          (StrCmp(tabelle[tt4].befehl, &#x27;bcs.s&#x27;,ALL)) OR
+          (StrCmp(tabelle[tt4].befehl, &#x27;beq.s&#x27;,ALL)) OR
+          (StrCmp(tabelle[tt4].befehl, &#x27;bge.s&#x27;,ALL)) OR
+          (StrCmp(tabelle[tt4].befehl, &#x27;bgt.s&#x27;,ALL)) OR
+          (StrCmp(tabelle[tt4].befehl, &#x27;bhi.s&#x27;,ALL)) OR
+          (StrCmp(tabelle[tt4].befehl, &#x27;ble.s&#x27;,ALL)) OR
+          (StrCmp(tabelle[tt4].befehl, &#x27;bls.s&#x27;,ALL)) OR
+          (StrCmp(tabelle[tt4].befehl, &#x27;blt.s&#x27;,ALL)) OR
+          (StrCmp(tabelle[tt4].befehl, &#x27;bmi.s&#x27;,ALL)) OR
+          (StrCmp(tabelle[tt4].befehl, &#x27;bne.s&#x27;,ALL)) OR
+          (StrCmp(tabelle[tt4].befehl, &#x27;bpl.s&#x27;,ALL)) OR
+          (StrCmp(tabelle[tt4].befehl, &#x27;bra.s&#x27;,ALL)) OR
+          (StrCmp(tabelle[tt4].befehl, &#x27;bsr.s&#x27;,ALL)) OR
+          (StrCmp(tabelle[tt4].befehl, &#x27;bvc.s&#x27;,ALL)) OR
+          (StrCmp(tabelle[tt4].befehl, &#x27;bvs.s&#x27;,ALL)) OR
+          (StrCmp(tabelle[tt4].befehl, &#x27;dbra.s&#x27;,ALL))
+          verarb := 1;
+       ENDIF
+    ENDIF
+
+    IF (verarb1 AND 2) = 2
+       IF (StrCmp(tabelle[tt4].befehl, &#x27;jmp&#x27;,ALL)) OR
+          (StrCmp(tabelle[tt4].befehl, &#x27;jsr&#x27;,ALL)) THEN verarb := 1;
+    ENDIF
+
+    IF (verarb1 AND 4) = 4
+       IF (StrCmp(tabelle[tt4].befehl, &#x27;rte&#x27;,ALL)) OR
+          (StrCmp(tabelle[tt4].befehl, &#x27;rtr&#x27;,ALL)) OR
+          (StrCmp(tabelle[tt4].befehl, &#x27;rts&#x27;,ALL)) THEN verarb := 1;
+    ENDIF
+
+    /* * Jetzt wiederholen wir solange die Suche, bis die befehle nicht
+        mehr zueinANDer passen. * */
+    REPEAT
+
+    IF (verarb1 AND 8) = 8 THEN WriteF(&#x27;tabellenglied: \d\t&#x27;,tt4);
+
+    /* * Jetzt müßen wir sicherstellen, daß alles zueinANDer passt. * */
+    /* * sourceop * */
+    IF StrCmp(asbefehl,tabelle[tt4].befehl, StrLen(asbefehl))
+
+/* Blöd */
+       tt2 := tabelle[tt4].sourceop
+       SELECT tt2
+       CASE     0
+                    RETURN( tabelle[tt4].z1)
+       CASE     9
+                    RETURN( tabelle[tt4].z1)
+       CASE     8
+                    IF tt6 = &quot;x&quot; THEN RETURN(-2)
+                    IF tt6 = &quot;1&quot;
+                       IF tabelle[tt4].z1 &lt;&gt; -1 THEN RETURN(tabelle[tt4].z1)
+                    ENDIF
+                    IF tt6 = &quot;2&quot;
+                       IF tabelle[tt4].z2 &lt;&gt; -1 THEN RETURN(tabelle[tt4].z2)
+                    ENDIF
+                    IF tt6 = &quot;3&quot;
+                       IF tabelle[tt4].z3 &lt;&gt; -1 THEN RETURN(tabelle[tt4].z3)
+                    ENDIF
+                    IF tt6 = &quot;4&quot;
+                       IF tabelle[tt4].z4 &lt;&gt; -1 THEN RETURN(tabelle[tt4].z4)
+                    ENDIF
+                    IF tt6 = &quot;5&quot;
+                       IF tabelle[tt4].z5 &lt;&gt; -1 THEN RETURN(tabelle[tt4].z5)
+                    ENDIF
+                    IF tt6 = &quot;6&quot;
+                       IF tabelle[tt4].z6 &lt;&gt; -1 THEN RETURN(tabelle[tt4].z6)
+                    ENDIF
+                    IF tt6 = &quot;7&quot;
+                       IF tabelle[tt4].z7 &lt;&gt; -1 THEN RETURN(tabelle[tt4].z7)
+                    ENDIF
+                    IF tt6 = &quot;8&quot;
+                       IF tabelle[tt4].z8 &lt;&gt; -1 THEN RETURN(tabelle[tt4].z8)
+                    ENDIF
+                    IF tt6 = &quot;9&quot;
+                       IF tabelle[tt4].z9 &lt;&gt; -1 THEN RETURN(tabelle[tt4].z9)
+                    ENDIF
+                    IF tt6 = &quot;A&quot;
+                       IF tabelle[tt4].z10 &lt;&gt; -1 THEN RETURN(tabelle[tt4].z10)
+                    ENDIF
+                    IF tt6 = &quot;B&quot;
+                       IF tabelle[tt4].z11 &lt;&gt; -1 THEN RETURN(tabelle[tt4].z11)
+                    ENDIF
+                    IF tt6 = &quot;C&quot;
+                       IF tabelle[tt4].z12 &lt;&gt; -1 THEN RETURN(tabelle[tt4].z12)
+                    ENDIF
+                    IF tt6 = &quot;D&quot;
+                       IF tabelle[tt4].z13 &lt;&gt; -1 THEN RETURN(tabelle[tt4].z13)
+                    ENDIF
+       CASE     1
+                    IF tt6 &lt;&gt; &quot;x&quot;
+                       IF ((Char(tabelle[tt4].sourceopin) = &quot; &quot;) AND (tt7 &lt;&gt; &quot;x&quot;)) OR
+
+                          ((Char(tabelle[tt4].sourceopin) = &quot;d&quot;) AND (tt6 = &quot;1&quot;)  AND
+                          (tt7 &lt;&gt; &quot;x&quot;)) OR
+
+                          ((Char(tabelle[tt4].sourceopin) = &quot;a&quot;) AND (tt6 = &quot;2&quot;)  AND
+                          (tt7 &lt;&gt; &quot;x&quot;)) OR
+
+                          ((Char(tabelle[tt4].sourceopin) = &quot;(&quot;) AND (tt6 = &quot;3&quot;)  AND
+                          (tt7 &lt;&gt; &quot;x&quot;)) OR
+
+                          ((Char(tabelle[tt4].sourceopin) = &quot;+&quot;) AND (tt6 = &quot;4&quot;)  AND
+                          (tt7 &lt;&gt; &quot;x&quot;)) OR
+
+                          ((Char(tabelle[tt4].sourceopin) = &quot;-&quot;) AND (tt6 = &quot;5&quot;)  AND
+                          (tt7 &lt;&gt; &quot;x&quot;)) OR
+
+                          ((Char(tabelle[tt4].sourceopin) = &quot;)&quot;) AND (tt6 = &quot;6&quot;)  AND
+                          (tt7 &lt;&gt; &quot;x&quot;)) OR
+
+                          ((Char(tabelle[tt4].sourceopin) = &quot;&amp;&quot;) AND (tt6 = &quot;7&quot;)  AND
+                          (tt7 &lt;&gt; &quot;x&quot;)) OR
+
+                          ((Char(tabelle[tt4].sourceopin) = &quot;w&quot;) AND (tt6 = &quot;8&quot;)  AND
+                          (tt7 &lt;&gt; &quot;x&quot;)) OR
+
+                          ((Char(tabelle[tt4].sourceopin) = &quot;l&quot;) AND (tt6 = &quot;9&quot;)  AND
+                          (tt7 &lt;&gt; &quot;x&quot;)) OR
+
+                          ((Char(tabelle[tt4].sourceopin) = &quot;c&quot;) AND (tt6 = &quot;D&quot;)  AND
+                          (tt7 &lt;&gt; &quot;x&quot;)) OR
+
+                          ((Char(tabelle[tt4].sourceopin) = &quot;s&quot;) AND (tt6 = &quot;D&quot;)  AND
+                          (tt7 &lt;&gt; &quot;x&quot;)) OR
+
+                          ((Char(tabelle[tt4].sourceopin) = &quot;u&quot;) AND (tt6 = &quot;D&quot;)  AND
+                          (tt7 &lt;&gt; &quot;x&quot;)) OR
+
+                          ((Char(tabelle[tt4].sourceopin) = &quot;#&quot;) AND (tt6 = &quot;C&quot;)  AND
+                          (tt7 &lt;&gt; &quot;x&quot;)) OR
+
+                          ((Char(tabelle[tt4].sourceopin) = &quot;r&quot;) AND (tt6 = &quot;E&quot;)  AND
+                          (tt7 &lt;&gt; &quot;x&quot;))
+
+                               tt3 := lesetab(tt7,tt4)
+                               IF tt3 &lt;&gt; -1 THEN RETURN(tt3)
+                       ENDIF
+                    ENDIF
+           CASE 2
+
+                    IF tt7 &lt;&gt; &quot;x&quot;
+                       IF ((Char(tabelle[tt4].sourceopin) = &quot; &quot;) AND (tt6 &lt;&gt; &quot;x&quot;)) OR
+
+                          ((Char(tabelle[tt4].sourceopin) = &quot;d&quot;) AND (tt7 = &quot;1&quot;)  AND
+                          (tt6 &lt;&gt; &quot;x&quot;)) OR
+
+                          ((Char(tabelle[tt4].sourceopin) = &quot;a&quot;) AND (tt7 = &quot;2&quot;)  AND
+                          (tt6 &lt;&gt; &quot;x&quot;)) OR
+
+                          ((Char(tabelle[tt4].sourceopin) = &quot;(&quot;) AND (tt7 = &quot;3&quot;)  AND
+                          (tt6 &lt;&gt; &quot;x&quot;)) OR
+
+                          ((Char(tabelle[tt4].sourceopin) = &quot;+&quot;) AND (tt7 = &quot;4&quot;)  AND
+                          (tt6 &lt;&gt; &quot;x&quot;)) OR
+
+                          ((Char(tabelle[tt4].sourceopin) = &quot;-&quot;) AND (tt7 = &quot;5&quot;)  AND
+                          (tt6 &lt;&gt; &quot;x&quot;)) OR
+
+                          ((Char(tabelle[tt4].sourceopin) = &quot;)&quot;) AND (tt7 = &quot;6&quot;)  AND
+                          (tt6 &lt;&gt; &quot;x&quot;)) OR
+
+                          ((Char(tabelle[tt4].sourceopin) = &quot;&amp;&quot;) AND (tt7 = &quot;7&quot;)  AND
+                          (tt6 &lt;&gt; &quot;x&quot;)) OR
+
+                          ((Char(tabelle[tt4].sourceopin) = &quot;w&quot;) AND (tt7 = &quot;8&quot;)  AND
+                          (tt6 &lt;&gt; &quot;x&quot;)) OR
+
+                          ((Char(tabelle[tt4].sourceopin) = &quot;l&quot;) AND (tt7 = &quot;9&quot;)  AND
+                          (tt6 &lt;&gt; &quot;x&quot;)) OR
+
+                          ((Char(tabelle[tt4].sourceopin) = &quot;c&quot;) AND (tt7 = &quot;D&quot;)  AND
+                          (tt6 &lt;&gt; &quot;x&quot;)) OR
+
+                          ((Char(tabelle[tt4].sourceopin) = &quot;s&quot;) AND (tt7 = &quot;D&quot;)  AND
+                          (tt6 &lt;&gt; &quot;x&quot;)) OR
+
+                          ((Char(tabelle[tt4].sourceopin) = &quot;u&quot;) AND (tt7 = &quot;D&quot;)  AND
+                          (tt6 &lt;&gt; &quot;x&quot;)) OR
+
+                          ((Char(tabelle[tt4].sourceopin) = &quot;#&quot;) AND (tt7 = &quot;C&quot;)  AND
+                          (tt6 &lt;&gt; &quot;x&quot;)) OR
+
+                          ((Char(tabelle[tt4].sourceopin) = &quot;r&quot;) AND (tt7 = &quot;E&quot;)  AND
+                          (tt6 &lt;&gt; &quot;x&quot;))
+
+                               tt3 := lesetab(tt6,tt4);
+                               IF tt3 &lt;&gt; -1 THEN RETURN(tt3)
+                       ENDIF
+                    ENDIF
+       ENDSELECT
+    ENDIF
+    /* * Tja, wer an diese Stelle noch ankommt, für den passte alles
+        nicht. Deshalb wiederholen wir es solange, bis der Befehl
+        abweicht. * */
+    tt4++
+    IF tt4&gt;29
+        tt4 := 0
+        tt8++
+        IF tt8&gt;8
+           IF (tt8*30+tt9) &gt; TABCOUNT THEN RETURN -2
+        ENDIF
+        tabelle := tab[tt8]
+    ENDIF
+    UNTIL (StrCmp(tabelle[tt4].befehl,asbefehl, 3) = FALSE)
+ENDPROC /* * holetakt. * */
+
+PROC getargs(nummer, str : PTR TO LONG)
+/* Kopiert das Argument nummer in den String str. Der Rückgabewert
+   ist bei Aufruf nummer = 0 die Anzahl der Argumente. Sonst enthält
+   der Rückgabewert die Nummer des Arguments oder -1 (wenn kein
+   Argument vorhanden gewesen ist).  */
+DEF tt=0, tt1=0
+
+   IF nummer = 0 THEN RETURN searchargs(0)
+   tt := searchargs(nummer)
+   IF tt = -1 THEN RETURN -1
+   tt1 := searchargs(nummer+1)
+   tt1--
+   MidStr(str, arg, tt, tt1-tt)
+   RETURN nummer
+ENDPROC
+
+PROC searchargs(com)
+/* Liefert bei com=0 die Anzahl der Argumente zurück oder
+   bei com = 1 die Position des ersten Buchstaben des com.ten Arguments.
+   Ist der Returnwert = -1 dann gab es keine Argumente. */
+DEF tt=0, tt1=0, tt2=1
+
+    IF (tt:=StrLen(arg)) = 0 THEN RETURN -1
+    IF com = 0
+        FOR tt1 := 0 TO tt
+            IF arg[tt1] = &quot; &quot; THEN tt2++
+        ENDFOR
+        RETURN tt2
+    ELSE
+        FOR tt1 := 0 TO tt
+            IF tt2 = com THEN RETURN tt1
+            IF arg[tt1] = &quot; &quot;
+               tt2 ++
+               IF tt2 = com
+                  tt1 ++
+                  RETURN tt1
+               ENDIF
+            ENDIF
+        ENDFOR
+        RETURN tt1
+    ENDIF
+ENDPROC
+
+PROC    befinf()    /* Gibt Informationen über einen Befehl aus. */
+DEF tt1, tt2
+
+    WriteF(&#x27;Information über einen Befehl. Ende mit \ax\a\n&#x27;);
+    REPEAT
+      WriteF(&#x27;Bitte befehl eingeben ---&gt; &#x27;);
+      ReadStr(stdout,inputline);
+      IF inputline[0] &lt;&gt; &quot;x&quot;
+        FOR tt1:= 0 TO 9
+            tabelle := tab[tt1]
+            FOR tt2:= 0 TO 29
+                IF (tt1*30+tt2) &gt; TABCOUNT
+                   JUMP befinf1
+                ENDIF
+                IF StrCmp(tabelle[tt2].befehl,inputline,StrLen(inputline)) = TRUE THEN JUMP befinf2
+            ENDFOR
+        ENDFOR
+
+befinf1:
+        WriteF(&#x27;Befehl nicht gefunden!\n&#x27;)
+        JUMP befinf3
+
+befinf2:    /* Befehl gefunden, jetzt gehts ans aufbereiten. */
+        REPEAT
+            WriteF(&#x27;Befehl: \s\n&#x27;,tabelle[tt2].befehl)
+            WriteF(&#x27;Dn  An  (An) (An)+ -(An) d(An) d(An,Rx) $xx.W $xx.L d(PC) d(PC,Rx) #xx SR/CCR\n&#x27;)
+            WriteF(&#x27;-----------------------------------------------------------------------------\n&#x27;)
+
+            IF tabelle[tt2].z1 = -1 THEN WriteF(&#x27; -  &#x27;) ELSE WriteF(&#x27;\z\d[3] &#x27;,tabelle[tt2].z1)
+            IF tabelle[tt2].z2 = -1 THEN WriteF(&#x27; -  &#x27;) ELSE WriteF(&#x27;\z\d[3] &#x27;,tabelle[tt2].z2)
+            IF tabelle[tt2].z3 = -1 THEN WriteF(&#x27; -   &#x27;) ELSE WriteF(&#x27; \z\d[3] &#x27;,tabelle[tt2].z3)
+            IF tabelle[tt2].z4 = -1 THEN WriteF(&#x27; -    &#x27;) ELSE WriteF(&#x27; \z\d[3]  &#x27;,tabelle[tt2].z4)
+            IF tabelle[tt2].z5 = -1 THEN WriteF(&#x27; -    &#x27;) ELSE WriteF(&#x27; \z\d[3]  &#x27;,tabelle[tt2].z5)
+            IF tabelle[tt2].z6 = -1 THEN WriteF(&#x27; -    &#x27;) ELSE WriteF(&#x27; \z\d[3]  &#x27;,tabelle[tt2].z6)
+            IF tabelle[tt2].z7 = -1 THEN WriteF(&#x27; -      &#x27;) ELSE WriteF(&#x27;  \z\d[3]    &#x27;,tabelle[tt2].z7)
+            IF tabelle[tt2].z8 = -1 THEN WriteF(&#x27; -    &#x27;) ELSE WriteF(&#x27; \z\d[3]  &#x27;,tabelle[tt2].z8)
+            IF tabelle[tt2].z9 = -1 THEN WriteF(&#x27; -    &#x27;) ELSE WriteF(&#x27; \z\d[3]  &#x27;,tabelle[tt2].z9)
+            IF tabelle[tt2].z10 = -1 THEN WriteF(&#x27; -    &#x27;) ELSE WriteF(&#x27; \z\d[3]  &#x27;,tabelle[tt2].z10)
+            IF tabelle[tt2].z11 = -1 THEN WriteF(&#x27; -       &#x27;) ELSE WriteF(&#x27;  \z\d[3]    &#x27;,tabelle[tt2].z11)
+            IF tabelle[tt2].z12 = -1 THEN WriteF(&#x27; -  &#x27;) ELSE WriteF(&#x27;\z\d[3] &#x27;,tabelle[tt2].z12)
+            IF tabelle[tt2].z13 = -1 THEN WriteF(&#x27;  - \n&#x27;) ELSE WriteF(&#x27;  \z\d[3]\n\n&#x27;,tabelle[tt2].z13)
+
+            tt2++
+        UNTIL (StrCmp(tabelle[tt2].befehl,inputline, 3) = FALSE)
+
+      ENDIF
+befinf3:
+
+    UNTIL inputline[0] = &quot;x&quot;;
+    WriteF(&#x27;bye bye ...\n&#x27;);
+    CleanUp(0)
+ENDPROC
+
+PROC vbcount()
+/* Hier kommt der Assemblercode. */
+initvb0:
+        ADDI.L  #1,(A1)          /* increments counter is_Data points to */
+        MOVEQ.L #0,D0            /* set Z flag to continue to process other vb-servers */
+        RTS                      /* return to exec */
+ENDPROC
+
+PROC initvb()
+DEF vbln : ln
+    vbcounter := 0
+    vbint := AllocMem(SIZEOF is, MEMF_PUBLIC+MEMF_CLEAR)   /* interrupt node. */
+    vbln  := vbint.ln
+    vbln.type := NT_INTERRUPT;         /* Initialize the node. */
+    vbln.succ := 0;
+    vbln.pred := 0;
+    vbln.pri  := -60;
+    vbln.name := &#x27;VertB-Example&#x27;;
+    vbint.data := {vbcounter};
+    vbint.code := {initvb0};
+    AddIntServer(INTB_VERTB, vbint); /* Kick this interrupt server to life. */
+ENDPROC
+
+PROC exitvb()
+     WriteF(&#x27;Ticks: \d\n&#x27;, vbcounter)
+     RemIntServer(INTB_VERTB, vbint);
+     FreeMem(vbint, SIZEOF is);
+ENDPROC
+
+PROC settime()
+     timer1 := vbcounter
+ENDPROC
+
+PROC gettime()
+     WriteF(&#x27;Ticks: \d\t&#x27;, vbcounter-timer1)
+ENDPROC
+
+PROC readstrbuf(fileh, str:PTR TO CHAR)
+/* Liest aus dem Filehandler fileh den String str. */
+DEF tt=0
+    IF strbuf = NIL
+        strbuf := New(STRBUFSIZE)
+        IF strbuf = NIL THEN CleanUp(10)
+        bufpos := bufend +1
+    ENDIF
+    LOOP
+        IF bufpos &gt; bufend
+           IF bufend &lt; STRBUFSIZE THEN RETURN -1 /* EOF */
+           bufend := Read(fileh, strbuf, STRBUFSIZE)
+           IF (bufend = 0) OR (bufend = -1) THEN RETURN -1 /* EOF */
+           bufpos := 0
+           tt--
+           IF tt &lt; 0 THEN tt:=0
+        ENDIF
+        str[tt] := strbuf[bufpos]
+        bufpos++
+        tt++
+        IF str[tt-1] = 10
+           str[tt-1] := 0
+           RETURN 0 /* EOL */
+        ENDIF
+    ENDLOOP
+ENDPROC
+
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

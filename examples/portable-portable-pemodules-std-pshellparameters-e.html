@@ -1,0 +1,409 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>pShellParameters.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-portable.html">PortablE</a> &rsaquo; pShellParameters.e</div><h1>File: <code>pShellParameters.e</code></h1><p class="meta">383 lines · project <a href="../examples/pkg-portable.html"><code>PortablE</code></a></p><p class="pathctx">PortablE/PortablE/PEmodules/std/pShellParameters.e</p><p class="prose">pShellParameters.e 06-06-2020 Portable <a href="../modules/shell.html">shell</a> parameter parsing, heavily inspired by AmigaOS&#x27;s marvelous <a href="../modules/dos.html#fn-readargs">ReadArgs</a>(). Developed in 2009, 2011, 2014 by Christopher Steven Handley. Basically finished 10-01-2009, started 09-01-2009.</p><h2>Source</h2><pre class="code">/* pShellParameters.e 06-06-2020
+    Portable shell parameter parsing, heavily inspired by AmigaOS&#x27;s marvelous ReadArgs().
+	Developed in 2009, 2011, 2014 by Christopher Steven Handley.
+	Basically finished 10-01-2009, started 09-01-2009.
+*/
+
+MODULE &#x27;std/pShell&#x27;
+
+PRIVATE
+
+-&gt;CONST DEBUG = FALSE
+
+DEF parsingTemplate:BOOL
+
+SET TYPE_LETTER, TYPE_NUMBER,				-&gt;TYPE_WORD, but TYPE_LETTER is never returned by charaType()
+	TYPE_STRING,
+    TYPE_SLASH, TYPE_COMMA, TYPE_EQUALS,	-&gt;TYPE_SYMBOL
+    TYPE_SPACER, TYPE_EOL, TYPE_UNKNOWN
+CONST TYPE_WORD   = TYPE_LETTER OR TYPE_NUMBER
+CONST TYPE_SYMBOL = TYPE_SLASH OR TYPE_COMMA OR TYPE_EQUALS
+
+DEF templateCopy:OWNS STRING
+DEF templateNames:OWNS ARRAY OF OWNS STRING		-&gt;aliases are linked to the first string
+DEF templateFlags:OWNS ARRAY OF VALUE
+DEF templateSize=0
+SET FLAG_A, FLAG_K, FLAG_S, FLAG_N, FLAG_F
+
+DEF paramCopy:OWNS STRING
+DEF templateMatches:OWNS ARRAY OF OWNS STRING
+
+PROC deallocate()
+	DEF i
+	IF templateNames   THEN FOR i := 0 TO templateSize - 1 DO END templateNames[i]
+	IF templateMatches THEN FOR i := 0 TO templateSize - 1 DO END templateMatches[i]
+	
+	END templateCopy
+	END templateNames
+	END templateFlags
+	END paramCopy
+	END templateMatches
+ENDPROC
+
+PROC end() IS deallocate()
+
+
+PROC findKeyword(word:ARRAY OF CHAR) RETURNS found:BOOL, index
+	DEF name:STRING
+	
+	found := FALSE
+	FOR index := 0 TO templateSize - 1
+		name := templateNames[index]
+		WHILE name
+			found := StrCmpNoCase(word, name)
+			name := Next(name)
+		ENDWHILE IF found
+	ENDFOR IF found
+ENDPROC
+
+DEF silentErrors:BOOL
+
+PUBLIC
+
+
+-&gt;parse shell parameters according to supplied template
+PROC ParseParams(template:ARRAY OF CHAR, shellArgs=NILA:ARRAY OF CHAR, silent=FALSE:BOOL) RETURNS success:BOOL
+	DEF i, len, token:OWNS STRING, type, flags
+	DEF question:BOOL, inputBuffer:OWNS STRING
+	DEF nextParam, isKeyword:BOOL, keywordParam
+	
+	success := TRUE
+	silentErrors := silent
+	
+	-&gt;deallocate anything from a previous call
+	deallocate()
+	
+	-&gt;count commas to find number of template parameters
+	templateSize := 1
+	len := StrLen(template)
+	FOR i := 0 TO len-1 DO IF template[i] = &quot;,&quot; THEN templateSize++
+	
+	NEW templateNames  [templateSize]
+	NEW templateFlags  [templateSize + 1]	-&gt;last flag is always 0
+	NEW templateMatches[templateSize + 1]	-&gt;last &#x27;match&#x27; is always NILS
+	
+	-&gt;parse template
+	parsingTemplate := TRUE
+	templateCopy := StrJoin(template)
+	initToken(templateCopy)
+	i := 0
+	REPEAT
+		token, type := nextToken()
+		
+		-&gt;parameter name
+		IF type AND NOT TYPE_WORD THEN lastTokenError(token, &#x27;expected word for parameter name&#x27;)
+		IF findKeyword(token) THEN lastTokenError(token, &#x27;parameter name already used&#x27;)
+		templateNames[i] := PASS token
+		token, type := nextToken()
+		
+		-&gt;parameter name aliases
+		WHILE type AND TYPE_EQUALS
+			END token
+			
+			token, type := nextToken()
+			IF type AND NOT TYPE_WORD THEN lastTokenError(token, &#x27;expected word for parameter name&#x27;)
+			IF findKeyword(token) THEN lastTokenError(token, &#x27;parameter name already used&#x27;)
+			Link(token, Next(templateNames[i]))
+			Link(templateNames[i], PASS token)
+			
+			token, type := nextToken()
+		ENDWHILE
+		
+		-&gt;parameter flag(s)
+		flags := 0
+		WHILE type AND TYPE_SLASH
+			END token
+			
+			token, type := nextToken()
+			IF type AND NOT TYPE_WORD THEN lastTokenError(token, &#x27;expected letter for parameter type&#x27;)
+			IF      StrCmp(token, &#x27;A&#x27;) ; flags := flags OR FLAG_A ; IF flags AND FLAG_S THEN lastTokenError(token, &#x27;parameter type conflicts with a previous type&#x27;)
+			ELSE IF StrCmp(token, &#x27;K&#x27;) ; flags := flags OR FLAG_K ; IF flags AND FLAG_S THEN lastTokenError(token, &#x27;parameter type conflicts with a previous type&#x27;)
+			ELSE IF StrCmp(token, &#x27;N&#x27;) ; flags := flags OR FLAG_N ; IF flags AND FLAG_S THEN lastTokenError(token, &#x27;parameter type conflicts with a previous type&#x27;)
+			ELSE IF StrCmp(token, &#x27;F&#x27;) ; flags := flags OR FLAG_F ; IF flags AND FLAG_S THEN lastTokenError(token, &#x27;parameter type conflicts with a previous type&#x27;)
+			ELSE IF StrCmp(token, &#x27;S&#x27;) ; flags := flags OR FLAG_S ; IF flags AND (FLAG_A OR FLAG_K OR FLAG_N OR FLAG_F) THEN lastTokenError(token, &#x27;parameter type conflicts with a previous type&#x27;)
+			ELSE
+				lastTokenError(token, &#x27;unknown parameter type&#x27;)
+			ENDIF
+			END token
+			
+			token, type := nextToken()
+		ENDWHILE
+		templateFlags[i] := flags
+		
+		-&gt;handle end of parameter
+		i++
+		IF type AND TYPE_COMMA
+			IF i &gt;= templateSize THEN Throw(&quot;BUG&quot;, &#x27;template array index out of bounds&#x27;)
+			
+		ELSE IF type AND NOT TYPE_EOL
+			lastTokenError(token, &#x27;expected &quot;,&quot; or end of line&#x27;)
+		ENDIF
+		END token
+	UNTIL type AND TYPE_EOL
+	
+	-&gt;check for ? at end of parameters
+	IF shellArgs = NILA THEN shellArgs := ShellArgs()
+	
+	parsingTemplate := FALSE
+	i := StrLen(shellArgs)
+	WHILE i &gt; 0
+		i--
+	ENDWHILE IF charaType(shellArgs[i]) &lt;&gt; TYPE_SPACER
+	
+	question := FALSE
+	IF i &gt;= 0
+		IF shellArgs[i] = &quot;?&quot;
+			IF i = 0
+				question := TRUE
+			ELSE
+				question := (charaType(shellArgs[i-1]) = TYPE_SPACER)
+			ENDIF
+		ENDIF
+	ENDIF
+	
+	IF question
+		-&gt;report template
+		Print(&#x27;\s: &#x27;, template)
+		PrintFlush()
+		
+		-&gt;ask user for additional parameters
+		NEW inputBuffer[1000]
+		IF ReadStr(stdin, inputBuffer) THEN StrCopy(inputBuffer, &#x27;\n&#x27;)
+		SetStr(inputBuffer, EstrLen(inputBuffer) - 1)	-&gt;strip trailing \n
+		
+		-&gt;append to original input
+		NEW paramCopy[StrLen(shellArgs)-1 + EstrLen(inputBuffer)]
+		StrCopy(paramCopy, shellArgs, StrLen(shellArgs)-1)
+		StrAdd( paramCopy, inputBuffer)
+		END inputBuffer
+	ENDIF
+	
+	-&gt;parse parameters according to template
+	parsingTemplate := FALSE
+	IF paramCopy = NILS THEN paramCopy := StrJoin(shellArgs)
+	initToken(paramCopy)
+	
+	token, type := nextToken()
+	nextParam := 0
+	WHILE (templateFlags[nextParam] AND (FLAG_K OR FLAG_S)) DO nextParam++
+	
+	WHILE type AND NOT TYPE_EOL
+		-&gt;see if parameter is a keyword
+		IF type AND TYPE_WORD
+			isKeyword, i := findKeyword(token)
+			IF templateMatches[i] THEN isKeyword := FALSE	-&gt;ignore keyword match if it has already been matched previously
+		ELSE
+			isKeyword := FALSE
+		ENDIF
+		
+		IF isKeyword
+			IF templateFlags[i] AND FLAG_S
+				-&gt;store switch keyword
+				templateMatches[i] := PASS token
+			ELSE
+				-&gt;(matched keyword) so get parameter
+				END token
+				token, type := nextToken()
+				IF type = TYPE_EQUALS ; END token ; token, type := nextToken() ; ENDIF
+				keywordParam := i
+			ENDIF
+			
+		ELSE IF nextParam &lt; templateSize
+			keywordParam := nextParam
+		ELSE
+			lastTokenError(token, &#x27;does not match template&#x27;)
+		ENDIF
+		
+		IF token
+			-&gt;(was not a switch keyword)
+			IF templateFlags[keywordParam] AND FLAG_F
+				-&gt;extend current token to rest of line
+				tokenNextPos := tokenNextPos - EstrLen(token)
+				IF type AND TYPE_STRING THEN tokenNextPos := tokenNextPos - 2
+				END token
+				
+				NEW token[EstrLen(tokenSource) - tokenNextPos]
+				StrCopy(token, tokenSource, ALL, tokenNextPos)
+				tokenNextPos := EstrLen(tokenSource)
+			ENDIF
+			
+			IF type AND (TYPE_WORD OR TYPE_STRING)		-&gt;WORD = LETTER OR NUMBER
+				-&gt;was: IF type AND TYPE_NUMBER = 0
+				IF type &lt;&gt; TYPE_NUMBER
+					IF templateFlags[keywordParam] AND FLAG_N THEN lastTokenError(token, &#x27;expected number&#x27;)
+				ENDIF
+				templateMatches[keywordParam] := PASS token
+				
+			ELSE IF type AND TYPE_EOL
+				lastTokenError(token, IF isKeyword THEN &#x27;expected value after keyword&#x27; ELSE &#x27;unexpected end of line&#x27;)
+			ELSE
+				lastTokenError(token, &#x27;illegal character&#x27;)
+			ENDIF
+		ENDIF
+		
+		-&gt;go to next parameter
+		token, type := nextToken()
+		WHILE (templateMatches[nextParam] &lt;&gt; NILS) OR (templateFlags[nextParam] AND (FLAG_K OR FLAG_S)) DO nextParam++
+	ENDWHILE IF type AND TYPE_EOL
+	
+	-&gt;check all required parameters have been supplied
+	FOR i := 0 TO templateSize - 1
+		IF (templateMatches[i] = NILS) AND (templateFlags[i] AND FLAG_A) THEN generalError(&#x27;missing required parameter &quot;\s&quot;&#x27;, templateNames[i])
+	ENDFOR
+FINALLY
+	END token
+	END inputBuffer
+	
+	IF exception = &quot;ERR&quot;
+		-&gt;(parsing error which was already reported) so return failure
+		exception := 0
+		success := FALSE
+	ENDIF
+ENDPROC
+
+PROC GetParam(index) RETURNS arg:ARRAY OF CHAR
+	-&gt;use check
+	IF (index &lt; 0) OR (index &gt;= templateSize) THEN Throw(&quot;EPU&quot;, &#x27;std/pShellParameters; GetParam(); index is out of range&#x27;)
+	
+	arg := templateMatches[index]
+ENDPROC
+
+PROC NumberOfParams() RETURNS numberOfParams IS templateSize
+
+
+PRIVATE
+
+DEF tokenSource:STRING
+DEF tokenNextPos
+
+-&gt;initialise tokeniser
+PROC initToken(source:STRING)
+	tokenSource  := source
+	tokenNextPos := 0
+ENDPROC
+
+-&gt;get next non-spacer token
+PROC nextToken() RETURNS token:OWNS STRING, type
+	DEF lastPos, startPos, size, firstChara:CHAR
+	
+	lastPos := EstrLen(tokenSource) - 1
+	IF tokenNextPos &gt; lastPos THEN RETURN NEW &#x27;&#x27;, TYPE_EOL
+	
+	REPEAT
+		END token
+		startPos := tokenNextPos
+		type := charaType(firstChara := tokenSource[tokenNextPos++])
+		IF (firstChara = &quot;-&quot;) AND (charaType(tokenSource[tokenNextPos], type) AND TYPE_WORD &lt;&gt; 0) THEN type := TYPE_WORD
+		
+		IF type AND (TYPE_WORD OR TYPE_SYMBOL OR TYPE_SPACER)
+			-&gt;find last character with same type
+			WHILE charaType(tokenSource[tokenNextPos], type) AND type &lt;&gt; 0 DO tokenNextPos++
+			
+			-&gt;create token
+			NEW token[size := tokenNextPos - startPos]
+			StrCopy(token, tokenSource, size, startPos)
+			
+		ELSE IF type AND TYPE_STRING
+			-&gt;find closing quote character
+			startPos++
+			WHILE charaType(tokenSource[tokenNextPos]) &lt;&gt; TYPE_STRING
+				tokenNextPos++
+			ENDWHILE IF tokenNextPos &gt; lastPos
+			
+			-&gt;create token
+			NEW token[size := tokenNextPos - startPos]
+			StrCopy(token, tokenSource, size, startPos)
+			
+			IF tokenNextPos &gt; lastPos THEN lastTokenError(token, &#x27;string is missing closing quote&#x27;)
+			tokenNextPos++	-&gt;move past closing quote character
+			
+		ELSE IF type AND TYPE_EOL
+			token := NEW &#x27;&#x27;
+			
+		ELSE IF type AND TYPE_UNKNOWN
+			token := NEW &#x27;?&#x27; ; token[0] := tokenSource[startPos]
+			lastTokenError(token, &#x27;unexpected character&#x27;)
+		ELSE
+			Throw(&quot;BUG&quot;, &#x27;std/pShellParameters; nextToken(); unknown token type&#x27;)
+		ENDIF
+	UNTIL type &lt;&gt; TYPE_SPACER
+	-&gt;Print(&#x27;# token=&quot;\s&quot;, type=\s\n&#x27;, token, IF type AND TYPE_LETTER THEN &#x27;letter&#x27; ELSE IF type AND TYPE_NUMBER THEN &#x27;number&#x27; ELSE IF type AND TYPE_STRING THEN &#x27;string&#x27; ELSE IF type AND TYPE_EQUALS THEN &#x27;equals&#x27; ELSE IF type AND TYPE_SYMBOL THEN &#x27;symbol&#x27; ELSE IF type AND TYPE_SPACER THEN &#x27;spacer&#x27; ELSE IF type AND TYPE_EOL THEN &#x27;EOL&#x27; ELSE IF type AND TYPE_UNKNOWN THEN &#x27;unknown&#x27; ELSE &#x27;(UNKNOWN)&#x27;)
+FINALLY
+	IF exception THEN END token
+ENDPROC
+
+-&gt;get type of character
+PROC charaType(chara:CHAR, firstType=0) RETURNS type
+	SELECT 128 OF chara
+	CASE &quot;a&quot; TO &quot;z&quot;,
+	     &quot;A&quot; TO &quot;Z&quot; ; type := TYPE_WORD
+	CASE &quot;0&quot; TO &quot;9&quot; ; type := IF firstType = TYPE_WORD THEN TYPE_WORD ELSE TYPE_NUMBER
+	CASE &quot;-&quot; ; type := TYPE_WORD		-&gt;was: IF firstType = 0 THEN TYPE_NUMBER ELSE TYPE_WORD
+	CASE &quot;\&quot;&quot;; type := TYPE_STRING
+	CASE &quot;/&quot; ; type := IF parsingTemplate THEN TYPE_SLASH ELSE TYPE_WORD
+	CASE &quot;,&quot; ; type := IF parsingTemplate THEN TYPE_COMMA ELSE TYPE_WORD
+	CASE &quot;=&quot; ; type := TYPE_EQUALS
+	CASE &quot; &quot;,
+	     &quot;\t&quot;; type := TYPE_SPACER
+	CASE 0   ; type := TYPE_EOL
+	DEFAULT  ; type := IF parsingTemplate THEN TYPE_UNKNOWN ELSE TYPE_WORD
+	ENDSELECT
+ENDPROC
+
+-&gt;report error message, highlighting the last token
+PROC lastTokenError(token:STRING, message:ARRAY OF CHAR)
+	DEF before:OWNS STRING, after:OWNS STRING, size
+	DEF during:ARRAY OF CHAR
+	
+	IF NOT silentErrors
+		NEW before[size := tokenNextPos - EstrLen(token)]
+		StrCopy(before, tokenSource, size)
+		
+		during := IF EstrLen(token) = 0 THEN &#x27; &#x27; ELSE token
+		
+		NEW after[size := EstrLen(tokenSource) - tokenNextPos]
+		StrCopy(after, tokenSource, size, tokenNextPos)
+		
+		Print(&#x27;Shell \s error, \s:\n&#x27;, IF parsingTemplate THEN &#x27;template&#x27; ELSE &#x27;parameter&#x27;, message)
+		Print(&#x27;\s\s\s\s\s\n&#x27;, before, HighlightOnString(), during, HighlightOffString(), after)
+	ENDIF
+	Raise(&quot;ERR&quot;)
+FINALLY
+	END before, after
+ENDPROC
+
+PROC generalError(message:ARRAY OF CHAR, p1=0, p2=0, p3=0, p4=0, p5=0, p6=0, p7=0, p8=0)
+	IF NOT silentErrors
+		Print(&#x27;Shell \s error, &#x27;, IF parsingTemplate THEN &#x27;template&#x27; ELSE &#x27;parameter&#x27;)
+		Print(message, p1, p2, p3, p4, p5, p6, p7, p8)
+		Print(&#x27;\n&#x27;)
+	ENDIF
+	Raise(&quot;ERR&quot;)
+ENDPROC
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

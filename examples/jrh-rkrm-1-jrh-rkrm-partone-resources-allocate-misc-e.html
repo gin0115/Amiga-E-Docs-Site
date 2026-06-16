@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Allocate_Misc.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-jrh-rkrm-1.html">JRH-RKRM-1</a> &rsaquo; Allocate_Misc.e</div><h1>File: <code>Allocate_Misc.e</code></h1><p class="meta">48 lines · project <a href="../examples/pkg-jrh-rkrm-1.html"><code>JRH-RKRM-1</code></a></p><p class="pathctx">JRH-RKRM-1/JRH-RKRM-PartOne/Resources/Allocate_Misc.e</p><p class="prose">Allocate_Misc.e  <a href="../modules/example.html">Example</a> of allocating a miscellaneous <a href="../modules/resource.html">resource</a>.  We will allocate the <a href="../modules/serial.html">serial</a> <a href="../modules/resource.html">resource</a> and wait until CTRL-C is pressed.  While we are waiting, the Query_Serial program should be run.  It will try to open the <a href="../modules/serial.html">serial</a> <a href="../modules/device.html">device</a> and if unsuccessful, will return the name of the owner.  It w</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/misc.html">other/misc</a></li></ul></div><h2>Source</h2><pre class="code">-&gt; Allocate_Misc.e
+-&gt;
+-&gt; Example of allocating a miscellaneous resource.  We will allocate the serial
+-&gt; resource and wait until CTRL-C is pressed.  While we are waiting, the
+-&gt; Query_Serial program should be run.  It will try to open the serial device
+-&gt; and if unsuccessful, will return the name of the owner.  It will be us!
+
+-&gt; E-Note: E does not (as of v3.1a) support Resources in the conventional way
+MODULE &#x27;other/misc&#x27;,
+       &#x27;dos/dos&#x27;,
+       &#x27;resources/misc&#x27;
+
+ENUM ERR_NONE, ERR_BITS, ERR_PORT
+
+PROC main() HANDLE
+  -&gt; E-Note: to help with cleaning up &quot;owner&quot; has been split into &quot;portowner&quot;
+  -&gt;         and &quot;bitsowner&quot; which are initialised to non-NIL values
+  DEF portowner=-1, bitsowner=-1  -&gt; Owner of misc resource
+
+  miscbase:=OpenResource(&#x27;misc.resource&#x27;)
+
+  -&gt; Allocate both pieces of the serial hardware
+  IF portowner:=allocMiscResource(MR_SERIALPORT, &#x27;Serial Port Hog&#x27;)
+    Raise(ERR_PORT)
+  ENDIF
+  IF bitsowner:=allocMiscResource(MR_SERIALBITS, &#x27;Serial Port Hog&#x27;)
+    Raise(ERR_BITS)
+  ENDIF
+
+  -&gt; Wait for CTRL-C to be pressed
+  WriteF(&#x27;\nWaiting for CTRL-C...\n&#x27;)
+  Wait(SIGBREAKF_CTRL_C)
+
+  -&gt; We&#x27;re back
+
+EXCEPT DO
+  -&gt; Deallocate the serial port register
+  IF bitsowner=NIL THEN freeMiscResource(MR_SERIALBITS)
+  -&gt; Deallocate the serial port
+  IF portowner=NIL THEN freeMiscResource(MR_SERIALPORT)
+  SELECT exception
+  CASE ERR_BITS
+    WriteF(&#x27;Unable to allocate MR_SERIALBITS because \s owns it\n&#x27;, bitsowner)
+  CASE ERR_PORT
+    WriteF(&#x27;Unable to allocate MR_SERIALPORT because \s owns it\n&#x27;, portowner)
+  ENDSELECT
+ENDPROC
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

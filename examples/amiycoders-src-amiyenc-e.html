@@ -1,0 +1,239 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>amiyenc.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-amiycoders-src.html">amiycoders_src</a> &rsaquo; amiyenc.e</div><h1>File: <code>amiyenc.e</code></h1><p class="meta">213 lines · project <a href="../examples/pkg-amiycoders-src.html"><code>amiycoders_src</code></a></p><p class="pathctx">amiycoders_src/amiyenc.e</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/dos.html">dos/dos</a></li></ul></div><h2>Source</h2><pre class="code">OPT OSVERSION=37
+
+/*
+
+    Program: AmiyEnc
+    Version: V0.6
+    Author : Ian Chapman
+
+    Description: Encodes files using single-part or multi-part yEnc encoding.
+
+    LICENSE: Permission is granted to use this source code in whole or in part,
+             providing that the author (Ian Chapman) is credited in your project
+             in either the documentation, or the program itself. This applies to
+             both free and commercial software. In the case of commercial
+             software (including ShareWare), I am entitled to a free, fully
+             functional copy of the software.
+
+             NO WARRANTY EITHER EXPRESSED OR IMPLIED AS TO THE FITNESS OF THIS
+             CODE FOR ANY PURPOSE. ALL USE IS ENTIRELY AND WHOLLY AT YOUR OWN
+             RISK
+
+*/
+
+MODULE  &#x27;dos/dos&#x27;,
+        &#x27;exec/memory&#x27;,
+        &#x27;*crctable&#x27;
+
+ENUM NORMAL, ERR_NOINFILE, ERR_NOMEM, ERR_NOREAD, ERR_NOOUTFILE, ERR_BADARGS, ERR_BADLINE,
+     ERR_TOOMANYPARTS, ERR_FILEEXISTS
+
+RAISE ERR_NOMEM IF NewM()=NIL
+
+DEF line=128,
+    multi=NIL,
+    inputfile[500]:STRING,
+    outputfile[500]:STRING,
+    header[400]:STRING,
+    part=1,
+    total=0,
+    force=NIL,
+    crctable:PTR TO LONG
+
+PROC main() HANDLE
+DEF myargs:PTR TO LONG,
+    p:PTR TO CHAR,
+    ifh=NIL,
+    mem=NIL,
+    filelen,
+    rdargs,
+    basename[500]:STRING
+    
+myargs:=[NIL,NIL,NIL,NIL,NIL,NIL]
+
+IF rdargs:=ReadArgs(&#x27;INPUTFILE/A,DEST/K,LINE/N,MULTI/N,FORCE/S&#x27;, myargs, NIL)          -&gt;Command line parameters
+    StrCopy(inputfile, myargs[0])
+    IF (myargs[2] &gt; 0) THEN line:=Long(myargs[2])
+    IF (myargs[3] &gt; 0) THEN multi:=Long(myargs[3])
+    force:=myargs[4]
+    IF myargs[1]=0
+        StrCopy(basename, FilePart(inputfile), 26)                             -&gt;Deals with a missing DEST option,
+        IF multi=0 THEN StringF(basename, &#x27;\s.ync&#x27;, basename)                  -&gt;and also the case where truncation
+    ELSE                                                                       -&gt;may cause multi-parts to get the same name.
+        IF multi=0                                                             -&gt;(Due to AmigaDOS 30 char filename limit)
+            StrCopy(basename, myargs[1])
+        ELSE
+            StrCopy(basename, myargs[1], 26)
+        ENDIF
+    ENDIF
+
+    FreeArgs(rdargs)
+ELSE
+    Raise(ERR_BADARGS)
+ENDIF
+
+IF (line&gt;997) OR (line&lt;64) THEN Raise(ERR_BADLINE)                             -&gt;Check line parameter is in range
+init_crctable()                                                                -&gt;Initialise CRC32 table
+IF (filelen:=FileLength(inputfile))&lt;1 THEN Raise(ERR_NOINFILE)                 -&gt;Get input filelength
+
+IF (ifh:=Open(inputfile, MODE_OLDFILE))=NIL THEN Raise(ERR_NOINFILE)           -&gt;Open input file
+mem:=NewM(filelen, MEMF_PUBLIC OR MEMF_CLEAR)                                  -&gt;Reserve buffer to size of file
+IF (Read(ifh, mem, filelen)&lt;&gt;filelen) THEN Raise(ERR_NOREAD)                   -&gt;Read file into buffer
+p:=mem                                                                         -&gt;Initialise pointer to start of buffer
+
+IF multi&gt;0                                                                     -&gt;This section calculates the number of chunks
+    total:=Div(filelen, multi)                                                 -&gt;that will be generated.
+    IF Mul(total, multi) &lt; filelen THEN total++                                -&gt;This may seem odd, but it is to handle remainders
+ENDIF                                                                          -&gt;in a 32bit way. Ie any remainder means +1 chunk
+
+IF total&gt;999 THEN Raise(ERR_TOOMANYPARTS)                                      -&gt;Raises if there are more than 999 parts. (as extention is 3 chars)
+
+WHILE (p&lt;(mem+filelen))                                                        -&gt;Keep processing all chunks
+                                                                               -&gt;If multipart, name in sequence
+    IF multi&gt;0 THEN StringF(outputfile, &#x27;\s.\z\d[3]&#x27;, basename, part) ELSE StrCopy(outputfile, basename)
+    p:=encode(p, filelen, mem)                                                 -&gt;Start encoding
+    IF multi&gt;0 THEN PrintF(&#x27;=&gt; \s [\d] (Part \d)\n&#x27;, outputfile, FileLength(outputfile), part) ELSE PrintF(&#x27;=&gt; \s [\d]\n&#x27;, outputfile, FileLength(outputfile))
+    part++
+ENDWHILE
+
+EXCEPT DO
+    IF (mem) THEN Dispose(mem)
+    IF (ifh) THEN Close(ifh)
+    SELECT exception
+        CASE NORMAL
+            -&gt;NORMAL EXIT
+        CASE ERR_NOINFILE
+            PrintF(&#x27;ERROR: Unable to open input file or input file size is 0.\n&#x27;)
+        CASE ERR_NOOUTFILE
+            PrintF(&#x27;ERROR: Unable to open output file.\n&#x27;)
+        CASE ERR_NOMEM
+            PrintF(&#x27;ERROR: Unable to allocate enough memory for buffer.\n&#x27;)
+        CASE ERR_NOREAD
+            PrintF(&#x27;ERROR: Unable to read all of the input file.\n&#x27;)
+        CASE ERR_BADLINE
+            PrintF(&#x27;ERROR: Line parameter out of range (64 - 997).\n&#x27;)
+        CASE ERR_TOOMANYPARTS
+            PrintF(&#x27;ERROR: Produces more than 999 parts. Increase multi value.\n&#x27;)
+        CASE ERR_BADARGS
+            PrintF(&#x27;yEnc Encoder by Ian Chapman v0.6\n\n&#x27;)
+            PrintF(&#x27;Parameters: INPUTFILE/A,DEST/K,LINE/N,MULTI/N,FORCE/S\n&#x27;)
+            PrintF(&#x27;Example: amiyenc myfile DEST=RAM:encoded\n&#x27;)
+        CASE ERR_FILEEXISTS
+            PrintF(&#x27;WARNING: File already exists\n&#x27;)
+        DEFAULT
+            PrintF(&#x27;ERROR: Unknown exception (\d). Please report to author.\n&#x27;,exception)
+    ENDSELECT
+
+ENDPROC exception
+
+
+/*** Procedure to initialise the CRC table ***/
+PROC init_crctable() IS crctable:=get_crctable()
+
+
+/*** Procedure to peform encoding ***/
+PROC encode(ptr:PTR TO CHAR, flen, memloc)
+DEF count=0,
+    bytesdone=1,
+    crcvalue=$FFFFFFFF,
+    holder[1000]:STRING,
+    trailer[100]:STRING,
+    stripped_name[101]:STRING,
+    output,
+    begin=0,
+    end=0,
+    char_loc=0
+
+    IF (force=FALSE) AND (FileLength(outputfile) &gt; -1)
+        Raise(ERR_FILEEXISTS)
+    ELSE
+        IF (output:=Open(outputfile, MODE_NEWFILE))=NIL THEN Raise(ERR_NOOUTFILE)  -&gt;Open outfile file
+    ENDIF
+
+    StrCopy(stripped_name, FilePart(inputfile))                                     -&gt; Replace chars not allowed in a yEnc Filename
+    WHILE (char_loc:=InStr(stripped_name, &#x27;\\&#x27;))&gt;-1 DO stripped_name[char_loc]:=$5F -&gt; Note : / are not allowed either but we
+    WHILE (char_loc:=InStr(stripped_name, &#x27;&lt;&#x27;))&gt;-1 DO stripped_name[char_loc]:=$5F  -&gt; shouldn&#x27;t need to check them as they are
+    WHILE (char_loc:=InStr(stripped_name, &#x27;&gt;&#x27;))&gt;-1 DO stripped_name[char_loc]:=$5F  -&gt; illegal in Amiga filenames too.
+    WHILE (char_loc:=InStr(stripped_name, &#x27;&quot;&#x27;))&gt;-1 DO stripped_name[char_loc]:=$5F
+    WHILE (char_loc:=InStr(stripped_name, &#x27;@&#x27;))&gt;-1 DO stripped_name[char_loc]:=$5F
+
+    begin:=(ptr-memloc)+1
+    IF part=total THEN end:=flen ELSE end:=(ptr-memloc)+multi
+
+    IF multi&gt;0                                                                 -&gt;Create header depending on whether multi ot single
+        StringF(header, &#x27;=ybegin part=\d total=\d line=\d size=\d name=\s\b\n&#x27;, part, total, line, flen, stripped_name)
+        StringF(header, &#x27;\s=ypart begin=\d end=\d&#x27;,header, begin, end)
+    ELSE
+        StringF(header, &#x27;=ybegin X-Encoder=amiyenc X-Encoder-Version=0.6 line=\d size=\d name=\s&#x27;, line, flen, stripped_name)
+    ENDIF
+
+    Write(output, header, EstrLen(header))                                     -&gt;Write header to file
+
+    WHILE (ptr&lt;&gt;(memloc+flen))                                                 -&gt;Start encoding
+        IF count=0 THEN Write(output, &#x27;\b\n&#x27;, 2)                               -&gt;We have reached EOL (line), so write EOL sequence
+        crcvalue:=Eor(crctable[And(Eor(crcvalue, Char(ptr)), $FF)], And(Shr(crcvalue,8), $FFFFFF))
+        PutChar(ptr, Mod(Char(ptr)+42, 256))                                   -&gt;Decode character
+
+        SELECT $3E OF Char(ptr)                                                -&gt;The holder string is used as a buffer for
+            CASE 0, 9, $A, $D, $20, $2E, $3D                                   -&gt;converted characters so we don&#x27;t need
+                holder[count]:=&quot;=&quot;                                             -&gt;to keep issuing writes for each character
+                count++                                                        -&gt;as this is very slow. We just write out
+                PutChar(ptr, Mod(Char(ptr)+64, 256))                           -&gt;the buffer when full, then flush it.
+        ENDSELECT
+
+        holder[count]:=Char(ptr)
+        ptr++
+        count++
+        bytesdone++
+
+        IF (count=line) OR (count &gt; line)
+            SetStr(holder, count)
+            Write(output, holder, EstrLen(holder))
+            count:=0
+        ENDIF
+
+        EXIT (multi&gt;0) AND (bytesdone&gt;multi)                                   -&gt;If multi-part encoding, stop when part size reached
+    ENDWHILE
+
+    SetStr(holder, count)                                                      -&gt;Write out any remaining buffer
+    Write(output, holder, EstrLen(holder))
+                                                                               -&gt;Create trailer depending on multi or single
+    IF multi&gt;0
+        StringF(trailer, &#x27;\b\n=yend part=\d total=\d size=\d pcrc32=\h\b\n&#x27;, part, total, end-begin+1, Eor(crcvalue, $FFFFFFFF))
+    ELSE
+        StringF(trailer, &#x27;\b\n=yend size=\d crc32=\h\b\n&#x27;, flen, Eor(crcvalue, $FFFFFFFF))
+    ENDIF
+    Write(output, trailer, EstrLen(trailer))                                   -&gt;Write trailer to file
+    Close(output)
+
+ENDPROC ptr
+
+version:
+CHAR &#x27;$VER: yEnc Encoder by Ian Chapman v0.6&#x27;,0
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

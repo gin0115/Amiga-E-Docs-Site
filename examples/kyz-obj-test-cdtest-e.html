@@ -1,0 +1,264 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>cdtest.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-kyz-obj.html">kyz_obj</a> &rsaquo; cdtest.e</div><h1>File: <code>cdtest.e</code></h1><p class="meta">238 lines · project <a href="../examples/pkg-kyz-obj.html"><code>kyz_obj</code></a></p><p class="pathctx">kyz_obj/test/cdtest.e</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/cd.html">devices/cd</a></li></ul></div><h2>Source</h2><pre class="code">OPT PREPROCESS
+
+MODULE &#x27;devices/cd&#x27;, &#x27;dos/rdargs&#x27;, &#x27;*cdplayer&#x27;
+
+DEF cd=NIL:PTR TO cdplayer, quit=FALSE
+
+
+
+#define TEMPLATE &#x27;currenttrack/s,discchanged/s,discinserted/s,eject/s,&#x27;+\
+  &#x27;ejected/s,insert/s,length/s,location/s,pause/s,paused/s,play/s,&#x27;+\
+  &#x27;playing/s,search/s,spindown/s,spinning/s,spinup/s,stop/s,trackinfo/s,&#x27;+\
+  &#x27;tracks/s,unpause/s,waitfordisc/s,&#x27;+\
+  &#x27;playtrack/s,fwd/s,back/s,info/s,help/s,quit=exit/s,arg1,arg2&#x27;
+
+OBJECT cmd
+  currenttrack,discchanged,discinserted,eject,ejected,insert,length
+  location,pause,paused,play,playing,search,spindown,spinning,spinup
+  stop,trackinfo,tracks,unpause,waitfordisc
+  playtrack,fwd,back,info,help,quit,arg1,arg2
+ENDOBJECT
+
+PROC main() HANDLE
+  DEF rdargs, args:PTR TO LONG, line[100]:STRING, c:cmd
+
+  -&gt; create CDPlayer object for device and unit specified on commandline
+  IF rdargs := ReadArgs(&#x27;DEVICE,UNIT/N&#x27;, args := [&#x27;cd.device&#x27;, [0]], NIL)
+    NEW cd.open(args[0], Long(args[1]))
+    FreeArgs(rdargs)
+  ELSE
+    PrintFault(IoErr(), NIL)
+    RETURN 20
+  ENDIF
+
+  -&gt; main loop converts line from stdin into a cmd struct, and processes it
+  PutStr(&#x27;type help for command list\n&#x27;)
+  REPEAT
+    Write(stdout, &#x27;-&gt; &#x27;, STRLEN)
+    IF Fgets(stdin, line, StrMax(line)-1)
+      IF args := NEW [line, StrLen(line), 0,NIL,NIL,0,NIL, RDAF_NOPROMPT]
+        IF rdargs := ReadArgs(TEMPLATE, clr(c, SIZEOF cmd), args)
+          process_cmd(c)
+          FreeArgs(rdargs)
+        ENDIF
+        END args
+      ENDIF
+    ENDIF
+  UNTIL quit
+
+EXCEPT DO
+  IF exception THEN explain_cd_exception()
+  END cd
+ENDPROC
+
+
+-&gt; returns the text name of a CDSEARCH mode
+#define SEARCHMODE(mode) ( \
+  IF      mode = CDSEARCH_FWD  THEN &#x27;CDSEARCH_FWD&#x27;  \
+  ELSE IF mode = CDSEARCH_BACK THEN &#x27;CDSEARCH_BACK&#x27; \
+  ELSE                              &#x27;CDSEARCH_STOP&#x27; \
+)
+
+-&gt; returns the text name of a CDTRACK type
+#define TRACKTYPE(type) ( \
+  IF      type = CDTRACK_DATA  THEN &#x27;CDTRACK_DATA&#x27;    \
+  ELSE IF type = CDTRACK_AUDIO THEN &#x27;CDTRACK_AUDIO&#x27;   \
+  ELSE                              &#x27;CDTRACK_INVALID&#x27; \
+)
+
+-&gt; prints information about the specified track
+PROC trackinfo(track)
+  DEF t,o,l; t,o,l := cd.trackinfo(track)
+  trck(&#x27;track&#x27;, track); Vprintf(&#x27;type = \s\n&#x27;, [TRACKTYPE(t)])
+  time(&#x27;offset&#x27;, o); time(&#x27;length&#x27;, l)
+ENDPROC
+
+-&gt; prints a boolean value
+PROC bool(name, val)
+  PutStr(name); PutStr(IF val THEN &#x27; = TRUE\n&#x27; ELSE &#x27; = FALSE\n&#x27;)
+ENDPROC
+
+-&gt; prints a time value
+PROC time(name, val)
+  DEF m,s,f;  m,s,f := timeval(val)
+  PutStr(name); PutStr(&#x27; = &#x27;)
+  IF val = -1 THEN RETURN PutStr(&#x27;CDTIME_INVALID\n&#x27;)
+ENDPROC Vprintf(&#x27;\d:\z\d[2]:\z\d[2]\n&#x27;, [m,s,f])
+
+-&gt; prints a track number
+PROC trck(name, val)
+  PutStr(name); PutStr(&#x27; = &#x27;)
+  IF val = -1 THEN RETURN PutStr(&#x27;CDTRACK_INVALID\n&#x27;)
+ENDPROC Vprintf(&#x27;\d\n&#x27;, {val})
+
+
+PROC process_cmd(c:PTR TO cmd)
+  DEF mode, track, t, o, l
+
+  IF c.currenttrack THEN trck(&#x27;currenttrack&#x27;, cd.currenttrack())
+  IF c.discchanged  THEN bool(&#x27;discchanged&#x27;, cd.discchanged())
+  IF c.discinserted THEN bool(&#x27;discinserted&#x27;, cd.discinserted())
+  IF c.eject        THEN cd.eject()
+  IF c.ejected      THEN bool(&#x27;ejected&#x27;, cd.ejected())
+  IF c.help         THEN help()
+  IF c.info         THEN FOR track := 1 TO cd.tracks() DO trackinfo(track)
+  IF c.insert       THEN cd.insert()
+  IF c.length       THEN time(&#x27;length&#x27;, cd.length())
+  IF c.location     THEN time(&#x27;location&#x27;, cd.location())
+  IF c.pause        THEN cd.pause()
+  IF c.paused       THEN bool(&#x27;paused&#x27;, cd.paused())
+  IF c.play         THEN bool(&#x27;play()&#x27;, cd.play(gettime(c.arg1), gettime(c.arg2)))
+  IF c.playing      THEN bool(&#x27;playing&#x27;, cd.playing())
+  IF c.quit         THEN quit := TRUE
+  IF c.spindown     THEN cd.spindown()
+  IF c.spinning     THEN bool(&#x27;spinning&#x27;, cd.spinning())
+  IF c.spinup       THEN cd.spinup()
+  IF c.stop         THEN cd.stop()
+  IF c.trackinfo    THEN trackinfo(Val(c.arg1))
+  IF c.tracks       THEN trck(&#x27;tracks&#x27;, cd.tracks())
+  IF c.unpause      THEN cd.unpause()
+  IF c.waitfordisc  THEN cd.waitfordisc()
+
+  IF c.playtrack
+    IF track := Val(c.arg1)
+      t,o,l := cd.trackinfo(track); cd.play(o, l)
+    ELSE
+      cd.play(0, cd.length())
+    ENDIF
+  ENDIF
+
+  IF c.search
+    mode := IF c.fwd  THEN CDSEARCH_FWD  ELSE IF
+               c.back THEN CDSEARCH_BACK ELSE CDSEARCH_STOP
+    mode := cd.search(mode)
+    Vprintf(&#x27;search() = \s\n&#x27;, [SEARCHMODE(mode)])
+  ENDIF
+ENDPROC
+
+
+
+
+PROC help()
+  PutStr(&#x27;Commands:\n&#x27;+
+    &#x27;play &lt;start&gt; &lt;length&gt;  - plays &lt;length&gt; of CD from &lt;start&gt;\n&#x27;+
+    &#x27;stop                   - stop playing\n&#x27;+
+    &#x27;pause,unpause          - change pause mode\n&#x27;+
+    &#x27;search [fwd|back]      - enter/exit search mode\n&#x27;+
+    &#x27;spindown, spinup       - turn disc motor on/off\n&#x27;+
+    &#x27;eject,insert           - eject or insert CD drawer (some models only)\n\n&#x27;
+  )
+
+  PutStr(&#x27;Status commands:\n&#x27;+
+    &#x27;currenttrack           - prints current playing track\n&#x27;+
+    &#x27;discchanged            - prints TRUE if disc has been changed\n&#x27;+
+    &#x27;discinserted           - prints TRUE if a disc is currently inserted\n&#x27;+
+    &#x27;ejected                - prints TRUE if CD drawer/door is open\n&#x27;+
+    &#x27;info                   - prints CDs table of contents\n&#x27;+
+    &#x27;length                 - prints length of CD in minutes/seconds/frames\n&#x27;+
+    &#x27;location               - prints current playing location on CD\n&#x27;+
+    &#x27;paused                 - prints TRUE if currently in pause mode\n&#x27;+
+    &#x27;playing                - prints TRUE if currently playing\n&#x27;+
+    &#x27;spinning               - prints TRUE if disc motor is running\n&#x27;+
+    &#x27;trackinfo &lt;track&gt;      - prints info about track &lt;track&gt;\n&#x27;+
+    &#x27;tracks                 - prints number of tracks on the CD\n\n&#x27;
+  )
+
+  PutStr(&#x27;Misc:\n&#x27;+
+    &#x27;playtrack [track]      - plays [track] or whole CD\n&#x27;+
+    &#x27;waitfordisc            - wait until a valid CD is inserted\n&#x27;+
+    &#x27;help                   - prints this screen \n&#x27;+
+    &#x27;quit, exit             - end the program\n\n&#x27;
+  )
+ENDPROC
+
+PROC explain_cd_exception()
+  SELECT exception
+  CASE CDPERR_INIT;		PutStr(&#x27;Initialisation error.\n&#x27;)
+  CASE CDPERR_OPENDEV;		PutStr(&#x27;Cannot open CD device: &#x27;)
+  CASE CDPERR_DEVICE;		PutStr(&#x27;I/O error with CD device: &#x27;)
+  DEFAULT;			Vprintf(&#x27;Unknown exception $\h\n&#x27;, {exception})
+  ENDSELECT
+
+  SELECT exceptioninfo
+  CASE CDERR_OPENFAIL;		PutStr(&#x27;device/unit failed to open\n&#x27;)
+  CASE CDERR_ABORTED;		PutStr(&#x27;request terminated early\n&#x27;)
+  CASE CDERR_NOCMD;		PutStr(&#x27;command not supported by device\n&#x27;)
+  CASE CDERR_BADLENGTH;		PutStr(&#x27;invalid length (IO_LENGTH/IO_OFFSET)\n&#x27;)
+  CASE CDERR_BADADDRESS;	PutStr(&#x27;invalid address (IO_DATA misaligned)\n&#x27;)
+  CASE CDERR_UNITBUSY;		PutStr(&#x27;device opens ok, but unit is busy\n&#x27;)
+  CASE CDERR_SELFTEST;		PutStr(&#x27;hardware failed self-test\n&#x27;)
+  CASE CDERR_NOTSPECIFIED;	PutStr(&#x27;general catchall\n&#x27;)
+  CASE CDERR_NOSECHDR;		PutStr(&#x27;couldn\at even find a sector\n&#x27;)
+  CASE CDERR_BADSECPREAMBLE;	PutStr(&#x27;sector looked wrong\n&#x27;)
+  CASE CDERR_BADSECID;		PutStr(&#x27;sector looked wrong\n&#x27;)
+  CASE CDERR_BADHDRSUM;		PutStr(&#x27;header had incorrect checksum\n&#x27;)
+  CASE CDERR_BADSECSUM;		PutStr(&#x27;data had incorrect checksum\n&#x27;)
+  CASE CDERR_TOOFEWSECS;	PutStr(&#x27;couldn\at find enough sectors\n&#x27;)
+  CASE CDERR_BADSECHDR;		PutStr(&#x27;sector looked wrong\n&#x27;)
+  CASE CDERR_WRITEPROT;		PutStr(&#x27;can\at write to a protected disk\n&#x27;)
+  CASE CDERR_NODISK;		PutStr(&#x27;no disk in the drive\n&#x27;)
+  CASE CDERR_SEEKERROR;		PutStr(&#x27;couldn\at find track 0\n&#x27;)
+  CASE CDERR_NOMEM;		PutStr(&#x27;ran out of memory\n&#x27;)
+  CASE CDERR_BADUNITNUM;	PutStr(&#x27;asked for a unit &gt; NUMUNITS\n&#x27;)
+  CASE CDERR_BADDRIVETYPE;	PutStr(&#x27;not a drive cd.device understands\n&#x27;)
+  CASE CDERR_DRIVEINUSE;	PutStr(&#x27;someone else allocated the drive\n&#x27;)
+  CASE CDERR_POSTRESET;		PutStr(&#x27;user hit reset; awaiting doom\n&#x27;)
+  CASE CDERR_BADDATATYPE;	PutStr(&#x27;data on disk is wrong type\n&#x27;)
+  CASE CDERR_INVALIDSTATE;	PutStr(&#x27;invalid cmd under current conditions\n&#x27;)
+  CASE CDERR_PHASE;		PutStr(&#x27;illegal or unexpected SCSI phase\n&#x27;)
+  CASE CDERR_NOBOARD;		PutStr(&#x27;open failed for non-existant board\n&#x27;)
+  DEFAULT;			Vprintf(&#x27;unknown reason \d\n&#x27;, {exceptioninfo})
+  ENDSELECT
+ENDPROC
+
+
+
+-&gt; converts a string in the form &#x27;mm:ss:ff&#x27;, &#x27;mm:ss&#x27; or &#x27;mm:&#x27;
+-&gt; into an LSN timevalue
+PROC gettime(str)
+  DEF m=0, s=0, f=0
+
+  WHILE (str[] &gt;= &quot;0&quot;) AND (str[] &lt;= &quot;9&quot;) DO m := m * 10 + (str[]++ - &quot;0&quot;)
+  IF str[]++ &lt;&gt; &quot;:&quot; THEN RETURN CDTIME_INVALID
+  WHILE (str[] &gt;= &quot;0&quot;) AND (str[] &lt;= &quot;9&quot;) DO s := s * 10 + (str[]++ - &quot;0&quot;)
+  IF str[] = &quot;:&quot;; str++
+    WHILE (str[] &gt;= &quot;0&quot;) AND (str[] &lt;= &quot;9&quot;) DO f := f * 10 + (str[]++ - &quot;0&quot;)
+  ENDIF
+  IF str[] &lt;&gt; &quot;\0&quot; THEN RETURN CDTIME_INVALID
+
+  IF (s &gt;= 60) OR (f &gt;= 75) THEN RETURN CDTIME_INVALID
+ENDPROC maketime(m, s, f)
+
+
+-&gt; clears [sze] bytes starting from [mem], returns [mem]
+PROC clr(mem:PTR TO CHAR, sze)
+  DEF end; end := mem + sze
+  WHILE mem &lt; end DO mem[]++ := 0
+ENDPROC mem - sze
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

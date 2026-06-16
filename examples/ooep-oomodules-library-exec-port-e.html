@@ -1,0 +1,469 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>port.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-ooep.html">OOEP</a> &rsaquo; port.e</div><h1>File: <code>port.e</code></h1><p class="meta">443 lines · project <a href="../examples/pkg-ooep.html"><code>OOEP</code></a></p><p class="pathctx">OOEP/oomodules/library/exec/port.e</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/object.html">oomodules/object</a></li></ul></div><h2>Source</h2><pre class="code">OPT MODULE
+
+MODULE  &#x27;oomodules/object&#x27;,
+
+        &#x27;exec/ports&#x27;,
+        &#x27;exec/nodes&#x27;,
+
+        &#x27;gadtools&#x27;
+
+EXPORT OBJECT port OF object
+/****** object/port ******************************
+
+    NAME
+        port() of object --
+
+    SYNOPSIS
+        object.port(PTR TO mp, PTR TO mn)
+
+        object.port(mp, lastMessage)
+
+    FUNCTION
+
+    INPUTS
+        mp:PTR TO mp -- 
+
+        lastMessage:PTR TO mn -- 
+
+    RESULT
+
+    EXAMPLE
+
+    CREATION
+
+    HISTORY
+
+    NOTES
+
+    SEE ALSO
+        object
+
+********/
+  mp:PTR TO mp
+  lastMessage:PTR TO mn
+ENDOBJECT
+
+PROC init() OF port
+/****** port/init ******************************
+
+    NAME
+        init() of port --
+
+    SYNOPSIS
+        port.init()
+
+    FUNCTION
+
+    RESULT
+
+    EXAMPLE
+
+    CREATION
+
+    HISTORY
+
+    NOTES
+
+    SEE ALSO
+        port
+
+********/
+
+  self.mp := CreateMsgPort()
+
+  IF self.mp = NIL THEN Throw(&quot;port&quot;,&#x27;Unable to create message port.&#x27;)
+
+ENDPROC
+
+PROC select(opts,i) OF port
+/****** port/select ******************************
+
+    NAME
+        select() of port --
+
+    SYNOPSIS
+        port.select(LONG, LONG)
+
+        port.select(opts, i)
+
+    FUNCTION
+
+    INPUTS
+        opts:LONG -- 
+
+        i:LONG -- 
+
+    RESULT
+
+    EXAMPLE
+
+    CREATION
+
+    HISTORY
+
+    NOTES
+
+    SEE ALSO
+        port
+
+********/
+DEF item
+
+  item:=ListItem(opts,i)
+
+
+  SELECT item
+
+    CASE &quot;name&quot;
+
+      INC i
+      self.mp::ln.name := ListItem(opts,i)
+
+    CASE &quot;add&quot;
+
+      self.addToSystem()
+
+  ENDSELECT
+
+ENDPROC i
+
+PROC getSignalMask() OF port IS Shl(1,self.mp.sigbit)
+/****** port/getSignalMask ******************************
+
+    NAME
+        getSignalMask() of port --
+
+    SYNOPSIS
+        port.getSignalMask()
+
+    FUNCTION
+
+    RESULT
+
+    EXAMPLE
+
+    CREATION
+
+    HISTORY
+
+    NOTES
+
+    SEE ALSO
+        port
+
+********/
+
+PROC getMsg(mode=&quot;exec&quot;) OF port
+/****** port/getMsg ******************************
+
+    NAME
+        getMsg() of port --
+
+    SYNOPSIS
+        port.getMsg(LONG=&quot;exec&quot;)
+
+        port.getMsg(mode)
+
+    FUNCTION
+
+    INPUTS
+        mode:LONG -- 
+
+    RESULT
+
+    EXAMPLE
+
+    CREATION
+
+    HISTORY
+
+    NOTES
+
+    SEE ALSO
+        port
+
+********/
+
+  SELECT mode
+
+    CASE &quot;gadt&quot;
+
+      IF gadtoolsbase
+
+        self.lastMessage := Gt_GetIMsg(self.mp)
+        RETURN self.lastMessage
+
+      ENDIF
+
+    DEFAULT
+
+      self.lastMessage := GetMsg(self.mp)
+      RETURN self.lastMessage
+
+  ENDSELECT
+
+ENDPROC
+
+PROC replyMsg(mode=&quot;exec&quot;) OF port
+/****** port/replyMsg ******************************
+
+    NAME
+        replyMsg() of port --
+
+    SYNOPSIS
+        port.replyMsg(LONG=&quot;exec&quot;)
+
+        port.replyMsg(mode)
+
+    FUNCTION
+
+    INPUTS
+        mode:LONG -- 
+
+    RESULT
+
+    EXAMPLE
+
+    CREATION
+
+    HISTORY
+
+    NOTES
+
+    SEE ALSO
+        port
+
+********/
+
+  IF self.lastMessage = NIL THEN RETURN
+
+  SELECT mode
+
+    CASE &quot;gadt&quot;
+
+      IF gadtoolsbase THEN Gt_ReplyIMsg(self.lastMessage)
+
+    DEFAULT
+
+      ReplyMsg(self.lastMessage)
+
+  ENDSELECT
+
+ENDPROC
+
+PROC waitForSignalMask(mask) OF port IS Wait(mask)
+/****** port/waitForSignalMask ******************************
+
+    NAME
+        waitForSignalMask() of port --
+
+    SYNOPSIS
+        port.waitForSignalMask(LONG)
+
+        port.waitForSignalMask(mask)
+
+    FUNCTION
+
+    INPUTS
+        mask:LONG -- 
+
+    RESULT
+
+    EXAMPLE
+
+    CREATION
+
+    HISTORY
+
+    NOTES
+
+    SEE ALSO
+        port
+
+********/
+
+PROC wait() OF port IS Wait(self.getSignalMask())
+/****** port/wait ******************************
+
+    NAME
+        wait() of port --
+
+    SYNOPSIS
+        port.wait()
+
+    FUNCTION
+
+    RESULT
+
+    EXAMPLE
+
+    CREATION
+
+    HISTORY
+
+    NOTES
+
+    SEE ALSO
+        port
+
+********/
+
+PROC end() OF port
+/****** port/end ******************************
+
+    NAME
+        end() of port --
+
+    SYNOPSIS
+        port.end()
+
+    FUNCTION
+
+    RESULT
+
+    EXAMPLE
+
+    CREATION
+
+    HISTORY
+
+    NOTES
+
+    SEE ALSO
+        port
+
+********/
+
+  IF self.mp = NIL THEN RETURN
+
+  self.removeFromSystem()
+  DeleteMsgPort(self.mp)
+
+ENDPROC
+
+PROC addToSystem() OF port
+/****** port/addToSystem ******************************
+
+    NAME
+        addToSystem() of port --
+
+    SYNOPSIS
+        port.addToSystem()
+
+    FUNCTION
+
+    RESULT
+
+    EXAMPLE
+
+    CREATION
+
+    HISTORY
+
+    NOTES
+
+    SEE ALSO
+        port
+
+********/
+
+  AddPort(self.mp)
+
+ENDPROC
+
+PROC removeFromSystem() OF port
+/****** port/removeFromSystem ******************************
+
+    NAME
+        removeFromSystem() of port --
+
+    SYNOPSIS
+        port.removeFromSystem()
+
+    FUNCTION
+
+    RESULT
+
+    EXAMPLE
+
+    CREATION
+
+    HISTORY
+
+    NOTES
+
+    SEE ALSO
+        port
+
+********/
+
+  RemPort(self.mp)
+
+ENDPROC
+
+EXPORT PROC wrapPort(p:PTR TO mp)
+/****** /wrapPort ******************************
+
+    NAME
+        wrapPort() --
+
+    SYNOPSIS
+        wrapPort(PTR TO mp)
+
+        wrapPort(p)
+
+    FUNCTION
+
+    INPUTS
+        p:PTR TO mp -- 
+
+    RESULT
+
+    EXAMPLE
+
+    CREATION
+
+    HISTORY
+
+    NOTES
+
+    SEE ALSO
+
+********/
+DEF port:PTR TO port
+
+  NEW port.new()
+  DeleteMsgPort(port.mp)
+  port.mp := p
+
+  RETURN port
+
+ENDPROC
+
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

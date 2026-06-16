@@ -1,0 +1,402 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>SCSIDoIOPatch.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-capus3.html">capus3</a> &rsaquo; SCSIDoIOPatch.e</div><h1>File: <code>SCSIDoIOPatch.e</code></h1><p class="meta">376 lines · project <a href="../examples/pkg-capus3.html"><code>capus3</code></a></p><p class="pathctx">capus3/AmigaE/Sources/SCSI/SCSIDoIOPatch.e</p><p class="prose">setf.e -- a SnoopDos-like program to <a href="../modules/monitor.html">monitor</a> calls to <a href="../modules/exec.html#fn-openlibrary">OpenLibrary</a>()</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/scsidisk.html">devices/scsidisk</a></li><li><a href="../modules/dos.html">dos/dos</a></li><li><a href="../modules/io.html">exec/io</a></li><li><a href="../modules/lists.html">exec/lists</a></li><li><a href="../modules/plist.html">other/plist</a></li></ul></div><h2>Source</h2><pre class="code">/* setf.e -- a SnoopDos-like program to monitor calls to OpenLibrary() */
+/* Exemple en E remagnier pour patcher la fonction DoIO() */
+
+OPT OSVERSION=37
+OPT PREPROCESS
+MODULE &#x27;dos/dos&#x27;, &#x27;exec/ports&#x27;, &#x27;exec/tasks&#x27;, &#x27;exec/nodes&#x27;, &#x27;exec/memory&#x27;
+MODULE &#x27;exec/io&#x27;
+MODULE &#x27;exec/lists&#x27;
+MODULE &#x27;devices/scsidisk&#x27;
+MODULE &#x27;other/plist&#x27;
+
+-&gt;&gt; SCSIUTIL DEFINE
+
+-&gt; SCSIUtil Includes.
+
+
+#define  BYTES_PER_LINE  16
+#define  SENSE_LEN 252
+#define  MAX_DATA_LEN 252
+/* max TOC size = 100 TOC track descriptors */
+#define  MAX_TOC_LEN 804
+#define  PAD 0
+#define  LINE_BUF    (128)
+/* 75 frames per second audio */
+#define  NUM_OF_CDDAFRAMES 75
+/*CONST  CDDALEN 2352  */  /* 1 frame has 2352 bytes */
+/* 1 frame has max. 2448 bytes (subcode 2) */
+#define  CDDALEN 2448
+#define  MAX_CDDALEN CDDALEN * NUM_OF_CDDAFRAMES
+
+#define  OFFS_KEY 2
+#define  OFFS_CODE 12
+
+#define  NDBLBUF 8
+
+/*
+ * we open ( if no -d option) the first *scsi*.device in the device list.
+ */
+#define  SCSI_STRING &#x27;scsi&#x27;
+/*
+typedef struct MsgPort MSGPORT;
+typedef struct IOStdReq IOSTDREQ;
+typedef struct List LIST;
+typedef struct Node NODE;
+typedef struct SCSICmd SCSICMD;
+
+typedef struct
+ {
+   BYTE   code;
+   UBYTE  *ptr;
+ } IDTOSTRING;
+
+
+#undef  FALSE
+#undef TRUE
+typedef enum
+{
+  FALSE = 0, TRUE
+} BOOLEAN;
+
+typedef enum
+{
+  UNKNOWN      = -1,
+  APPLECD300   =  0,
+  APPLECD150   =  1,
+  TOSHIBA3401  =  2
+} DRIVETYPE;
+
+/* type used for a 6 byte SCSI command */
+typedef struct
+ {
+   UBYTE  opcode;
+   UBYTE  b1;
+   UBYTE  b2;
+   UBYTE  b3;
+   UBYTE  b4;
+   UBYTE  control;
+ } SCSICMD6;
+
+/* type used for a 10 byte SCSI command */
+typedef struct
+ {
+   UBYTE  opcode;
+   UBYTE  b1;
+   UBYTE  b2;
+   UBYTE  b3;
+   UBYTE  b4;
+   UBYTE  b5;
+   UBYTE  b6;
+   UBYTE  b7;
+   UBYTE  b8;
+   UBYTE  control;
+ } SCSICMD10;
+
+/* type used for a 12 byte SCSI command */
+typedef struct
+ {
+   UBYTE  opcode;
+   UBYTE  b1;
+   UBYTE  b2;
+   UBYTE  b3;
+   UBYTE  b4;
+   UBYTE  b5;
+   UBYTE  b6;
+   UBYTE  b7;
+   UBYTE  b8;
+   UBYTE  b9;
+   UBYTE  b10;
+   UBYTE  control;
+ } SCSICMD12;
+
+
+/* SCSI commands */
+*/
+
+CONST SCSI_CMD_TUR=                $00      -&gt; Test Unit Ready
+CONST SCSI_CMD_RZU=                $01      -&gt; Rezero Unit
+CONST SCSI_CMD_RQS=                $03      -&gt; Request Sense
+CONST SCSI_CMD_FMU=                $04      -&gt; Format unit
+CONST SCSI_CMD_RAB=                $07      -&gt; Reassign Block
+CONST SCSI_CMD_RD=                 $08      -&gt; Read
+CONST SCSI_CMD_WR=                 $0A      -&gt; Write (6)
+CONST SCSI_CMD_SK=                 $0B      -&gt; Seek  (6)
+CONST SCSI_CMD_INQ=                $12      -&gt; 6B: Inquiry
+CONST SCSI_CMD_MSL=                $15      -&gt; Mode SELECT
+CONST SCSI_CMD_RU=                 $16      -&gt; Reserve Unit
+CONST SCSI_CMD_RLU=                $17      -&gt; Release Unit
+CONST SCSI_CMD_COPY=               $18      -&gt; Copy
+CONST SCSI_CMD_MSE=                $1A      -&gt; 6B: Mode Sense
+CONST SCSI_CMD_SSU=                $1B      -&gt; 6B: Start/Stop Unit
+CONST SCSI_CMD_RDI=                $1C      -&gt; Receive Diagnostic
+CONST SCSI_CMD_SDI=                $1D      -&gt; Send Diagnostic
+CONST SCSI_CMD_PAMR=               $1E      -&gt; 6B: Prevent Allow Medium Removal
+CONST SCSI_CMD_RCP=                $25      -&gt; Read Capacity
+CONST SCSI_CMD_RXT=                $28      -&gt; Read Extended (10)
+CONST SCSI_CMD_WXT=                $2A      -&gt; Write Extended (10)
+CONST SCSI_CMD_SKX=                $2B      -&gt; Seek Extended
+CONST SCSI_CMD_WVF=                $2E      -&gt; Write &amp; Verify
+CONST SCSI_CMD_VF=                 $2F      -&gt; Verify
+
+CONST SCSI_CMD_SDH=                $30      -&gt; Search Data Hight (10) NEW (optional)
+CONST SCSI_CMD_SDE=                $31      -&gt; Search Data Equal (10) NEW (optional)
+CONST SCSI_CMD_SDL=                $32      -&gt; Search Data Low (10) NEW (optional)
+CONST SCSI_CMD_SL=                 $33      -&gt; SET Limits (10) NEW (optional)
+CONST SCSI_CMD_PF=                 $34      -&gt; Pre-Fetch NEW (optional)
+CONST SCSI_CMD_SC=                 $35      -&gt; Synchronize Cache NEW (optional)
+CONST SCSI_CMD_LUC=                $36      -&gt; Lock Unlock Cache NEW (optional)
+
+CONST SCSI_CMD_RDD=                $37      -&gt; Read Defect Data
+CONST SCSI_CMD_COMPARE=            $39      -&gt; 10B: Compare
+CONST SCSI_CMD_COPYANDVERIFY=      $3A      -&gt; 10B: Copy AND Verify
+CONST SCSI_CMD_WDB=                $3B      -&gt; Write Data Buffer
+CONST SCSI_CMD_RDB=                $3C      -&gt; Read Data Buffer
+
+CONST SCSI_CMD_READLONG=           $3E      -&gt; Read Long NEW (optional)
+
+CONST SCSI_CMD_CHGEDEF=            $40      -&gt; 10B: Change Definition
+
+CONST SCSI_CMD_WRITESAME=          $41      -&gt; Write Same NEW (optional)
+
+CONST SCSI_CMD_READSUBCHANNEL=     $42      -&gt; 10B: Read Sub-Channel
+CONST SCSI_CMD_READTOC=            $43      -&gt; Read TOC from CD Audio
+CONST SCSI_CMD_READHEADER=         $44      -&gt; 10B: Read data block address header
+CONST SCSI_CMD_PLAYAUDIO10=        $45      -&gt; Play CD Audio
+CONST SCSI_CMD_PLAYAUDIOTRACKINDEX=$48      -&gt; Play CD Audio Track
+
+CONST SCSI_CMD_LOGSELECT=          $4C      -&gt; Log SELECT NEW (optional)
+CONST SCSI_CMD_LOGSENSE=           $4D      -&gt; Log Sense NEW (optional)
+CONST SCSI_CMD_MODESELECT=         $55      -&gt; Mode SELECT NEW (optional)
+CONST SCSI_CMD_MODESENSE=          $5A      -&gt; Mode Sense NEW (optional)
+
+/* Toshiba XM3x0x specific commands */
+CONST SCSI_CMD_READ12=             $A8      -&gt; 12B: Read
+
+/* Sony CDU 561 / Sony CDU 8003 = Apple CD 300 specific commands */
+
+CONST SCSI_CMD_READCDDA=           $D8      -&gt; 12B: read digital audio
+CONST SCSI_CMD_READCDDAMSF=        $D9      -&gt; 12B: read digital audio
+
+-&gt;&lt;
+
+-&gt;CONST OFFSET=$fdd8  /* execbase offset OF OpenLibrary() */
+CONST OFFSET=$FE38    -&gt; DoIO() offset
+-&gt;CONST OFFSET=$F332    -&gt; SendIO() offset
+-&gt;CONST OFFSET=$FE2C    -&gt; CheckIO() offset
+-&gt;CONST OFFSET=$FE26    -&gt; WaitIO() offset
+-&gt;CONST OFFSET=$FE20    -&gt; AbortIO() offset
+
+/* &quot;mymsg&quot; must begin with the standard message object &quot;mn&quot;, followed by
+   any kind of data (in this case, two pointers [to strings]).
+*/
+OBJECT mymsg
+  msg:mn
+  s, t
+ENDOBJECT
+
+/* &quot;port&quot; will be used from the patched routine, too, so it&#x27;s global */
+DEF port:PTR TO mp
+DEF mylist:PTR TO lh
+/* You can change the library function to be patched by changing OFFSET
+   and the &quot;execbase&quot; in the *two* calls to SetFunction().  If you want to
+   patch a library other than dos, exec, graphics and intuition you need
+   to OpenLibrary() it first.
+   (Note: some [old?] libraries cannot be patched in this way.  Also, some
+   functions in some libraries can&#x27;t be patched like this either!  Even the
+   RKRM&#x27;s aren&#x27;t too clear about this...)
+*/
+PROC main()
+    DEF myargs:PTR TO LONG,rdargs=NIL
+    DEF marg:PTR TO LONG,b=20
+    DEF n[256]:STRING
+    DEF ps, us,boucle, sig, oldf
+    myargs:=[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]
+    mylist:=initList()
+    IF rdargs:=ReadArgs(&#x27;EXECNAME/M&#x27;,myargs,NIL)
+        marg:=myargs[]
+        IF myargs[0]
+            FOR b:=0 TO 19
+                IF marg[b]&lt;&gt;0
+                    IF b=0 THEN StrCopy(n,Long(myargs[0]),ALL) ELSE StrCopy(n,marg[b],ALL)
+                    addNode(mylist,n,0)
+                ENDIF
+            ENDFOR
+        ENDIF
+        FreeArgs(rdargs)
+    ELSE
+        NOP
+    ENDIF
+  IF emptyList(mylist)=-1
+    WriteF(&#x27;No Program TO patch !!\n&#x27;)
+    IF mylist THEN cleanList(mylist,0,0,LIST_REMOVE)
+    CleanUp(20)
+  ENDIF
+  IF port:=CreateMsgPort()
+    Forbid()     /* Don&#x27;t let anyone mess things up... */
+    IF oldf:=SetFunction(execbase, OFFSET, {newf})
+      PutLong({patch}, oldf)
+      Permit()    /* Now we can let everyone else back in */
+      LEA store(PC), A0
+      MOVE.L A4, (A0)    /* Store the A4 register... */
+      ps:=Shl(1,port.sigbit)   /* Set up port and user signal bits */
+      us:=SIGBREAKF_CTRL_C
+      boucle:=TRUE
+      WHILE boucle
+        sig:=Wait(ps OR us)
+        IF sig AND ps
+          printmsgs()
+        ENDIF
+        IF sig AND us
+          boucle:=FALSE
+        ENDIF
+      ENDWHILE
+      Forbid()   /* Paranoid... */
+      SetFunction(execbase, OFFSET, oldf)
+    ENDIF
+    Permit()
+    printmsgs()   /* Make sure the port is empty */
+    DeleteMsgPort(port)
+  ENDIF
+  IF mylist THEN cleanList(mylist,0,0,LIST_REMOVE)
+ENDPROC
+
+/* Nicely (?) print the messages out... */
+PROC printmsgs()
+  DEF msg:PTR TO mymsg
+  DEF myio:PTR TO iostd
+  DEF myscsi:PTR TO scsicmd
+  DEF mycom:PTR TO CHAR,te,p
+  WHILE msg:=GetMsg(port)
+    IF FindName(mylist,msg.t)
+        myio:=msg.s
+        myscsi:=myio.data
+        mycom:=myscsi.command
+        te:=mycom[0]
+            WriteF(&#x27;\h \d \l\s[13] IOCom/Flags[\d[2]/\d[2]]&#x27;,te,myscsi.flags,msg.t,myio.command,myio.flags)
+            WriteF(&#x27; f/s (\d[2]/\d[2]) :($\h[8]) $\h[2] &#x27;,myscsi.flags,myscsi.status,myio,te)
+            SELECT te
+                CASE SCSI_CMD_TUR;  WriteF(&#x27;Test Unit Ready\n&#x27;)
+                CASE SCSI_CMD_RZU;  WriteF(&#x27;Rezero Unit\n&#x27;)
+                CASE SCSI_CMD_RQS;  WriteF(&#x27;Request Sense\n&#x27;)
+                CASE SCSI_CMD_FMU;  WriteF(&#x27;Format Unit\n&#x27;)
+                CASE SCSI_CMD_RAB;  WriteF(&#x27;Reassign Block\n&#x27;)
+                CASE SCSI_CMD_RD;   WriteF(&#x27;Read\n&#x27;)
+                CASE SCSI_CMD_WR;   WriteF(&#x27;Write\n&#x27;)
+                CASE SCSI_CMD_SK;   WriteF(&#x27;Seek\n&#x27;)
+                CASE SCSI_CMD_INQ
+                    WriteF(&#x27;Inquiry\n&#x27;)
+-&gt;                    p:=myscsi.flags
+-&gt;                    PutChar(p,SCSIF_READ OR SCSIF_NOSENSE)
+                CASE SCSI_CMD_MSL;  WriteF(&#x27;Mode SELECT\n&#x27;)
+                CASE SCSI_CMD_RU;   WriteF(&#x27;Reserve Unit\n&#x27;)
+                CASE SCSI_CMD_RLU;  WriteF(&#x27;Release Unit\n&#x27;)
+                CASE SCSI_CMD_MSE;  WriteF(&#x27;Mode Sense\n&#x27;)
+                CASE SCSI_CMD_SSU;  WriteF(&#x27;Start/Stop Unit\n&#x27;)
+                CASE SCSI_CMD_RDI;  WriteF(&#x27;Receive  Diagnostic\n&#x27;)
+                CASE SCSI_CMD_SDI;  WriteF(&#x27;Send Diagnostic\n&#x27;)
+                CASE SCSI_CMD_RCP;  WriteF(&#x27;Read Capacity\n&#x27;)
+                CASE SCSI_CMD_RXT;  WriteF(&#x27;Read Extended\n&#x27;)
+                CASE SCSI_CMD_WXT;  WriteF(&#x27;Write Extened\n&#x27;)
+                CASE SCSI_CMD_SKX;  WriteF(&#x27;Seek Extended\n&#x27;)
+                CASE SCSI_CMD_WVF;  WriteF(&#x27;Write &amp; Verify\n&#x27;)
+                CASE SCSI_CMD_VF;   WriteF(&#x27;Verify\n&#x27;)
+                CASE SCSI_CMD_RDD;  WriteF(&#x27;Read Defect Data\n&#x27;)
+                CASE SCSI_CMD_WDB;  WriteF(&#x27;Write Data Buffer\n&#x27;)
+                CASE SCSI_CMD_RDB;  WriteF(&#x27;Read Data Buffer\n&#x27;)
+                CASE SCSI_CMD_COPY; WriteF(&#x27;Copy\n&#x27;)
+                CASE SCSI_CMD_COMPARE;  WriteF(&#x27;Compare\n&#x27;)
+                CASE SCSI_CMD_COPYANDVERIFY;    WriteF(&#x27;Copy AND Verify\n&#x27;)
+                CASE SCSI_CMD_CHGEDEF;  WriteF(&#x27;Change Definition\n&#x27;)
+                CASE SCSI_CMD_READSUBCHANNEL;   WriteF(&#x27;Read Sub-Channel\n&#x27;)
+                CASE SCSI_CMD_READTOC;  WriteF(&#x27;Read TOC from CD Audio\n&#x27;)
+                CASE SCSI_CMD_READHEADER;   WriteF(&#x27;Read Data Block Address Header\n&#x27;)
+                CASE SCSI_CMD_PLAYAUDIO10;  WriteF(&#x27;Play CD Audio\n&#x27;)
+                CASE SCSI_CMD_PLAYAUDIOTRACKINDEX;  WriteF(&#x27;Play CD Audio Track\n&#x27;)
+                CASE SCSI_CMD_READ12;   WriteF(&#x27;Read (Toshiba xM3x0x specific command)\n&#x27;)
+                CASE SCSI_CMD_READCDDA; WriteF(&#x27;Read Digital Audio (Sony CDU 561/Sony CDU 8003/Apple CD300 specific command)\n&#x27;)
+                CASE SCSI_CMD_SDH;  WriteF(&#x27;Search Data Hight (10) (optional)\n&#x27;)
+                CASE SCSI_CMD_SDE;  WriteF(&#x27;Search Data Equal (10) (optional)\n&#x27;)
+                CASE SCSI_CMD_SDL;  WriteF(&#x27;Search Data Low (10) (optional)\n&#x27;)
+                CASE SCSI_CMD_SL;   WriteF(&#x27;SET Limits (10) (optional)\n&#x27;)
+                CASE SCSI_CMD_PF;   WriteF(&#x27;Pre-Fetch (optional)\n&#x27;)
+                CASE SCSI_CMD_SC;   WriteF(&#x27;Synchronize Cache (optional)\n&#x27;)
+                CASE SCSI_CMD_LUC;  WriteF(&#x27;Lock Unlock Cache (optional)\n&#x27;)
+                CASE SCSI_CMD_READLONG; WriteF(&#x27;Read Long (optional)\n&#x27;)
+                CASE SCSI_CMD_WRITESAME;    WriteF(&#x27;Write Same (optional)\n&#x27;)
+                CASE SCSI_CMD_LOGSELECT;    WriteF(&#x27;Log SELECT (optional)\n&#x27;)
+                CASE SCSI_CMD_LOGSENSE;     WriteF(&#x27;Log Sense (optional)\n&#x27;)
+                CASE SCSI_CMD_MODESELECT;   WriteF(&#x27;Mode SELECT (optional)\n&#x27;)
+                CASE SCSI_CMD_MODESENSE;    WriteF(&#x27;Mode Sense (optional)\n&#x27;)
+                DEFAULT;    WriteF(&#x27;Unknown Command :$\h\n&#x27;,te)
+            ENDSELECT
+    ENDIF
+    ReplyMsg(msg)
+    DisposeLink(msg.t)
+    Dispose(msg)
+  ENDWHILE
+ENDPROC
+
+/* Send a message to the patching process */
+PROC sendmsg()
+  DEF m:PTR TO mymsg, s:PTR TO iostd, tsk:tc, l:ln
+  MOVE.L A1, s
+
+  /* Allocate a new message */
+  m:=New(SIZEOF mymsg)
+  IF s
+    m.s:=s
+  ENDIF
+  tsk:=FindTask(NIL)   /* Find out who we are */
+  m.t:=NIL
+  IF tsk
+    l:=tsk.ln
+    IF l AND l.name
+      m.t:=String(StrLen(l.name))
+      StrCopy(m.t, l.name, ALL)
+    ENDIF
+  ENDIF
+  PutMsg(port, m)
+
+ENDPROC
+
+/* Place to store A4 register */
+store:  LONG 0
+/* Place to store real call */
+patch:  LONG 0
+
+/* The new routine which will replace the original library function */
+newf:
+  MOVEM.L D0-D7/A0-A6, -(A7)
+  LEA store(PC), A0
+  MOVE.L (A0), A4 /* Reinstate the A4 register so we can use E code */
+  sendmsg()
+  MOVEM.L (A7)+, D0-D7/A0-A6
+  MOVE.L patch(PC), -(A7)
+  RTS
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

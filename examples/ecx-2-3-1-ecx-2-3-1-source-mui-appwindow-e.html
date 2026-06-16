@@ -1,0 +1,177 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Appwindow.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-ecx-2-3-1.html">ECX_2.3.1</a> &rsaquo; Appwindow.e</div><h1>File: <code>Appwindow.e</code></h1><p class="meta">151 lines · project <a href="../examples/pkg-ecx-2-3-1.html"><code>ECX_2.3.1</code></a></p><p class="pathctx">ECX_2.3.1/ecx-2.3.1/source/MUI/Appwindow.e</p><p class="prose">ECX:Source/MUI/AppWindow.e</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/boopsi.html">amigalib/boopsi</a></li><li><a href="../modules/muimaster.html">muimaster</a></li></ul></div><h2>Source</h2><pre class="code">-&gt; ECX:Source/MUI/AppWindow.e
+
+/*
+**  Original C Code written by Stefan Stuntz
+**
+**  Translation into E by Klaus Becker
+**
+**  All comments are from the C-Source
+*/
+
+OPT PREPROCESS
+
+MODULE &#x27;amigalib/boopsi&#x27;, &#x27;tools/installhook&#x27;
+
+MODULE &#x27;muimaster&#x27;,&#x27;libraries/mui&#x27;,&#x27;libraries/muip&#x27;,
+       &#x27;intuition/classes&#x27;,&#x27;intuition/classusr&#x27;,
+       &#x27;intuition/screens&#x27;,&#x27;intuition/intuition&#x27;,
+       &#x27;utility/tagitem&#x27;,&#x27;utility/hooks&#x27;,
+       &#x27;wb&#x27;,&#x27;workbench/startup&#x27;,&#x27;workbench/workbench&#x27;
+
+/*
+** App message callback hook. Note that the object given here
+** is the object that called the hook, i.e. the one that got
+** the icon(s) dropped on it.
+*/
+
+-&gt; LS 2004: FIXED &quot;PROC appMsgFunc(obj,x:PTR TO LONG)&quot;
+-&gt;          INTO &quot;PROC appMsgFunc(hook,obj,x:PTR TO LONG)
+-&gt;          (It happens to work on 68k but not on PPC).
+
+PROC appMsgFunc(hook,obj,x:PTR TO LONG)
+  DEF ap:PTR TO wbarg,
+      amsg:PTR TO appmessage,
+      i,
+      buf[256]:STRING,b
+  amsg:=x[]
+  b:=buf;i:=0
+  ap:=amsg.arglist
+  WHILE (i&lt;amsg.numargs)
+    NameFromLock(ap.lock,buf,StrMax(buf))
+    AddPart(buf,ap.name,StrMax(buf))
+    doMethodA(obj,[MUIM_List_Insert,{b},1,MUIV_List_Insert_Bottom])
+    ap++
+    i++
+  ENDWHILE
+ENDPROC 0
+
+/*
+** Having a function instead of a macro saves some code.
+*/
+
+PROC makeLV() IS
+  ListviewObject,
+    MUIA_Listview_Input, FALSE,
+    MUIA_Listview_List , ListObject,
+      ReadListFrame,
+      MUIA_List_ConstructHook, MUIV_List_ConstructHook_String,
+      MUIA_List_DestructHook , MUIV_List_DestructHook_String ,
+    End,
+  End
+
+PROC main() HANDLE
+  DEF app,window,sigs=0,
+      lv1,lv2,lv3,
+      appMsgHook:hook
+
+  IF (muimasterbase:=OpenLibrary(MUIMASTER_NAME,MUIMASTER_VMIN))=NIL THEN
+    Raise(&#x27;Failed to open muimaster.library&#x27;)
+
+  #ifdef __AMIGAOS4__
+  IF (muimasteriface := GetInterface(muimasterbase, &#x27;main&#x27;, 1, NIL)) = NIL THEN
+    Raise(&#x27;failed to open muimaster.interface&#x27;)
+  #endif
+
+  installhook(appMsgHook,{appMsgFunc})
+
+  app:=ApplicationObject,
+    MUIA_Application_Title      , &#x27;AppWindowDemo&#x27;,
+    MUIA_Application_Version    , &#x27;$VER: AppWindowDemo 12.9 (21.11.95)&#x27;,
+    MUIA_Application_Copyright  , &#x27;c1992/93, Stefan Stuntz&#x27;,
+    MUIA_Application_Author     , &#x27;Stefan Stuntz &amp; Klaus Becker&#x27;,
+    MUIA_Application_Description, &#x27;Show AppWindow Handling&#x27;,
+    MUIA_Application_Base       , &#x27;APPWINDOWDEMO&#x27;,
+    SubWindow, window:= WindowObject,
+      MUIA_Window_Title    , &#x27;Drop icons on me!&#x27;,
+      MUIA_Window_ID       , &quot;APPW&quot;,
+      MUIA_Window_AppWindow, MUI_TRUE,
+      WindowContents, VGroup,
+        Child, HGroup,
+          Child, lv1:= makeLV(),
+          Child, lv2:= makeLV(),
+        End,
+        Child, lv3:= makeLV(),
+      End,
+    End,
+  End
+
+  IF (app=NIL) THEN Raise(&#x27;Failed to create Application.&#x27;)
+
+  doMethodA(window,[MUIM_Notify,MUIA_Window_CloseRequest,MUI_TRUE,
+    app,2,MUIM_Application_ReturnID,MUIV_Application_ReturnID_Quit])
+
+/*
+** Call the AppMsgHook when an icon is dropped on a listview.
+*/
+
+  doMethodA(lv1,[MUIM_Notify,MUIA_AppMessage,MUIV_EveryTime,
+    lv1,3,MUIM_CallHook,appMsgHook,MUIV_TriggerValue])
+
+  doMethodA(lv2,[MUIM_Notify,MUIA_AppMessage,MUIV_EveryTime,
+    lv2,3,MUIM_CallHook,appMsgHook,MUIV_TriggerValue])
+
+  doMethodA(lv3,[MUIM_Notify,MUIA_AppMessage,MUIV_EveryTime,
+    lv3,3,MUIM_CallHook,appMsgHook,MUIV_TriggerValue])
+
+/*
+** When we&#x27;re iconified, the object lv3 shall receive the
+** messages from icons dropped on our app icon.
+*/
+
+  set(app,MUIA_Application_DropObject,lv3)
+
+/*
+** This is the ideal input loop for an object oriented MUI application.
+** Everything is encapsulated in classes, no return ids need to be used,
+** we just check if the program shall terminate.
+** Note that MUIM_Application_NewInput expects sigs to contain the result
+** from Wait() (or 0). This makes the input loop significantly faster.
+*/
+
+  set(window,MUIA_Window_Open,MUI_TRUE)
+
+  WHILE doMethodA(app,[MUIM_Application_NewInput,{sigs}]) &lt;&gt; MUIV_Application_ReturnID_Quit
+    IF sigs THEN sigs:=Wait(sigs)
+  ENDWHILE
+
+  set(window,MUIA_Window_Open,FALSE)
+
+/*
+** Shut down...
+*/
+
+EXCEPT DO
+  IF app THEN Mui_DisposeObject(app)
+  #ifdef __AMIGAOS4__
+  DropInterface(muimasteriface)
+  #endif
+  IF muimasterbase THEN CloseLibrary(muimasterbase)
+  IF exception THEN WriteF(&#x27;\s\n&#x27;,exception)
+ENDPROC
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

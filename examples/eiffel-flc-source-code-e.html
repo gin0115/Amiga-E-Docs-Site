@@ -1,0 +1,303 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>code.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-eiffel.html">eiffel</a> &rsaquo; code.e</div><h1>File: <code>code.e</code></h1><p class="meta">277 lines · project <a href="../examples/pkg-eiffel.html"><code>eiffel</code></a></p><p class="pathctx">eiffel/flc/source/code.e</p><p class="prose">Copyright © 1995, Guichard Damien.</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/doshunks.html">dos/doshunks</a></li></ul></div><h2>Source</h2><pre class="code">
+-&gt; Copyright © 1995, Guichard Damien.
+
+-&gt; New style of MC680x0 code generation
+-&gt; This version is stricly limited to 68000 code
+-&gt; Generators for abstract machines are derived from this by inheritance
+-&gt; Two label range levels are provided: local range and global range
+
+OPT MODULE
+OPT EXPORT
+
+MODULE &#x27;dos/doshunks&#x27;
+
+-&gt;  Condition codes
+ENUM   T, F, HI, LS, CC, CS, NE, EQ, VC, VS, PL, MI, GE, LT, GT, LE
+
+-&gt; Instruction mnemonics
+
+CONST  XBCC   = $6000,  XDBCC  = $50C8,  XSCC   = $50C0
+
+CONST  IADD   = $D000,  IADDI  = $0600,  IADDQ  = $5000,  IAND   = $C000,
+       IANDI  = $0200,  IASL   = $E100,  IASR   = $E000,  IBCC   = $6400,
+       IBCLR  = $0080,  IBCS   = $6500,  IBEQ   = $6700,  IBGE   = $6C00,
+       IBGT   = $6E00,  IBHI   = $6200,  IBLE   = $6F00,  IBLS   = $6300,
+       IBLT   = $6D00,  IBMI   = $6B00,  IBNE   = $6600,  IBPL   = $6A00,
+       IBRA   = $6000,  IBSET  = $00C0,  IBSR   = $6100,  IBTST  = $0000,
+       IBVC   = $6800,  IBVS   = $6900,  ICHK   = $4180,  ICLR   = $4200,
+       ICMP   = $B000,  ICMPI  = $0C00,  IDBCC  = $54C8,  IDBCS  = $55C8,
+       IDBEQ  = $57C8,  IDBF   = $51C8,  IDBGE  = $5CC8,  IDBGT  = $5EC8,
+       IDBHI  = $52C8,  IDBLE  = $5FC8,  IDBLS  = $53C8,  IDBLT  = $5DC8,
+       IDBMI  = $5BC8,  IDBNE  = $56C8,  IDBPL  = $5AC8,  IDBRA  = $50C8,
+       IDBT   = $50C8,  IDBVC  = $58C8,  IDBVS  = $59C8,  IDIVS  = $81C0,
+       IEOR   = $B100,  IEORI  = $0A00,  IEXG   = $C140,  IEXTW  = $4880,
+       IEXTL  = $48C0,  IJMP   = $4EC0,  IJSR   = $4E80,  ILEA   = $41C0,
+       ILINK  = $4E50,  ILSL   = $E108,  ILSR   = $E008,  IMOVEQ = $7000,
+       IMULS  = $C1C0,  INEG   = $4400,  INOP   = $4E71,  INOT   = $4600,
+       IOR    = $8000,  IORI   = $0000,  IPEA   = $4840,  IROL   = $E118,
+       IROR   = $E018,  IRTE   = $4E73,  IRTS   = $4E75,  ISCS   = $55C0,
+       ISEQ   = $57C0,  ISF    = $51C0,  ISGE   = $5CC0,  ISGT   = $5EC0,
+       ISHI   = $52C0,  ISLE   = $5FC0,  ISLS   = $53C0,  ISLT   = $5DC0,
+       ISMI   = $5BC0,  ISNE   = $56C0,  ISPL   = $5AC0,  ISRA   = $50C0,
+       IST    = $50C0,  ISVC   = $58C0,  ISVS   = $59C0,  ISUB   = $9000,
+       ISUBI  = $0400,  ISUBQ  = $5100,  ISWAP  = $4840,  ITRAP  = $4E40,
+       ITRAPV = $4E76,  ITST   = $4A00,  IUNLK  = $4E58
+
+-&gt; CPU Registers
+
+ENUM   D_0, D_1, D_2, D_3, D_4, D_5, D_6, D_7
+ENUM   A_0, A_1, A_2, A_3, A_4, A_5, A_6, A_7
+CONST  SP = A_7
+
+-&gt; Addressing mode flag values
+
+CONST  DREG   = 0, -&gt; Data Register
+       ARDIR  = 1, -&gt; Address Register Direct
+       ARIND  = 2, -&gt; Address Register Indirect
+       ARPOST = 3, -&gt; Address Register with Post-Increment
+       ARPRE  = 4, -&gt; Address Register with Pre-Decrement
+       ARDISP = 5, -&gt; Address Register with Displacement
+       ARDISX = 6, -&gt; Address Register with Disp. &amp; Index
+       MODE7  = 7, -&gt; All other addressing modes
+       ABSW   = 0, -&gt; Absolute Short (16-bit Address)
+       ABSL   = 1, -&gt; Absolute Long (32-bit Address)
+       PCDISP = 2, -&gt; Program Counter Relative, with Displacement
+       PCDISX = 3, -&gt; Program Counter Relative, with Disp. &amp; Index
+       IMM    = 4  -&gt; Immediate
+
+-&gt; Size types
+
+ENUM B, W, L
+
+
+-&gt; hunk_code class
+OBJECT code
+  hunk:PTR TO INT
+  pc:PTR TO INT
+  globals:PTR TO LONG
+  global_refs:PTR TO LONG
+  g_ref:PTR TO LONG
+  locals:PTR TO LONG
+  local_refs:PTR TO LONG
+  l_ref:PTR TO LONG
+ENDOBJECT
+
+-&gt; Allocate code hunk
+PROC buffer(codesize) OF code
+  self.hunk:=NewR(codesize)
+  self.pc:=self.hunk
+ENDPROC
+
+-&gt; Flush code hunk into a file
+PROC flush(handle) OF code
+  DEF len
+  len:=self.pc-self.hunk+3 AND $FFFFFFFC
+  Write(handle,[HUNK_HEADER,0,1,0,0,Shr(len,2),HUNK_CODE,Shr(len,2)],32)
+  Write(handle,self.hunk,self.pc-self.hunk)
+  Write(handle,[0,0,0,0]:CHAR,len-self.pc+self.hunk)
+  Write(handle,[HUNK_END],4)
+ENDPROC
+
+-&gt; Allow global labels
+PROC global_labels(labels,refs) OF code
+  self.globals:=NewR(labels*SIZEOF LONG)
+  self.global_refs:=NewR(refs*2*SIZEOF LONG)
+  self.g_ref:=self.global_refs
+ENDPROC
+
+-&gt; Define a global label
+PROC define_global(label) OF code
+  self.globals[label]:=self.pc
+ENDPROC
+
+-&gt; Reference a global label
+PROC global_ref(label) OF code
+  self.g_ref[]:=self.pc
+  self.g_ref:=self.g_ref+SIZEOF LONG
+  self.g_ref[]:=label
+  self.g_ref:=self.g_ref+SIZEOF LONG
+ENDPROC
+
+-&gt; Resolve global references
+PROC resolve_globals() OF code
+  DEF lab:PTR TO LONG,adr
+  lab:=self.global_refs
+  WHILE lab&lt;self.g_ref
+    PutInt((adr:=lab[]++)+2,self.globals[lab[]++]-adr-2)
+  ENDWHILE
+  self.g_ref:=self.global_refs
+ENDPROC
+
+-&gt; Allow local labels
+PROC local_labels(labels,refs) OF code
+  self.locals:=NewR(labels*SIZEOF LONG)
+  self.local_refs:=NewR(refs*2*SIZEOF LONG)
+  self.l_ref:=self.local_refs
+ENDPROC
+
+-&gt; Define a local label
+PROC define_local(label) OF code
+  self.locals[label]:=self.pc
+ENDPROC
+
+-&gt; Reference a local label
+PROC local_ref(label) OF code
+  self.l_ref[]:=self.pc
+  self.l_ref:=self.l_ref+SIZEOF LONG
+  self.l_ref[]:=label
+  self.l_ref:=self.l_ref+SIZEOF LONG
+ENDPROC
+
+-&gt; Resolve local references
+PROC resolve_locals() OF code
+  DEF lab:PTR TO LONG,adr
+  lab:=self.local_refs
+  WHILE lab&lt;self.l_ref
+    PutInt((adr:=lab[]++)+2,self.locals[lab[]++]-adr-2)
+  ENDWHILE
+  self.l_ref:=self.local_refs
+ENDPROC
+
+-&gt; Put word into code
+-&gt; Instructions: Bcc, DBcc, BRA, BSR, LINK, UNLK, RTS, RTE, RTR, SWAP, EXT
+-&gt; Instructions: ILLEGAL, TRAP, TRAPV, NOP
+PROC putword(word) OF code
+  self.pc[]:=word
+  self.pc:=self.pc+SIZEOF INT
+ENDPROC
+
+-&gt; Put long into code
+PROC putlong(long) OF code
+  PutLong(self.pc,long)
+  self.pc:=self.pc+SIZEOF LONG
+ENDPROC
+
+-&gt; Put binary into code
+PROC putbinary(start,end) OF code
+  CopyMem(start,self.pc,end-start)
+  self.pc:=self.pc+end-start
+ENDPROC
+
+-&gt; Instruction format #1: xxxxxxxxsseeeeee
+-&gt; Instructions: CLR, NEG, NOT, TST
+PROC putF1(op,size,data,mode,reg) OF code
+  self.pc[]:=op OR Shl(size,6) OR Shl(mode,3) OR reg
+  self.pc:=self.pc+SIZEOF INT
+  self.argument(size,data,mode,reg)
+ENDPROC
+
+-&gt; Instruction format #2: xxxxrrrxxxeeeeee
+-&gt; Instructions: LEA, DIVS, DIVU, MULS, MULU, CHK
+PROC putF2(op,xdata,xmode,xreg,yreg) OF code
+  self.pc[]:=op OR Shl(yreg,9) OR Shl(xmode,3) OR xreg
+  self.pc:=self.pc+SIZEOF INT
+  self.argument(W,xdata,xmode,xreg)
+ENDPROC
+
+-&gt; Instruction format #3: xxxxxxxxxxeeeeee
+-&gt; Instructions: PEA, JSR, JMP, Scc
+PROC putF3(op,data,mode,reg) OF code
+  self.pc[]:=op OR Shl(mode,3) OR reg
+  self.pc:=self.pc+SIZEOF INT
+  self.argument(W,data,mode,reg)
+ENDPROC
+
+-&gt; Instruction format #4: 00sseeeeeeeeeeee
+-&gt; Instructions: MOVE, MOVEA
+PROC putF4(size,xdata,xmode,xreg,ydata,ymode,yreg) OF code
+  self.pc[]:= Shl(IF size=B THEN %1 ELSE size OR %10,12) OR
+              Shl(yreg,9) OR Shl(ymode,6) OR Shl(xmode,3) OR xreg
+  self.pc:=self.pc+SIZEOF INT
+  self.argument(size,xdata,xmode,xreg)
+  self.argument(size,ydata,ymode,yreg)
+ENDPROC
+
+-&gt; Instruction format #5: xxxxrrrmmmeeeeee
+-&gt; Instructions: OR, SUB, SUBA, CMP, CMPA, EOR, AND, ADD, ADDA
+PROC putF5(op,size,xdata,xmode,xreg,yreg) OF code
+  self.pc[]:=op OR Shl(yreg,9) OR Shl(size,6) OR Shl(xmode,3) OR xreg
+  self.pc:=self.pc+SIZEOF INT
+  self.argument(size,xdata,xmode,xreg)
+ENDPROC
+
+-&gt; Instruction format #6: xxxxxxxxsseeeeee
+-&gt; Instructions: ORI, SUBI, CMPI, EORI, ANDI, ADDI
+PROC putF6(op,size,xdata,ydata,ymode,yreg) OF code
+  self.pc[]:=op OR Shl(size,6) OR Shl(ymode,3) OR yreg
+  self.argument(size,xdata,MODE7,IMM)
+  self.argument(size,ydata,ymode,yreg)
+ENDPROC
+
+-&gt; Instruction format #7: xxxxdddxsseeeeee
+-&gt; Instructions: ADDQ, SUBQ
+PROC putF7(op,size,xdata,ydata,ymode,yreg) OF code
+  self.pc[]:=op OR Shl(xdata,9) OR Shl(size,6) OR Shl(ymode,3) OR yreg
+  self.pc:=self.pc+SIZEOF INT
+  self.argument(size,ydata,ymode,yreg)
+ENDPROC
+
+
+-&gt; PRIVATE part
+
+-&gt; Instruction arguments
+PROC argument(size,data,mode,reg) OF code
+  IF (mode = ARDISP) OR (mode = ARDISX)
+    self.pc[]:=data
+    self.pc:=self.pc+SIZEOF INT
+  ELSEIF mode = MODE7
+    SELECT reg
+    CASE ABSW
+      self.pc[]:=data
+      self.pc:=self.pc+SIZEOF INT
+    CASE ABSL
+      PutLong(self.pc,data)
+      self.pc:=self.pc+SIZEOF LONG
+    CASE PCDISP
+      self.pc[]:=data
+      self.pc:=self.pc+SIZEOF INT
+    CASE PCDISX
+      self.pc[]:=data
+      self.pc:=self.pc+SIZEOF INT
+    CASE IMM
+      SELECT size
+      CASE B
+        self.pc[]:=data
+        self.pc:=self.pc+SIZEOF INT
+      CASE W
+        self.pc[]:=data
+        self.pc:=self.pc+SIZEOF INT
+      CASE L
+        PutLong(self.pc,data)
+        self.pc:=self.pc+SIZEOF LONG
+      ENDSELECT
+    ENDSELECT
+  ENDIF
+ENDPROC
+
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

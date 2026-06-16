@@ -1,0 +1,392 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>voxel_gfx.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-frontier-src.html">FRONTIER-Src</a> &rsaquo; voxel_gfx.e</div><h1>File: <code>voxel_gfx.e</code></h1><p class="meta">366 lines · project <a href="../examples/pkg-frontier-src.html"><code>FRONTIER-Src</code></a></p><p class="pathctx">FRONTIER-Src/FRONTIER-Src/voxel_gfx.e</p><p class="prose">* Testing some Graphics-Rendering-Functions * -=========================================- * __ __ __ * \ \ / /___ __ __ ___ / / * \ \ / // _ \\ \ / // __\/ / - ENGINE * \ \/ // /_\ \\ \/ // _/ / /__ Projekt * \__/ \_____//_/\_\\__/ \___/ * * * © 1998 THE DARK FRONTIER Softwareentwicklungen * * Begon</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/rastport.html">graphics/rastport</a></li><li><a href="../modules/intuition.html">intuition/intuition</a></li><li><a href="../modules/screens.html">intuition/screens</a></li><li><a href="../modules/tagitem.html">utility/tagitem</a></li></ul></div><h2>Source</h2><pre class="code">/* 
+ *  Testing some Graphics-Rendering-Functions
+ * -=========================================-
+ *  __      __                   __
+ *  \ \    / /___ __    __ ___  / /
+ *   \ \  / // _ \\ \  / // __\/ /   - ENGINE
+ *    \ \/ // /_\ \\ \/ // _/ / /__    Projekt
+ *     \__/ \_____//_/\_\\__/ \___/
+ * 
+ * 
+ * © 1998 THE DARK FRONTIER Softwareentwicklungen
+ *
+ * Begonnen             : Donerstag     16 Juli 1998
+ * Letzte Änderung      : Freitag       17 Juli 1998
+ *
+ * Geplant:
+ * --------
+ *      - Einbeziehen des Kamera-Winkels in die Darstellung
+ *      - Optimierungen (evtl. in Assembler) aber erst wenn alles Stabil läuft
+ *      - Antialiasing (vertikal und Horizontal)
+ *      - Tiefenunschärfe (z.B. Nebel, Helligkeitsänderung...)
+ *
+ * Verwirklicht:
+ * -------------
+ *      - MAP-Funktionen (zur erzeugung, Änderung ect... einer MAP)
+ *      - Voxel-Funktionen (Zeichnen...)
+ *      - Betrachter-Funktionen (Standpunkt...)
+ *      - Perspektive-Korrektur (Pixel werden nach Hinten kleiner)
+ *      - MAP-Modulo (wenn ein Wert auserhalb der MAP liegt wird er neu berechnet und in die MAP gelegt)
+ *      - Beliebig große MAPS verwaltbar und darstellbar (vom Speicher abhängig)
+ *      - 100 % System-Konform programmiert (dadurch aber ein wenig langsam...)
+ *      - ...
+ */
+
+OPT     MODULE
+OPT     EXPORT
+
+MODULE  &#x27;graphics/rastport&#x27;
+MODULE  &#x27;intuition/intuition&#x27;
+MODULE  &#x27;intuition/screens&#x27;
+MODULE  &#x27;utility/tagitem&#x27;
+-&gt;MODULE  &#x27;*voxel_draw&#x27;                                   -&gt; Assembler-Zeichen-Routine
+
+/* 
+ *  In einer Display-Struktur (Objekt) werden alle wichtigen Parameter, Variablen ect... gespeichert
+ *   die für die Darstellung einer MAP auf einem Bildschirm (Screen) IN EINEM FENSTER (Window)
+ *   nötig sind!
+ * 
+ * WICHTIG ist, daß man die Auflösung (resolution) an die Maße &gt;width&lt; und &gt;height&lt; und an die Breite und
+ *  Länge der MAP anpassen muß!!!!! (sonst kanns sein, daß auf einem Großen Screen mit großem Window
+ *  die gesamte MAP sichtbar ist, wird &gt;resolution&lt; allerdings zu groß gewählt ist die Darstellung
+ *  der MAP zu Grob-Pixelig!!!)
+ */
+
+OBJECT  voxel_display                                   -&gt; Daten für eine Bildschirmdarstellung einer MAP
+ screen         :PTR TO screen                          -&gt; eigener Bildschirm (muß vorher geöffnet werden) oder NIL (=Workbench)
+ window         :PTR TO window                          -&gt; Window das für die Darstellung benutzt wird
+ rport          :LONG                                   -&gt; Rastport in den gezeichnet werden soll!
+ width          :INT                                    -&gt; Breite die zur Darstellung benutzt werden soll (ist meistens gleich groß wie die Breite des Fensters)
+ height         :INT                                    -&gt; Höhe die zur Darstellung benutzt werden soll (meistens ca 50% der Window-Höhe, rest = Hintergrundbild, Wolken...)
+ resolution     :INT                                    -&gt; &quot;Auflösung&quot; (Größe eines Voxel-Punktes in Pixeln), 1 = beste Auflösung...
+ backfill       :LONG                                   -&gt; PTR auf eine Prozedur die das Füllen des Hintergrunds übernimmt (z.B. Hintergrundbild!)
+ tickproc       :LONG                                   -&gt; PTR auf eine Prozedur die bei jedem IntuiTick aufgerufen wird (z.B. nächstes Bild einer Animation des Hintergrundbildes vorbereiten (PTR))
+ENDOBJECT
+
+CONST   DISPLAY_IDCMP           =                       -&gt; IDCMP-Flags des VOXEL-Windows
+        IDCMP_RAWKEY            OR                      -&gt; Cursor-Tasten ect...
+        IDCMP_VANILLAKEY        OR                      -&gt; Sonstige Tasten
+        IDCMP_MOUSEBUTTONS      OR                      -&gt; Mausbuttons
+        IDCMP_MOUSEMOVE         OR                      -&gt; Mausbewegungen
+        IDCMP_INTUITICKS                                -&gt; Intuiticks (1/25 sekunde) z.B. für Bewegungen im Hintergrundbild (z.B. Wolken im Himmel...)
+
+/* 
+ *  Zur VOXEL-Darstellung wird eine MAP benötigt, diese besteht aus einem 2D-Array,
+ *   dessen Größe sich folgendermaßen zusammensetzt:
+ * 
+ *      BREITE * LÄNGE * (SIZEOF voxelpoint)
+ * 
+ *  BREITE = Breite der MAP (in Punkten)
+ *  LÄNGE  = Länge des MAP (in Punkten)
+ *
+ */
+
+/* Schematischer MAP-Aufbau: (Nur zur veranschaulichung!)
+   -------------------------
+
+OBJECT  voxel_map
+ length         :LONG
+ width          :LONG
+   [BREITE*HÖHE]:ARRAY OF voxel_point
+ENDOBJECT
+
+*/
+
+/*
+ *  Die MAP besteht aus vielen Punkten (voxel_point), ein punkt hat als Daten
+ *   nur seine Höhe und eine Farbe (Zahl eines Stiftes...)
+ * 
+ *  height = Höhe des Voxels in Pixeln (!), es ist zu beachten, daß es eine Mindest
+ *           höhe gibt, diese ist abhängig von der Auflösung (&gt;resolution&lt;) in &gt;voxel_display&lt; 
+ *           und muß mindestens 2 * resolution sein,da es sonst zu Lücken zwischen den einzelnen
+ *           Voxeln in den Zeilen kommen kann!!
+ *  color  = Nummer des Stiftes der zum Zeichnen des Voxels benutzt werden soll!
+ *
+ */
+
+OBJECT  voxel_point                                     -&gt; Punkt für eine Voxel-Darstellung (nur für Landschaften geeignet!)
+ height         :INT                                    -&gt; Höhe des Punktes
+ color          :INT                                    -&gt; Farbe des Punktes
+ENDOBJECT
+
+/*
+ *  Außerdem wird EIN Punkt benötigt, der als Bezugspunkt dient und die Blickrichtung
+ *   eines Betrachters (z.B. Kamera, Person...) repräsentiert
+ *
+ *  x      = X-Position des Betrachters (relativ zum Ursprung [1:1])
+ *  y      = Y-Position des Betrachters (relativ zum Ursprung [1:1])
+ *  height = Höhe des Betrachters (muß MINDESTENS die Höhe des Voxelpoints an dieser Stelle+1 sein!)
+ *  camera = Blickwinkel des Betrachters (relativ zum Ursprung [1:1]), ACHTUNG, Angabe = in Grad! (0-360)
+ *
+ */
+
+OBJECT  voxel_position                                  -&gt; Position eines Betrachters
+ x              :INT                                    -&gt; X-Coordinate (relativ zum ersten Punkt [1:1])
+ y              :INT                                    -&gt; Y-Coordinate (relativ zum Ursprung [1:1])
+ height         :INT                                    -&gt; Höhe (in VOXEL-Einheiten) in der der Betracher steht/schwebt...
+ camera         :LONG                                   -&gt; Blickwinkel (Ursprung = 45°! Blick nach &quot;vorne&quot; = 90°)
+ENDOBJECT
+
+/* 
+ *  DISPLAY Support-Funktionen
+ * -==========================-
+ * 
+ * 
+ */
+
+PROC voxel_InitDisplay(screen:PTR TO screen,win_width,win_height,use_width,use_height,resolution,backfillproc,tickproc) -&gt; Voxel-Display allokieren und anlegen
+ DEF    voxeldisplay=NIL:PTR TO voxel_display           -&gt; PTR auf eine Display-Struktur die initialisiert werden soll
+  NEW voxeldisplay                                      -&gt; Voxel-display-Struktur allokieren (Speicher holen)
+   IF (voxeldisplay&lt;&gt;NIL)                               -&gt; Folgenden Code nur ausführen, wenn die Struktur korrekt allokiert wurde
+    voxeldisplay.screen:=screen                         -&gt; Übergebenen Screen-PTR setzen
+     voxeldisplay.window:=OpenWindowTagList(NIL,        -&gt; Window für die Grafik-Ausgabe öffnen
+               [WA_LEFT,        0,                      -&gt; Linke Ecke des Fensters
+                WA_TOP,         0,                      -&gt; Obere Ecke des Fensters
+                WA_WIDTH,       win_width,                              -&gt; Breite des Fensters auf die übergebenen Werte setzen
+                WA_HEIGHT,      win_height,                             -&gt; Höhe des Fensters auf die übergebenen Werte setzen
+                WA_IDCMP,       DISPLAY_IDCMP,                          -&gt; IDCMP-Flags setzen (DISPLAY_IDCMP = Konstante!!)
+                WA_FLAGS,       WFLG_BORDERLESS OR WFLG_ACTIVATE,       -&gt; Das Fenster soll KEINEN Rahmen besitzen und hinter allen anderen Fenstern erscheinen
+                IF (screen=NIL) THEN TAG_IGNORE ELSE WA_CUSTOMSCREEN,screen,    -&gt; Falls ein Screen übergeben wurde, diesen eintragen
+                NIL,            NIL])                                   -&gt; TAG-Liste abschließen
+      IF (voxeldisplay.window=NIL)                      -&gt; Wenn das Fenster NICHT geöffnet werden konnte
+       END voxeldisplay                                 -&gt; Speicher für Voxel-Display wieder freigeben
+        voxeldisplay:=NIL                               -&gt; Vorsichtshalber den PTR auf NIL setzen
+       RETURN NIL                                       -&gt; Und NIL zurückliefern!
+      ENDIF
+       voxeldisplay.width:=use_width                    -&gt; Darstellungsbreite für die Voxel-MAP eintragen
+      voxeldisplay.height:=use_height                   -&gt; Darstellungshöhe für die Voxel-MAP eintragen
+     voxeldisplay.tickproc:=tickproc                    -&gt; PTR auf eine Prozedur die bei jedem IDCMP_INTUITICK ausgeführt werden soll (= 1/25 sek)
+    voxeldisplay.backfill:=backfillproc                 -&gt; PTR auf eine Prozedur die den Hintergrung füllen soll (ggf. hier noch andere Sachen einfügen...)
+   voxeldisplay.resolution:=resolution                  -&gt; Auflösung einfügen
+   ELSE                                                 -&gt; Wenn das Voxel-Display nicht gültig ist / nicht existiert
+    RETURN NIL                                          -&gt; Dann NIL (=Fehler) zurückliefern!
+   ENDIF
+ENDPROC voxeldisplay                                    -&gt; PTR auf die Voxel-Display-Struktur zurückliefern!
+
+PROC voxel_FreeDisplay(voxeldisplay:PTR TO voxel_display)       -&gt; Voxel-Display freigeben
+ IF (voxeldisplay&lt;&gt;NIL)                                         -&gt; Nur wenn auch ein Voxel-Display existiert
+  IF (voxeldisplay.window&lt;&gt;NIL) THEN CloseWindow(voxeldisplay.window)   -&gt; Wenn ein Fenster offen war, dann dieses Schließen
+
+  END voxeldisplay                                              -&gt; Speicher für das Voxel-Display freigeben
+ ELSE                                                           -&gt; Wenn kein Voxel-Display existiert, dann
+  RETURN FALSE                                                  -&gt; Fehlermeldung
+ ENDIF
+ENDPROC TRUE
+
+PROC voxel_DrawDisplay(voxeldisplay:PTR TO voxel_display,voxelmap:PTR TO LONG,position:PTR TO voxel_position)    -&gt; MAP ins DISPLAY zeichnen!
+ DEF    proc=NIL,                                       -&gt; Prozedur-PTR
+        rport=NIL,                                      -&gt; Rastport zum Zeichnen
+        height=0,                                       -&gt; Reelle Höhe des aktuellen Voxel-Pixel
+        map_x=0:REG,                                    -&gt; Koordinate des zu zeichnenden Voxels in der MAP (X)
+        map_y=0:REG,                                    -&gt; Koordinate des zu zeichnenden Voxels in der MAP (Y)
+        x=1:REG,                                        -&gt; Nummer des Voxels der in der Zeile gezeichnet werden soll
+        y=0,                                            -&gt; zu zeichnende Voxel-Zeile
+        voxels=0,                                       -&gt; Anzahl an zu zeichnenden Voxels in X-Richtung
+        voxel_width=0:REG,                              -&gt; Breite eines Voxel-Pixels
+        voxel_color=0,                                  -&gt; Farbe des Voxel-Pixels
+        voxel_height=0:REG                              -&gt; Höhe des Voxels
+  IF (voxeldisplay&lt;&gt;NIL) AND (voxelmap&lt;&gt;NIL) AND (position&lt;&gt;NIL)-&gt; Code nur ausführen, wenn alle Parameter gültig sind/existieren!
+   IF (proc:=voxeldisplay.backfill) THEN proc(voxeldisplay,voxelmap,position)           -&gt; Wenn eine Füllprozedur vorhanden ist, dann diese aufrufen
+    rport:=voxeldisplay.rport                           -&gt; PTR auf den Rastport zum Zeichnen (des Fensters) holen
+     height:=voxeldisplay.height                        -&gt; Höhe auf die Höhe des Horizonts setzen
+Forbid()
+     WHILE (height&lt;=(voxeldisplay.window.height+position.height))       -&gt; Schleife solange durchlaufen, bis die vorgegebene Höhe mindestens von allen Voxels erreicht ist
+      voxels:=(voxeldisplay.width/(voxeldisplay.resolution+(y/2)))                      -&gt; Anzahl der Voxels in der Reihe (nach hinten werden es mehr Voxel, damit sie kleiner werden!)
+       map_y:=position.y-((voxeldisplay.height/(voxeldisplay.resolution*2))/2)+y        -&gt; Position des Punktes der MAP (Zeile) berechnen 
+        x:=0
+         voxel_width:=voxeldisplay.width/voxels         -&gt; Breite eines Voxels anhand der Anzahl der Voxels berechnen
+        WHILE (voxels&gt;0)                                -&gt; Für jeden Voxel in der Zeile durchlaufen
+         map_x:=position.x-(voxels/2)+x                 -&gt; X-Position des Voxels in der MAP berechnen
+          voxel_height,voxel_color:=voxel_fastGetMap(voxelmap,map_x,map_y)              -&gt; Höhe und Farbe des Voxels aus der MAP lesen
+
+           SetAPen(rport,voxel_color)                   -&gt; Farbe für den Voxel setzen
+           RectFill(rport,voxel_width*x,height-voxel_height,voxel_width*(x+1),height)   -&gt; Und Voxel zeichnen
+
+          voxels:=voxels-1                              -&gt; Anzahl der noch zu zeichnenden Voxels herabsetzen
+         x:=x+1                                         -&gt; Nummer des zu zeichnenden Voxels +1
+        ENDWHILE
+       y:=y+1                                           -&gt; Nummer der zu zeichnenden Zeile +1
+      height:=height+(voxeldisplay.resolution)        -&gt; Anfang des Voxels berechnen    -&gt; 
+     ENDWHILE
+Permit()
+  ELSE                                                  -&gt; Wenn ein Parameter nicht existiert, dann
+   RETURN FALSE                                         -&gt; Fehlermeldung zurückliefern
+  ENDIF
+ENDPROC TRUE
+
+/* 
+ *  MAP Support-Funktionen
+ * -======================-
+ * 
+ * 
+ */
+
+PROC voxel_InitMap(width,length)                        -&gt; Speicher für eine Map allokieren
+ DEF    voxelmap=NIL:PTR TO LONG                        -&gt; PTR auf die MAP, auf NIL setzen
+  voxelmap:=New((width*length*SIZEOF voxel_point)+8)    -&gt; Speicher anfordern (Größe = (BREITE * LÄNGE * SIZEOF voxel_point) + 8 Bytes) = 8 Bytes = für speicherung der länge/breite!
+   IF (voxelmap&lt;&gt;NIL)                                   -&gt; Nur wenn die MAP angelegt wurde!
+    voxelmap[0]:=length                                 -&gt; Länge in die MAP speichern
+     voxelmap[1]:=width                                 -&gt; Breite in die MAP speichern
+   ENDIF
+ENDPROC voxelmap                                        -&gt; PTR auf die MAP zurückliefern
+
+PROC voxel_FreeMap(voxelmap:PTR TO LONG)                -&gt; Speicher für die MAP wieder freigeben
+ IF (voxelmap&lt;&gt;NIL)                                     -&gt; Nur wenn die MAP auch wirklich existent war
+  Dispose(voxelmap)                                     -&gt; Speicher freigeben
+ ELSE                                                   -&gt; wenn die MAP nicht existiert hat...
+  RETURN FALSE                                          -&gt; Fehlermeldung zurück...
+ ENDIF
+ENDPROC TRUE
+
+PROC voxel_SetMap(voxelmap:PTR TO LONG,x,y,color,height)-&gt; Farbe und Höhe eines Punktes in die MAP schreiben
+ DEF    width=0,                                        -&gt; gesamte Breite der MAP
+        length=0,                                       -&gt; gesamte Länge der MAP
+        realpos=0,                                      -&gt; tatsächliche Position des Punktes in der MAP
+        point:voxel_point                               -&gt; Speicher für einen Voxel-Punkt, statisch angelegt
+  IF (voxelmap&lt;&gt;NIL)                                    -&gt; Nur wenn die MAP auch wirklich existiert!
+   length:=voxelmap[0]                                  -&gt; Länge aus der MAP auslesen
+    width:=voxelmap[1]                                  -&gt; Breite aus der MAP auslesen
+     IF (x&lt;=width) AND (y&lt;=length)                      -&gt; Nur wenn die Werte zulässig sind
+      realpos:=((y*width)+x+2)                          -&gt; -1 = Position des Punktes, 0 = nächster Punkt!!!!
+       point.height:=height                             -&gt; Höhe des Punktes in das PUNKT Objekt einfügen
+        point.color:=color                              -&gt; Farbe des Punktes in die PUNKT-Struktur schreiben
+         voxelmap[realpos]:=^point                      -&gt; Punkt in die MAP schreiben
+     ELSE
+      RETURN FALSE                                      -&gt; Fehler, wenn der Punkt nicht in der MAP liegt!
+     ENDIF
+  ELSE
+   RETURN FALSE                                         -&gt; Fehler zurückmelden, wenn die MAP nicht existiert!
+  ENDIF
+ENDPROC TRUE
+
+PROC voxel_GetMap(voxelmap:PTR TO LONG,x,y)             -&gt; Farbe und Höhe eines Punktes aus der MAP auslesen
+ DEF    point:voxel_point,                              -&gt; Statischer Speicher für einen Voxel-Punkt
+        width=0:REG,                                    -&gt; Breite der MAP
+        length=0:REG                                    -&gt; Höhe der MAP
+  IF (voxelmap&lt;&gt;NIL)                                    -&gt; Nur wenn die Map existiert!
+   length:=voxelmap[0]                                  -&gt; Länge aus der MAP lesen
+    width:=voxelmap[1]                                  -&gt; Breite aus der MAP lesen
+     IF (x&gt;width) THEN WHILE (x&gt;width) DO x:=x-width    -&gt; Wenn der Pixel außerhalb der MAP liegt, dann wird er in die MAP berechnet
+      IF (y&gt;length) THEN WHILE (y&gt;length) DO y:=y-length-&gt; Länge anpassen (in die MAP)
+    ^point:=voxelmap[(width*y)+x+2]                     -&gt; Punkt aus der MAP holen
+  ELSE                                                  -&gt; Wenn die MAP nicht existiert!
+   RETURN 0,0                                           -&gt; Fehler zurückmelden!
+  ENDIF
+ENDPROC point.height, point.color                       -&gt; Höhe und Farbe des Punktes zurückliefern!
+
+PROC voxel_fastGetMap(voxelmap:PTR TO LONG,x,y)
+ DEF    point:voxel_point,                              -&gt; Statischer Speicher für einen Voxel-Punkt
+        width:REG
+  width:=voxelmap[1]                                    -&gt; Breite aus der MAP lesen
+   ^point:=voxelmap[(width*y)+x+2]                      -&gt; Punkt aus der MAP holen
+ENDPROC point.height, point.color
+/* 
+ *  POSITION Support-Funktionen
+ * -===========================-
+ * 
+ */
+
+PROC voxel_InitPosition(voxelmap:PTR TO LONG,x,y,height,camera) -&gt; Speicher für &gt;voxel_position&lt; holen und Position setzen
+ DEF    voxelposition=NIL:PTR TO voxel_position,        -&gt; PTR auf eine voxel_position-Struktur für die Daten des Betrachers/Kamera
+        width=0,                                        -&gt; Breite der Bezugs-Map
+        length=0,                                       -&gt; Länge der Bezugs-Map
+        map_height=0,                                   -&gt; Höhe des Punktes an der Betracher-Position
+        map_color=0                                     -&gt; Farbe des Punktes an der Betrachter-Position
+  IF (voxelmap&lt;&gt;NIL)                                    -&gt; Nur ausführen, wenn eine Voxelmap bereits erstellt wurde und allokiert ist
+   length:=voxelmap[0]                                  -&gt; Länge der MAP auslesen
+    width:=voxelmap[1]                                  -&gt; Breite der MAP auslesen
+     IF (x&lt;=width) AND (y&lt;=length)                      -&gt; Nur wenn die Coordinaten des Betrachterpunktes innerhalb der MAP liegen
+      map_height,map_color:=voxel_GetMap(voxelmap,x,y)  -&gt; Höhe und Farbe des Punktes an der Betrachter-Position aus der MAP holen
+       IF (height&lt;map_height) THEN height:=map_height   -&gt; Wenn die höhe des Betrachters kleiner als die des Punktes ist, dann die höhe anpassen!
+        IF (camera&gt;=0) AND (camera&lt;=360)                -&gt; Wenn der Kamera-Winkel im erlaubten Bereich liegt
+         NEW voxelposition                              -&gt; Speicher für die Voxel-Position allokieren
+          IF (voxelposition&lt;&gt;NIL)                       -&gt; Wenn die Speicheranforderung erfolgreich war
+           voxelposition.x:=x                           -&gt; Position des Betrachters speichern (X)
+            voxelposition.y:=y                          -&gt; Position des Betrachters speichern (Y)
+           voxelposition.height:=height                 -&gt; Höhe des Betrachters ins Objekt schreiben
+          voxelposition.camera:=camera                  -&gt; Kamera-Winkel ebenfalls eintragen
+         ELSE                                           -&gt; Wenn ein Fehler aufgetreten ist
+          RETURN NIL                                    -&gt; Fehlermeldung zurückliefern    
+         ENDIF
+        ELSE                                            -&gt; Wenn ein Fehler aufgetreten ist
+         RETURN NIL                                     -&gt; Fehlermeldung zurückliefern    
+        ENDIF
+     ELSE                                               -&gt; Wenn ein Fehler aufgetreten ist
+      RETURN NIL                                        -&gt; Fehlermeldung zurückliefern    
+     ENDIF
+  ELSE                                                  -&gt; Wenn ein Fehler aufgetreten ist
+   RETURN NIL                                           -&gt; Fehlermeldung zurückliefern    
+  ENDIF
+ENDPROC voxelposition                                   -&gt; PTR auf die Voxel-Position-Struktur zurückliefern!
+
+PROC voxel_FreePosition(voxelposition:PTR TO voxel_position)    -&gt; Speicher für &gt;voxel_position&lt; freigeben
+ IF (voxelposition&lt;&gt;NIL)                                -&gt; Prüfen, ob die &gt;Voxel-Position&lt; Struktur gültig ist
+  END voxelposition                                     -&gt; Wenn ja, dann speicher freigeben
+   voxelposition:=NIL                                   -&gt; Und sicherheitshalber den PTR auf NIL setzen
+ ELSE                                                   -&gt; Wenn &gt;Voxelposition&lt; nicht existent ist (war)
+  RETURN FALSE                                          -&gt; Fehlermeldung zurückliefern
+ ENDIF
+ENDPROC TRUE
+
+PROC voxel_SetPosition(voxelmap:PTR TO LONG,voxelposition:PTR TO voxel_position,x,y,height)  -&gt; Position in &gt;voxel_position&lt; setzen
+ DEF    buf=0
+ IF (voxelposition&lt;&gt;NIL)                                -&gt; Nur ausführen, wenn &gt;voxelposition&lt; gültig ist
+  IF (voxelmap&lt;&gt;NIL)
+   IF (voxelmap[0]&lt;y) OR (voxelmap[1]&lt;x) OR (y&lt;1) OR (x&lt;1) THEN RETURN FALSE
+    voxelposition.x:=x                                  -&gt; X Setzen
+     voxelposition.y:=y                                 -&gt; Y Setzen
+    IF height=0
+     height,buf:=voxel_fastGetMap(voxelmap,x,y)
+    ENDIF
+     voxelposition.height:=height                       -&gt; Höhe setzen
+  ENDIF
+ ELSE                                                   -&gt; Wenn das &gt;voxelposition&lt; objekt nicht angelegt/gültig war
+  RETURN FALSE                                          -&gt; Fehler zurückliefern
+ ENDIF
+ENDPROC TRUE
+
+PROC voxel_GetPosition(voxelposition:PTR TO voxel_position)     -&gt; Position von &gt;voxel_position&lt; holen
+ IF (voxelposition=NIL)                                 -&gt; Wenn Die Position (das objekt) ungültig ist
+  RETURN 0,0,0                                          -&gt; Fehler zurückliefern!
+ ENDIF
+ENDPROC voxelposition.x,voxelposition.y,voxelposition.height    -&gt; Sonst die Werte zurückliefern!
+
+PROC voxel_RotatePosition(voxelposition:PTR TO voxel_position,camera)   -&gt; Kamera-winkel (Blickwinkel) neu setzen
+ IF (voxelposition&lt;&gt;NIL)                                -&gt; Nur wenn voxelposition auch gültig ist
+  IF (camera&gt;=0) AND (camera&lt;=360)                      -&gt; Wenn der Kamera-Winkel gültig ist
+   voxelposition.camera:=camera                         -&gt; Kamerawinkel setzen
+  ELSE                                                  -&gt; Wenn ein Fehler aufgetreten ist
+   RETURN FALSE                                         -&gt; Fehlermeldung zurückliefern     
+  ENDIF
+ ELSE                                                   -&gt; Wenn ein Fehler aufgetreten ist
+  RETURN FALSE                                          -&gt; Fehlermeldung zurückliefern    
+ ENDIF
+ENDPROC TRUE
+
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

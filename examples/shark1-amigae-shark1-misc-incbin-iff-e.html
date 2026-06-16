@@ -1,0 +1,167 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>INCBIN_iff.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-shark1.html">Shark1</a> &rsaquo; INCBIN_iff.e</div><h1>File: <code>INCBIN_iff.e</code></h1><p class="meta">141 lines · project <a href="../examples/pkg-shark1.html"><code>Shark1</code></a></p><p class="pathctx">Shark1/AmigaE/Shark1/Misc/INCBIN_iff.e</p><p class="prose"><a href="../modules/example.html">Example</a> for including an IFF ILBM-picture into your code and <a href="../modules/display.html">display</a> it. Source made by Karl-Erik Ruud. This source is based on an iff.<a href="../modules/library.html">library</a> source posted here earlier (by Dave Higginson I think - please correct me if I&#x27;m wrong!) It is not neccesary to use IfFL_OpenIff(). Change the name of the bi</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/iff.html">iff</a></li></ul></div><h2>Source</h2><pre class="code">/* 
+   Example for including an IFF ILBM-picture into your code and display
+   it. Source made by Karl-Erik Ruud. 
+   This source is based on an iff.library source posted here earlier 
+   (by Dave Higginson I think - please correct me if I&#x27;m wrong!)
+   
+   It is not neccesary to use IfFL_OpenIff().
+
+   Change the name of the bitmap (at the end of the source) to your own
+   picture path and name.
+*/
+
+MODULE	&#x27;iff&#x27;,			/* Iff library funtions and registers */
+	&#x27;libraries/iff&#x27;,	/* Iff library header */
+	&#x27;intuition/intuition&#x27;,	/* Intuition header */
+	&#x27;intuition/screens&#x27;,	/* Screen types and flags */
+	&#x27;exec/memory&#x27;,		/* Memory flags */
+	&#x27;graphics/display&#x27;	/* Display modes for screen */
+
+ENUM	ER_NONE,		/* No error */
+	ER_IFFLIB,		/* No iff-library */
+	ER_OPENIFF,		/* Could not open iff */
+	ER_NOBMHD,		/* No bitmap header (dimmensions) */
+	ER_SCREEN,		/* Could not open screen */
+	ER_WINDOW,		/* Could not open window */
+	ER_DECODE		/* Could not decode picture */
+
+DEF	s=NIL,			/* Screen */
+	ct[256]:ARRAY OF INT,	/* Colour table (up to 256 colours) */
+	bmhd,			/* Bitmap header (width (bmhd), height (bmhd+2), depth (bmhd+8)) */
+	w=NIL:PTR TO window,	/* Pointer to window */
+	quit=FALSE,		/* Variable to decide if the user quit */
+	msg:PTR TO intuimessage, /* Pointer to intuition message */
+	sprite=NIL,		/* Invisible sprite data */
+	viewmode=NIL		/* Viewmode (f.ex. HOLDANDMODIFY+INTERLACE) */
+
+
+PROC main() HANDLE
+
+/* Open iff.library  */
+
+	IF (iffbase:=OpenLibrary(&#x27;iff.library&#x27;,21))=NIL THEN Raise(ER_IFFLIB)
+
+/* BMHD = BitMap Header (contains dimensions of picture)
+   bmhd=picturewidth
+   bmhd+2=pictureheight
+   bmhd+8=number of bitplanes
+*/
+
+	IF (bmhd:=IfFL_GetBMHD({bitmap}))=NIL THEN Raise(ER_NOBMHD)
+
+/* If no viewmode info in file, calculate it (a hack that fails sometimes) */
+
+	IF (IfFL_FindChunk({bitmap},&#x27;CAMG&#x27;))=NIL
+		IF Int(bmhd)&gt;=640
+			viewmode:=MODE_640
+		ELSEIF Int(bmhd)&lt;640
+			viewmode:=0
+			IF Char(bmhd+8)=6 THEN viewmode:=viewmode+$800
+		ENDIF
+		IF Int(bmhd+2)&gt;300 THEN viewmode:=viewmode+INTERLACE
+	ELSE
+		viewmode:=IfFL_GetViewModes({bitmap})
+	ENDIF
+
+/* Open screen with correct dimensions */
+
+	IF (s:=OpenScreenTagList(NIL,
+		[SA_WIDTH,Int(bmhd),
+		 SA_HEIGHT,Int(bmhd+2),
+		 SA_DEPTH,Char(bmhd+8),
+		 SA_DISPLAYID,viewmode,
+		 SA_TYPE,PUBLICSCREEN,
+		 0,0]))=NIL THEN Raise(ER_SCREEN)
+
+/* Open a window based on the pictures dimmensions */
+
+		IF (w:=OpenWindowTagList(NIL,
+		[WA_LEFT,0,
+		 WA_TOP,0,
+		 WA_WIDTH,Int(bmhd),
+		 WA_HEIGHT,Int(bmhd+2),
+		 WA_FLAGS,WFLG_SIMPLE_REFRESH OR WFLG_NOCAREREFRESH OR WFLG_BORDERLESS OR WFLG_ACTIVATE,
+		 WA_IDCMP,IDCMP_MOUSEBUTTONS OR IDCMP_RAWKEY,
+		 WA_PUBSCREEN,s,
+		 NIL,NIL]))=NIL THEN Raise(ER_WINDOW)
+
+/* Blank the mouse pointer */
+
+	IF sprite:=AllocMem(20,MEMF_CHIP OR MEMF_CLEAR)
+		SetPointer(w,sprite,1,16,0,0)
+	ENDIF
+
+/* Set the palette of the screen */
+
+	LoadRGB4(s+44,ct,IfFL_GetColorTab({bitmap},ct))
+
+/* Try to load the picture */
+
+	IF (IfFL_DecodePic({bitmap},s+184))=FALSE THEN Raise(ER_DECODE)
+
+/* Wait for the user to press the mouse or a button */
+
+	REPEAT
+		IF msg:=GetMsg(w.userport)
+			quit:=(msg.class AND (IDCMP_MOUSEBUTTONS OR IDCMP_RAWKEY))
+		ELSE
+			quit:=(Wait(-1) AND Shl(1,12))
+		ENDIF
+	UNTIL quit
+	Raise(ER_NONE)		/* Do not give any error */
+EXCEPT				/* Handle expections */
+
+/* Clean up */
+
+	IF w THEN CloseWindow(w)
+	IF sprite THEN FreeMem(sprite,20)
+	IF s THEN CloseScreen(s)
+	IF iffbase THEN CloseLibrary(iffbase)
+
+/* Display possible error message */
+
+	IF exception&gt;0
+		WriteF(&#x27;Error: \s.\n&#x27;,
+			ListItem([&#x27;&#x27;,
+				  &#x27;No IFF library version &gt;21&#x27;,
+				  &#x27;Could not open IFF file&#x27;,
+				  &#x27;IFF File had no bitmap header&#x27;,
+				  &#x27;Could not open screen&#x27;,
+				  &#x27;Could not open window&#x27;,
+				  &#x27;Could not decode picture&#x27;],
+				exception))
+	ENDIF
+ENDPROC
+
+/* Include an IFF image in the code - replace this with your own */
+
+bitmap:
+
+INCBIN &#x27;DEV:AMIGAE/INNE/Obrazek.iff&#x27;
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

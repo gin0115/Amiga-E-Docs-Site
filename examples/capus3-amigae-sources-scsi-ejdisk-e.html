@@ -1,0 +1,440 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>EJDisk.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-capus3.html">capus3</a> &rsaquo; EJDisk.e</div><h1>File: <code>EJDisk.e</code></h1><p class="meta">414 lines · project <a href="../examples/pkg-capus3.html"><code>capus3</code></a></p><p class="pathctx">capus3/AmigaE/Sources/SCSI/EJDisk.e</p><p class="prose">&gt; EDEVHEADER</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/cx.html">amigalib/cx</a></li><li><a href="../modules/commodities.html">commodities</a></li><li><a href="../modules/rdargs.html">dos/rdargs</a></li><li><a href="../modules/lists.html">exec/lists</a></li><li><a href="../modules/easygui.html">tools/easygui</a></li><li><a href="../modules/workbench.html">workbench/workbench</a></li></ul></div><h2>Source</h2><pre class="code">-&gt;&gt; EDEVHEADER
+/*= © NasGûl =========================
+ ESOURCE EJDisk.e
+ EDIR    Workbench:AmigaE/Sources/SCSI
+ ECOPT   ERRLINE
+ EXENAME EJDisk
+ MAKE    EBUILD
+ AUTHOR  NasGûl
+ TYPE    EXEDOS
+ =====================================*/
+-&gt;&lt;
+-&gt;&gt; ©/DISTRIBUTION/UTILISATION
+/*=====================================
+
+ - TOUTE UTILISATION COMMERCIALE DES CES SOURCES EST
+   INTERDITE SANS MON AUTORISATION.
+
+ - TOUTE DISTRIBUTION DOIT ETRE FAITES EN TOTALITE (EXECUTABLES/MODULES E/SOURCES E).
+
+ !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+ !! TOUTE INCLUSION SUR UN CD-ROM EST INTERDITE SANS MON AUTORISATION.!!
+ !! SEULES LES DISTRIBUTIONS DE FRED FISH ET AMINET CDROM SONT AUTO-  !!
+ !! RISES A DISTRIBUER CES PROGRAMMES/SOURCES.                        !!
+ !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+=====================================*/
+-&gt;&lt;
+OPT PREPROCESS
+OPT OSVERSION=37
+-&gt;#define DBG
+-&gt;&gt; MODULES
+
+MODULE &#x27;tools/easygui&#x27;
+MODULE &#x27;exec/lists&#x27;,&#x27;exec/io&#x27;,&#x27;exec/ports&#x27;,&#x27;exec/nodes&#x27;,&#x27;other/plist&#x27;
+MODULE &#x27;workbench/workbench&#x27;,&#x27;workbench/startup&#x27;,&#x27;icon&#x27;
+MODULE &#x27;commodities&#x27;,&#x27;libraries/commodities&#x27;
+MODULE &#x27;dos/rdargs&#x27;,&#x27;dos/dosextens&#x27;,&#x27;dos/dos&#x27;
+MODULE &#x27;amigalib/cx&#x27;,&#x27;amigalib/io&#x27;,&#x27;amigalib/ports&#x27;,&#x27;devices/scsidisk&#x27;
+
+MODULE &#x27;*EJDiskHeader&#x27;
+
+-&gt;&lt;
+-&gt;&gt; OBJECTS
+
+
+OBJECT removal
+    node:ln
+    devicename:LONG
+    unit:LONG
+    hkeject:LONG
+    aftereject:LONG
+    hkload:LONG
+    afterload:LONG
+ENDOBJECT
+
+-&gt;&lt;
+-&gt;&gt; DEFINITIONS GLOBALES
+
+CONST EVT_HOTKEY=-1
+
+CONST ER_NONE=TRUE
+ENUM ER_ONLYWB=1,ER_LIB,ER_BRKR,ER_PORT,ER_CXER,ER_HOTK
+
+RAISE ER_BRKR IF CxBroker()=NIL,
+      ER_PORT IF CreateMsgPort()=NIL
+
+
+
+DEF removallist:PTR TO lh        -&gt; list exec
+DEF cxhotkey[256]:STRING         -&gt; cx hotkey definition
+DEF mycxport=NIL:PTR TO mp       -&gt; port OF cx
+DEF broker=NIL
+DEF scsieject:PTR TO CHAR
+DEF scsiload:PTR TO CHAR
+-&gt;&lt;
+-&gt;&gt; openLibraries() HANDLE
+PROC openLibraries() HANDLE
+    IF (cxbase:=OpenLibrary(&#x27;commodities.library&#x27;,0))=NIL THEN Raise(ER_LIB)
+    IF (iconbase:=OpenLibrary(&#x27;icon.library&#x27;,0))=NIL THEN Raise(ER_LIB)
+    Raise(ER_NONE)
+EXCEPT
+    #ifdef DBG
+        WriteF(&#x27;openLibraries() RETURN:$\h\n&#x27;,exception)
+    #endif
+    RETURN exception
+ENDPROC
+-&gt;&lt;
+-&gt;&gt; closeLibraries()
+PROC closeLibraries()
+    IF iconbase THEN CloseLibrary(iconbase)
+    IF cxbase THEN CloseLibrary(cxbase)
+    #ifdef DBG
+        WriteF(&#x27;closeLibraries()\n&#x27;)
+    #endif
+ENDPROC
+-&gt;&lt;
+-&gt;&gt; lookMessage()
+PROC lookMessage()
+    DEF msg,sigret,quit=FALSE
+    DEF msgid,msgtype
+    REPEAT
+        sigret:=Wait(Shl(1,mycxport.sigbit) OR SIGBREAKF_CTRL_C)
+        IF (sigret AND Shl(1,mycxport.sigbit))
+            WHILE msg:=GetMsg(mycxport)
+                msgid:=CxMsgID(msg)
+                msgtype:=CxMsgType(msg)
+                ReplyMsg(msg)
+                SELECT msgtype
+                    CASE CXM_IEVENT
+                        SELECT msgid
+                            CASE -1
+                                showHotKey()
+                            DEFAULT
+                                performAction(msgid)
+                        ENDSELECT
+                    CASE CXM_COMMAND
+                        SELECT msgid
+                            CASE CXCMD_DISABLE
+                                ActivateCxObj(broker,FALSE)
+                            CASE CXCMD_ENABLE
+                                ActivateCxObj(broker,TRUE)
+                            CASE CXCMD_KILL
+                                quit:=TRUE
+                            CASE CXCMD_UNIQUE
+                                quit:=TRUE
+                        ENDSELECT
+                ENDSELECT
+            ENDWHILE
+        ENDIF
+        IF (sigret AND SIGBREAKF_CTRL_C)
+                quit:=TRUE
+        ENDIF
+    UNTIL (quit=TRUE)
+ENDPROC
+-&gt;&lt;
+-&gt;&gt; performAction(numid)
+PROC performAction(numid)
+    DEF pr:PTR TO removal
+    DEF scsiio:PTR TO iostd
+    DEF scsiport:PTR TO mp
+    DEF myscsi:PTR TO scsicmd,ej=TRUE,ret=0
+    DEF f
+    IF Even(numid)
+        pr:=getInfoNode(removallist,numid/2,GETWITH_NUM,RETURN_ADR)
+    ELSE
+        pr:=getInfoNode(removallist,(numid-1)/2,GETWITH_NUM,RETURN_ADR)
+        ej:=FALSE
+    ENDIF
+    IF pr&lt;&gt;-1
+        IF scsiport:=createPort(NIL,NIL)
+            IF scsiio:=createStdIO(scsiport)
+                f:=OpenDevice(pr.devicename,pr.unit,scsiio,0)
+                IF (f)
+                    EasyRequestArgs(0,[20,0,0,&#x27;Erreur: OpenDevice() \s&#x27;,&#x27;Ok&#x27;],0,[pr.devicename])
+                    deleteStdIO(scsiio)
+                    deletePort(scsiport)
+                ELSE
+                    IF myscsi:=New(SIZEOF scsicmd)
+                        myscsi.data:=0
+                        myscsi.length:=0
+                        myscsi.senseactual:=0
+                        myscsi.sensedata:=0
+                        myscsi.senselength:=0
+                        IF ej
+                            myscsi.command:=scsieject
+                        ELSE
+                            myscsi.command:=scsiload
+                        ENDIF
+                        myscsi.cmdlength:=6
+                        myscsi.flags:=SCSIF_READ OR SCSIF_AUTOSENSE
+                        scsiio.length:=SIZEOF scsicmd
+                        scsiio.data:=myscsi
+                        scsiio.command:=HD_SCSICMD
+                        DoIO(scsiio)
+                        IF scsiio.error&lt;&gt;0
+                            Delay(10)
+                            DoIO(scsiio)
+                            IF scsiio.error&lt;&gt;0
+                                ret:=scsiio.error
+                                EasyRequestArgs(0,[20,0,0,&#x27;Erreur: DoIO() \d&#x27;,&#x27;Ok&#x27;],0,[scsiio.error])
+                            ENDIF
+                        ENDIF
+                        CloseDevice(scsiio)
+                        deleteStdIO(scsiio)
+                        deletePort(scsiport)
+                        IF myscsi THEN Dispose(myscsi)
+                    ENDIF
+                ENDIF
+            ELSE
+                EasyRequestArgs(0,[20,0,0,&#x27;Erreur: createStdIO()&#x27;,&#x27;Ok&#x27;],0,0)
+            ENDIF
+        ELSE
+            EasyRequestArgs(0,[20,0,0,&#x27;Erreur: createPort()&#x27;,&#x27;Ok&#x27;],0,0)
+        ENDIF
+    ENDIF
+    Delay(20)
+    IF ret=0
+        IF ej 
+            Execute(pr.aftereject,0,stdout)
+        ELSE
+            Execute(pr.afterload,0,stdout)
+        ENDIF
+    ENDIF
+
+ENDPROC
+-&gt;&lt;
+-&gt;&gt; main() HANDLE
+PROC main() HANDLE
+    DEF t,msg,hotkey
+    VOID PRG_VER
+    scsieject:=[$1B,0,0,0,2,0]:CHAR
+    scsiload :=[$1B,0,0,0,3,0]:CHAR
+    IF wbmessage=NIL THEN Raise(ER_ONLYWB)
+    IF (t:=openLibraries())&lt;&gt;ER_NONE THEN Raise(t)
+    getEjectDef()
+    mycxport:=CreateMsgPort()
+    broker:=CxBroker([NB_VERSION,0,&#x27;EJDisk&#x27;,&#x27;Ejecteur de disque SCSI&#x27;,&#x27;© 1996 NasGûl&#x27;,
+                      NBU_UNIQUE OR NBU_NOTIFY,
+                      0,0,0,mycxport,0]:newbroker,NIL)
+    IF hotkey:=hotKey(cxhotkey,mycxport,EVT_HOTKEY)
+        AttachCxObj(broker,hotkey)
+        IF CxObjError(hotkey)&lt;&gt;FALSE
+            Raise(ER_CXER)
+        ELSE
+            IF (t:=activeOtherHotKey())&lt;&gt;ER_NONE THEN Raise(t)
+            ActivateCxObj(broker,TRUE)
+            lookMessage()
+        ENDIF
+    ELSE
+        Raise(ER_HOTK)
+    ENDIF
+EXCEPT DO
+  IF broker THEN DeleteCxObjAll(broker)
+  IF mycxport
+    WHILE msg:=GetMsg(mycxport) DO ReplyMsg(msg)
+    DeleteMsgPort(mycxport)
+  ENDIF
+    closeLibraries()
+    SELECT exception
+        CASE ER_ONLYWB; EasyRequestArgs(0,[20,0,0,&#x27;Seulement du Workbench&#x27;,&#x27;Ok&#x27;],0,0)
+        CASE ER_LIB;    EasyRequestArgs(0,[20,0,0,&#x27;Erreur: OpenLibrary()&#x27;,&#x27;Ok&#x27;],0,0)
+        CASE ER_BRKR;   EasyRequestArgs(0,[20,0,0,&#x27;Erreur: CxBroker()&#x27;,&#x27;Ok&#x27;],0,0)
+        CASE ER_PORT;   EasyRequestArgs(0,[20,0,0,&#x27;Erreur: CreateMsgPort()&#x27;,&#x27;Ok&#x27;],0,0)
+        CASE ER_CXER;   EasyRequestArgs(0,[20,0,0,&#x27;Erreur: hotKey()&#x27;,&#x27;Ok&#x27;],0,0)
+        CASE ER_HOTK;   EasyRequestArgs(0,[20,0,0,&#x27;Erreur: Touche d&#x27;&#x27;appel invalide\n\s&#x27;,&#x27;Ok&#x27;],0,[cxhotkey])
+    ENDSELECT
+ENDPROC
+-&gt;&lt;
+-&gt;&gt; activeOtherHotKey() HANDLE
+PROC activeOtherHotKey() HANDLE
+    DEF pr:PTR TO removal
+    DEF phk
+    DEF i=0
+    pr:=removallist.head
+    WHILE pr
+        IF pr.node.succ&lt;&gt;0
+            IF phk:=hotKey(pr.hkeject,mycxport,i)
+                AttachCxObj(broker,phk)
+                IF CxObjError(phk)&lt;&gt;FALSE
+                    EasyRequestArgs(0,[20,0,0,&#x27;Touche d&#x27;&#x27;appel invalide\n\s&#x27;,&#x27;Ok&#x27;],0,[pr.hkeject])
+                    Raise(ER_CXER)
+                ENDIF
+            ELSE
+                EasyRequestArgs(0,[20,0,0,&#x27;Touche d&#x27;&#x27;appel invalide\n\s&#x27;,&#x27;Ok&#x27;],0,[pr.hkeject])
+                Raise(ER_HOTK)
+            ENDIF
+            INC i
+            IF phk:=hotKey(pr.hkload,mycxport,i)
+                AttachCxObj(broker,phk)
+                IF CxObjError(phk)&lt;&gt;FALSE
+                    EasyRequestArgs(0,[20,0,0,&#x27;Touche d&#x27;&#x27;appel invalide\n\s&#x27;,&#x27;Ok&#x27;],0,[pr.hkload])
+                    Raise(ER_CXER)
+                ENDIF
+            ELSE
+                EasyRequestArgs(0,[20,0,0,&#x27;Touche d&#x27;&#x27;appel invalide\n\s&#x27;,&#x27;Ok&#x27;],0,[pr.hkload])
+                Raise(ER_HOTK)
+            ENDIF
+            INC i
+        ENDIF
+        pr:=pr.node.succ
+    ENDWHILE
+    Raise(ER_NONE)
+EXCEPT
+    RETURN exception
+ENDPROC
+-&gt;&lt;
+-&gt;&gt; getEjectDef()
+PROC getEjectDef()
+    DEF wb:PTR TO wbstartup
+    DEF args:PTR TO wbarg
+    DEF prgname[256]:STRING
+    DEF ps[256]:STRING
+    DEF mydo:PTR TO diskobject,oldlock,test:PTR TO LONG
+    DEF m:PTR TO LONG,myremoval:PTR TO removal
+    DEF pivstr[256]:STRING
+    DEF s_name[256]:STRING
+    DEF s_dev[256]:STRING
+    DEF s_unit
+    DEF s_hke[256]:STRING
+    DEF s_hkl[256]:STRING
+    DEF s_ae[256]:STRING
+    DEF s_al[256]:STRING
+    #ifdef DBG
+        WriteF(&#x27;getEjectDef()\n&#x27;)
+    #endif
+    wb:=wbmessage
+    args:=wb.arglist
+    StrCopy(prgname,args[0].name,ALL)
+    oldlock:=CurrentDir(args[0].lock)
+    IF mydo:=GetDiskObject(prgname)
+        IF ps:=FindToolType(mydo.tooltypes,&#x27;CX_POPKEY&#x27;)
+            StrCopy(cxhotkey,ps,ALL) 
+        ELSE 
+            StrCopy(cxhotkey,&#x27;alt ctrl esc&#x27;,ALL)
+        ENDIF
+        test:=mydo.tooltypes
+        removallist:=initList()
+        REPEAT
+            IF StrCmp(Long(test),&#x27;REMOVALNAME&#x27;,11)
+                StrCopy(pivstr,Long(test),ALL)
+                m:=[0,0,0,0,0,0,0]
+                IF getArg(pivstr,&#x27;REM=REMOVALNAME/K,D=DEVICE/K,U=UNIT/K/N,HE=HKE/K,HL=HKL/K,AE=AFTEREJECT/K,AL=AFTERLOAD/K&#x27;,m)
+                    StringF(s_name,&#x27;\s&#x27;,m[0])
+                    StringF(s_dev,&#x27;\s&#x27;,m[1])
+                    s_unit:=Long(m[2])
+                    StringF(s_hke,&#x27;\s&#x27;,m[3])
+                    StringF(s_hkl,&#x27;\s&#x27;,m[4])
+                    StringF(s_ae,&#x27;\s&#x27;,m[5])
+                    StringF(s_al,&#x27;\s&#x27;,m[6])
+                    IF myremoval:=New(SIZEOF removal)
+
+                        myremoval.devicename:=String(EstrLen(s_dev))
+                        StrCopy(myremoval.devicename,s_dev,ALL)
+
+                        myremoval.unit:=s_unit
+                        
+                        myremoval.hkeject:=String(EstrLen(s_hke))
+                        StrCopy(myremoval.hkeject,s_hke,ALL)
+
+                        myremoval.hkload:=String(EstrLen(s_hkl))
+                        StrCopy(myremoval.hkload,s_hkl,ALL)
+
+                        myremoval.aftereject:=String(EstrLen(s_ae))
+                        StrCopy(myremoval.aftereject,s_ae,ALL)
+
+                        myremoval.afterload:=String(EstrLen(s_al))
+                        StrCopy(myremoval.afterload,s_al,ALL)
+
+
+                        addNode(removallist,s_name,myremoval,0)
+                    
+                    ENDIF
+                    m[0]:=0;m[1]:=0;m[2]:=0;m[3]:=0;m[4]:=0;m[5]:=0;m[6]:=0
+                ELSE
+                    EasyRequestArgs(0,[20,0,0,&#x27;Définition Invalide\n\s&#x27;,&#x27;Ok&#x27;],0,[pivstr])
+                ENDIF
+            ENDIF
+            test++
+        UNTIL (Long(test)=NIL)
+        IF mydo THEN FreeDiskObject(mydo)
+    ELSE
+        EasyRequestArgs(0,[20,0,0,&#x27;Erreur: GetDiskObject()&#x27;,&#x27;Ok&#x27;,0],0,0)
+    ENDIF
+    CurrentDir(oldlock)
+ENDPROC
+-&gt;&lt;
+-&gt;&gt; getArg(argu,temp,a:PTR TO LONG)
+PROC getArg(argu,temp,a:PTR TO LONG)
+    DEF myc:PTR TO csource
+    DEF ma:PTR TO rdargs
+    DEF rdarg=NIL
+    DEF argstr[256]:STRING
+    DEF ret=NIL
+    #ifdef DBG
+        WriteF(&#x27;getArg(\s,\s,$\h)\n&#x27;,argu,temp,a)
+    #endif
+    StrCopy(argstr,argu,ALL)
+    StrAdd(argstr,&#x27;\n&#x27;,1)
+    IF ma:=AllocDosObject(DOS_RDARGS,NIL)
+        myc:=New(SIZEOF csource)
+        myc.buffer:=argstr
+        myc.length:=EstrLen(argstr)
+        ma.flags:=4
+        CopyMem(myc,ma.source,SIZEOF csource)
+        IF rdarg:=ReadArgs(temp,a,ma)
+            ret:=a
+            IF rdarg THEN FreeArgs(rdarg)
+        ELSE
+        ENDIF
+        FreeDosObject(DOS_RDARGS,ma)
+    ELSE
+        EasyRequestArgs(0,[20,0,0,&#x27;Erreur: AllocDosObject()&#x27;,&#x27;Ok&#x27;],0,0)
+    ENDIF
+    RETURN ret
+ENDPROC
+-&gt;&lt;
+-&gt;&gt; showHotKey()
+PROC showHotKey()
+    DEF pr:PTR TO removal
+    DEF buffer[1000]:STRING
+    DEF pivbuf[256]:STRING
+    pr:=removallist.head
+    WHILE pr
+        IF pr.node.succ&lt;&gt;0
+            StringF(pivbuf,&#x27;\s \s \d\nEject:&quot;\s&quot; Load :&quot;\s&quot;\n&#x27;,pr.node.name,pr.devicename,pr.unit,pr.hkeject,pr.hkload)
+            StrAdd(buffer,pivbuf,ALL)
+        ENDIF
+        pr:=pr.node.succ
+    ENDWHILE
+    EasyRequestArgs(0,[20,0,0,&#x27;\s&#x27;,&#x27;Ok&#x27;],0,[buffer])
+ENDPROC
+-&gt;&lt;
+
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

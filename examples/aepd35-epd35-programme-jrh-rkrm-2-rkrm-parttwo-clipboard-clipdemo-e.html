@@ -1,0 +1,182 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>clipdemo.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-aepd35.html">AEPD35</a> &rsaquo; clipdemo.e</div><h1>File: <code>clipdemo.e</code></h1><p class="meta">156 lines · project <a href="../examples/pkg-aepd35.html"><code>AEPD35</code></a></p><p class="pathctx">AEPD35/EPD35/Programme/JRH-RKRM-2/RKRM_PartTwo/Clipboard/clipdemo.e</p><h2>Source</h2><pre class="code">071BC600, $01386C00,
+                              $00318000,
+                             -&gt; ----- bitmap Boing, frame 3:  w = 32, h = 25 ------
+                              $001CE000, $01B1CC00, $031CC500, $0C3C3680,
+                              $18787840, $2F7078E0, $0E087860, $1E0FB860,
+                              $1C1F0460, $BC1F07B0, $C43F0788, $C7FE0788,
+                              $C7C00F88, $C781EF88, $C783F118, $2783E0E8,
+                              $3983E1E0, $3863E1C0, $1878C1C0, $38783380,
+                              $10F078C0, $0B70F180, $0588E200, $009E2400,
+                              $0018C000,
+                             -&gt; ----- bitmap Boing, frame 4:  w = 32, h = 25 ------
+                              $000E6000, $00F8E400, $030FE600, $061E1300,
+                              $0C3E1C80, $27FC1C60, $07843C60, $4F07FE20,
+                              $8F07C230, $1E0FC1F0, $620F83C8, $61CF83C8,
+                              $61E183C8, $63E063C8, $63E0F9C8, $03E0F878,
+                              $1DC0F860, $1C21F0E0, $5C3EF0C0, $0C3C11C0,
+                              $143C3C40, $09B83880, $05C07000, $00CF0400,
+                              $000C6000,
+                             -&gt; ----- bitmap Boing, frame 5:  w = 32, h = 25 ------
+                              $00262000, $00FC7400, $01877200, $030F0100,
+                              $0E0F0E80, $319F0E00, $23C60F30, $63C1CF30,
+                              $4781F310, $0783E0D0, $7383E0E0, $70C3E0E0,
+                              $70F9E1E0, $70F821E0, $70F83FE0, $91F03E38,
+                              $4FF07C30, $4E107C60, $4E0F7860, $2E1F08C0,
+                              $0E1E0E00, $049E1C80, $00E43800, $00C79000,
+                              $000E6000])
+  -&gt; These objects contain the initialisation data for the animation sequence.
+  newBoingBob:=[NIL, BOING_WWIDTH, BOING_HEIGHT, BOING_DEPTH, $2, $0,
+                VSF_SAVEBACK OR VSF_OVERLAY, 0, RBMDEPTH, 0, 0, 0, 0]:newBob
+  newBoingSeq:=[NIL, boing3Image, boing3XTranses, boing3YTranses,
+                boing3Times, boing3CRoutines, 0, BOING_COUNT, 0]:newAnimSeq
+ENDPROC
+-&gt;&gt;&gt;
+
+-&gt;&gt;&gt; PROC setupBoing(dbufing)
+-&gt; Make a new animation object.  Since all of the boing balls use the same
+-&gt; underlying data, the initalisation structures are hard-coded into the
+-&gt; routine (newBoingBob and newBoingSeq.)
+-&gt;
+-&gt; Return a pointer to the object if successful.
+PROC setupBoing(dbufing) HANDLE
+  DEF bngOb=NIL:PTR TO ao, bngComp:PTR TO ac
+  NEW bngOb
+  newBoingBob.dBuf:=dbufing  -&gt; Double-buffer status
+  newBoingSeq.headOb:=bngOb  -&gt; Pass down head object
+
+  bngComp:=makeSeq(newBoingBob, newBoingSeq)
+  -&gt; The head comp is the one that is returned by makeSeq()
+  bngOb.headcomp:=bngComp
+EXCEPT
+  IF bngOb THEN END bngOb
+  ReThrow()
+ENDPROC bngOb
+-&gt;&gt;&gt;
+
+-&gt;&gt;&gt; PROC runAnimation(win:PTR TO window, dbufing, animKey, myBitMaps)
+-&gt; A simple message handling LOOP that also draws the successive frames.
+PROC runAnimation(win:PTR TO window, dbufing, animKey, myBitMaps)
+  DEF intuiMsg:PTR TO intuimessage, toggleFrame
+  -&gt; toggleFrame is used to keep track of which frame of the double buffered
+  -&gt; screen we are currently displaying.  The variable must exist for the life
+  -&gt; of the displayed objects, so it is defined here.
+  toggleFrame:=0
+
+  -&gt; End the loop on a IDCMP_CLOSEWINDOW event.
+  LOOP
+    -&gt; Draw the gels, then check for messages.  Check the messages after each
+    -&gt; display so we get a quick response.
+    drawGels(win, animKey, dbufing, {toggleFrame}, myBitMaps)
+
+    -&gt; Quit on a Control-C
+    -&gt; E-Note: use built-in check
+    IF CtrlC() THEN RETURN
+
+    -&gt; Check for a IDCMP_CLOSEWINDOW event, die if found
+    WHILE intuiMsg:=GetMsg(win.userport)
+      IF intuiMsg.class=IDCMP_CLOSEWINDOW
+        ReplyMsg(intuiMsg)
+        RETURN
+      ENDIF
+      ReplyMsg(intuiMsg)
+    ENDWHILE
+  ENDLOOP
+ENDPROC
+-&gt;&gt;&gt;
+
+-&gt;&gt;&gt; PROC setupPlanes(bitMap:PTR TO bitmap, depth, width, height)
+-&gt; Called only for double-buffered displays.  Allocate and clear each
+-&gt; bit-plane in a bitmap structure.  Clean-up on failure.
+PROC setupPlanes(bitMap:PTR TO bitmap, depth, width, height) HANDLE
+  DEF plane_num
+  FOR plane_num:=0 TO depth-1
+    bitMap.planes[plane_num]:=AllocRaster(width, height)
+    BltClear(bitMap.planes[plane_num], (width/8)*height, 1)
+  ENDFOR
+EXCEPT
+  freePlanes(bitMap, depth, width, height)
+  ReThrow()
+ENDPROC
+-&gt;&gt;&gt;
+
+-&gt;&gt;&gt; PROC setupBitMaps(depth, width, height)
+-&gt; Allocate the two bitmaps for a double-buffered display.  Routine only
+-&gt; called when the display is double-buffered.
+PROC setupBitMaps(depth, width, height) HANDLE
+  DEF p=NIL:PTR TO bitmap, q=NIL:PTR TO bitmap
+  -&gt; Allocate the two bitmap objects.  These do not have to be in CHIP.
+  -&gt; E-Note: use p and q to get correct type.
+  myBitMaps[0]:=NEW p
+  myBitMaps[1]:=NEW q
+  -&gt; Initialise the bitmaps to the correct size.
+  InitBitMap(p, depth, width, height)
+  InitBitMap(q, depth, width, height)
+  -&gt; Allocate and initialise the bit-planes for the bitmaps.
+  setupPlanes(p, depth, width, height)
+  setupPlanes(q, depth, width, height)
+EXCEPT
+  IF p
+    freePlanes(p, depth, width, height)
+    END p
+  ENDIF
+  IF q
+    freePlanes(q, depth, width, height)
+    END q
+  ENDIF
+  ReThrow()
+ENDPROC myBitMaps
+-&gt;&gt;&gt;
+
+-&gt;&gt;&gt; PROC freePlanes(bitMap:PTR TO bitmap, depth, width, height)
+-&gt; Free all of the bit-planes in a bitmap structure.
+PROC freePlanes(bitMap:PTR TO bitmap, depth, width, height)
+  DEF plane_num
+  FOR plane_num:=0 TO depth-1
+    IF bitMap.planes[plane_num]
+      FreeRaster(bitMap.planes[plane_num], width, height)
+    ENDIF
+  ENDFOR
+ENDPROC
+-&gt;&gt;&gt;
+
+-&gt;&gt;&gt; PROC freeBitMaps(myBitMaps:PTR TO LONG, depth, width, height)
+-&gt; Free the two bitmaps from the double buffered display. The bit-planes are
+-&gt; freed first, then the bitmap objects.
+PROC freeBitMaps(myBitMaps:PTR TO LONG, depth, width, height)
+  freePlanes(myBitMaps[0], depth, width, height)
+  freePlanes(myBitMaps[1], depth, width, height)
+  END myBitMaps[2]
+ENDPROC
+-&gt;&gt;&gt;
+
+-&gt;&gt;&gt; PROC setupDisplay(win:PTR TO LONG, dbufing, myBitMaps:PTR TO LONG)
+-&gt; Open the screen and the window for the display.
+-&gt;
+  ‹103 bytes of embedded binary/non-text data elided›
+  ‹295 bytes of embedded binary/non-text data elided›</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

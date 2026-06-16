@@ -1,0 +1,317 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>StarsXY_ToySpaceshipSprite1.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-portable.html">PortablE</a> &rsaquo; StarsXY_ToySpaceshipSprite1.e</div><h1>File: <code>StarsXY_ToySpaceshipSprite1.e</code></h1><p class="meta">291 lines · project <a href="../examples/pkg-portable.html"><code>PortablE</code></a></p><p class="pathctx">PortablE/PortablE/Examples/std/Graphics/StarsXY_ToySpaceshipSprite1.e</p><p class="prose">StarsXY_ToySpaceshipSprite1.e 04-08-2012 by Chris Handley StarsXY.e turned into a drawable, and then used as a background for the ToySpaceshipSprite1.e example!</p><h2>Source</h2><pre class="code">/* StarsXY_ToySpaceshipSprite1.e 04-08-2012 by Chris Handley
+	StarsXY.e turned into a drawable, and then used as a background for the ToySpaceshipSprite1.e example!
+*/
+OPT INLINE
+MODULE &#x27;std/cGfxSpritesSimple&#x27;, &#x27;std/cGfx&#x27;
+
+PROC main()
+	DEF graphics:PTR TO cGfxBitmap
+	DEF stars:PTR TO drawableStarsXY, degrees:FLOAT, radians:FLOAT, xOrigin:FLOAT, yOrigin:FLOAT
+	DEF xDirection, yDirection, speed
+	DEF quit:BOOL, type, subType, value, value2
+	
+	-&gt;open window
+	IsDesktopApp()
+	ChangeGfxWindow(NILA, /*hideMousePointer*/ TRUE)
+	OpenWindow(800, 600)
+	
+	SetAutoUpdate(FALSE)
+	-&gt;SetFrameSkipping(TRUE)
+	
+	-&gt;extract player bitmap from picture
+	graphics := LoadPicture(&#x27;gfx/tyrian.shp.007D3C.ilbm&#x27;, &#x27;&#x27;)
+	extractBitmaps(&#x27;player&#x27;, graphics, FALSE, 5)
+	DestroyBitmap(graphics)
+	
+	-&gt;create player sprite (in middle of screen) using the bitmap
+	createSprite(&#x27;player&#x27;, InfoWidth()/2, InfoHeight()/2)
+	LastSprite().setFrame(2)	-&gt;use the middle frame (bitmap)
+	
+	StoreSprite(&#x27;player&#x27;, 0, LastSprite())
+	
+	-&gt;create &amp; display the stars background
+	NEW stars.new(gfx, 5)
+	SetBackgroundDrawable(stars, 0,0, FALSE,FALSE, TRUE,TRUE)	-&gt;noScrollX=TRUE, noScrollY=TRUE
+	
+	-&gt;event loop
+	speed := 3
+	xDirection := 0
+	yDirection := 0
+	degrees := 0
+	xOrigin := yOrigin := 0
+	quit  := FALSE
+	REPEAT
+		-&gt;handle any user input
+		WHILE CheckForGfxWindowEvent()
+			type, subType, value, value2 := GetLastEvent()
+			
+			SELECT type
+			CASE EVENT_WINDOW
+				IF subType = EVENT_WINDOW_CLOSE THEN quit := TRUE
+				
+			CASE EVENT_KEY
+				IF subType = EVENT_KEY_SPECIAL
+					-&gt;(a key was pressed) so change movement direction &amp; update player sprite as required
+					SELECT value
+					CASE EVENT_KEY_SPECIAL_UP    ; yDirection := -1
+					CASE EVENT_KEY_SPECIAL_DOWN  ; yDirection :=  1
+					CASE EVENT_KEY_SPECIAL_LEFT  ; xDirection := -1 ; UseSprite(&#x27;player&#x27;, 0).setFrame(0)
+					CASE EVENT_KEY_SPECIAL_RIGHT ; xDirection :=  1 ; UseSprite(&#x27;player&#x27;, 0).setFrame(4)
+					ENDSELECT
+					
+				ELSE IF subType = EVENT_KEY_SPECIALUP
+					-&gt;(a key was released) so stop movement &amp; update player sprite as required
+					SELECT value
+					CASE EVENT_KEY_SPECIAL_UP    ; yDirection := 0
+					CASE EVENT_KEY_SPECIAL_DOWN  ; yDirection := 0
+					CASE EVENT_KEY_SPECIAL_LEFT  ; xDirection := 0 ; UseSprite(&#x27;player&#x27;, 0).setFrame(2)
+					CASE EVENT_KEY_SPECIAL_RIGHT ; xDirection := 0 ; UseSprite(&#x27;player&#x27;, 0).setFrame(2)
+					ENDSELECT
+				ENDIF
+			ENDSELECT
+		ENDWHILE
+		
+		-&gt;move player according to the keys currently pressed
+		UseSprite(&#x27;player&#x27;, 0).move(xDirection * speed, yDirection * speed)
+		
+		/*
+		-&gt;for stars, change viewpoint movement angle &amp; recalculate position
+		degrees := degrees + 0.2 ; IF degrees &gt;= 360 THEN degrees := degrees - 360
+		radians := 3.14159*2 * degrees / 360
+		xOrigin := xOrigin + (Fsin(radians) * 0.5)
+		yOrigin := yOrigin + (Fcos(radians) * 0.5)
+		stars.setStarsOrigin(xOrigin, yOrigin)
+		*/
+		
+		-&gt;move stars viewpoint in same direction as player
+		radians := 0	-&gt;this does nothing except stop the compiler warning about an unused variable
+		xOrigin := xDirection*-1 + xOrigin
+		yOrigin := yDirection*-1 + yOrigin
+		stars.setStarsOrigin(xOrigin, yOrigin)
+		
+		-&gt;update screen with changes &amp; wait for it to refresh
+		UpdateAndWaitForScreenRefresh()
+	UNTIL quit
+	
+	CloseWindow()
+FINALLY
+	PrintException()
+ENDPROC
+
+/*****************************/
+
+-&gt;Extracts several bitmaps in a row (or column) from the given bitmap, and stores them using the given name.
+-&gt;NOTE: Use a negative xCount to indicate that bitmaps are stored vertically (downward).
+PROC extractBitmaps(name:ARRAY OF CHAR, graphic:PTR TO cGfxBitmap, flip:BOOL, yIndex, xIndex=0, xCount=5, xSize=24, ySize=28, scaleBy=2) RETURNS lastNumber
+	DEF i
+	
+	FOR i := 0 TO Abs(xCount)-1
+		IF xCount &gt; 0
+			StoreBitmap(name, i, graphic.extract(xSize*(xIndex+i), ySize*yIndex, xSize, ySize))
+		ELSE
+			StoreBitmap(name, i, graphic.extract(xSize*xIndex, ySize*(yIndex+i), xSize, ySize))
+		ENDIF
+		lastNumber := i
+		
+		LastBitmap().scaleBy(scaleBy, 1)		-&gt;make bitmap larger
+		
+		IF flip THEN LastBitmap().flip(FALSE, TRUE)		-&gt;make enemy sprites face downwards
+	ENDFOR
+ENDPROC
+
+-&gt;Creates an (animated) sprite using the named bitmaps.
+PROC createSprite(bitmapName:ARRAY OF CHAR, x=0, y=-1) RETURNS sprite:PTR TO cGfxSprite
+	DEF i, xCount
+	
+	i := 0
+	IF y = -1 THEN y := -UseBitmap(bitmapName, i).infoHeight()
+	sprite := CreateSprite(x, y, UseBitmap(bitmapName, i))
+	
+	WHILE UseBitmap(bitmapName, ++i, TRUE) DO sprite.setDrawable(LastBitmap(), i)
+	xCount := i
+ENDPROC
+
+/*****************************/
+
+/*
+-&gt;a simple test of drawableStarsXY
+PROC main()
+	DEF win:PTR TO cGfxWindow, stars:OWNS PTR TO drawableStarsXY
+	DEF degrees:FLOAT, radians:FLOAT, xOrigin:FLOAT, yOrigin:FLOAT
+	DEF skippingNextFrame:BOOL, quit:BOOL, type, subType, value
+	
+	IsFullWindowApp()
+	win := CreateGfxWindow(&#x27;example&#x27;)
+	win.openFull()
+	win.setAutoUpdate(FALSE)
+	win.setFrameSkipping(TRUE)
+	
+	NEW stars.new(win, 5)
+	
+	-&gt;animate the stars
+	degrees := 0
+	xOrigin := yOrigin := 0
+	skippingNextFrame := FALSE
+	quit := FALSE
+	REPEAT
+		-&gt;change movement angle &amp; recalculate position for stars
+		degrees := degrees + 0.2 ; IF degrees &gt;= 360 THEN degrees := degrees - 360
+		
+		radians := 3.14159*2 * degrees / 360
+		xOrigin := xOrigin + Fsin(radians)
+		yOrigin := yOrigin + Fcos(radians)
+		stars.setStarsOrigin(xOrigin, yOrigin)
+		
+		-&gt;draw all the stars (for the current view origin)
+		IF NOT skippingNextFrame THEN stars.draw(0, 0)
+		
+		-&gt;update the window with what we&#x27;ve drawn &amp; wait for the screen to refresh
+		skippingNextFrame := win.updateAndWaitForScreenRefresh()
+		
+		-&gt;handle window events
+		WHILE CheckForGfxWindowEvent()
+			type, subType, value := win.getLastEvent()
+			IF (type = EVENT_WINDOW) AND (subType = EVENT_WINDOW_CLOSE) THEN quit := TRUE
+			IF (type = EVENT_KEY) AND (subType = EVENT_KEY_SPECIAL) AND (value = EVENT_KEY_SPECIAL_ESCAPE) THEN quit := TRUE
+		ENDWHILE
+	UNTIL quit
+FINALLY
+	PrintException()
+	END stars
+ENDPROC
+*/
+
+
+PRIVATE
+-&gt;the same as FastMod(), except the result is always positive
+PROC positiveMod(num, size) IS FastMod(num, size) + IF num &lt; 0 THEN size ELSE 0
+
+OBJECT star
+	x, y		-&gt;initial position on screen
+	speed		-&gt;movement speed (due to distance)
+	colour		-&gt;colour         (due to distance)
+ENDOBJECT
+PUBLIC
+
+
+CLASS drawableStarsXY OF cGfxDrawable
+	width
+	height
+	stars:ARRAY OF star
+	starmax
+	
+	xOrigin:FLOAT
+	yOrigin:FLOAT
+ENDCLASS
+
+-&gt;NOTE: For &quot;starDensity&quot;, 10 is typical.
+-&gt;NOTE: For &quot;maxSpeed&quot;, 10 means 1 pixel per frame.
+PROC new(win:PTR TO cGfxWindow, starDensity=10, maxSpeed=10, width=0, height=0) OF drawableStarsXY
+	DEF starmax, stars:ARRAY OF star, star:PTR TO star
+	DEF i, brightness
+	
+	IF width  = 0 THEN width  := win.infoWidth()
+	IF height = 0 THEN height := win.infoHeight()
+	
+	-&gt;generate the stars
+	starmax := width * height * starDensity / 10 / 614
+	NEW stars[starmax+1]
+	
+	FOR i := 0 TO starmax
+		brightness := i * 255 / starmax
+		
+		star := stars[i]
+		star.x := Rnd(width)
+		star.y := Rnd(height)
+		star.speed  := maxSpeed * (brightness+1) / 10 	-&gt;divide this by 255+1 to get actual speed in pixels per frame
+		star.colour := MakeRGB(brightness, brightness, brightness)
+	ENDFOR
+	
+	-&gt;store info needed for draw()ing stars
+	self.width   := width
+	self.height  := height
+	self.stars   := stars
+	self.starmax := starmax
+	
+	self.xOrigin := 0
+	self.yOrigin := 0
+	
+	-&gt;ensure this drawable gets auto-deallocated
+	self.addToGfx(win)
+ENDPROC
+
+PROC end() OF drawableStarsXY
+	END self.stars
+	SUPER self.end()
+ENDPROC
+
+PROC infoWidth()  OF drawableStarsXY RETURNS width  IS self.width
+
+PROC infoHeight() OF drawableStarsXY RETURNS height IS self.height
+
+-&gt;use this to move through the stars
+PROC setStarsOrigin(x:FLOAT, y:FLOAT) OF drawableStarsXY
+	self.xOrigin := x
+	self.yOrigin := y
+	
+	-&gt;let the users of this drawable know that what is drawn has changed (may cause it to be redrawn)
+	self.notifyClientsOfChange(self.width, self.height)
+ENDPROC
+
+PROC getStarsOrigin() OF drawableStarsXY IS self.xOrigin, self.yOrigin
+
+PROC draw(x, y) OF drawableStarsXY
+	DEF gfx:PTR TO cGfxWindow, width, height, stars:ARRAY OF star, xOrigin:FLOAT, yOrigin:FLOAT
+	DEF i, starX, starY,  star:PTR TO star
+	
+	-&gt;cache frequently used info
+	gfx     := self.gfx
+	width   := self.width
+	height  := self.height
+	stars   := self.stars
+	
+	xOrigin := self.xOrigin
+	yOrigin := self.yOrigin
+	
+	-&gt;erase old stars
+	gfx.setColour($000000)
+	gfx.drawBox(x, y, width, height)
+	
+	-&gt;draw new stars
+	FOR i := 0 TO self.starmax
+		star := stars[i]
+		
+		-&gt;draw star
+		gfx.setColour(star.colour)
+		starX := positiveMod(xOrigin * star.speed / 256 + star.x !!VALUE, width)
+		starY := positiveMod(yOrigin * star.speed / 256 + star.y !!VALUE, height)
+		gfx.drawDot(x + starX, y + starY)
+	ENDFOR
+ENDPROC
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

@@ -1,0 +1,239 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Pyth2.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-amigae30a-fr.html">amigae30a_fr</a> &rsaquo; Pyth2.e</div><h1>File: <code>Pyth2.e</code></h1><p class="meta">213 lines · project <a href="../examples/pkg-amigae30a-fr.html"><code>amigae30a_fr</code></a></p><p class="pathctx">amigae30a_fr/AmigaE30f/Sources/Pd/Pyth2.e</p><p class="prose">** C&#x27;est la version E de &#x27;l&#x27;arbre de Pythagore&#x27;. ** Ecrit par Raymond Hoving, Waardgracht 30, 2312 RP Leiden, ** Pays-Bas. ** E-mail address: hoving@stpc.wi.leidenuniv.nl ** Nécessite Kickstart V3.0+ et le <a href="../modules/reqtools.html">reqtools</a>.<a href="../modules/library.html">library</a> V38+ ** Date de création : Sun Jul 17 17:30:07 1994, Version: 2.0</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/intuition.html">intuition/intuition</a></li></ul></div><h2>Source</h2><pre class="code">/*
+**      C&#x27;est la version E de &#x27;l&#x27;arbre de Pythagore&#x27;.
+**      Ecrit par Raymond Hoving, Waardgracht 30, 2312 RP Leiden,
+**      Pays-Bas.
+**      E-mail address: hoving@stpc.wi.leidenuniv.nl
+**      Nécessite Kickstart V3.0+ et le reqtools.library V38+
+**      Date de création : Sun Jul 17 17:30:07 1994, Version: 2.0
+*/
+
+OPT     REG=5,OSVERSION=39      /* Kickstart 3.0+ only. */
+
+MODULE  &#x27;intuition/intuition&#x27;, &#x27;intuition/screens&#x27;, &#x27;utility/tagitem&#x27;,
+        &#x27;reqtools&#x27;, &#x27;exec/ports&#x27;, &#x27;exec/libraries&#x27;,
+        &#x27;libraries/reqtools&#x27;, &#x27;graphics/modeid&#x27;, &#x27;graphics/text&#x27;
+
+DEF     pythscreen=NIL : PTR TO screen,
+        pythwindow=NIL : PTR TO window,
+        pythidcmp=NIL : PTR TO mp,
+        screenmodereq=NIL : PTR TO rtscreenmoderequester,
+        scrwidth, scrheight, fontheight,
+        winxsize, winysize, xbase, ybase, mbase,
+        depth=1, mdepth=10,
+        time0, time1
+
+CONST   BORDERSIZE = 4
+
+ENUM    MSG_READY, MSG_ABORT, ERROR_REQTLIB, ERROR_SCREEN,
+        ERROR_WINDOW, ERROR_OOM
+
+PROC    pythcleanup(errornumber)
+
+        /* Cette procédure va désallouer tous les objets qui ont bien été
+        ** alloués. Quand une erreur arrive, il sera dit à l&#x27;utilisateur.
+        */
+
+        IF pythwindow&lt;&gt;NIL THEN CloseWindow(pythwindow)
+        IF pythscreen&lt;&gt;NIL THEN CloseScreen(pythscreen)
+        IF screenmodereq&lt;&gt;NIL THEN RtFreeRequest(screenmodereq)
+        IF reqtoolsbase&lt;&gt;NIL THEN CloseLibrary(reqtoolsbase)
+        SELECT  errornumber
+                CASE ERROR_OOM
+                        WriteF(&#x27;ERREUR: Plus de mémoire.\n&#x27;)
+                CASE ERROR_REQTLIB
+                        WriteF(&#x27;ERREUR: Ne peut pas ouvrir la reqtools.library.\n&#x27;)
+                CASE ERROR_SCREEN
+                        WriteF(&#x27;ERREUR: Ne peut pas ouvrir un nouvel écran.\n&#x27;)
+                CASE ERROR_WINDOW
+                        WriteF(&#x27;ERREUR: Ne peu pas ouvrir une nouvelle fenêtre.\n&#x27;)
+                CASE MSG_ABORT
+                        WriteF(&#x27;Ecriture annulée.\n&#x27;)
+                CASE MSG_READY
+                        WriteF(&#x27;J&#x27;ai juste tracé \d petite maison\s!\n&#x27;,
+                                Shl(1,mdepth)-1,
+                                IF mdepth=1 THEN &#x27;&#x27; ELSE &#x27;s&#x27;)
+        ENDSELECT
+        CleanUp(errornumber)    /* Appelle le nettoyeur standard E. */
+ENDPROC
+
+PROC    pythtree(a1,a2,b1,b2)
+
+        /* cette procédure (récursivement appellée) tracera l&#x27;actuel arbre
+        */
+
+        DEF c1,c2,d1,d2,e1,e2,ci1,ci2,di1,di2
+        IF GetMsg(pythidcmp)&lt;&gt;NIL THEN pythcleanup(MSG_ABORT)
+        IF depth&lt;=mdepth                /* Vérifie si on n&#x27;est pas trop profond. */
+          INC depth                     /* Cette profondeur est encore permise. */
+          SetAPen(stdrast,depth)        /* La couleur du tracé dépend de la profondeur. */
+          c1 := !a1-a2+b2 ; ci1 := !c1!
+          c2 := !a1+a2-b1 ; ci2 := !c2!
+          d1 := !b1+b2-a2 ; di1 := !d1!
+          d2 := !a1-b1+b2 ; di2 := !d2! /* Calculte toutes les */
+          e1 := !0.5 * (!c1-c2+d1+d2)   /* coordonnées necéssaires. */
+          e2 := !0.5 * (!c1+c2-d1+d2)
+          /*
+          **         e      Notez l&#x27;utilisation de ! entre les () dans les calculs de e1 et
+          **        /\      e2. On utilisie quelques LONG en plus pour minimiser les convertions
+          **       /  \
+          **     c+----+d   Les coordonées de c,d et e sont calculés à partir des coordonnées
+          **      |    |    de a et b. L&#x27;algèbre linéaire, quel joie !
+          **      |    |
+          **     a+----+b
+          */
+          Move(stdrast,ci1,ci2)
+          Draw(stdrast,!a1!,!a2!)
+          Draw(stdrast,!b1!,!b2!)
+          Draw(stdrast,di1,di2)
+          Draw(stdrast,ci1,ci2)
+          Draw(stdrast,!e1!,!e2!)
+          Draw(stdrast,di1,di2)         /* Trace la petite maison. */
+          IF Rnd(2) = 0                 /* Fait la croissance un   */
+            pythtree(c1,c2,e1,e2)       /* peu plus interessant.   */
+            pythtree(e1,e2,d1,d2)
+          ELSE
+            pythtree(e1,e2,d1,d2)
+            pythtree(c1,c2,e1,e2)
+          ENDIF
+          DEC depth                     /* Prêt avec cette branche. */
+        ENDIF
+ENDPROC
+
+PROC    main()
+
+        DEF a1,a2,b1,b2
+
+        /* Ouvre la reqtools.library et alloue la mémoire pour le strucuure des requesters.
+        */
+
+        IF (reqtoolsbase := OpenLibrary(&#x27;reqtools.library&#x27;,38)) = NIL THEN
+          pythcleanup(ERROR_REQTLIB)
+
+        IF (screenmodereq := RtAllocRequestA(RT_SCREENMODEREQ,NIL)) = NIL THEN
+          pythcleanup(ERROR_OOM)
+
+        /* Laisse l&#x27;utilisateur décider quel mode écran il veut. Notez que
+        ** l&#x27;arbre est le mieux sur un écran qui a approximativement le même
+        ** nombre de pixels dans les 2 directions, comme 640x512.
+        */
+
+        IF RtScreenModeRequestA(screenmodereq,&#x27;Arbre de Pythagore&#x27;, [
+          RTSC_FLAGS,SCREQF_OVERSCANGAD OR SCREQF_AUTOSCROLLGAD OR SCREQF_SIZEGADS,
+          RTSC_MINWIDTH,100,
+          RTSC_MINHEIGHT,100,
+          TAG_DONE]) = FALSE THEN pythcleanup(MSG_ABORT)
+
+        /* Puis demande la profondeur maximum de récursion.
+        */
+
+        IF (RtGetLongA({mdepth},&#x27;Arbre de Pythagore&#x27;,NIL, [
+          RTGL_MIN,1,
+          RTGL_MAX,14,
+          RTGL_TEXTFMT,&#x27;Entrez la profondeur maximum de l\aarbre :&#x27;,
+          RT_WINDOW,pythwindow,
+          TAG_DONE])) = FALSE THEN pythcleanup(MSG_ABORT)
+
+        /* Prend les données importantes de la structure d&#x27;écran.
+        */
+
+        scrwidth := screenmodereq.displaywidth
+        scrheight := screenmodereq.displayheight
+
+        /* Ouvre l&#x27;écran que l&#x27;utilisteur voulait.
+        */
+
+        IF (pythscreen := OpenScreenTagList(NIL, [
+          SA_DEPTH,4,
+          SA_TYPE,CUSTOMSCREEN,
+          SA_DISPLAYID,screenmodereq.displayid,
+          SA_WIDTH,scrwidth,
+          SA_HEIGHT,scrheight,
+          SA_TITLE,&#x27;Screen of Pythagoras&#x27;,
+          TAG_DONE])) = NIL THEN pythcleanup(ERROR_SCREEN)
+
+        /* Maintenant ouvre un écran de remplissage sur l&#x27;écran qui vient d&#x27;être ouvert.
+        */
+
+        IF (pythwindow:=OpenWindowTagList(NIL, [
+          WA_WIDTH,scrwidth,
+          WA_HEIGHT,scrheight,
+          WA_IDCMP,IDCMP_CLOSEWINDOW,
+          WA_FLAGS,WFLG_CLOSEGADGET OR WFLG_ACTIVATE,
+          WA_TITLE,&#x27;Arbre de Pythagore par Raymond Hoving&#x27;,
+          WA_CUSTOMSCREEN,pythscreen,
+          TAG_DONE])) = NIL THEN pythcleanup(ERROR_WINDOW)
+
+        /* Prend quelques données utiles de la structure fenêtre.
+        */
+
+        stdrast := pythwindow.rport
+        pythidcmp := pythwindow.userport
+        fontheight := pythwindow.ifont::textfont.ysize
+
+        /* Fixe la palette pour cet écran (marron à vert).
+        */
+
+        LoadRGB4(ViewPortAddress(pythwindow), [
+          $000,$89a,$640,$752,$762,$771,$781,$680,$580,$080,
+          $090,$0a0,$0b0,$0c0,$0d0,$0e0] : INT, 16)
+
+
+        /* Contruit un seuil &#x27;au hasard&#x27; à partir de l&#x27;heure
+        */
+
+        CurrentTime({time0},{time1})
+        Rnd(-Abs(Eor(time0,time1)))
+
+        /* Calcule la taille possible de l&#x27;arbre sur cet écran.
+        */
+
+        winxsize := scrwidth - (2 * BORDERSIZE)
+        winysize := scrheight - (6 * BORDERSIZE + fontheight)
+        xbase := winxsize! / 12.2       /* Diviseur touvé par trial et erreur. */
+        ybase := winysize! / 8.0        /* Celui-ci est bon.                   */
+        IF !xbase &lt; ybase THEN mbase := xbase ELSE mbase := ybase
+        a1 := scrwidth! / 2.0 - mbase
+        b1 := scrwidth! / 2.0 + mbase
+        a2 := scrheight - (4 * BORDERSIZE)!
+        b2 := a2
+
+        /* Met le busy pointer et comence à tracer.
+        */
+
+        SetWindowPointerA(pythwindow,[WA_BUSYPOINTER,TRUE,TAG_DONE])
+        pythtree(a1,a2,b1,b2)
+        SetWindowPointerA(pythwindow,TAG_DONE)
+
+        /* Prêt ! Attend que l&#x27;utilisateur ferme l&#x27;écran.
+        */
+
+        WaitPort(pythidcmp)
+        pythcleanup(MSG_READY)
+ENDPROC
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

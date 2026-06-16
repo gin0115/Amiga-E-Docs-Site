@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>mybranch.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-energy.html">energy</a> &rsaquo; mybranch.e</div><h1>File: <code>mybranch.e</code></h1><p class="meta">67 lines · project <a href="../examples/pkg-energy.html"><code>energy</code></a></p><p class="pathctx">energy/Energy/Easy/mybranch.e</p><p class="prose">mydir.e</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/dos.html">dos/dos</a></li></ul></div><h2>Source</h2><pre class="code">
+	/* mydir.e */
+
+MODULE &#x27;dos/dos&#x27;,&#x27;dos/dosextens&#x27;,&#x27;exec/memory&#x27;
+
+-&gt;	extern struct FileLock *Lock(),*DupLock(),*ParentDir()
+
+PROC main()
+
+DEF oldlock:PTR TO filelock -&gt; fissa un Lock di scrittura sulla directory corrente
+
+   	oldlock := Lock(&#x27;&#x27;,ACCESS_READ)
+	
+   		IF (oldlock &lt;&gt; 0)
+
+       			WriteF(&#x27;\nPath  della directory corrente: &#x27;)
+		
+       		/* non scrive lo slash se si trova al livello minimo*/
+       			followpath(oldlock,0)
+    		ELSE
+       			WriteF(&#x27;\n Non posso operare un lock sulla directory corrente\n&#x27;)
+		ENDIF
+	WriteF(&#x27;\n&#x27;)
+	ENDPROC
+
+PROC followpath(lock:PTR TO filelock,printslash)	
+
+DEF 	myinfo:PTR TO fileinfoblock,
+	newlock:PTR TO filelock,
+	success,error
+		
+	/* se raggiunge la fine non stampa nulla */
+
+	IF (lock)=NIL THEN RETURN 0	
+	
+		myinfo :=  AllocMem(SIZEOF fileinfoblock,MEMF_CLEAR)
+		IF (myinfo = 0) 
+			WriteF(&#x27;out of memory\n&#x27;)
+			RETURN 0
+		ENDIF 	
+		/* guarda se esiste una directory superiore  */
+		newlock := ParentDir(lock)
+		error := IoErr()   
+
+   	/* newlock può fallire o per un errore o perché	qualcuno ha rimosso il disco */
+
+		IF ((newlock = 0) AND (error &lt;&gt; 0)) THEN
+  			WriteF(&#x27;\n DISK I/O ERROR!  value = \d\n&#x27;,error)
+		
+		/* richiama la funzione ricorsivamente sino alla directory primaria */
+
+		followpath(newlock,1)
+		
+		
+		success := Examine(lock, myinfo)
+		IF (success) THEN WriteF(&#x27;\s&#x27;,myinfo.filename)
+   			IF (newlock = 0) 
+      				WriteF(&#x27;:&#x27;)
+   			ELSE
+		/* stampa lo slash solo se il parametro non è zero */
+				IF (printslash) THEN WriteF(&#x27;/&#x27;)
+			ENDIF
+   		UnLock(lock)
+		IF (myinfo) THEN FreeMem(myinfo, SIZEOF fileinfoblock)
+		RETURN 1
+ENDPROC
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

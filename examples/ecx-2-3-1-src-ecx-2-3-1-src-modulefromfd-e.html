@@ -1,0 +1,376 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ModuleFromFD.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-ecx-2-3-1-src.html">ECX_2.3.1-src</a> &rsaquo; ModuleFromFD.e</div><h1>File: <code>ModuleFromFD.e</code></h1><p class="meta">350 lines · project <a href="../examples/pkg-ecx-2-3-1-src.html"><code>ECX_2.3.1-src</code></a></p><p class="pathctx">ECX_2.3.1-src/ecx-2.3.1-src/ModuleFromFD.e</p><p class="prose">ModuleFromFD by Leif Salomonsson [ecx tele2 se] is Copyright (c) 2004-2007 .</p><h2>Source</h2><pre class="code">/* ModuleFromFD by Leif Salomonsson [ecx tele2 se] is Copyright (c) 2004-2007 .*/
+/* Released under ECX TOOLS LICENSE, see ECXTOOLSLICENSE.TXT */
+
+-&gt; July 2004
+-&gt; produces ecx binary module.
+
+-&gt; Dec 2004: SYSV offset fix. add 2 to the offset!
+
+-&gt; Jan 2005. FDs using no base (sysv) didnt work.. *FIXING*
+-&gt; also added support for (sysv,r12base)
+
+-&gt; Jan 2005. v49. new arg: INC/N. WIth this offset increment can be
+-&gt; set to something else than -6, could be useful for &quot;OS4-FDs&quot;.
+-&gt; new arg: BIAS/N
+
+-&gt; Sept 2005: &gt;10 args bugfix. made the parsing of functions a bit less picky.
+-&gt; bugfix: did not longword align sizeof resulting module.
+
+-&gt; July 2008: added prefix option. prefixes names of functions.
+
+
+MODULE &#x27;*binary&#x27;
+
+/* automatic errorchecking */
+RAISE &quot;ARGS&quot; IF ReadArgs()=NIL
+RAISE &quot;OPEN&quot; IF Open()=NIL
+RAISE &quot;FILE&quot; IF FileLength() &lt; 1
+RAISE &quot;MEM&quot;  IF New()=NIL
+
+
+DEF mod:PTR TO moduleheader, labelsarray[1024]:ARRAY OF LONG, numlabs=0, g_linenum=1
+
+PROC getStrOfs(str)
+   DEF a, len, offset=0, newstr
+   FOR a := 0 TO numlabs-1
+      IF StrCmp(str, labelsarray[a]) THEN RETURN offset
+      len := EstrLen(labelsarray[a])
+      offset := offset + len + 1
+   ENDFOR
+   len := EstrLen(str)
+   newstr := String(len)
+   IF newstr = NIL THEN Raise(&quot;MEM&quot;)
+   StrCopy(newstr, str)
+   labelsarray[numlabs++] := newstr
+ENDPROC offset
+
+PROC getWordLen(str)
+   DEF c:REG, i:REG
+   i := 0
+   WHILE (c := str[i])
+      SELECT 128 OF c
+      CASE &quot;0&quot; TO &quot;9&quot;, &quot;A&quot; TO &quot;Z&quot;, &quot;a&quot; TO &quot;z&quot;, &quot;_&quot;, &quot;*&quot;, &quot;.&quot;
+         i++
+      DEFAULT
+         RETURN i
+      ENDSELECT
+   ENDWHILE
+ENDPROC i
+
+PROC reportErr(err, info=NIL)
+   WriteF(&#x27;ERROR at line \d: \s \s\s\s\n&#x27;, g_linenum, err,
+                                IF info THEN &#x27;&quot;&#x27; ELSE &#x27;&#x27;,
+                                IF info THEN info ELSE &#x27;&#x27;,
+                                IF info THEN &#x27;&quot;&#x27; ELSE &#x27;&#x27;)
+   Raise(&quot;ERR&quot;)
+ENDPROC
+
+
+
+ENUM ARG_FD, ARG_MODDIR, ARG_BASE, ARG_VERB, ARG_NAMEFIX, ARG_INC, ARG_BIAS,
+     ARG_PREFIX,  NROFARGS
+
+PROC main() HANDLE
+   DEF temp:PTR TO LONG, rdargs
+   DEF ffh=NIL, mfh=NIL
+   DEF info:PTR TO modinfo
+   DEF libi:PTR TO modlibi, lfunc:PTR TO modlfunc, lfuncarg:PTR TO lfuncarg
+   DEF ffile[256]:STRING
+   DEF mdir[200]:STRING
+   DEF bias, public=TRUE, basename[50]:STRING
+   DEF verbose=FALSE, showprivate=FALSE, namefix=TRUE, lowerbase=TRUE
+   DEF nrofparams
+   DEF count=NIL
+   DEF str[1000]:STRING
+   DEF pnum, rnum, params[16]:ARRAY OF LONG, regs[16]:ARRAY OF LONG
+   DEF a, t, line, s, wptr:PTR TO LONG
+   DEF fbuf, fsize
+   DEF c, base=NIL, v, r
+   DEF inc, prefix[20]:STRING
+
+   WriteF(&#x27; - \s\n&#x27;, {version})
+
+   NEW temp[NROFARGS]
+
+   /* read args */
+   rdargs := ReadArgs(
+   &#x27;FD/A,MODULEDIR/A,BASE/K,VERBOSE/S,NAMEFIX/S,INC/N,BIAS/N,PREFIX/K&#x27;,
+    temp, NIL)
+
+   /* get args */
+   StrCopy(ffile, temp[ARG_FD])
+
+   WriteF(&#x27;   .. processing &quot;\s&quot; ..\n&#x27;, ffile)
+
+   StrCopy(mdir, temp[ARG_MODDIR])
+   IF temp[ARG_BASE] THEN base := StrCopy(String(StrLen(temp[ARG_BASE])),temp[ARG_BASE])
+
+   verbose := temp[ARG_VERB]
+
+   namefix := temp[ARG_NAMEFIX]
+
+   IF temp[ARG_INC] THEN inc := Long(temp[ARG_INC]) ELSE inc := -6
+   IF temp[ARG_BIAS] THEN bias := Long(temp[ARG_BIAS]) ELSE bias := -30
+
+   IF temp[ARG_PREFIX] THEN StrCopy(prefix, temp[ARG_PREFIX])
+
+   /* free args */
+   FreeArgs(rdargs)
+
+   ffh := Open(ffile, OLDFILE)
+
+   fsize := FileLength(ffile)
+   fbuf := NewR(fsize+8) + 4
+   a := NewR(Mul(fsize,2)+4)
+   IF Read(ffh,fbuf,fsize) &lt;&gt; fsize THEN Raise(&quot;READ&quot;)
+   Close(ffh) ; ffh := NIL
+
+   mod := NewR(SIZEOF moduleheader + (fsize*3) + 1000)
+   info := mod + SIZEOF moduleheader
+   info.count := 1
+   mod.libiinfo := info - mod
+   libi := info + SIZEOF modinfo
+   lfunc := libi + SIZEOF modlibi
+
+   s := fbuf
+
+   WHILE (c := s[])
+      SELECT 128 OF c
+      CASE &quot;*&quot;
+         t := InStr(s, &#x27;\n&#x27;)
+         IF t &lt; 1 THEN reportErr(&#x27;comment not terminated&#x27;)
+         IF verbose
+            StrCopy(str, s, t+1)
+            WriteF(str)
+         ENDIF
+         s := s + t
+      CASE &quot; &quot;, &quot;\t&quot;
+         s++
+      CASE &quot;\n&quot;
+         g_linenum++
+         s++
+      CASE &quot;#&quot;
+         s++
+         IF s[]++ &lt;&gt; &quot;#&quot; THEN reportErr(&#x27;&quot;#&quot; expected&#x27;)
+         IF     StrCmp(s, &#x27;base &#x27;, STRLEN)
+            s := s + STRLEN
+            t := getWordLen(s)
+            IF t = NIL THEN reportErr(&#x27;basename expected&#x27;)
+            IF s[] = &quot;_&quot;
+               StrCopy(basename, s+1, t-1)
+            ELSE
+               StrCopy(basename, s, t)
+            ENDIF
+            LowerStr(basename)
+            IF base = NIL THEN libi.basename := getStrOfs(basename)
+            s := s + t
+         ELSEIF StrCmp(s, &#x27;bias &#x27;, STRLEN)
+            s := s + STRLEN
+            v,r := Val(s)
+            IF r = NIL THEN reportErr(&#x27;bias expected&#x27;)
+            bias := -v
+            s := s + r
+         ELSEIF StrCmp(s, &#x27;public&#x27;, STRLEN)
+            s := s + STRLEN
+            public := TRUE
+         ELSEIF StrCmp(s, &#x27;private&#x27;, STRLEN)
+            s := s + STRLEN
+            public := FALSE
+         ELSEIF StrCmp(s, &#x27;end&#x27;, STRLEN)
+            s[] := NIL
+         ELSE
+            reportErr(&#x27;unknown directive&#x27;)
+         ENDIF
+      CASE &quot;_&quot;, &quot;a&quot; TO &quot;z&quot;, &quot;A&quot; TO &quot;Z&quot;
+         IF public
+            IF base
+               StrCopy(basename, base)
+               libi.basename := getStrOfs(basename)
+               base := NIL
+            ENDIF
+            StrCopy(str, prefix)
+            t := getWordLen(s)
+            StrAdd(str, s, t)
+            IF namefix
+               IF str[0] &gt; 96 THEN str[0] := str[0]  - 32
+               IF str[1] &lt; 91
+                  str[1] := str[1] + 32
+                  IF str[2] &lt; 91
+                     IF str[3] = &quot;_&quot;
+                        str[2] := str[2] + 32
+                     ENDIF
+                  ENDIF
+               ENDIF
+            ENDIF
+            IF verbose
+               WriteF(&#x27;\s\n&#x27;, str)
+            ENDIF
+            lfunc.name := getStrOfs(str)
+            s := s + t
+            IF s[]++ &lt;&gt; &quot;(&quot; THEN reportErr(&#x27;&quot;(&quot; expected&#x27;)
+            s := TrimStr(s)
+            pnum := 0
+            WHILE (t := getWordLen(s))
+               StrCopy(str, s, t)
+               params[pnum++] := getStrOfs(str)
+               s := TrimStr(s + t)
+               EXIT s[]=&quot;)&quot;
+               IF s[]++ &lt;&gt; &quot;,&quot; THEN reportErr(&#x27;&quot;,&quot; expected&#x27;)
+               WHILE s[] = &quot; &quot; DO s++
+            ENDWHILE
+            s++
+            lfunc.nrofargs := pnum
+            IF s[]++ &lt;&gt; &quot;(&quot; THEN reportErr(&#x27;&quot;(&quot; expected&#x27;)
+            rnum := 0
+            WHILE (t := getWordLen(s))
+               StrCopy(str, s, t)
+               s := s + t
+               t := Long(str)
+               IF t = &quot;base&quot;
+                  lfunc.basernum := rnum + 3
+               ELSEIF t = &quot;sysv&quot;
+                  lfunc.type := 1
+               ELSEIF t = &quot;r12b&quot;
+                  lfunc.basernum := 12
+               ENDIF
+               regs[rnum++] := t
+               s := TrimStr(s)
+               EXIT s[] = &quot;)&quot;
+               IF s[] &lt;&gt; &quot;/&quot;
+                  IF s[] &lt;&gt; &quot;,&quot; THEN reportErr(&#x27;&quot;,&quot; or &quot;/&quot; expected&#x27;)
+               ENDIF
+               s++
+               WHILE s[] = &quot; &quot; DO s++
+            ENDWHILE
+            s++
+            IF lfunc.type = 0
+               IF rnum &lt; pnum THEN reportErr(&#x27;registers dont match arguments&#x27;)
+            ELSE
+               IF lfunc.basernum = 3 THEN t := 4 ELSE t := 3
+            ENDIF
+            lfuncarg := lfunc + SIZEOF modlfunc
+            FOR a := 0 TO pnum-1
+               lfuncarg.name := params[a]
+               IF lfunc.type = 0
+                  lfuncarg.rtype := IF Shr(regs[a],24) = &quot;d&quot; THEN 0 ELSE 1
+                  lfuncarg.rnum := Shr(regs[a],16) AND $FF - 48
+               ELSE
+                  lfuncarg.rtype := IF t &gt; 10 THEN PPCARGRTYPE_STACKRX ELSE PPCARGRTYPE_RX
+                  lfuncarg.rnum := IF t &gt; 10 THEN t++ - 11 * 4 + 8 ELSE t++
+               ENDIF
+               lfuncarg++
+            ENDFOR
+            lfunc.baseofs := bias + IF lfunc.type = 1 THEN 2 ELSE 0
+            lfunc.totalsize := lfuncarg - lfunc
+            lfunc := lfuncarg
+            libi.nroflfuncs := libi.nroflfuncs + 1
+         ELSE
+            t := InStr(s, &#x27;\n&#x27;)
+            s := s + IF t = -1 THEN StrLen(s) ELSE t
+         ENDIF
+         bias := bias + inc
+      DEFAULT
+         reportErr(&#x27;unexpected characters&#x27;)
+      ENDSELECT
+
+   ENDWHILE
+
+   mod.identification := &quot;ECXM&quot;
+   mod.headsize := SIZEOF moduleheader
+   info := lfunc
+   mod.strtabinfo := info - mod
+   wptr := info + SIZEOF modinfo
+   FOR a := 0 TO numlabs-1
+      s := labelsarray[a]
+      CopyMem(s, wptr, EstrLen(s))
+      wptr := wptr + EstrLen(s) + 1
+   ENDFOR
+   mod.modsize := (wptr - mod) + 3 AND -4
+
+   StrCopy(str, mdir)
+   t := InStr(basename, &#x27;base&#x27;)
+   IF t = -1
+      t := InStr(basename, &#x27;device&#x27;)
+      IF t = -1
+         t := InStr(basename, &#x27;resource&#x27;)
+         IF t = -1
+            t := ALL
+         ENDIF
+      ENDIF
+   ENDIF
+   StrAdd(str, basename, t)
+   StrAdd(str, &#x27;.m&#x27;)
+
+   mod.modversion := 1
+
+   setsum(mod)
+
+   mfh := Open(str, NEWFILE)
+
+   Write(mfh, mod, mod.modsize)
+
+   IF verbose
+      WriteF(&#x27;\e[31m - processed \d functions\n&#x27;, libi.nroflfuncs)
+      WriteF(&#x27; - base : \s\n&#x27;, basename)
+   ENDIF
+
+EXCEPT DO
+   SELECT exception
+   CASE &quot;ARGS&quot; ; PutStr(&#x27;Bad Args!\n&#x27;)
+   CASE &quot;OPEN&quot; ; PutStr(&#x27;Open file error!\n&#x27;)
+   CASE &quot;READ&quot; ; PutStr(&#x27;Read file error!\n&#x27;)
+   CASE &quot;ERR&quot;  ; PutStr(&#x27;Aborted.\n&#x27;)
+   CASE &quot;MEM&quot;  ; PutStr(&#x27;Not enough memory!\n&#x27;)
+   CASE &quot;^C&quot;   ; PutStr(&#x27;User aborted!\n&#x27;)
+   DEFAULT
+      IF exception &gt; 0 THEN PutStr(&#x27;unknown exception occoured!\n&#x27;)
+   ENDSELECT
+   IF ffh THEN Close(ffh)
+   IF mfh THEN Close(mfh)
+ENDPROC
+
+PROC setsum(m:PTR TO moduleheader)
+   DEF lptr:REG PTR TO LONG, longsize:REG, sum=NIL:REG
+
+   lptr := m.checksumstart
+   longsize := Div(m + m.modsize - lptr,4) + 1
+
+   WHILE longsize-- DO sum := sum + lptr[]++
+
+   m.checksum := sum
+
+ENDPROC
+
+CHAR &#x27;$VER: &#x27;
+version:
+CHAR &#x27;ModuleFromFD by LS 2004-08&#x27;,0
+
+
+
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

@@ -1,0 +1,307 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>AmigaETag.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-aepd16.html">AEPD16</a> &rsaquo; AmigaETag.e</div><h1>File: <code>AmigaETag.e</code></h1><p class="meta">281 lines · project <a href="../examples/pkg-aepd16.html"><code>AEPD16</code></a></p><p class="pathctx">AEPD16/EPD16/Amiga_E-Programme/AmigaETag/Sources/AmigaETag.e</p><p class="prose">AmigaETag.e</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/dos.html">dos/dos</a></li><li><a href="../modules/types.html">exec/types</a></li></ul></div><h2>Source</h2><pre class="code">/* AmigaETag.e */
+
+MODULE &#x27;exec/types&#x27;
+MODULE &#x27;dos/dos&#x27;
+
+CONST ERROR_EOF = -1,
+      MAXSTRLEN = 512,
+      MINVERSION = 37,
+      NL = 10,
+      SPACE = 32
+
+ENUM ARG_TAGFILE,
+     ARG_EDITFILE,
+     ARG_NUMLINES,
+     ARG_PREFIX,
+     ARG_SEED,
+     ARG_TAG,
+     ARG_ADDNL,
+     ARG_COUNT,
+     ARG_NOSTRIP,
+     ERROR_BADARGS,
+     ERROR_DOS,
+     ERROR_NONE,
+     NUMARGS
+
+PROC main() HANDLE
+    DEF tagfile = NIL,
+        editfile = NIL,
+        tagfilename[MAXSTRLEN] : STRING,
+        editfilename[MAXSTRLEN] : STRING,
+        currline = 1,
+        line[MAXSTRLEN] : STRING,
+        prefix[MAXSTRLEN] : STRING,
+        seed,
+        tagnum,
+        totallines = NIL,
+        tagend,
+        code,
+        strip
+        
+    &#x27;$VER: AmigaETag 37.6 (13.03.94) by Rodney Hester&#x27;
+
+    IF KickVersion(MINVERSION) = FALSE
+        WriteF(&#x27;This program requires Kickstart version 2.04 or greater.\n&#x27;)
+        CleanUp(RETURN_FAIL)
+    ENDIF
+
+    tagfile := NIL
+    editfile := NIL
+
+    getvars({tagfilename}, {editfilename}, {totallines}, prefix, {seed},
+      {tagnum}, {tagend}, {strip})
+
+    IF strip THEN striptag(editfilename, prefix)
+
+    tagfile := Open(tagfilename, MODE_OLDFILE)
+    IF tagfile = NIL THEN Raise(ERROR_DOS)
+    IF StrCmp(editfilename, &#x27;&#x27;, ALL) = FALSE
+        editfile := Open(editfilename, MODE_OLDFILE)
+        IF editfile = NIL THEN Raise(ERROR_DOS)
+    ELSE
+        editfile := stdout
+    ENDIF
+
+    IF tagnum = NIL
+        IF seed = -1 THEN CurrentTime({seed}, {seed})
+        Rnd(-seed)
+
+        tagnum := Rnd(totallines) + 1
+    ELSE
+        IF tagnum &gt; totallines THEN Raise(ERROR_BADARGS)
+    ENDIF
+
+    WHILE (currline &lt; tagnum) AND (tagnum &lt;&gt; 1)
+        fgets(tagfile, line, MAXSTRLEN)
+        IF InStr(line, &#x27;%%&#x27;, 0) = 0 THEN INC currline
+    ENDWHILE
+
+    IF editfile &lt;&gt; stdout THEN
+      IF Seek(editfile, 0, OFFSET_END) = ERROR_EOF THEN Raise(ERROR_DOS)
+
+    putline(editfile, tagfile, prefix, line, tagend)
+
+    Raise(ERROR_NONE)
+
+    EXCEPT
+        IF tagfile THEN Close(tagfile)
+        IF editfile AND (editfile &lt;&gt; stdout) THEN Close(editfile)
+
+        code := IoErr()
+
+        SELECT exception
+            CASE ERROR_BADARGS;
+                IF code
+                    PrintFault(code, NIL)
+                ELSE
+                    PutStr(&#x27;bad args\n&#x27;)
+                ENDIF
+                CleanUp(RETURN_FAIL)
+            CASE ERROR_DOS;
+                PrintFault(code, NIL)
+                CleanUp(RETURN_FAIL)
+            CASE ERROR_NONE;
+                CleanUp(RETURN_OK)
+        ENDSELECT
+ENDPROC
+
+PROC getvars(tagfilename, editfilename, totallines, prefix, seed, tagnum,
+  tagend, strip)
+    DEF args[NUMARGS] : LIST,
+        rdargs,
+        template,
+        line[MAXSTRLEN] : STRING,
+        argnum,
+        tagfile
+
+    FOR argnum := 0 TO NUMARGS - 1 DO args[argnum] := NIL
+    template := &#x27;TAGFILE/A,EDITFILE,NUMLINES/K/N,PREFIX/K,SEED/K/N,&#x27; +
+      &#x27;TAG/K/N,ADDNL/S,COUNT/S,NOSTRIP/S&#x27;
+    rdargs := ReadArgs(template, args, NIL)
+    IF rdargs = NIL THEN Raise(ERROR_BADARGS)
+
+    ^strip := TRUE
+
+    IF args[ARG_TAGFILE]
+        StrCopy(^tagfilename, args[ARG_TAGFILE], ALL)
+    ENDIF
+    tagfile := Open(^tagfilename, MODE_OLDFILE)
+    IF tagfile = NIL THEN Raise(ERROR_DOS)
+    IF args[ARG_NUMLINES]
+        ^totallines := Long(args[ARG_NUMLINES])
+        IF ^totallines &lt; 1 THEN Raise(ERROR_BADARGS)
+    ELSE
+        ^totallines := 1
+        WHILE Fgets(tagfile, line, MAXSTRLEN)
+            IF InStr(line, &#x27;%%&#x27;, 0) = 0 THEN ^totallines := ^totallines + 1
+        ENDWHILE
+        IF IoErr() THEN Raise(ERROR_DOS)
+        IF Seek(tagfile, 0, OFFSET_BEGINNING) = ERROR_EOF THEN
+          Raise(ERROR_DOS)
+        IF args[ARG_COUNT]
+            WriteF(&#x27;Number of lines in tag file: \d\n&#x27;, ^totallines)
+            Raise(ERROR_NONE)
+        ENDIF
+    ENDIF
+    Close(tagfile)
+    IF args[ARG_EDITFILE]
+        StrCopy(^editfilename, args[ARG_EDITFILE], ALL)
+    ELSE
+        ^strip := FALSE
+        ^editfilename := &#x27;&#x27;
+    ENDIF
+    IF args[ARG_PREFIX]
+        StrCopy(prefix, args[ARG_PREFIX], ALL)
+    ELSE
+        StrCopy(prefix, &#x27;... &#x27;, ALL)
+    ENDIF
+    IF args[ARG_SEED]
+        IF Long(args[ARG_SEED]) &lt; 0
+            ^seed := Abs(Long(args[ARG_SEED]))
+        ELSE
+            ^seed := Long(args[ARG_SEED])
+        ENDIF
+    ELSE
+        ^seed := -1
+    ENDIF
+    IF args[ARG_TAG]
+        IF args[ARG_SEED] &lt;&gt; NIL THEN Raise(ERROR_BADARGS)
+        ^tagnum := Long(args[ARG_TAG])
+        IF ^tagnum &lt; 1 THEN Raise(ERROR_BADARGS)
+    ELSE
+        ^tagnum := NIL
+    ENDIF
+    ^tagend := IF args[ARG_ADDNL] THEN &#x27;\n\n&#x27; ELSE &#x27;\n&#x27;
+    IF args[ARG_NOSTRIP] THEN ^strip := FALSE
+
+    FreeArgs(rdargs)
+ENDPROC
+
+PROC putline(editfile, tagfile, prefix, line, tagend)
+    DEF counter,
+        seed,
+        status,
+        linelen
+        
+    fputc(editfile, NL)
+
+    CurrentTime({seed}, {seed})
+    Rnd(-seed)
+
+    fputs(editfile, prefix)
+    fgets(tagfile, line, MAXSTRLEN)
+    StrCopy(line, line, StrLen(line) - 1)
+    fputs(editfile, line)
+    linelen := StrLen(prefix) + StrLen(line)
+    REPEAT
+        status := fgets(tagfile, line, MAXSTRLEN)
+        IF (InStr(line, &#x27;%%&#x27;, 0) &lt;&gt; 0) AND (status &lt;&gt; NIL)
+            fputc(editfile, NL)
+            FOR counter := 1 TO StrLen(prefix) DO fputc(editfile, SPACE)
+            StrCopy(line, line, StrLen(line) - 1)
+            fputs(editfile, line)
+            linelen := StrLen(prefix) + StrLen(line)
+        ENDIF
+    UNTIL (InStr(line, &#x27;%%&#x27;, 0) = 0) OR (status = NIL)
+    fputs(editfile, tagend)
+ENDPROC
+
+PROC striptag(editfilename, prefix)
+    DEF buffer[MAXSTRLEN] : STRING,
+        line[MAXSTRLEN] : STRING,
+        editfile,
+        tempfile,
+        tempfilename[MAXSTRLEN] : STRING,
+        found = FALSE,
+        bufferread,
+        lineread,
+        status
+
+    editfile := Open(editfilename, MODE_OLDFILE)
+    IF editfile = NIL THEN Raise(ERROR_DOS)
+
+    IF (InStr(editfilename, &#x27;:&#x27;, 0) = -1) AND
+      (InStr(editfilename, &#x27;/&#x27;, 0) = -1)
+        tempfilename := &#x27;StripTag.temp&#x27;
+    ELSE
+        IF InStr(editfilename, &#x27;/&#x27;, 0) = -1
+            MidStr(tempfilename, editfilename, 0,
+              InStr(editfilename, &#x27;:&#x27;, 0) + 1)
+        ELSE
+            MidStr(tempfilename, editfilename, 0,
+              InStr(editfilename, &#x27;/&#x27;, 0) + 1)
+        ENDIF
+        StrAdd(tempfilename, &#x27;StripTag.temp&#x27;, ALL)
+    ENDIF
+    tempfile := Open(tempfilename, MODE_NEWFILE)
+    IF tempfile = NIL THEN Raise(ERROR_BADARGS)
+
+    REPEAT
+        bufferread := FALSE
+        lineread := FALSE
+        status := fgets(editfile, buffer, 256)
+        IF status &lt;&gt; NIL
+            bufferread := TRUE
+            IF buffer[0] = 10
+                IF fgets(editfile, line, 256) &lt;&gt; NIL
+                    lineread := TRUE
+                    IF InStr(line, prefix, 0) = 0 THEN found := TRUE
+                ENDIF
+            ENDIF
+        ENDIF
+        IF found &lt;&gt; TRUE
+            IF bufferread THEN fputs(tempfile, buffer)
+            IF lineread THEN fputs(tempfile, line)
+        ENDIF
+    UNTIL found OR (status = NIL)
+
+    Close(editfile)
+    Close(tempfile)
+
+    DeleteFile(editfilename)
+    Rename(tempfilename, editfilename)
+ENDPROC
+
+PROC fgets(file, string, length)
+    DEF status
+
+    status := Fgets(file, string, length)
+    IF status = NIL AND IoErr() THEN Raise(ERROR_DOS)
+
+    RETURN status
+ENDPROC
+
+PROC fputc(file, char)
+    IF FputC(file, char) = ERROR_EOF THEN Raise(ERROR_DOS)
+ENDPROC
+
+PROC fputs(file, string)
+    IF Fputs(file, string) = ERROR_EOF THEN Raise(ERROR_DOS)
+ENDPROC
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

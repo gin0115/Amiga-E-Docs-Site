@@ -1,0 +1,668 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>compiler.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-ecx-2-3-1-src.html">ECX_2.3.1-src</a> &rsaquo; compiler.e</div><h1>File: <code>compiler.e</code></h1><p class="meta">642 lines · project <a href="../examples/pkg-ecx-2-3-1-src.html"><code>ECX_2.3.1-src</code></a></p><p class="pathctx">ECX_2.3.1-src/ecx-2.3.1-src/compiler.e</p><p class="prose">ECX/compiler.e</p><h2>Source</h2><pre class="code">-&gt; ECX/compiler.e
+
+/* ECX by Leif Salomonsson [ecx tele2 se] is Copyright (c) 2002-2008 */
+/* Released under the ECX COMPILER LICENSE, See ECXCOMPILERLICENSE.TXT */
+
+
+-&gt; Sept 2007: changes to work with new codegen.e
+
+OPT MODULE
+OPT EXPORT
+OPT PREPROCESS
+
+MODULE &#x27;*binary&#x27;
+
+#ifdef ECX_VERSION
+#define DEBUGF WriteF
+-&gt;#define DEBUGF DebugF
+#endif
+
+#ifndef ECX_VERSION
+#define DEBUGF WriteF
+#define Word Int
+#endif
+
+#define IFUNCDEF(name,args,defs,rets,f) \
+   [5, 0, 0, 0, 0,0,0,0, name, 0,0, 0, 0, args, defs, rets, f, 0]:lif
+
+#define IFUNCDEF2(name,code,codelen,args,defs,rets,f) \
+   [5, 0, 0, 0, 0,0,0,0, name, 0,0, code, codelen, args, defs, rets, f, 0]:lif
+
+CONST MEMF_CLEAR=$10000, MEMF_PUBLIC=1
+
+CONST TEMPSTRLEN = 16000, TEMPARRAYLEN=2048 -&gt; 1.5.3
+
+CONST LHASHSIZE=1024
+
+CONST IDENT_NONE   = 0,
+      IDENT_CONST  = 1,
+      IDENT_VARIABLE = 2,
+      IDENT_LABEL = 3,  -&gt; proc, asmlab
+      IDENT_LFUNC  = 4,
+      IDENT_IFUNC = 5,
+      IDENT_MACRO  = 6,
+      IDENT_REG    = 7,
+      IDENT_KEYWORD = 8, -&gt; v46, its back!
+      IDENT2_OBJECT = 9,
+      IDENT2_ASM    = 10,
+      IDENT2_ASMMACRO = 11 -&gt; v46
+
+ENUM IT_NEWLINE=10,  -&gt; 10 (newline),-&gt; linenumber in info (set by .parse())
+     IT_LABEL=128,   -&gt; anycase label, string in info
+     IT_VALUE,  -&gt; integer value, value in info  v43: now is float if .num=1
+     IT_STRING, -&gt; quoted string, string in info
+     -&gt;IT_ASIZE,  -&gt; v35: .L .W .B etc
+     IT_REG, -&gt; v43:info : PTR TO reg
+     IT_ASM, -&gt; info: PTR TO asm,
+     IT_IFUNC, -&gt; v44. its back!  info: PTR TO lif
+     IT_LFUNC, -&gt; v44. its back!  info: PTR TO lfunc
+
+     /* special types created by syntax parser only! */
+     IT_PFUNC, -&gt;IT_FUNCTION,  -&gt; proc
+     IT_IMMEDLIST,
+     IT_VAREXP, -&gt; if .num then .num is index of assignexp
+     IT_EXPRESSION,
+     IT_SUBSTATEMENT, -&gt; v38
+     IT_PROC, -&gt; v40 : created by proc_key !
+     IT_VFUNC, -&gt; v44. variable function. lex:hln sntx:var
+     IT_OBJECT, -&gt; v44. lex:hln sntx:object
+     IT_VARIABLE, -&gt; v44 lex:hln sntx:var
+     IT_IFEXP, -&gt; v44 .
+     IT_UNIEXP, -&gt; v44
+     IT_CELLEXP, -&gt; v44
+     IT_NEWSTRING, -&gt; v44
+     IT_PRIVLAB, -&gt; v48 &quot;^x:&quot; priveta label def for MACROs
+     IT_MASSIGN, -&gt; v49. multiassign (v1,v2,.. := exp)
+     IT_LABADR, -&gt; v49
+     IT_VARADR, -&gt; v49
+     IT_MEMBER, -&gt; v50, pass1 ptrtypeing, pass2 preDeref() creates it
+     IT_LABDEREF, -&gt; 1.9.0 v54
+
+      KEY_BASE,
+      KW_NEW,
+      KW_END,
+      KW_AND,
+      KW_OR,
+      KW_BUT,
+      KW_OPT,
+      KW_MODULE,
+      KW_OBJECT,
+      KW_ENDOBJECT,
+      KW_CONST,
+      KW_SET,
+      KW_ENUM,
+      KW_PROC,
+      KW_ENDPROC,
+      KW_IS,
+      KW_DEF,
+      KW_SUPER,
+      KW_FOR,
+      KW_STEP,
+      KW_ENDFOR,
+      KW_LOOP,
+      KW_ENDLOOP,
+      KW_WHILE,
+      KW_ENDWHILE,
+      KW_REPEAT,
+      KW_UNTIL,
+      KW_JUMP,
+      KW_REG,
+      KW_IF,
+      KW_THEN,
+      KW_ELSE,
+      KW_ELSEIF,
+      KW_ENDIF,
+      KW_SELECT,
+      KW_CASE,
+      KW_DEFAULT,
+      KW_ENDSELECT,
+      KW_CHAR,
+      KW_INT,
+      KW_LONG,
+      KW_STRING,
+      KW_LIST,
+      KW_ARRAY,
+      KW_PTR,
+      KW_TO,
+      KW_DO,
+      KW_OF,
+      -&gt;KW_STRLEN,
+      KW_EXPORT,
+      KW_SIZEOF,
+      KW_RETURN,
+      KW_EXCEPT,
+      KW_HANDLE,
+      KW_EXIT,
+      KW_RAISE,
+      KW_UNI, -&gt; unification (&lt;=&gt;)
+
+      /* special &quot;keywords&quot; */
+      KW_ASSIGN, -&gt; :=
+      KW_ISNE,   -&gt; &lt;&gt;
+      KW_ISGE,   -&gt; &gt;=, =&gt;
+      KW_ISLE,   -&gt; &lt;=, =&lt;
+      KW_PTYPE,  -&gt; ::
+      KW_PLUSPLUS, -&gt; ++
+      KW_MINMIN,   -&gt; --
+      KW_MODIFY, -&gt; V46: +=, *=, etc. &quot;+&quot;, KW_OR, etc in .info.
+
+      KW_SHL,     -&gt; SHL
+      KW_SHR,     -&gt; SHR
+      KW_NOP,
+      KW_LIBRARY,
+      KW_INCBIN, -&gt; v3
+      KW_INC,
+      KW_DEC, -&gt; v40
+
+      KW_DOUBLE,
+      KW_QUAD,   -&gt; v50 reserved for future
+      KW_VECTOR,
+      KW_CLASS, -&gt; v47
+      KW_VOID, -&gt; v47
+
+      KW_BYTE, -&gt; v49!
+      KW_WORD, -&gt; v49
+      KW_FLOAT, -&gt; v49, back AGAIN!
+      KW_REAL, -&gt; v50
+
+      KW_WIDE, -&gt; V50. The new 64bit &quot;LONG&quot;
+      KW_ULONG, -&gt; v50, future vector subtype
+
+      KW_OFFSETOF, -&gt; 1.5.6
+
+      KW_UWIDE, -&gt; 1.6.1
+
+      KW_USES, -&gt; 1.7.1
+      KW_LINKOBJECT, -&gt; 1.7.1
+      KW_AS, -&gt; 1.8.0
+
+      KW_STATIC, -&gt; 1.9.0
+
+      /* 1.10.0 inverted versions */
+      KW_IFN,
+      KW_ELSEIFN,
+      KW_WHILEN,
+      KW_UNTILN,
+      KW_EXITN,
+      -&gt; 1.10.0
+      KW_XOR,
+      KW_ASR, -&gt; &gt;&gt;
+
+      KW_ABS -&gt; 2.2
+
+OBJECT ident
+   identID:LONG
+ENDOBJECT /* SIZEOF = 4 */
+
+OBJECT reg OF ident  -&gt; item.info
+   type:CHAR -&gt; normal DRX/ARX/RX/FPX or special &quot;V&quot;/&quot;P&quot;
+   num:CHAR -&gt; register number
+   referenced:INT -&gt; 1 if used
+   name:PTR TO CHAR
+ENDOBJECT
+
+OBJECT keyword OF ident
+   id:LONG
+ENDOBJECT
+
+OBJECT asm OF ident -&gt; item.info
+   name:PTR TO CHAR
+   data:PTR TO LONG
+ENDOBJECT
+
+OBJECT macro OF ident -&gt; compatible with modmacro !!
+   name:PTR TO CHAR
+   type:CHAR -&gt; 0:define, 1:definefunc, 2:asmmacro, 3:varargs definefunc (v44)
+   nrofargs:CHAR     -&gt; if type &lt;&gt; 0, else NIL.
+   rsrvd:INT
+   ascii:PTR TO CHAR
+   -&gt;---------------
+   params:PTR TO LONG -&gt; if type=1, else NIL. for exported macros
+   next:PTR TO macro -&gt; v44, for exported macros
+ENDOBJECT
+
+OBJECT const OF ident
+   value:LONG
+   -&gt; for exported consts
+   name:PTR TO CHAR
+   next:PTR TO const
+ENDOBJECT
+
+OBJECT hln
+   name:PTR TO CHAR
+   ident:PTR TO ident -&gt; normal idents
+   ident2:PTR TO ident -&gt; v37, objects, asm
+   hnext:PTR TO hln
+ENDOBJECT /* SIZEOF = 16 */
+
+OBJECT item
+   data:CHAR
+   num:CHAR -&gt; for some syntax types
+   info:PTR TO hln -&gt; or value:LONG or PTR TO ident / PTR TO item.. depending..
+   /* 1.8.0 */
+   info2:LONG -&gt; lower part of 64 bit values
+ENDOBJECT /* SIZEOF = 10 */
+
+
+-&gt;           8     8     16    32      1     1
+/* type      size  esize numes object  float signed
+CHAR memb    1,    0,    0,    0,      0,    0
+BYTE memb    1,    0,    0,    0,      0,    1
+INT  memb    2,    0,    0,    0,      0,    1
+WORD memb    2,    0,    0,    0,      0,    0
+LONG memb    4,    0,    0,    0,      0,    1
+LONG         4,    1,    0,    0,      0,    1
+FLOAT        4,    0,    0,    0,      1,    1
+DOUBLE       8,    0,    0,    0,      1,    1
+VECTOR      16,    0,    0,    0,      0,    0
+CVECT       16,    1,   16,    0,      0,    0
+BVECT       16,    1,   16,    0,      0,    1
+IVECT       16,    2,    8,    0,      0,    1
+WVECT       16,    2,    8,    0,      0,    0
+LVECT       16,    4,    4,    0,      0,    1
+UVECT       16,    4,    4,    0,      0,    0
+FVECT       16,    4,    4,    0,      1,    0
+CPTR         4,    1,    0,    0,      0,    0
+BPTR         4,    1,    0,    0,      0,    1
+IPTR         4,    2,    0,    0,      0,    0
+WPTR         4,    2,    0,    0,      0,    1
+LPTR         4,    4,    0,    0,      0,    1
+FPTR         4,    4,    0,    0,      1,    1
+DPTR         4,    8,    0,    0,      1,    0
+VPTR         4,   16,    0,    0,      0,    0
+CARRAY       0,    1,    #,    0,      0,    0
+BARRAY       0,    1,    #,    0,      0,    1
+IARRAY       0,    2,    #,    0,      0,    1
+WARRAY       0,    2,    #,    0,      0,    0
+LARRAY       0,    4,    #,    0,      0,    1
+FARRAY       0,    4,    #,    0,      1,    1
+DARRAY       0,    8,    #,    0,      1,    1
+VARRAY       0,   16,    #,    0,      0,    0
+OPTR         4,  255,    0,    obj,    0,    0
+OARRAY       0,  255,    #,    obj,    0,    0
+OBJECT       0,  255,    1,    obj,    0,    0
+*/
+
+-&gt; v49 absorbed &quot;type&quot;
+OBJECT member -&gt; compatible with modmember !
+   size:CHAR  -&gt; 0/1/2/4/8  [ARRAY/CHAR/INT/LONG/DOUBLE]
+   esize:CHAR -&gt; 0/1/2/4/8/255 [NOT_PTR/CPTR/IPTR/LPTR/DPTR/OPTR]
+   numes:INT   -&gt; 1-32767 elements, or 0.
+   object:PTR TO object -&gt; ...
+   offset:INT -&gt; offset from beginning. (v49. unused when type for variable)
+   flags:INT
+   name:PTR TO CHAR -&gt; hashed
+ENDOBJECT /* SIZEOF = 16 */
+
+
+OBJECT genlab OF ident
+   codelink:PTR TO genlab
+   offset:LONG
+   labrefs
+ENDOBJECT
+
+OBJECT codelab OF genlab  -&gt; user labels and procedures
+   exported:CHAR, rsrvd:CHAR, referenced:CHAR, ltype:CHAR
+   name:PTR TO CHAR -&gt; backpointer to hln.name
+   next:PTR TO codelab  -&gt; procedures/labels
+   dblabnext:PTR TO codelab -&gt; v56, link all debug symbols together
+ENDOBJECT
+
+-&gt; 1.9.0 for STATIC data.
+OBJECT statlab OF codelab
+   deref:member -&gt; size=0, esize=x, flags=x, object=x or NIL, numes=0
+   sizeof:LONG -&gt; 2.2
+ENDOBJECT
+
+-&gt; 2.2
+OBJECT loclab OF codelab  -&gt; chained off proc.loclabs through loclab.next
+   hln:hln -&gt; &quot;fake&quot; hln pointing back to loclab
+ENDOBJECT
+
+OBJECT rwref -&gt; immed lists in rw section
+   next:PTR TO rwref
+   offset:LONG
+ENDOBJECT
+
+OBJECT lif OF codelab -&gt;genlab
+   code:LONG -&gt; align 2
+   codelen:LONG -&gt; align 4
+   params:PTR TO LONG -&gt; LIST. was: LONG. used by frontend
+   defaults:PTR TO LONG -&gt; LIST: used by frontend
+   returns:PTR TO LONG -&gt; was:LONG [0=Dx/Rx,1=Fx,2=RX2] used by frontend
+   flags:LONG -&gt; was: inline. 1=inline, 2=varargs. used by bridge/front
+   raise:PTR TO raise -&gt; v44 !
+ENDOBJECT
+
+CONST VTYPE_GLOB = 0,
+      VTYPE_LOC = 1
+
+-&gt; 1.6.1
+CONST GTYPE_DEF  = 0,
+      GTYPE_BASE = 1,
+      GTYPE_XREF = 2,
+      GTYPE_INTERNAL = 3 -&gt; 1.7.1
+
+/* 1.9.0 extracted arg out of var */
+OBJECT arg OF ident -&gt; compatible with modarg !
+   defd:LONG
+   pad:CHAR
+   rtype:CHAR
+   rnum:INT
+   -&gt;--------------------
+   type:member  -&gt; v49 (was: type:type)
+ENDOBJECT
+
+OBJECT var OF arg
+   hln:PTR TO hln -&gt; locals need to reach hln (also inherited submodule methods -&gt; module)
+   o:CHAR, defo:CHAR
+   offset:INT
+   d:PTR TO var
+   oldident:LONG -&gt; for locals/args
+   trok:INT -&gt; bool. if FALSE, DO NOT use .treg !! (set to false when stymbling on {var}) v43
+   breg:CHAR -&gt; baseregister
+   treg:CHAR -&gt; used by tanslator.
+   intreg:INT -&gt; v50 BOOL
+   vtype:CHAR -&gt; VTYPE_GLOB/VTYPE_LOC
+   link:CHAR -&gt; 1 if moduleglobal, else 0. (1=needs relocation)
+   cmplx:INT -&gt; TRUE/FALSE
+   next:PTR TO var -&gt; v42
+   usage:INT
+   saveoffset:INT -&gt; v46 -&gt; save/restore regvar at this offset
+   argsarray:PTR TO LONG -&gt; 1.9.0, varfuncs
+   multiret:PTR TO multireturn -&gt; 1.9.0, varfuncs. may be NIL
+-&gt;-------------------
+   cbenable:INT -&gt; v50, copyback enable, TRUE/FALSE (not used yet)
+   flushme:INT -&gt; v50, contents of .treg should be written back. (not used yet)
+   nextuse:INT -&gt; v50, pass1 fills it in with total # of accs. pass2 decrements it. (not used yet)
+   varchain:PTR TO var -&gt; v50 (1.5.1) chains ALL _locals_ together!
+ENDOBJECT
+
+OBJECT gvar OF var
+   export:CHAR
+   gtype:CHAR -&gt; 1.6.1
+   padd:INT
+   labrefs:PTR TO labref -&gt; [next,offset]:labref
+   xname:PTR TO CHAR -&gt; 1.8.0. only for LINKOBJECT mode.
+ENDOBJECT
+
+OBJECT lfunc OF ident -&gt; compatible with modlfunc !
+   name:PTR TO CHAR -&gt; hashed
+   nrofargs:CHAR
+   type:CHAR -&gt; NIL for now
+   baseofs:INT
+   basernum:CHAR -&gt; ppc native functions only
+   return:CHAR -&gt;
+   basertype:CHAR -&gt; v46, 0:rx, 1:stack
+   flags:CHAR -&gt; LFFLAG_XXX, 1.7.1
+   basehln:PTR TO hln -&gt; librarybase hln (so that any var may be used)
+   raise:PTR TO raise -&gt; v44 !
+   regs[16]:ARRAY OF lfuncarg
+ENDOBJECT
+
+OBJECT object OF codelab
+   nrofmembers:INT
+   nrofmethods:INT
+   sizeof:LONG -&gt; v50 ,made LONG to be able to detect larger than 32k error
+   membertable:PTR TO LONG
+   methodtable:PTR TO LONG
+   privatesuper:INT -&gt; not used yet
+   startline:INT -&gt; useful for errors in finnishObjects()
+   super:PTR TO object -&gt; if superobject
+   classofs:INT -&gt; v44. offset in object of classinfo.
+   destofs:INT -&gt; v44. offset of endmethod in classinfo, or -1 for no endmethod.
+   addedmethods:PTR TO proc-&gt; proc_key just adds metohods here, nothing more. v44
+   alignment:CHAR -&gt; v49. normally 2. 4 if contains float/doubles, 16 if vectors
+   flags:CHAR -&gt; 1.8.0 OFLAG_XXX
+   modmethtab:PTR TO LONG -&gt; 1.10.0
+ENDOBJECT
+
+-&gt; v49, for functionreturns and multiple assigment
+OBJECT multireturn
+   ros[4]:ARRAY OF LONG
+   rds[4]:ARRAY OF LONG
+ENDOBJECT
+
+
+OBJECT proc OF codelab
+   nrofargs:CHAR
+   nrofdefaults:CHAR
+   cpu:INT -&gt; v40: 0=68k, 1=ppc
+   argarray:PTR TO LONG
+   args32:PTR TO var -&gt; v46
+   args64:PTR TO var -&gt; v46
+   args128:PTR TO var -&gt; v48, not used yet
+   object:PTR TO object -&gt; if method, else NIL
+   locals32:PTR TO var -&gt; v45.
+   locals00:PTR TO var  -&gt; v45.
+   locals64:PTR TO var -&gt; v45.
+   locals128:PTR TO var -&gt; v48, not used yet
+   framesize:LONG -&gt; v44 used by ppc back. v58 68k too.
+   maxcallargs:INT -&gt; v44. used by ppc back. set in pass 1.
+   maxcalldepth:INT -&gt; v44. ppc. maximum depth of nested functioncalls. 0=no functioncalls
+   handle:INT -&gt; bool
+   except:INT -&gt; v58 bool
+   pad:INT
+   selfvar:PTR TO var -&gt; v47
+   flags:LONG -&gt; v47. PROCF_EMPTY, PROCF_CLMETH
+   numregalloc:CHAR
+   numfregalloc:CHAR
+   selfreg:CHAR -&gt; v45. for now always 12
+   mret:multireturn -&gt; v49, replaces .return
+   varchain:PTR TO var -&gt; v50 (1.5.1) chains ALL locals/params together!
+   raise:PTR TO raise -&gt; 2.2
+   loclabs:PTR TO loclab -&gt; 2.2
+ENDOBJECT
+
+
+OBJECT raise
+   condition:INT -&gt; &quot;EQ&quot;/&quot;NE&quot;/&quot;LT&quot;/&quot;GT&quot;/&quot;LE&quot;/&quot;GE&quot;
+   pad:INT
+   excval
+   trigval
+ENDOBJECT /* SIZEOF = 16 */
+
+OBJECT entry OF lfunc
+   prochln:PTR TO hln -&gt; same hln as procedure
+   label:codelab
+ENDOBJECT
+
+
+
+OBJECT linedef
+   next
+   line
+   offset
+ENDOBJECT
+
+
+
+-&gt;unreferenced
+OBJECT unref
+   next:PTR TO unref
+   name:PTR TO CHAR
+   count:LONG
+ENDOBJECT
+
+OBJECT warn  -&gt; v45. g_warnlist
+   next:PTR TO warn
+   message:PTR TO CHAR
+   count:LONG
+ENDOBJECT
+
+OBJECT undefglob -&gt; v50
+   next:PTR TO undefglob
+   name:PTR TO CHAR
+ENDOBJECT
+
+
+/* preprocessor */
+CONST MACROBUFSIZE = 16000
+
+-&gt; v49
+#define LoopUsageMod(usage) (usage*8)
+#define SelectUsageMod(usage) (usage/8)
+#define IfUsageMod(usage) (usage)
+CONST SIMPLEUSAGE = 2
+CONST ASSIGNUSAGE = 4
+CONST MINALLOCUSAGE = 12
+
+-&gt; v49
+OBJECT it_funccall
+   data -&gt; depends on type
+   numpars -&gt; # of params issued
+   info  -&gt; libbase for libcalls, or NIL.
+ENDOBJECT
+-&gt; items follow until .data = NIL
+
+OBJECT litem OF item -&gt; 1.5.1 used by immedlist2 getlist
+   pad:INT
+   next:PTR TO litem
+ENDOBJECT
+
+OBJECT it_immedlist
+   numelems:INT -&gt; # of elements in list
+   newed:INT -&gt; TRUE if NEW []
+   offset:LONG -&gt; starting offet into g_databuf to support alignment
+   sizeof:LONG -&gt; size in bytes of list
+   esize:CHAR  -&gt; 0=object, 1, 2, 4, 8
+   eflags:CHAR -&gt; MEMBF_FLOAT or NIL
+   cmplx:INT   -&gt; TRUE if LIST
+   object:PTR TO object -&gt; if esize=0
+   -&gt;type:LONG -&gt; -4=LIST,1=CHAR,2=INT,4=LONG,8=DOUBLE,&gt;1000=object
+   litems:PTR TO litem -&gt; 1.5.1 linked items !!
+ENDOBJECT
+-&gt;-&gt; items follow until .data = NIL -&gt; 1.5.1: no items here!!
+
+-&gt; direct access to ifuncs array
+
+/* removed 1.10.0
+
+CONST IF68K_THROW = 100,
+      IF68K_FASTNEW = 110,
+      IF68K_FASTDISPOSE = 109,
+      IF68K_RAISE = 82,
+      IF68K_CONS = 128
+
+-&gt; direct access to ifuncsppc array
+
+CONST IFPPC_FASTNEW = 0,
+      IFPPC_FASTDISPOSE = 1,
+      IFPPC_STRINGF_OLD = 5,
+      IFPPC_RAISE = 6,
+      IFPPC_THROW = 7,
+      IFPPC_WRITEF_OLD = 23,
+      IFPPC_PRINTF_OLD = 24,
+      IFPPC_I_2_F = 40,
+      IFPPC_TEXTF_OLD = 77,
+      IFPPC_DEBUGF_OLD = 94,
+      IFPPC_STR_FMT_OLD = 96
+*/
+
+-&gt; 1.5.4
+OBJECT it_varexp
+   var:PTR TO var
+   postkey:CHAR   -&gt; KW_NEW / KW_END / KW_SUPER / NIL
+   -&gt; modification, or NIL.
+   -&gt; KW_ASSIGN / &quot;+&quot; / &quot;-&quot; / &quot;*&quot; / &quot;/&quot; / KW_AND / KW_OR / KW_SHL / KW_SHR / NIL
+   assignmod:CHAR
+   -&gt; index of modification expression if any, or NIL. always NIL for NEW/END/SUPER.
+   index:CHAR
+   rsrvd:CHAR
+ENDOBJECT
+-&gt; items follow until n.data = NIL
+
+-&gt; 1.5.4 not used yet
+OBJECT it_expression
+   quoted:INT     -&gt; TRUE / FALSE
+   prefloat:INT   -&gt; TRUE / FALSE (IF !...)
+   preneg:INT     -&gt; TRUE / FALSE (IF -x...)
+ENDOBJECT
+-&gt; items follow until n.data = NIL
+
+-&gt; 1.10.0
+ENUM MODE_DEFAULT,
+     MODE_FLOAT,
+     MODE_D64
+
+
+
+OBJECT labref
+   next:PTR TO labref
+   offset:LONG
+   type:LONG -&gt; if external proc/label: REF32/REF24/RE1616, else REF16/REF14/REF32/REF24
+ENDOBJECT
+
+
+
+-&gt;moved here 1.10.0
+#define AREG g_areg
+#define DREG g_dreg
+#define FREG g_freg
+#define VREG g_vreg
+#define D64REG g_d64reg
+
+-&gt; 1.10.0 moved back in here (needed by new inline.e)
+EXPORT ENUM
+     NO_OP,
+     RX,    -&gt; n
+     DRX,   -&gt; n
+     ARX,   -&gt; n
+     FPX,   -&gt; n
+     VX,    -&gt; n -&gt; v48
+     VAR, -&gt; var/gvar
+     DV,  -&gt; v
+     ARXPO, -&gt; &lt;ax,size,ofs&gt;:LONG
+     ARXPX, -&gt; &lt;ax,size,idrx,scale&gt;:LONG
+     LAB,  -&gt; codelab  (inline asm)
+     VAR64, -&gt; var (v45!)
+     VAR128, -&gt; 128bit vector v48, not used yet
+     D64,      -&gt; 1.10.0 for a virtual WIDE register
+     X2R,      -&gt; only used for WIDE returns (handled by secureReturn())
+     NROFOPS
+
+
+#define NEWMEM(size) New(size)
+#define NEWMEMR(size) NewR(size)
+#define DISPOSE(mem) Dispose(mem)
+#define FASTNEW(size) FastNew(size)
+#define ALLOCMEM(size,flags) AllocMem(size,flags)
+#define FREEMEM(mem,size) FreeMem(mem,size)
+
+OBJECT it_statlist
+   len:LONG
+   sizeof:LONG
+   esize:CHAR
+   flags:CHAR
+   cplx:INT
+   object:PTR TO object
+ENDOBJECT
+
+
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

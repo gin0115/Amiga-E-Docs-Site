@@ -1,0 +1,207 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Include.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-ez-e-200.html">Ez_E_200</a> &rsaquo; Include.e</div><h1>File: <code>Include.e</code></h1><p class="meta">181 lines · project <a href="../examples/pkg-ez-e-200.html"><code>Ez_E_200</code></a></p><p class="pathctx">Ez_E_200/Ez_E_2.00/SRC/Include.e</p><p class="prose">This will do inclusions of <a href="../modules/modules.html">modules</a> into my source code. It is a replacement for EPP. I probably allocated a whole bunch of stuff I didn&#x27;t need to but this was really just an experiment. Started: July 26, 1993 Version: 1 Revision: 0 © 1993, Kevin Connell, All Rights Reserved</p><h2>Source</h2><pre class="code">/* This will do inclusions of modules into my source code.
+   It is a replacement for EPP.
+
+   I probably allocated a whole bunch of stuff I didn&#x27;t need to
+   but this was really just an experiment.
+
+   Started:  July 26, 1993
+   Version:  1
+   Revision: 0
+
+   © 1993, Kevin Connell, All Rights Reserved
+*/
+
+/* OPT OSVERSION=37 */
+
+DEF source[255]:STRING,object[255]:STRING,
+    strip_src[255]:STRING,root[255]:STRING
+DEF outfiles[10]:LIST
+
+PROC main()
+  getargs()
+  openall(strip_src)                      /* open all output files      */
+  include(source)                         /* do the inclusion           */
+  closeall()                              /* close all the output files */
+  merge(strip_src)
+  clean(strip_src)
+ENDPROC
+
+PROC openall(names)
+  StrCopy(root,names,ALL)
+  WriteF(&#x27; ** Opening output files for &lt;&lt; \s &gt;&gt;\n&#x27;,names)
+  StringF(object,&#x27;\s\s&#x27;,root,&#x27;_bod.e&#x27;) ; outfiles[0]:=Open(object,NEWFILE)
+  StringF(object,&#x27;\s\s&#x27;,root,&#x27;_mod.e&#x27;) ; outfiles[1]:=Open(object,NEWFILE)
+  StringF(object,&#x27;\s\s&#x27;,root,&#x27;_def.e&#x27;) ; outfiles[2]:=Open(object,NEWFILE)
+  StringF(object,&#x27;\s\s&#x27;,root,&#x27;_con.e&#x27;) ; outfiles[3]:=Open(object,NEWFILE)
+  StringF(object,&#x27;\s\s&#x27;,root,&#x27;_set.e&#x27;) ; outfiles[4]:=Open(object,NEWFILE)
+  StringF(object,&#x27;\s\s&#x27;,root,&#x27;_enu.e&#x27;) ; outfiles[5]:=Open(object,NEWFILE)
+  StringF(object,&#x27;\s\s&#x27;,root,&#x27;_opt.e&#x27;) ; outfiles[6]:=Open(object,NEWFILE)
+ENDPROC
+
+PROC closeall()
+  DEF i
+  WriteF(&#x27; ** Closing output files\n&#x27;)
+  FOR i:=0 TO 6
+    IF outfiles[i] THEN Close(outfiles[i])
+  ENDFOR
+ENDPROC
+
+PROC merge(names)
+  DEF final[255]:STRING, passit[255]:STRING
+  DEF i, j, bool
+  StrCopy(root,names,ALL)
+  WriteF(&#x27; ** Merging Included Files\n&#x27;)
+  StringF(object,&#x27;\s\s&#x27;,root,&#x27;_mod.e&#x27;) ; outfiles[0]:=Open(object,OLDFILE)
+  StringF(object,&#x27;\s\s&#x27;,root,&#x27;_def.e&#x27;) ; outfiles[1]:=Open(object,OLDFILE)
+  StringF(object,&#x27;\s\s&#x27;,root,&#x27;_con.e&#x27;) ; outfiles[2]:=Open(object,OLDFILE)
+  StringF(object,&#x27;\s\s&#x27;,root,&#x27;_set.e&#x27;) ; outfiles[3]:=Open(object,OLDFILE)
+  StringF(object,&#x27;\s\s&#x27;,root,&#x27;_enu.e&#x27;) ; outfiles[4]:=Open(object,OLDFILE)
+  StringF(object,&#x27;\s\s&#x27;,root,&#x27;_bod.e&#x27;) ; outfiles[5]:=Open(object,OLDFILE)
+  StringF(object,&#x27;\s\s&#x27;,root,&#x27;_opt.e&#x27;) ; outfiles[6]:=Open(object,OLDFILE)
+  StringF(object,&#x27;\s\s&#x27;,root,&#x27;_inc.e&#x27;) ; final      :=Open(object,NEWFILE)
+  j:=1
+  FOR i:=0 TO 6
+    REPEAT
+      bool:=ReadStr(outfiles[i],passit)
+      Write(final,passit,StrLen(passit))
+      Write(final,&#x27;\n&#x27;,STRLEN)
+      WriteF(&#x27;\c\b&#x27;,ListItem([&quot;|&quot;,&quot;/&quot;,&quot;-&quot;,&quot;\\&quot;],j))
+      IF j=5 THEN j:=1 ELSE j++
+    UNTIL bool = -1
+  ENDFOR
+  closeall()
+  IF final THEN Close(final)
+  StringF(object,&#x27;\s\s&#x27;,root,&#x27;_inc.e&#x27;) ; outfiles[1]:=Open(object,OLDFILE)
+  StrCopy(root,source,StrLen(source)-2)
+  StringF(object,&#x27;\s\s&#x27;,root,&#x27;_inc.e&#x27;) ; final      :=Open(object,NEWFILE)
+  REPEAT
+    bool:=ReadStr(outfiles[1],passit)
+    Write(final,passit,StrLen(passit))
+    Write(final,&#x27;\n&#x27;,STRLEN)
+  UNTIL bool = -1
+  IF outfiles[1] THEN Close(outfiles[1])
+  IF final       THEN Close(final)
+ENDPROC
+
+PROC clean(names)
+  StrCopy(root,names,ALL)
+  WriteF(&#x27; ** Cleaning Up...\n&#x27;)
+  StringF(object,&#x27;\s\s&#x27;,root,&#x27;_bod.e&#x27;) ; DeleteFile(object)
+  StringF(object,&#x27;\s\s&#x27;,root,&#x27;_mod.e&#x27;) ; DeleteFile(object)
+  StringF(object,&#x27;\s\s&#x27;,root,&#x27;_def.e&#x27;) ; DeleteFile(object)
+  StringF(object,&#x27;\s\s&#x27;,root,&#x27;_con.e&#x27;) ; DeleteFile(object)
+  StringF(object,&#x27;\s\s&#x27;,root,&#x27;_set.e&#x27;) ; DeleteFile(object)
+  StringF(object,&#x27;\s\s&#x27;,root,&#x27;_enu.e&#x27;) ; DeleteFile(object)
+  StringF(object,&#x27;\s\s&#x27;,root,&#x27;_opt.e&#x27;) ; DeleteFile(object)
+  StringF(object,&#x27;\s\s&#x27;,root,&#x27;_inc.e&#x27;) ; DeleteFile(object)
+ENDPROC
+
+PROC include(infile)
+  DEF inhand, bool, begin, end, currout, global
+  DEF checkline[255]:STRING,incfile[255]:STRING
+  global:=TRUE
+  IF FileLength(infile)=-1
+    DisplayBeep(0)
+    WriteF(&#x27; !! Could Not Find \s!\n&#x27;,infile)
+    WriteF(&#x27; !! Not Including file\n&#x27;)
+    RETURN
+   ENDIF
+  WriteF(&#x27; ** Found Source File: &lt;&lt;\s&gt;&gt;\n&#x27;,infile)
+  inhand:=Open(infile,OLDFILE)
+  currout:=0
+  REPEAT
+    bool:=ReadStr(inhand,checkline) /* ; currout:=0 */
+    IF global
+      IF InStr(checkline,&#x27;MODULE&#x27;,0)=0 THEN currout:=1
+      IF InStr(checkline,&#x27;DEF&#x27;,0)=0    THEN currout:=2
+      IF InStr(checkline,&#x27;CONST&#x27;,0)=0  THEN currout:=3
+      IF InStr(checkline,&#x27;SET&#x27;,0)=0    THEN currout:=4
+      IF InStr(checkline,&#x27;ENUM&#x27;,0)=0   THEN currout:=5
+      IF InStr(checkline,&#x27;OPT&#x27;,0)=0    THEN currout:=6
+      IF InStr(checkline,&#x27;PROC&#x27;,0)=0
+        global:=FALSE
+        currout:=0
+       ENDIF
+     ENDIF
+    IF InStr(checkline,&#x27;INCLUDE&#x27;,0)
+      IF InStr(checkline,&#x27;PROC main()&#x27;,0)=FALSE
+        IF StrCmp(infile,source,ALL)=FALSE
+          REPEAT
+            ReadStr(inhand,checkline)
+          UNTIL (InStr(checkline,&#x27;ENDPROC&#x27;,0)=0)
+          StrCopy(checkline,&#x27; &#x27;,ALL)
+        ENDIF
+      ENDIF
+      IF StrLen(checkline) &gt; 0
+        Write(outfiles[currout],checkline,StrLen(checkline))
+        Write(outfiles[currout],&#x27;\n&#x27;,STRLEN)
+      ENDIF
+    ELSE
+      Write(outfiles[0],&#x27;\n/* *** Including File: &#x27;,STRLEN)
+      begin:=InStr(checkline,&#x27;&quot;&#x27;,0)
+      end:=InStr(checkline,&#x27;&quot;&#x27;,begin+2)
+      MidStr(incfile,checkline,begin+1,(end-begin)-1)
+      Write(outfiles[0],incfile,StrLen(incfile))
+      Write(outfiles[0],&#x27; *** */ \n\n&#x27;,STRLEN)
+      include(incfile)
+      Write(outfiles[0],&#x27;\n/* *** End Including File: &#x27;,STRLEN)
+      Write(outfiles[0],incfile,StrLen(incfile))
+      Write(outfiles[0],&#x27; *** */ \n\n&#x27;,STRLEN)
+    ENDIF
+  UNTIL bool = -1
+  Close(inhand)
+ENDPROC
+
+PROC getargs()
+  DEF path
+  path:=0
+  StrCopy(source,arg,StrLen(arg))
+  IF Val(arg,NIL)
+     WriteF(&#x27;Usage: Include &lt;sourcecodefile&gt;\n&#x27;)
+     CleanUp(5)
+   ENDIF
+  IF InStr(source,&#x27; &#x27;,0) &gt; -1
+    StrCopy(source,source,InStr(source,&#x27; &#x27;,0))
+   ENDIF
+  IF InStr(source,&#x27;.e&#x27;,StrLen(source)-3) = -1
+    StrAdd(source,&#x27;.e&#x27;,2)
+   ENDIF
+  StrCopy(strip_src,source,ALL)
+  IF InStr(strip_src,&#x27;:&#x27;,0) &gt; -1  /* Strips off the device part of the name */
+    MidStr(strip_src,strip_src,InStr(strip_src,&#x27;:&#x27;,0)+1,StrLen(strip_src)-InStr(strip_src,&#x27;:&#x27;,0))
+  ENDIF
+  REPEAT
+    path:=InStr(strip_src,&#x27;/&#x27;,path)
+    MidStr(strip_src,strip_src,InStr(strip_src,&#x27;/&#x27;,0)+1,StrLen(strip_src)-InStr(strip_src,&#x27;/&#x27;,0))
+    IF CtrlC() THEN CleanUp(5)
+   UNTIL path = -1
+   StringF(strip_src,&#x27;t:\s&#x27;,strip_src)
+   SetStr(strip_src,StrLen(strip_src)-2)
+ENDPROC
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

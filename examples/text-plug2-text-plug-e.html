@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>text_plug.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-text-plug2.html">Text_Plug2</a> &rsaquo; text_plug.e</div><h1>File: <code>text_plug.e</code></h1><p class="meta">82 lines · project <a href="../examples/pkg-text-plug2.html"><code>Text_Plug2</code></a></p><p class="pathctx">Text_Plug2/text_plug.e</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/easygui.html">tools/easygui</a></li></ul></div><h2>Source</h2><pre class="code">OPT OSVERSION=37, MODULE
+
+MODULE &#x27;tools/EasyGUI&#x27;,
+       &#x27;graphics/rastport&#x27;,
+       &#x27;graphics/text&#x27;,
+       &#x27;intuition/screens&#x27;,
+       &#x27;intuition/intuition&#x27;,
+       &#x27;*fonts&#x27;
+
+EXPORT DEF deffont:PTR TO textfont, deffixedfont:PTR TO textfont
+
+EXPORT OBJECT text_plug OF plugin
+  PRIVATE
+  str,   slen, sfont:PTR TO textfont
+  label, llen, lfont:PTR TO textfont
+  min, hgt, base, spos
+ENDOBJECT
+
+EXPORT PROC create(str, label=NIL, min=0, sfont=NIL:PTR TO textfont,
+                   lfont=NIL:PTR TO textfont) OF text_plug
+  DEF textrp:PTR TO rastport, mb
+  self.str:=IF str THEN str ELSE &#x27;&#x27;
+  self.slen:=StrLen(self.str)
+  IF (sfont=NIL) AND (deffixedfont=NIL) THEN Raise(&quot;DFNT&quot;)
+  self.sfont:=IF sfont THEN sfont ELSE deffixedfont
+  self.base:=self.sfont.baseline
+  self.hgt:=self.sfont.ysize
+  self.label:=label
+  NEW textrp
+  SetFont(textrp, self.sfont)
+  self.min:=IF min THEN min*self.sfont.xsize ELSE TextLength(textrp,self.str,self.slen)
+  IF label
+    self.llen:=StrLen(label)
+    IF (lfont=NIL) AND (deffont=NIL) THEN Raise(&quot;DFNT&quot;)
+    self.lfont:=IF lfont THEN lfont ELSE deffont
+    mb:=Max(self.base, self.lfont.baseline)
+    self.hgt:=mb+Max(self.hgt-self.base,self.lfont.ysize-self.lfont.baseline)
+    self.base:=mb
+    SetFont(textrp, self.lfont)
+    self.spos:=4+TextLength(textrp, self.label, self.llen)
+    self.min:=self.min+self.spos
+  ELSE
+    self.spos:=0
+  ENDIF
+  END textrp
+ENDPROC
+
+EXPORT PROC will_resize() OF text_plug IS RESIZEX
+
+EXPORT PROC min_size(fh) OF text_plug IS self.min, self.hgt
+
+EXPORT PROC render(x,y,xs,ys,win) OF text_plug IS self.draw(win, self.label)
+
+PROC draw(win:PTR TO window,label=NIL) OF text_plug
+  DEF res:textextent, fit, old, f, r:PTR TO rastport
+  r:=win.rport
+  f:=r.font
+  IF label
+    SetFont(r, self.lfont)
+    SetAPen(r, 1)
+    Move(r, self.x, self.y+self.base)
+    Text(r, self.label, self.llen)
+  ELSE
+    old:=SetStdRast(r)
+    Box(self.x+self.spos, self.y, self.x+self.xs-1, self.y+self.ys-1, 0)
+    SetStdRast(old)
+  ENDIF
+  SetFont(r, self.sfont)
+  IF fit:=TextFit(r, self.str,self.slen, res,NIL,1, self.xs-self.spos,self.ys)
+    SetAPen(r, 1)
+    Move(r, self.x+self.spos, self.y+self.base)
+    Text(r, self.str, fit)
+  ENDIF
+  SetFont(r, f)
+ENDPROC
+
+EXPORT PROC settext(gh:PTR TO guihandle, str) OF text_plug
+  self.str:=IF str THEN str ELSE &#x27;&#x27;
+  self.slen:=StrLen(self.str)
+  self.draw(gh.wnd)
+ENDPROC
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

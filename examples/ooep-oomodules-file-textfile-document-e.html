@@ -1,0 +1,256 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>document.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-ooep.html">OOEP</a> &rsaquo; document.e</div><h1>File: <code>document.e</code></h1><p class="meta">230 lines · project <a href="../examples/pkg-ooep.html"><code>OOEP</code></a></p><p class="pathctx">OOEP/oomodules/file/textfile/document.e</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/textfile.html">oomodules/file/textfile</a></li></ul></div><h2>Source</h2><pre class="code">OPT MODULE
+
+MODULE  &#x27;oomodules/file/textfile&#x27;
+
+EXPORT OBJECT document OF textfile
+ENDOBJECT
+
+EXPORT OBJECT textBlock
+  startLine,
+  endLine,
+  document:PTR TO document
+ENDOBJECT
+
+EXPORT PROC display() OF document
+ENDPROC
+
+EXPORT PROC edit() OF document
+ENDPROC
+
+EXPORT PROC findBlock(head:PTR TO CHAR, tail:PTR TO CHAR, fromLine=0, mode=&quot;FrFr&quot;) OF document
+/****** programSource/findBlock *****************************************
+
+    NAME
+        findBlock() -- Find a source block in the file.
+
+    SYNOPSIS
+        programSource.findBlock(head:PTR TO CHAR, tail:PTR TO CHAR,
+            fromLine=0, mode=&quot;FrFr&quot;)
+
+    FUNCTION
+        Looks for a block in the source. The block starts with the head line
+        and ends with the tail line.
+
+    INPUTS
+        head:PTR TO CHAR -- Pointer to the text that marks the head of the
+            block
+
+        tail:PTR TO CHAR -- Pointer to the text that marks the tail of the
+            block
+
+        fromLine=0
+          Number of the line where the search should start.
+
+        mode
+          One of the following:
+            &quot;FrFr&quot; - head is at the beginning of the line, tail too
+            &quot;FrBa&quot; - head is at the beginning of the line, tail is
+                at the end
+            &quot;BaFr&quot; - head is at the back, tail at the front
+            &quot;BaBa&quot; - both strings are at the end
+
+    RESULTS
+        startLine, endLine -- Numbers of the lines where the according
+            part starts. Note that startLine may be 0 if you started at 0,
+            else both numbers should be greater than 0.
+
+    EXAMPLES
+
+        source.findBlock(&#x27;{&#x27;,&#x27;}&#x27;, 0, &quot;FrBa&quot;)
+
+          should find this segment:
+
+          {int n;
+              n = i*3;
+            return(n)}
+
+
+
+        source.findBlock(&#x27;PROC&#x27;,&#x27;ENDPROC&#x27;, 0, &quot;FrFr&quot;)
+
+          should find this segment:
+
+         PROC foo(bar=NIL)
+         RETURN &quot;did &quot;,&quot;you &quot;, &quot;know&quot;
+         ENDPROC
+
+******************************************************************************
+
+History
+
+
+*/
+
+DEF startLine,
+     endLine
+
+ /*
+  * If the head is not found we don&#x27;t search for the tail, so
+   * endLine stays -1. Important for the end.
+   */
+
+  endLine := -1
+
+  SELECT mode
+
+     CASE &quot;FrFr&quot;
+
+   /*
+    * Try to find the first line of the block. If we receive atEnd, then
+    * the head was not found, so we don&#x27;t search for the tail.
+    *
+    * See below, if atEnd is TRUE we didn&#x27;t find the block.
+    */
+
+    startLine := self.findLine(head,fromLine)
+    IF startLine&gt;-1 THEN endLine := self.findLine(tail, startLine)
+
+     CASE &quot;FrBa&quot;
+
+    startLine := self.findLine(head,fromLine)
+    IF startLine&gt;-1 THEN endLine := self.findLineFromBack(tail, startLine)
+
+     CASE &quot;BaFr&quot;
+
+    startLine := self.findLineFromBack(head,fromLine)
+    IF startLine&gt;-1 THEN endLine := self.findLine(tail, startLine)
+
+     CASE &quot;BaBa&quot;
+
+    startLine := self.findLineFromBack(head,fromLine)
+    IF startLine&gt;-1 THEN endLine := self.findLineFromBack(tail, startLine)
+
+   ENDSELECT
+
+ /*
+  * startLine and endLine equal -1 if the block was not found
+   */
+
+  RETURN startLine, endLine
+
+ENDPROC
+
+PROC buildBlockList(head:PTR TO CHAR, tail:PTR TO CHAR, fromLine=0, mode=&quot;FrFr&quot;,proc=NIL) OF document
+/****** programSource/buildBlockList *****************************************
+
+    NAME
+        buildBlockList() -- Build a list of blocks in the source.
+
+    SYNOPSIS
+        programSource.buildBlockList(head:PTR TO CHAR, tail:PTR TO CHAR,
+            fromLine=0, mode=&quot;FrFr&quot;,proc=NIL)
+
+    FUNCTION
+        Builds an elist with source blocks found by findBlock(). Before
+        adding a found source block to the list it is passed to a function
+        defined in the proc parameter.
+
+    INPUTS
+        head:PTR TO CHAR -- Pointer to the text that marks the head of the
+            block
+
+        tail:PTR TO CHAR -- Pointer to the text that marks the tail of the
+            block
+
+        fromLine=0
+          Number of the line where the search should start.
+
+        mode -- One of the following:
+          &quot;FrFr&quot; - head is at the beginning of the line, tail too
+          &quot;FrBa&quot; - head is at the beginning of the line, tail is
+           at the end
+          &quot;BaFr&quot; - head is at the back, tail at the front
+          &quot;BaBa&quot; - both strings are at the end
+
+        proc=NIL -- Pointer to a procedure which has one parameter: the
+            source block which was found. This way nheriting objects can
+            modify source blocks immediately when they are found.
+
+    RESULT
+        elist with source blocks found.
+
+    SEE ALSO
+        programSource/sourceBlock
+******************************************************************************
+
+History
+
+
+*/
+DEF start,
+    end,
+    textBlock:PTR TO textBlock,
+    list:PTR TO LONG,
+    index
+
+
+  list := List(255)
+  index:=0
+
+  start,end := self.findBlock(head, tail, fromLine, mode)
+
+  WHILE (start&lt;&gt;-1) AND (end&lt;&gt;-1)
+
+    textBlock:=NIL
+    NEW textBlock
+
+    textBlock.startLine := start
+    textBlock.endLine := end
+    textBlock.document := self
+
+
+    IF proc THEN textBlock := proc(textBlock) -&gt; note that the text block address may have changed after calling this
+
+    list[index] := textBlock
+    INC index
+
+    EXIT (index=255)
+
+    start,end := self.findBlock(head, tail, end, mode)
+
+  ENDWHILE
+
+  IF index=0 THEN DisposeLink(list) ELSE SetList(list,index)
+
+  RETURN list
+
+ENDPROC
+
+PROC copyTo(n:PTR TO textBlock) OF textBlock
+
+  n.startLine := self.startLine
+  n.endLine := self.endLine
+  n.document := self.document
+
+ENDPROC
+/*EE folds
+-1
+20 110 
+EE folds*/
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

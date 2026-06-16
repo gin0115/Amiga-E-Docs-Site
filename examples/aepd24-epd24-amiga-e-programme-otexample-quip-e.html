@@ -1,0 +1,812 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>quip.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-aepd24.html">AEPD24</a> &rsaquo; quip.e</div><h1>File: <code>quip.e</code></h1><p class="meta">786 lines · project <a href="../examples/pkg-aepd24.html"><code>AEPD24</code></a></p><p class="pathctx">AEPD24/EPD24/Amiga_E-Programme/OTExample/quip.e</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/dos.html">dos/dos</a></li></ul></div><h2>Source</h2><pre class="code">OPT MODULE
+
+MODULE &#x27;dos/dos&#x27;,&#x27;other/stderr&#x27;,&#x27;other/queuestack&#x27;
+
+/*
+ * Sorry folks.. you&#x27;ll need these three modules.  You
+ * should have the first one, but if you&#x27;re missing the
+ * other two I think you can find them in aminet:dev/e.
+ * I should hope so, anyway.. I wrote them and uploaded
+ * both of them there.
+ */
+
+RAISE &quot;OPEN&quot; IF Open() = NIL,
+      &quot;MEM&quot; IF String() = NIL,
+      &quot;MEM&quot; IF List() = NIL,
+      &quot;MEM&quot; IF New() = NIL,
+      &quot;file&quot; IF FileLength() = -1,
+      &quot;^C&quot;   IF CtrlC() = TRUE
+
+-&gt; Flags to signal behavior.  I like playing with bits when
+-&gt; possible.  QRND determines whether the quips are selected
+-&gt; sequentially or randomly, while QQUIET determines if certain
+-&gt; messages ought to be printed or not.
+
+EXPORT SET QRND,QQUIET
+
+-&gt; Here&#x27;s the base &#x27;quip&#x27; object.  All other quip objects
+-&gt; will be derived from this.
+
+EXPORT OBJECT quip
+ prefix			-&gt; The prefix string.
+ suffix			-&gt; The suffix string.
+ middle			-&gt; A string to go between multiple quips (not implemented).
+ filter			-&gt; A filter process (not implemented)
+PRIVATE
+ quip:PTR TO queuestack -&gt; Stores a list of quips.
+ENDOBJECT
+
+-&gt; This is the &#x27;fquip&#x27; object, designed to handle normal, dull, boring
+-&gt; quip files without using a tablefile.
+
+EXPORT OBJECT fquip OF quip
+ delimit		-&gt; The character to look for preceding a quip.
+ which			-&gt; Which quip to grab.
+ number			-&gt; The number of quips to get.
+PRIVATE
+ flag			-&gt; Can modify some behaviors of the object.
+ fname			-&gt; A filename for the datafile from which to grab quips.
+ fh			-&gt; A filehandler for the datafile.
+ENDOBJECT
+
+-&gt; This is the &#x27;tquip&#x27; object, designed to handle files that have tablefiles
+-&gt; associated with them (which helps speed up the aquisition of serial quips).
+
+EXPORT OBJECT tquip OF fquip
+PRIVATE
+ tname			-&gt; The name of the tablefile (provided by self).
+ tfh			-&gt; A filehandler for the tablefile.
+ maxrnd			-&gt; The maximum number of quips available.
+ENDOBJECT
+
+-&gt; The next object I want to create is a &#x27;cquip&#x27; object to handle compressed
+-&gt; quips.  It&#x27;ll likely be derived from &#x27;tquip&#x27;, since it&#x27;ll use files and
+-&gt; something resembling a &#x27;tablefile&#x27; within the compressed file itself.
+
+/**************************************************************************/
+
+-&gt; These globals help me create temporary objects for manipulation.  I prefer to use
+-&gt; a global rather than an internal temporary one.. perhaps because I suspect it can
+-&gt; save some room.
+
+DEF qstmp:PTR TO queuestack  -&gt; For allocating queuestacks.
+
+/**************************************************************************/
+
+-&gt; Now we start with the methods associated with the baseclass &#x27;quip&#x27;:
+
+-&gt; A contructor.  I prefer to use &#x27;new()&#x27; because it&#x27;s easy to remember... one
+-&gt; allocates an instance with a &#x27;NEW object.new()&#x27;.  Very easy.  All the derived
+-&gt; classes use this same method.
+
+EXPORT PROC new(opt=0) OF quip
+ self.init()
+ self.opts(opt)
+ENDPROC
+
+-&gt; init() actually handles the initiation of the &#x27;quip&#x27; baseclass.  All we really
+-&gt; need to do is initiate the queuestack.  Each derived class has its own init()
+-&gt; method which calls a super init method.
+
+PROC init() OF quip
+ self.quip:=NEW qstmp.new()
+ENDPROC
+
+-&gt; opts() reads a list and performs various functions accordingly.  It&#x27;s good
+-&gt; for setting many options at one time.  I need to clean this code up a bit;
+-&gt; currently, each object has its own opts(), yet a lot of the same things are
+-&gt; being done; this is ugly, and non-OT-like.  I have a plan to change this,
+-&gt; but to get this out I&#x27;ll let you imagine it.
+
+EXPORT PROC opts(opt) OF quip HANDLE
+ DEF i,item
+ IF opt=NIL THEN RETURN
+ FOR i:=0 TO ListLen(opt)
+  item:=ListItem(opt,i)
+  SELECT item
+   CASE &quot;pre&quot;			-&gt; &quot;pre&quot; will simply set prefix to a string.
+    INC i
+    self.prefix:=ListItem(opt,i)
+   CASE &quot;fpre&quot;			-&gt; &quot;fpre&quot; will do the above to a filename.
+    INC i
+    self.pre(ListItem(opt,i))
+   CASE &quot;suf&quot;			-&gt; &quot;suf&quot; sets a suffix to a string.
+    INC i
+    self.suffix:=ListItem(opt,i)
+   CASE &quot;fsuf&quot;			-&gt; &quot;fsuf&quot; for a file-suffix.
+    INC i
+    self.suf(ListItem(opt,i))
+   CASE &quot;mid&quot;			-&gt; &quot;mid&quot; for a middle string.
+    INC i
+    self.middle:=ListItem(opt,i)
+   CASE &quot;fmid&quot;			-&gt; &quot;fmid&quot; for a file-middle.
+    INC i
+    self.mid(ListItem(opt,i))
+   CASE &quot;quip&quot;			-&gt; &quot;quip&quot; will insert a quip into the queuestack.
+    INC i
+    self.add(ListItem(opt,i))
+  ENDSELECT
+ ENDFOR
+EXCEPT
+ Raise(exception)
+ENDPROC
+
+-&gt; kill() will be used to iterate through the queuestack, removing all the items within
+-&gt; it.  This is useful for deleting several quips at one time, and will come in quite
+-&gt; handy when someone needs to END a &#x27;quip&#x27; object.  NOTE: It&#x27;s not associated with any
+-&gt; of the objects.  It&#x27;s an internal procedure.
+-&gt; Additional note: I think there&#x27;s a method within queuestack to kill all its elements.
+-&gt; I forgot about it, though.  This procedure is not necessary.
+
+PROC kill(i)
+ IF i THEN END i
+ENDPROC
+
+-&gt; pre() allows you to enter a file&#x27;s text as a prefix string.  You could normally
+-&gt; simply assign it, but this takes a filename as a parameter, grabbing the file&#x27;s
+-&gt; contents itself... saving you from any work.
+
+-&gt; suf() and mid() are the same way.
+
+EXPORT PROC pre(fname) OF quip HANDLE
+ IF fname
+  self.prefix:=self.textfile(fname)
+ ENDIF
+EXCEPT
+ SELECT exception
+  CASE &quot;file&quot;
+   err_WriteF(&#x27;No prefix file &quot;\s&quot;.\n&#x27;,[fname])
+  DEFAULT
+   Raise(exception)
+ ENDSELECT
+ENDPROC
+
+EXPORT PROC suf(fname) OF quip HANDLE
+ self.suffix:=self.textfile(fname)
+EXCEPT
+ SELECT exception
+  CASE &quot;file&quot;
+   err_WriteF(&#x27;No suffix file &quot;\s&quot;.\n&#x27;,[fname])
+  DEFAULT
+   Raise(exception)
+ ENDSELECT
+ENDPROC
+
+EXPORT PROC mid(fname) OF quip HANDLE
+ self.middle:=self.textfile(fname)
+EXCEPT
+ SELECT exception
+  CASE &quot;file&quot;
+   err_WriteF(&#x27;No middle file &quot;\s&quot;.\n&#x27;,[fname])
+  DEFAULT
+   Raise(exception)
+ ENDSELECT
+ENDPROC
+
+-&gt; add() will put a string into the internal queuestack.  This string is assumed
+-&gt; to be a quip.
+
+EXPORT PROC add(quip) OF quip
+ self.quip.addFirst(quip)
+ENDPROC
+
+-&gt; get() will retrieve a quip from the queuestack (if available) and return a pointer
+-&gt; to it.  It&#x27;ll also return a pointer to the &#x27;middle&#x27; if it&#x27;s needed (for, say,
+-&gt; multiple quips).  The string returned has the prefix and suffix strings pre/appended
+-&gt; to the quip already.
+
+EXPORT PROC get() OF quip HANDLE
+ DEF tmp,quip
+ IF self.isMore() THEN quip:=self.quip.getLast()
+ tmp:=String(StrLen(self.prefix) + StrLen(self.suffix) + StrLen(quip) + 1)
+ IF self.prefix
+  StrAdd(tmp,self.prefix)
+ ENDIF
+ IF quip
+  StrAdd(tmp,quip)
+ ENDIF
+ IF self.suffix
+  StrAdd(tmp,self.suffix)
+ ENDIF
+ RETURN tmp,self.middle
+EXCEPT
+ Raise(exception)
+ENDPROC
+
+-&gt; isMore() will return the size of the queuestack.  This is useful to determine
+-&gt; whether or not to actually TRY to get any quips.
+
+EXPORT PROC isMore() OF quip
+ RETURN self.quip.getSize()
+ENDPROC
+
+-&gt; textfile() is an internal routine that handles grabbing a file and stuffing it in
+-&gt; memory.  It&#x27;ll return with that memory area, filled with (hopefully) text.
+-&gt; It&#x27;s used for prefix/suffix/middle strings in the pre()/suf()/mid() functions.
+
+PROC textfile(fname) OF quip HANDLE
+ -&gt; read a textfile into a memory area and return memory area
+ DEF size,out=0,fh=0
+ size := FileLength(fname)
+ out:=String(size+1)
+ fh:=Open(fname,OLDFILE)
+ IF Fread(fh,out,size,1)&lt;1   -&gt; If this fails, we have an I/O error.
+  Close(fh)
+  fh:=0
+  Dispose(out)
+  out:=0
+  Raise(&quot;READ&quot;)
+ ENDIF
+ Close(fh)
+ fh:=0
+ RETURN out
+EXCEPT
+ IF out THEN Dispose(out)
+ IF fh THEN Close(fh)
+ IF exception=&quot;READ&quot;
+  err_WriteF(&#x27;Error reading &quot;\s&quot;.\n&#x27;,[fname])
+  RETURN					-&gt; This isn&#x27;t a killer.
+ ENDIF
+ Raise(exception)
+ENDPROC
+
+-&gt; end() is an automatic destructor.  It&#x27;s called when &#x27;END object&#x27; is used.
+-&gt; Basically, it deallocates the prefix/suffix/middle strings, any strings in the
+-&gt; queuestack, and then the queuestack itself.
+
+EXPORT PROC end() OF quip
+ IF self.prefix THEN Dispose(self.prefix)
+ IF self.suffix THEN Dispose(self.suffix)
+ IF self.middle THEN Dispose(self.middle)
+ IF self.quip
+  qstmp:=self.quip
+  qstmp.do({kill})
+  END qstmp
+ ENDIF
+ENDPROC
+
+/**************************************************************************/
+
+-&gt; Now we move on to the methods assign to derived class &#x27;fquip&#x27;
+
+-&gt; You&#x27;ll note: I&#x27;m missing a &#x27;new()&#x27; initializer, since the &#x27;quip&#x27; one will do.
+-&gt; The super-object&#x27;s (&quot;quip&quot;&#x27;s) own new() method will call the fquip init() and
+-&gt; opts() methods.
+
+-&gt; init() sets the default delimiter, the default filename, and the default number
+-&gt; of quips to retrieve, before initializing the superclass elements (quip).
+
+PROC init() OF fquip
+ DEF moo			-&gt; Go figure.. I couldn&#x27;t use &#x27;^defaultDelimit&#x27;
+ moo:={defaultDelimit}
+ self.delimit:=^moo
+ self.fname:={defaultFilename}
+ self.number:=1
+ SUPER self.init()	-&gt; Why repeat the work?
+ENDPROC
+
+-&gt; I could simply call SUPER opts() after processing these for my own
+-&gt; needs, but it would slow things down.  This is perhaps more efficient (for speed).
+-&gt; In retrospect, I think I can make another procedure for handling this kind
+-&gt; of thing (working with opts), but for now, consider the opts() methods to
+-&gt; be slightly out-of-step with proper OT handling.  For the sake of getting
+-&gt; an example of fairly good OT organization out, I&#x27;m going to release this
+-&gt; slight inelegance, but rest assured, my &#x27;opts()&#x27; methods are going to change.
+
+PROC opts(opt) OF fquip HANDLE
+ DEF i,item
+ IF opt=NIL THEN RETURN
+ FOR i:=0 TO ListLen(opt)
+  item:=ListItem(opt,i)
+  SELECT item
+   CASE &quot;pre&quot;
+    INC i
+    self.prefix:=ListItem(opt,i)
+   CASE &quot;fpre&quot;
+    INC i
+    self.pre(ListItem(opt,i))
+   CASE &quot;suf&quot;
+    INC i
+    self.suffix:=ListItem(opt,i)
+   CASE &quot;fsuf&quot;
+    INC i
+    self.suf(ListItem(opt,i))
+   CASE &quot;mid&quot;
+    INC i
+    self.middle:=ListItem(opt,i)
+   CASE &quot;fmid&quot;
+    INC i
+    self.mid(ListItem(opt,i))
+   CASE &quot;quip&quot;
+    INC i
+    self.add(ListItem(opt,i))
+   CASE &quot;rnd&quot;				-&gt; Sets &#x27;flag&#x27; for random quips.
+    self.rnd()
+   CASE &quot;ser&quot;				-&gt; Sets &#x27;flag&#x27; for serial quips.
+    self.ser()
+   CASE &quot;dlmt&quot;				-&gt; Sets the delimiter.
+    INC i
+    self.delimit:=ListItem(opt,i)
+   CASE &quot;whch&quot;				-&gt; Sets which quip should be grabbed.
+    INC i
+    self.which:=ListItem(opt,i)
+   CASE &quot;file&quot;				-&gt; Sets the filename for the datafile.
+    INC i
+    self.file(ListItem(opt,i))
+   CASE &quot;shhh&quot;				-&gt; Sets &#x27;flag&#x27; to cause .mention() to be quiet.
+    self.quiet()
+   CASE &quot;num&quot;				-&gt; Sets how many quips to retrieve.
+    INC i
+    self.number:=ListItem(opt,i)
+  ENDSELECT
+ ENDFOR
+EXCEPT
+ Raise(exception)
+ENDPROC
+
+-&gt; quiet() tells &#x27;mention()&#x27; not to print anything.
+
+EXPORT PROC quiet() OF fquip
+ self.flag:=Eor(self.flag,QQUIET)
+ENDPROC
+
+-&gt; mention() will call err_WriteF() (my stderr port handler) only if the QQUIET
+-&gt; flag is not on.  This controls whether or not to print progress reports.
+
+EXPORT PROC mention(in=0,tags=0) OF fquip
+ IF (self.flag AND QQUIET) THEN RETURN
+ err_WriteF(in,tags)
+ENDPROC
+
+-&gt; This sets the datafile name.  In retrospect, one could use it to close the
+-&gt; current file, too.
+
+EXPORT PROC file(in=0) OF fquip
+ IF in
+  IF self.fh
+   Close(self.fh)
+   self.fh:=0
+  ENDIF
+ ENDIF
+ self.fname:=in
+ENDPROC
+
+-&gt; get() will retrieve a quip ONLY if there are any quips to retrieve.  If not,
+-&gt; it&#x27;ll cause the fquip object to grab some.
+
+EXPORT PROC get() OF fquip
+ IF self.isMore()=NIL THEN self.grab()
+ RETURN SUPER self.get()
+ENDPROC
+
+-&gt; grab() calls the methods necessary to fill the queuestack with quip(s).
+-&gt; It determines whether to use the random or serial routines.
+
+EXPORT PROC grab() OF fquip
+ IF self.flag AND QRND
+  self.getRandom()
+ ELSE
+  self.getSerial()
+ ENDIF
+ENDPROC
+
+-&gt; getRandom() will randomly select a place somewhere in the (hopefully) text file
+-&gt; and search for the delimiter.  From there, it&#x27;ll grab the next quip, or try again
+-&gt; (if instead of a delimiter it reached the end of the file).  This behavior is not
+-&gt; as random as one might like, but it&#x27;s the best one can do without a tablefile.
+
+PROC getRandom() OF fquip HANDLE
+ DEF size=0,rpos,quip
+ IF self.fname
+  IF self.fh = NIL
+   self.fh:=Open(self.fname,MODE_OLDFILE)
+  ENDIF
+again:
+  CtrlC()
+  size:=FileLength(self.fname)
+  rpos := Rnd(size)
+  Seek(self.fh,rpos,OFFSET_BEGINNING) 
+  IF (rpos:=self.pass()) = -1 THEN JUMP again                   -&gt; see comment below
+  IF (size:=self.pass()) = -1 THEN size:=FileLength(self.fname)+1
+  quip:=String(size-rpos+1)
+  Seek(self.fh,rpos,OFFSET_BEGINNING)
+  Fread(self.fh,quip,size-rpos-1,1)
+  self.add(quip)
+  self.number:=self.number-1
+  IF self.number THEN JUMP again  -&gt; Yes, I know... JUMPs are ugly, but I think
+  Close(self.fh)		  -&gt; an exception can be made here.. no pun intended.
+  self.fh:=0
+ ENDIF
+EXCEPT
+ IF self.fh
+  Close(self.fh)
+  self.fh:=0
+ ENDIF
+ SELECT exception
+  CASE &quot;OPEN&quot;
+   err_WriteF(&#x27;Unable to open &quot;\s&quot; for random quips.\n&#x27;,[self.fname])
+  CASE &quot;file&quot;
+   err_WriteF(&#x27;File &quot;\s&quot; doesn&#x27;&#x27;t exist!\n&#x27;,[self.fname])
+  DEFAULT
+   Raise(exception)
+ ENDSELECT
+ENDPROC
+
+-&gt; pass() will search from the current position of the datafile to the next
+-&gt; character matching the delimiter character, or the EOF.  If it reaches the
+-&gt; end of the file, it&#x27;ll return a -1, otherwise it returns the current position.
+
+PROC pass() OF fquip
+ DEF size=0
+ IF self.fh = NIL
+  self.fh := Open(self.fname,MODE_OLDFILE)
+  Seek(self.fh,0,OFFSET_CURRENT)
+ ENDIF
+ IF size = self.delimit THEN INC size
+ WHILE (size &lt;&gt; -1) AND (size &lt;&gt; self.delimit)
+  size:=Inp(self.fh)
+ ENDWHILE
+ IF size = -1
+  SetIoErr(0)		-&gt; a Seek() error is certain, but no need for alarm.
+  RETURN size
+ ENDIF
+ RETURN Seek(self.fh,0,OFFSET_CURRENT)
+ENDPROC
+
+-&gt; getSerial() will grab a number of quips from a datafile, but in sequential order
+-&gt; according to how they appear in the datafile.  It will get the current number
+-&gt; it&#x27;s supposed to get (provided the number isn&#x27;t already set in the object) and
+-&gt; slowly, ponderously, annoying pass() its way to that quip.  If &quot;shhh&quot; isn&#x27;t set,
+-&gt; it&#x27;ll give a progress report.
+
+PROC getSerial() OF fquip HANDLE
+ DEF i,rpos,size,quip
+ IF self.fh = 0 THEN self.fh := Open(self.fname,MODE_OLDFILE)
+ Seek(self.fh,0,OFFSET_BEGINNING)
+ IF self.which=NIL THEN self.nextNum()   -&gt; select which quip to get.
+ SetIoErr(0)                             -&gt; just in case.. it could screw up err_WriteF()
+ self.mention(&#x27;1         - Quip #\b&#x27;)
+ FOR i:=1 TO self.which			 -&gt; This finds the quip, or restarts from 1.
+  IF (rpos:=self.pass()) = -1
+   self.which:=1
+   i:=1
+  ENDIF
+  self.mention(&#x27;\d\b&#x27;,[i])
+ ENDFOR
+ FOR i:=1 TO self.number		 -&gt; Now we get a collection of quips.
+  IF (size:=self.pass()) = -1
+   self.which:=1
+   Seek(self.fh,0,OFFSET_BEGINNING)
+   self.mention(&#x27;         \b&#x27;)
+   IF (rpos:=self.pass())=-1
+    err_WriteF(&#x27;Either &quot;\s&quot; is not a datafile or &quot;\c&quot; is not the delimiter.\n&#x27;,
+               [self.fname,self.delimit])
+    Raise(&quot;quip&quot;)			 -&gt; This should rarely, if ever, happen.
+   ENDIF
+   IF (size:=self.pass())=-1 THEN size:=FileLength(self.fname)
+  ENDIF
+  Seek(self.fh,rpos,OFFSET_BEGINNING)
+  quip:=String(size-rpos+1)
+  Fread(self.fh,quip,size-rpos-1,1)
+  self.add(quip)
+  Seek(self.fh,size,OFFSET_BEGINNING)
+  SetIoErr(0)
+  rpos:=size
+  self.which:=self.which+1
+  self.mention(&#x27;\d\b&#x27;,[self.which-1])
+ ENDFOR
+ self.update()				 -&gt; make sure we change the pointer in the file
+ self.mention(&#x27;\n&#x27;)
+EXCEPT
+ IF self.fh
+  Close(self.fh)
+  self.fh:=0
+ ENDIF
+ SELECT exception
+  CASE &quot;OPEN&quot;
+   err_WriteF(&#x27;Unable to open &quot;\s&quot; for random quips.\n&#x27;,[self.fname])
+  CASE &quot;file&quot;
+   err_WriteF(&#x27;File &quot;\s&quot; didn&#x27;&#x27;t read properly\n&#x27;,[self.fname])
+  DEFAULT
+   Raise(exception)
+ ENDSELECT
+ENDPROC
+
+-&gt; nextNum() looks in the datafile for which quip it should retrieve.
+
+PROC nextNum() OF fquip
+ DEF val
+ IF self.fh = NIL THEN self.fh:=Open(self.fname,MODE_OLDFILE)
+ Seek(self.fh,0,OFFSET_BEGINNING)
+ val:=String(80)
+ IF ReadStr(self.fh,val)&lt;&gt;NIL THEN Raise(&quot;file&quot;)
+ self.which := Val(val,0)
+ENDPROC
+
+-&gt; update() will change the number in the quip file to the current &#x27;which&#x27; value.
+
+PROC update() OF fquip
+ DEF which
+ which:=self.which
+ IF self.fh=NIL THEN self.fh:=Open(self.fname,OLDFILE)
+ Seek(self.fh,0,OFFSET_BEGINNING)
+ IF (VfPrintf(self.fh,&#x27;%-12ld&#x27;,{which}))=-1 THEN Raise(&quot;file&quot;)
+ Close(self.fh)
+ self.fh:=0
+ENDPROC
+
+-&gt; put() isn&#x27;t done yet.  I intend to design it to allow people to add new
+-&gt; quips to the current datafile, but I haven&#x27;t gotten around to it &lt;sigh&gt;.
+-&gt; It should be too hard to do, though.
+
+EXPORT PROC put(opt=0) OF fquip
+ DEF i,max,item
+ max:=ListLen(opt)
+ FOR i:=0 TO max
+  item:=ListItem(opt,i)
+  SELECT item
+   CASE &quot;one&quot;			-&gt; One string.
+   CASE &quot;many&quot;			-&gt; The whole queuestack to &#x27;number&#x27;.
+  ENDSELECT
+ ENDFOR
+ENDPROC
+
+-&gt; This sets the &#x27;flag&#x27; so get() will select the serial routine.
+
+EXPORT PROC ser() OF fquip
+ self.flag:=self.flag AND Not(QRND)
+ENDPROC
+
+-&gt; This sets the &#x27;flag&#x27; so get() will select the random routine.
+
+EXPORT PROC rnd() OF fquip
+ self.flag:=self.flag OR QRND
+ENDPROC
+
+-&gt; end().. our happy little deallocator &lt;smile&gt;.  Note how it calls the super
+-&gt; deallocator.
+
+PROC end() OF fquip
+ IF self.fh THEN Close(self.fh)
+ self.fh:=0
+ SUPER self.end()
+ENDPROC
+
+/**************************************************************************/
+
+-&gt; And now, &#x27;fquip&#x27;s derived class &#x27;tquip&#x27;s associated methods.
+
+-&gt; init() will set the defaultTablename, just to speed things along a bit.
+
+PROC init() OF tquip
+ self.tname:={defaultTablename}
+ SUPER self.init()
+ENDPROC
+
+-&gt; getRandom() was rewritten in order to take advantage of the tablefile.
+-&gt; A tablefile can provide better randomness, since you can select according
+-&gt; to how many quips are in the datafile, rather than randomly Seek()ing (which
+-&gt; is not as random, as larger quips will be ignored, prefering smaller ones).
+
+PROC getRandom() OF tquip HANDLE
+ DEF size,rpos,quip,i
+ self.maxrnd:=FileLength(self.tname)
+ FOR i:=1 TO self.number
+  CtrlC()
+  size:=Div(self.maxrnd,4)
+  size:=Rnd(size)
+  self.which:=size+2
+  IF self.tfh = NIL THEN self.tfh := Open(self.tname,OLDFILE)
+  Seek(self.tfh,size*4,OFFSET_BEGINNING)
+  Fread(self.tfh,{rpos},4,1)
+  IF self.fh = NIL THEN self.fh := Open(self.fname,OLDFILE)
+  Seek(self.fh,rpos,OFFSET_BEGINNING)
+  IF (size:=self.pass())=-1 THEN size:=FileLength(self.fname)+1
+  Seek(self.fh,rpos,OFFSET_BEGINNING)
+  quip:=String(size-rpos+1)           -&gt; You&#x27;ll note my paranoia
+  Fread(self.fh,quip,size-rpos-1,1)
+  self.add(quip)
+ ENDFOR
+ Close(self.tfh) ; self.tfh:=0
+ Close(self.fh) ; self.fh:=0
+EXCEPT
+ IF self.fh THEN Close(self.fh)
+ IF self.tfh THEN Close(self.tfh)
+ self.fh:=0
+ self.tfh:=0
+ SELECT exception
+  CASE &quot;file&quot;
+   err_WriteF(&#x27;File \s doesn&#x27;&#x27;t exist.\n&#x27;,[self.tname])
+  CASE &quot;OPEN&quot;
+   err_WriteF(&#x27;Couldn&#x27;&#x27;t open file.\n&#x27;)
+ ENDSELECT
+ Raise(exception)
+ENDPROC
+
+-&gt; getSerial() required modifications for the same reason.  But OH how this works
+-&gt; much faster than &#x27;fquip&#x27;s way.
+
+PROC getSerial() OF tquip HANDLE
+ DEF size=0,rpos=0,i,quip,flag=0
+ IF self.which = NIL THEN self.nextNum()
+ IF self.tfh=NIL THEN self.tfh:=Open(self.tname,OLDFILE)
+ Seek(self.tfh,4*(self.which-1),OFFSET_BEGINNING)
+ IF self.fh=NIL THEN self.fh:=Open(self.fname,OLDFILE)
+ Fread(self.tfh,{rpos},4,1)
+ FOR i:=1 TO self.number
+  Fread(self.tfh,{size},4,1)
+  Seek(self.fh,rpos,OFFSET_BEGINNING)
+  IF IoErr()
+   size:=FileLength(self.fname)+1
+   SetIoErr(0)
+   flag:=TRUE
+  ENDIF
+  quip:=String(size-rpos+1)
+  Seek(self.fh,rpos,OFFSET_BEGINNING)
+  Fread(self.fh,quip,size-rpos-1,1)
+  self.add(quip)
+  IF flag
+   flag:=FALSE
+   Seek(self.tfh,0,OFFSET_BEGINNING)
+   Fread(self.tfh,{rpos},4,1)
+   self.which:=0
+  ELSE
+   rpos:=size
+  ENDIF
+  self.which:=self.which+1
+ ENDFOR
+ self.update()
+ IF self.tfh
+  Close(self.tfh); self.tfh:=0
+ ENDIF
+ IF self.fh
+  Close(self.fh); self.fh:=0
+ ENDIF
+EXCEPT
+ Raise(exception)
+ENDPROC
+
+-&gt; put() for this procedure is also not done yet... basically, I&#x27;ll call the
+-&gt; SUPER put(), then update the tablefile.
+
+EXPORT PROC put(opt=0) OF tquip
+ SUPER self.put(opt)
+ENDPROC
+
+-&gt; table() will create a new (or update an old) tablefile.
+
+EXPORT PROC table(num=0) OF tquip HANDLE
+ DEF size=0,rpos=0,hold=0
+ IF num
+  size:=FileLength(self.tname)
+  hold:=New(size+1)
+  IF self.tfh = NIL THEN self.tfh:=Open(self.tname,OLDFILE)
+  Seek(self.tfh,0,OFFSET_BEGINNING)
+  Fread(self.tfh,hold,(num-1)*4,1)
+  Fread(self.tfh,{rpos},4,1)
+  Close(self.tfh)
+  self.tfh:=Open(self.tname,NEWFILE)
+  Fwrite(self.tfh,hold,num*4,1)
+  Seek(self.tfh,-4,OFFSET_CURRENT)
+  Fwrite(self.tfh,{rpos},4,1)
+  IF self.fh = NIL THEN self.fh:=Open(self.fname,OLDFILE)
+  Seek(self.fh,rpos+1,OFFSET_BEGINNING)
+  self.mention(&#x27;Now writing tablefile \s from #\d.\n&#x27;,[self.tname,num])
+ ELSE
+  IF self.tfh THEN Close(self.tfh)
+  self.tfh:=Open(self.tname,NEWFILE)
+  Seek(self.tfh,0,OFFSET_BEGINNING)
+  self.mention(&#x27;Now writing tablefile \s from #\d.\n&#x27;,[self.tname,num+1])
+ ENDIF
+ LOOP
+  CtrlC()
+  IF (rpos:=self.pass())=-1 THEN Raise(&quot;OK&quot;)
+  self.mention(&#x27;\d\b&#x27;,{num})
+  Fwrite(self.tfh,{rpos},4,1)
+  INC num
+ ENDLOOP
+EXCEPT
+ IF self.fh
+  Close(self.fh); self.fh:=0
+ ENDIF
+ IF self.tfh
+  Close(self.tfh); self.tfh:=0
+ ENDIF
+ IF hold THEN Dispose(hold)
+ SELECT exception
+  self.mention(&#x27;\e[ p&#x27;)
+  CASE &quot;OK&quot;
+   self.mention(&#x27;\d - quips in file.\n&#x27;,{num})
+   RETURN
+  CASE &quot;^C&quot;
+   err_WriteF(&#x27;You will need to re-create datafile.\n&#x27;)
+  DEFAULT
+   err_WriteF(&#x27;There were problems updating the tablefile.\n&#x27;)
+ ENDSELECT
+ Raise(exception)
+ENDPROC
+
+-&gt; file() had to be replaced in order to set the filename for the table file.
+-&gt; I saw no reason for the caller to determine the tablefile&#x27;s name &lt;grin&gt;.
+
+EXPORT PROC file(in) OF tquip
+ self.tname:=tablename(in)
+ IF self.tfh
+  Close(self.tfh); self.tfh:=0
+ ENDIF
+ SUPER self.file(in)
+ENDPROC
+
+-&gt; tablename() lets you change/append a suffix to a filename.  You&#x27;ll note that
+-&gt; it&#x27;s not associated with any objects, but I&#x27;ve exported it in case someone else
+-&gt; might find it useful for some reason.
+
+EXPORT PROC tablename(filename,fappend=0)
+ DEF fname=0,f=0,found=0
+ IF fappend = 0 THEN fappend:=&#x27;tab&#x27;
+ WHILE f&lt;&gt;-1
+  f:=InStr(filename,&#x27;.&#x27;,fname+1)
+  IF f&lt;&gt;-1
+   fname:=f
+   found:=1
+  ENDIF
+ ENDWHILE
+ IF found=1
+  fname := fname + 1
+  f:=String(fname+StrLen(fappend))
+  StrCopy(f,filename,fname)
+  StrAdd(f,fappend,ALL)
+ ELSE
+  f:=String(StrLen(fappend)+StrLen(filename)+1)
+  StrAdd(f,filename,ALL)
+  StrAdd(f,&#x27;.&#x27;,ALL)
+  StrAdd(f,fappend,ALL)
+ ENDIF
+ENDPROC f
+
+-&gt; end() is the automatic deallocator method.
+
+PROC end() OF tquip
+ IF self.tfh THEN Close(self.tfh)
+ Dispose(self.tname)
+ SUPER self.end()
+ENDPROC
+
+/**************************************************************************/
+
+-&gt; These are some various bits of data that serve as defaults in the module.  I put
+-&gt; them here in order to change them more easily if I have to.
+
+defaultTablename:
+ CHAR &#x27;s:quip.tab&#x27;,0
+defaultFilename:
+ CHAR &#x27;s:quip.dat&#x27;,0
+defaultDelimit:
+ LONG &quot;@&quot;
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

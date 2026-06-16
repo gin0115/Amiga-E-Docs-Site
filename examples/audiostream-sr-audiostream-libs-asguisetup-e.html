@@ -1,0 +1,3384 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>asguisetup.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-audiostream-sr.html">audiostream_sr</a> &rsaquo; asguisetup.e</div><h1>File: <code>asguisetup.e</code></h1><p class="meta">3358 lines · project <a href="../examples/pkg-audiostream-sr.html"><code>audiostream_sr</code></a></p><p class="pathctx">audiostream_sr/AudioSTREAM/Libs/asguisetup.e</p><p class="prose">AudioSTREAM Professional (c) 1997-98 Immortal SYSTEMS Source codes for version 1.0 ================================================= Source: <a href="../modules/asguisetup.html">asguisetup</a>.e Description: <a href="../modules/asguisetup.html">asguisetup</a>.<a href="../modules/library.html">library</a> source Contains: setup of the whole gui Version: 1.0 -------------------------------------------------------------</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/muimaster.html">muimaster</a></li><li><a href="../modules/boopsi.html">tools/boopsi</a></li><li><a href="../modules/tagitem.html">utility/tagitem</a></li></ul></div><h2>Source</h2><pre class="code">
+/*
+
+      AudioSTREAM Professional
+      (c) 1997-98 Immortal SYSTEMS
+
+      Source codes for version 1.0
+      
+      =================================================
+
+      Source:     asguisetup.e
+      Description:    asguisetup.library source
+      Contains:   setup of the whole gui
+      Version:    1.0
+ --------------------------------------------------------------------
+*/
+
+
+OPT PREPROCESS
+OPT LARGE
+LIBRARY &#x27;asguisetup.library&#x27;,1,1,&#x27;asguisetup v1.1 (1.2.3456)&#x27; IS gui_create
+
+MODULE &#x27;muimaster&#x27; , &#x27;libraries/mui&#x27;
+MODULE &#x27;tools/boopsi&#x27; , &#x27;libraries/gadtools&#x27;
+MODULE &#x27;utility/tagitem&#x27; , &#x27;utility/hooks&#x27; 
+MODULE &#x27;*adst:gui_declarations&#x27;,&#x27;intuition&#x27;,&#x27;*adst:libs/asmisc&#x27;,&#x27;*adst:global&#x27;
+
+
+/* custom macros */
+
+#define EaterObject     NewObjectA(class,NIL,[ MUIA_ShowMe,FALSE,TAG_DONE])
+#define EditorObject    NewObjectA(editor,NIL,[ TAG_IGNORE,0
+#define EffObject NewObjectA(effclass,NIL,[ TAG_IGNORE,0
+#define DSListObject    NewObjectA(dslist,NIL,[ TAG_IGNORE,0
+#define SampleEdObject  NewObjectA(sampleed,NIL,[ TAG_IGNORE,0
+
+#define Chain           MUIA_CycleChain,1
+
+#define BarLabel  Mui_MakeObjectA( MUIO_Menuitem , [ NM_BARLABEL , 0 , 0 , 0 ] )
+
+
+/* object global variables, must be filled from asguisetup */
+
+      DEF _appl:PTR TO obj_application
+      DEF _appm:PTR TO obj_appmenu
+      DEF _main:PTR TO objw_maincontrol
+      DEF _info:PTR TO objw_info
+      DEF _about:PTR TO objw_about
+      DEF _sels:PTR TO objw_selectsong
+      DEF _mopt:PTR TO objw_moduleoptions
+      DEF _sged:PTR TO objw_songeditor
+      DEF _sgop:PTR TO objw_songoptions
+      DEF _sdsp:PTR TO objw_songdsp
+      DEF _inst:PTR TO objw_instrument
+      DEF _idsp:PTR TO objw_instrumentdsp
+      DEF _smed:PTR TO objw_sampleeditor
+      DEF _smme:PTR TO obj_sampleedmenu
+      DEF _wved:PTR TO objw_waveeditor
+      DEF _wvme:PTR TO obj_waveedmenu
+      DEF _popt:PTR TO objw_playoptions
+      DEF _pcki:PTR TO objw_pickinstrument
+      DEF _pcks:PTR TO objw_picksample
+      DEF _pckw:PTR TO objw_pickwave
+      DEF _pckt:PTR TO objw_picktrack
+      DEF _lofl:PTR TO objw_loadfromlist
+      DEF _lied:PTR TO objw_listeditor
+      DEF _cvol:PTR TO objw_changevolume
+      DEF _cpit:PTR TO objw_changepitch
+      DEF _crch:PTR TO objw_createchord
+      DEF _tran:PTR TO objw_transpose
+      DEF _dspm:PTR TO objw_dspmanager
+      DEF _tred:PTR TO objw_trackeditor
+      DEF _trop:PTR TO objw_trackoptions
+      DEF _sect:PTR TO objw_sectioneditor
+      DEF _tdsp:PTR TO objw_trackdsp
+      DEF _mpeg:PTR TO objw_mpegdecoder
+
+DEF cmenustrip,cmenu,cmenuitem,cwindow,cimage,ctext,crectangle,clist
+DEF cstring,cscrollbar,clistview,cslider,ccycle,cgroup
+
+DEF ccenter,cint1,cint2,cscreentitle
+
+DEF class
+DEF editor
+DEF effclass,dslist,sampleed
+
+DEF hooks:PTR TO obj_hooks
+
+DEF g1,g2,g3,g4,g5,g6,g7,g8,g9,ga,gb,gc,gd,ge,gf,gg,gh,gi,gj,gk  -&gt; temporary
+DEF gz,gy,gx,gw,gv,gu,gt,gs
+
+            DEF x:PTR TO obj_guisetup
+
+/* string arrays */
+
+DEF __modifytypes,__instrtypes,__windowsizes,__loops,__editing,__wsizes
+DEF __presets,__lists,__transposes,__ccassigns,__lfotypes,__tempoctypes
+DEF __savefmts
+
+/* useful procedures */
+
+
+/* procedure keybutton(text,[controlchar],[disabled],[weight],[help])
+*/
+
+PROC keybutton( text:PTR TO CHAR, cchar=NIL,disabled=FALSE,weight=100,help=NIL) IS TextObject ,
+            ButtonFrame ,MUIA_Background , MUII_ButtonBack ,
+            MUIA_Font,MUIV_Font_Button,MUIA_ControlChar , cchar ,
+            MUIA_Text_Contents , Gs(text) ,
+            MUIA_Text_PreParse , ccenter ,
+            MUIA_Weight, weight ,
+            MUIA_Disabled,disabled,
+            ( IF help THEN MUIA_ShortHelp ELSE TAG_IGNORE ) , help ,
+            MUIA_InputMode , MUIV_InputMode_RelVerify ,Chain,
+      End
+
+      
+/* procedure simplebutton(text,[help])
+*/
+
+PROC mysimplebutton(text:PTR TO CHAR , help=NIL,weight=100) IS TextObject,
+      ButtonFrame ,
+            MUIA_Background , MUII_ButtonBack ,
+            MUIA_Text_Contents , text ,
+            MUIA_Font,MUIV_Font_Button,
+            MUIA_Text_PreParse , ccenter ,
+            ( IF help THEN MUIA_ShortHelp ELSE TAG_IGNORE ) , help ,
+            MUIA_Weight,weight,
+            MUIA_InputMode , MUIV_InputMode_RelVerify ,Chain,
+      End
+
+
+PROC imgright () IS ImageObject ,
+            MUIA_Image_Spec , 30 ,
+            MUIA_InputMode , MUIV_InputMode_RelVerify ,
+            MUIA_Weight , 5 ,
+            MUIA_Frame , MUIV_Frame_ImageButton ,
+            MUIA_Image_FreeVert , MUI_TRUE ,
+            MUIA_Image_FreeHoriz , MUI_TRUE ,
+            MUIA_FixHeight , 10 ,
+            MUIA_FixWidth , 8 ,Chain,
+      End
+
+PROC imgleft () IS ImageObject ,
+            MUIA_Image_Spec , 31 ,
+            MUIA_InputMode , MUIV_InputMode_RelVerify ,
+            MUIA_Weight , 5 ,
+            MUIA_Frame , MUIV_Frame_ImageButton ,
+            MUIA_Image_FreeVert , MUI_TRUE ,
+            MUIA_Image_FreeHoriz , MUI_TRUE ,
+            MUIA_FixHeight , 10 ,
+            MUIA_FixWidth , 8 ,Chain,
+      End
+
+
+PROC lstring (gptr:PTR TO LONG,label:PTR TO CHAR,maxlen=33,intvalue=-1,accept=NIL)    /* string with label */
+
+DEF s
+
+      s:=StringObject ,
+            MUIA_Frame , MUIV_Frame_String ,
+            MUIA_String_AdvanceOnCR , MUI_TRUE,
+            MUIA_String_MaxLen , maxlen ,
+            ( IF intvalue&lt;&gt;-1 THEN MUIA_String_Integer ELSE TAG_IGNORE ) , intvalue ,
+            ( IF accept THEN MUIA_String_Accept ELSE TAG_IGNORE) , accept,    
+            Chain,
+      End
+      gptr[]:=GroupObject ,
+            MUIA_Group_Columns , 2 ,
+            Child , Label2 (label) ,
+            Child , s,
+      End
+ENDPROC s
+
+/* syntax group,string:=lastring(label,[maxlen],[integer value]) */
+
+
+PROC lslider(gptr:PTR TO LONG,label:PTR TO CHAR,min,max,level,format=NIL) -&gt; labeled slider
+DEF s
+      IF format THEN format:=Gs(format)
+      s :=  SliderObject ,
+            MUIA_Frame , MUIV_Frame_Slider ,
+            MUIA_Slider_Min , min ,
+            MUIA_Slider_Max , max ,
+            MUIA_Numeric_Value , level ,
+            MUIA_Numeric_Default , level ,
+            ( IF format THEN MUIA_Numeric_Format ELSE TAG_IGNORE) , format,    
+            Chain ,
+      End
+
+      gptr[] :=   GroupObject ,
+            MUIA_Group_Columns , 2 ,
+            Child , Label2( label ) ,
+            Child , s ,
+      End
+ENDPROC s
+
+PROC lcheck (gptr:PTR TO LONG,label: PTR TO CHAR, state,weight=100) -&gt; labeled checkmark
+DEF s
+
+      s := ImageObject,
+                ImageButtonFrame,
+                MUIA_InputMode        , MUIV_InputMode_Toggle,
+                MUIA_Image_Spec       , MUII_CheckMark,
+                MUIA_Image_FreeVert   , MUI_TRUE,
+                MUIA_Selected         , state,
+                MUIA_Background       , MUII_ButtonBack,
+                MUIA_ShowSelState     , FALSE,
+            Chain,
+                End
+
+      gptr[] := GroupObject ,
+            MUIA_Weight,weight,
+            MUIA_Group_Horiz , MUI_TRUE ,
+            Child , HVSpace ,
+            Child , GroupObject ,
+                  MUIA_Group_Columns , 2 ,
+                  Child , Label2( label) ,
+                  Child , s ,
+            End ,
+      End
+
+ENDPROC s
+
+-&gt; lcheck with small hspace
+PROC lcheck2 (gptr:PTR TO LONG,label: PTR TO CHAR, state) -&gt; labeled checkmark
+DEF s
+
+      s := ImageObject,
+                ImageButtonFrame,
+                MUIA_InputMode        , MUIV_InputMode_Toggle,
+                MUIA_Image_Spec       , MUII_CheckMark,
+                MUIA_Image_FreeVert   , MUI_TRUE,
+                MUIA_Selected         , state,
+                MUIA_Background       , MUII_ButtonBack,
+                MUIA_ShowSelState     , FALSE,
+            Chain,
+                End
+
+      gptr[] := GroupObject ,
+            MUIA_Group_Horiz , MUI_TRUE ,
+            Child , HSpace(5) ,
+            Child , GroupObject ,
+                  MUIA_Group_Columns , 2 ,
+                  Child , Label2( label) ,
+                  Child , s ,
+            End ,
+      End
+
+ENDPROC s
+
+PROC lmenu(menu:PTR TO CHAR,shortcut=NIL) IS
+            MenuitemObject ,
+            MUIA_Menuitem_Title , Gs(menu) ,
+            ( IF shortcut THEN MUIA_Menuitem_Shortcut ELSE TAG_IGNORE) , shortcut,    
+      End
+
+PROC balance() IS BalanceObject,End
+
+
+PROC lnumeric(gptr:PTR TO LONG,label:PTR TO CHAR,min,max,level,format=NIL) 
+DEF s
+
+      IF format THEN format:=Gs(format)
+      s:=   NumericbuttonObject,
+            MUIA_Numeric_Default, level,
+            MUIA_Numeric_Value, level,
+            MUIA_Numeric_Max,max,
+            MUIA_Numeric_Min,min,
+            ( IF format THEN MUIA_Numeric_Format ELSE TAG_IGNORE) , format,    
+            Chain,
+            End
+      gptr[] :=  HGroup,
+               Child,GroupObject ,
+                  MUIA_Group_Columns , 2 ,
+                  Child , Label2( label) ,
+                  Child , s ,
+                  End,
+              -&gt; Child,HVSpace,
+      End
+ENDPROC s
+
+PROC xnumeric(min,max,level,format=NIL) -&gt; lnumeric without label
+DEF s
+
+      IF format THEN format:=Gs(format)
+      s:=   NumericbuttonObject,
+            MUIA_Numeric_Default, level,
+            MUIA_Numeric_Value, level,
+            MUIA_Numeric_Max,max,
+            MUIA_Numeric_Min,min,
+            ( IF format THEN MUIA_Numeric_Format ELSE TAG_IGNORE) , format,
+            Chain,
+            End
+ENDPROC s
+
+
+PROC lknob(gptr:PTR TO LONG,label:PTR TO CHAR,min,max,level)
+DEF s
+
+      s:= KnobObject,
+            MUIA_Numeric_Value,level,
+            MUIA_Numeric_Default,level,
+            MUIA_Numeric_Max,max,
+            MUIA_Numeric_Min,min,
+            Chain,
+      End
+
+      gptr[]:=GroupObject,
+            Child,      Label(label),
+            Child,s,
+      End
+ENDPROC s
+
+
+
+
+PROC init_stuff()    -&gt; fills string arrays
+
+__modifytypes:=[ Gs(&#x27;Linear&#x27;),Gs(&#x27;SpeedUp&#x27;),Gs(&#x27;SlowDown&#x27;),NIL ]
+__instrtypes:=[ Gs(&#x27;Sample&#x27;),Gs(&#x27;Wave&#x27;) ,NIL ]
+__windowsizes:=[ Gs(&#x27;256 Bytes&#x27;),Gs(&#x27;512 Bytes&#x27;) ,Gs(&#x27;1024 Bytes&#x27;),NIL]
+__loops:= [ Gs(&#x27;Off&#x27;) ,Gs(&#x27;On&#x27;) ,      NIL ]
+__editing:= [ Gs(&#x27;Offset&#x27;) ,Gs(&#x27;Start&#x27;) ,Gs(&#x27;Length&#x27;) ,NIL ]
+__wsizes:= [ Gs(&#x27;32&#x27;) ,Gs(&#x27;64&#x27;) ,Gs(&#x27;128&#x27;) ,Gs(&#x27;256&#x27;) ,Gs(&#x27;512&#x27;) ,   NIL ]
+__presets:= [ Gs(&#x27;Ugly/15000&#x27;) ,Gs(&#x27;HalfCD/22050&#x27;) ,Gs(&#x27;HalfDAT/24000&#x27;) ,
+            Gs(&#x27;MaxPAL/28400&#x27;) ,Gs(&#x27;CD/44100&#x27;) ,Gs(&#x27;DAT/48000&#x27;) ,NIL ]
+__lists:=[ Gs(&#x27;Instruments&#x27;) ,Gs(&#x27;Samples&#x27;) ,Gs(&#x27;Waves&#x27;) ,NIL ]
+__transposes:=[Gs(&#x27;Transposable Instruments&#x27;) ,Gs(&#x27;All Instruments&#x27;) ,
+            Gs(&#x27;Current Instrument&#x27;) ,NIL ]
+__ccassigns:=[Gs(&#x27;N/A&#x27;),Gs(&#x27;#0&#x27;),Gs(&#x27;#1&#x27;),Gs(&#x27;#2&#x27;),Gs(&#x27;#3&#x27;),Gs(&#x27;#4&#x27;),Gs(&#x27;#5&#x27;),
+            Gs(&#x27;#6&#x27;),Gs(&#x27;#7&#x27;),Gs(&#x27;#8&#x27;),Gs(&#x27;#9&#x27;),0]
+__lfotypes:=[Gs(&#x27;Sine&#x27;),Gs(&#x27;Triangle&#x27;),Gs(&#x27;SawTooth&#x27;),0]
+__tempoctypes:=[Gs(&#x27;25%&#x27;),Gs(&#x27;50%&#x27;),Gs(&#x27;100%&#x27;),Gs(&#x27;200%&#x27;),Gs(&#x27;400%&#x27;),Gs(&#x27;Other&#x27;),0]
+__savefmts:=[Gs(&#x27;AIFF&#x27;),Gs(&#x27;WAVE&#x27;),Gs(&#x27;MAUD&#x27;),Gs(&#x27;8SVX&#x27;),Gs(&#x27;RAW&#x27;),0]
+cmenustrip:=MUIC_Menustrip
+cmenu:=MUIC_Menu
+cmenuitem:=MUIC_Menuitem
+cwindow:=MUIC_Window
+cimage:=MUIC_Image
+ctext:=MUIC_Text
+crectangle:=MUIC_Rectangle
+clist:=MUIC_List
+cstring:=MUIC_String
+cscrollbar:=MUIC_Scrollbar
+clistview:=MUIC_Listview
+cslider:=MUIC_Slider
+ccycle:=MUIC_Cycle
+cgroup:=MUIC_Group
+
+
+ccenter:=Gs(&#x27;\ec&#x27;)
+cint1:=Gs(&#x27;0123456789&#x27;)
+cint2:=Gs(&#x27;-0123456789&#x27;)
+
+cscreentitle:=Gs(&#x27;AudioSTREAM Professional v0.0          Copyright © 1997/98 IMMORTAL Systems&#x27;)
+
+
+      _appl:=x._appl
+      _appm:=x._appm
+      _main:=x._main
+      _info:=x._info
+      _about:=x._about
+      _sels:=x._sels
+      _mopt:=x._mopt
+      _sged:=x._sged
+      _sgop:=x._sgop
+      _sdsp:=x._sdsp
+      _inst:=x._inst
+      _idsp:=x._idsp
+      _smed:=x._smed
+      _smme:=x._smme
+      _wved:=x._wved
+      _wvme:=x._wvme
+      _popt:=x._popt
+      _pcki:=x._pcki
+      _pcks:=x._pcks
+      _pckw:=x._pckw
+      _pckt:=x._pckt
+      _lofl:=x._lofl
+      _lied:=x._lied
+      _cvol:=x._cvol
+      _cpit:=x._cpit
+      _crch:=x._crch
+      _tran:=x._tran
+      _dspm:=x._dspm
+      _tred:=x._tred
+      _trop:=x._trop
+      _sect:=x._sect
+      _tdsp:=x._tdsp
+      _mpeg:=x._mpeg
+
+ENDPROC
+
+
+
+
+
+
+
+/* GUI SETUP */
+
+
+                  /*---------*/
+                  /* %part 1 */
+                  /*---------*/
+
+
+PROC createpart1()
+
+
+/* main window setup */
+/* %maincontrol */
+
+
+      _main.btplay := keybutton(&#x27;\euP\enlay&#x27;,&quot;¶&quot;,MUI_TRUE)
+      _main.btstop := keybutton(&#x27;\euS\entop&#x27;,&quot;ß&quot;,FALSE,100)
+      _main.btcontinue := keybutton(&#x27;\euC\enontinue&#x27;,&quot;ç&quot;,MUI_TRUE)
+      _main.btselect := keybutton(&#x27;Select....&#x27;,0,MUI_TRUE )
+      _main.btplayoptions := keybutton(&#x27;Play \euO\enptions&#x27;,&quot;ø&quot;,FALSE)
+      _main.bttrackeditor := mysimplebutton( &#x27;Track Ed&#x27; )
+      _main.btsectioneditor := mysimplebutton( &#x27;Section Ed&#x27; )
+      _main.btsongeditor := keybutton(&#x27;Song Ed&#x27;,NIL,MUI_TRUE)
+      _main.btsampleeditor := mysimplebutton(&#x27;Sample Ed&#x27;)
+      _main.btinstrprop := keybutton(&#x27;P\eur\enop&#x27;,&quot;®&quot;,FALSE,20)
+      _main.bteditinstr := keybutton(&#x27;\euE\endit&#x27;,&quot;©&quot;,FALSE,20)
+
+      _main.txinstr:= TextObject ,
+            MUIA_Background , MUII_TextBack ,
+            MUIA_Frame , MUIV_Frame_Text ,
+            MUIA_Text_PreParse , ccenter ,
+            MUIA_Text_SetMin , MUI_TRUE ,
+            MUIA_InputMode , MUIV_InputMode_RelVerify, 
+      End
+      _main.imleft:=imgleft()
+      _main.imright:=imgright()
+
+      _main.root := GroupObject ,
+            MUIA_Background,MUII_GroupBack,
+            Child , GroupObject ,
+                  MUIA_Group_Horiz , MUI_TRUE ,
+                  Child,HGroup,
+                        MUIA_Weight,50,
+                        Child , Label(&#x27;Song&#x27;),
+                        Child , _main.btplay ,
+                        Child , _main.btcontinue ,
+                        Child , _main.btstop ,
+                        End,
+                  Child,HGroup,
+                        Child, Label(&#x27;Instr&#x27;),
+                        Child, _main.txinstr,
+                        Child, HGroup,
+                              MUIA_Weight,10,
+                              Child,_main.imleft,
+                              Child,_main.imright,
+                              End,
+                        Child , _main.btinstrprop ,
+                        Child , _main.bteditinstr ,
+                        End,
+            End ,
+            Child , GroupObject ,
+                  MUIA_Group_Horiz , MUI_TRUE ,
+                  Child , Label(&#x27;Open&#x27;),
+                  Child , _main.bttrackeditor ,
+                  Child , _main.btsectioneditor ,
+                  Child , _main.btsampleeditor ,
+                  Child , _main.btsongeditor ,
+                  Child , _main.btplayoptions ,
+                  
+                  
+            End ,
+            Child, EaterObject,
+      End
+
+      _main.base:= WindowObject ,
+            MUIA_Window_ScreenTitle,cscreentitle,
+            MUIA_Window_Title , Gs(&#x27;AudioSTREAM Main Control&#x27;) ,
+            MUIA_Window_ID , &quot;0WIN&quot; ,
+            WindowContents , _main.root,
+            MUIA_HelpNode,&#x27;MAINWINDOW&#x27;,
+      End
+
+
+
+/* infowindow setup */
+/* %info */
+
+
+      _info.txcursong := TextObject ,
+            MUIA_Background , MUII_TextBack ,
+            MUIA_Frame , MUIV_Frame_Text ,
+            MUIA_Text_SetMin , MUI_TRUE ,
+            MUIA_InputMode , MUIV_InputMode_RelVerify, 
+      End
+      _info.imsongleft := imgleft()
+      _info.imsongright := imgright()
+      _info.txmisc := TextObject ,
+            MUIA_Weight,30,
+            MUIA_Background , MUII_TextBack ,
+            MUIA_Frame , MUIV_Frame_Text ,
+            MUIA_Text_SetMin , MUI_TRUE ,
+      End
+      _info.txstatus := TextObject ,
+            MUIA_Background , MUII_TextBack ,
+            MUIA_Frame , MUIV_Frame_Text ,
+            MUIA_Text_PreParse , ccenter ,
+            MUIA_Text_SetMin , MUI_TRUE ,
+      End
+      _info.txmemory := TextObject ,
+            MUIA_Background , MUII_TextBack ,
+            MUIA_Text_PreParse , ccenter ,
+            MUIA_Frame , MUIV_Frame_Text ,
+            MUIA_Text_SetMin , MUI_TRUE ,
+            MUIA_InputMode , MUIV_InputMode_RelVerify, 
+      End
+      _info.txtimer := TextObject,MUIA_Weight,15,MUIA_Background,MUII_ButtonBack,
+            MUIA_Frame , MUIV_Frame_Button,     MUIA_Text_Contents,&#x27;00:00&#x27; ,
+            MUIA_Text_SetMin , MUI_TRUE ,
+            MUIA_Font,MUIV_Font_Button,
+            MUIA_InputMode , MUIV_InputMode_RelVerify, 
+      End
+
+      _info.lv := ListviewObject ,
+            MUIA_Listview_DoubleClick , MUI_TRUE ,Chain,
+            MUIA_Listview_List , ListObject ,
+                  MUIA_Frame , MUIV_Frame_ReadList ,
+                  End ,
+      End
+
+      _info.root := GroupObject ,
+            MUIA_Background,MUII_GroupBack,
+            Child,HGroup,
+                  Child,GroupObject,
+                        Child,HGroup,
+                              Child,Label(&#x27;Song&#x27;),
+                              Child,_info.txcursong,        
+                              Child,HGroup,
+                                    MUIA_Weight,20,
+                                    Child,_info.imsongleft,
+                                    Child,_info.imsongright,
+                                    End,
+                              End,
+                        Child,HGroup,
+                              Child,Label(&#x27;Mem&#x27;),
+                              Child,_info.txmemory,
+                              Child,_info.txmisc,
+                              End,
+                        Child,HGroup,
+                              Child,Label(&#x27;Status&#x27;),
+                              Child,_info.txstatus,
+                              
+                              Child,_info.txtimer,
+                              End,
+                        End,
+                  Child,_info.lv,
+                  End,
+                 Child, EaterObject,            
+                 End
+
+      _info.base := WindowObject ,
+            MUIA_Window_ScreenTitle,cscreentitle,
+            MUIA_Window_Title , Gs(&#x27;Info Window&#x27;) ,
+            MUIA_Window_ID , &quot;1WIN&quot; ,
+            WindowContents , _info.root ,
+      End
+            
+
+
+/* about window setup */
+/* %about */
+
+
+      _about.tx1 := TextObject ,
+            MUIA_Background , MUII_WindowBack ,
+            MUIA_Text_PreParse,ccenter,
+            MUIA_Text_Contents ,&#x27;\ei\e8Copyright © 1997/98 IMMORTAL Systems&#x27; ,
+            MUIA_Text_SetMin , MUI_TRUE ,
+      End
+      _about.tx2 := TextObject ,
+            MUIA_Background , MUII_WindowBack ,
+            MUIA_Text_PreParse,ccenter,
+            MUIA_Text_Contents ,&#x27;\ei\e8All Rights Reserved&#x27; ,
+            MUIA_Text_SetMin , MUI_TRUE ,
+      End
+      _about.btresume := keybutton(&#x27;\euR\enesume&#x27;,&quot;®&quot;,FALSE)
+
+      _about.root:= GroupObject ,
+            MUIA_Background , /*MUII_BACKGROUND*/ &#x27;2:00000000,00000000,00000000&#x27; ,
+            Child , HGroup,
+                  -&gt; MUIA_Background , MUII_BACKGROUND ,
+                  -&gt; MUIA_Frame , MUIV_Frame_Group ,
+                  Child , HVSpace,
+                  Child , AboutImg(muimasterbase),
+                  Child, HVSpace,
+                  End,
+            Child , VSpace(5) ,
+            Child , _about.tx1 ,
+            Child , VSpace(2) ,
+            Child , _about.tx2 ,
+            Child , VSpace(5),
+            Child , TextObject ,
+                  MUIA_Background , MUII_WindowBack ,
+                  MUIA_Text_PreParse,ccenter,
+                  MUIA_Text_Contents ,&#x27;\ei\e8Developer Version #980917\n\n&#x27;,
+                  MUIA_Text_SetMin , MUI_TRUE ,
+                  End,
+            Child , VSpace(5) ,
+            Child , _about.btresume ,
+            Child, EaterObject,
+      End
+
+      _about.base := WindowObject ,
+            MUIA_Window_ScreenTitle,cscreentitle,
+            MUIA_Window_Title , Gs(&#x27;About AudioSTREAM&#x27;) ,
+            MUIA_Window_ID , &quot;2WIN&quot; ,
+            MUIA_Window_CloseGadget , FALSE ,
+            MUIA_Window_DepthGadget , FALSE ,
+            MUIA_Window_SizeGadget , FALSE ,
+            MUIA_Window_NoMenus , MUI_TRUE ,
+            WindowContents ,_about.root ,
+      End
+
+ 
+/* select song window setup */
+/* %selectsong */
+
+
+      _sels.lvsongs := ListviewObject ,
+            MUIA_FrameTitle , Gs(&#x27;Song Pool&#x27;) ,
+            MUIA_Listview_List , ListObject ,
+                  MUIA_Frame , MUIV_Frame_ReadList ,
+            End ,
+            Chain ,
+      End
+
+      _sels.btnew := keybutton(&#x27;\euN\enew&#x27;,&quot;­&quot;,0)
+      _sels.btdelete := keybutton(&#x27;\euD\enelete&#x27;,&quot;ð&quot;,MUI_TRUE)
+      _sels.btdeleteall := keybutton( &#x27;Delete All&#x27;,NIL,MUI_TRUE)
+      _sels.btedit := keybutton( &#x27;Edit...&#x27; ,NIL,MUI_TRUE)
+      _sels.btoptions := keybutton( &#x27;Options...&#x27;,NIL,MUI_TRUE )
+      
+      _sels.root:= GroupObject ,
+            MUIA_Background,MUII_GroupBack,
+            Child , GroupObject,
+                  MUIA_Group_Horiz , MUI_TRUE ,
+                  Child , _sels.lvsongs ,
+                  Child ,GroupObject ,
+                        MUIA_Weight , 50 ,
+                        MUIA_Frame , MUIV_Frame_Group ,
+                        MUIA_FrameTitle , Gs(&#x27;Operations&#x27;) ,
+                        Child , _sels.btnew ,
+                        Child , HVSpace ,
+                        Child , _sels.btdelete ,
+                        Child , _sels.btdeleteall ,
+                        Child , HVSpace ,
+                        Child , _sels.btedit ,
+                        Child , HVSpace ,
+                        Child , _sels.btoptions ,
+                  End ,
+            End ,
+            Child, EaterObject,
+      End
+
+      _sels.base := WindowObject ,
+            MUIA_Window_ScreenTitle,cscreentitle,
+            MUIA_Window_Title , Gs(&#x27;Select Song&#x27;) ,
+            MUIA_Window_ID , &quot;3WIN&quot; ,
+            WindowContents , _sels.root ,
+      End
+
+/* module options window setup */
+/* %moduleoptions */
+
+      _mopt.stname:=lstring({g1},&#x27;Name&#x27;)
+      _mopt.stauthor :=lstring({g2},&#x27;Author&#x27;)
+      _mopt.stannotation :=lstring({g3},&#x27;Annotation&#x27;)
+
+      _mopt.root := GroupObject ,
+            MUIA_Background,MUII_GroupBack,
+            Child , g1 ,
+            Child , VSpace(5) ,
+            Child , g2,
+            Child , VSpace(5) ,
+            Child , g3 ,
+            Child, EaterObject,
+      End
+
+      _mopt.base := WindowObject ,
+            MUIA_Window_ScreenTitle,cscreentitle,
+            MUIA_Window_Title , Gs(&#x27;Project Properties&#x27;) ,
+            MUIA_Window_ID , &quot;4WIN&quot; ,
+            WindowContents , _mopt.root ,
+      End
+
+/* song editor window setup */
+/* %songeditor */
+
+
+      _sged.lvsectionlist := ListviewObject ,
+            MUIA_FrameTitle , Gs(&#x27;Section Sequence&#x27;) ,
+            MUIA_Dropable,MUI_TRUE,
+            MUIA_Listview_DragType, 1,
+            MUIA_Listview_List , DSListObject ,
+                  MUIA_Frame , MUIV_Frame_InputList ,
+                  MUIA_List_DragSortable , MUI_TRUE,
+                  MUIA_UserData, hooks.sged_dragdrop,
+            End ,
+      End
+
+
+      _sged.btadd := keybutton(&#x27;\eI[6:31]  \euA\endd&#x27;,&quot;æ&quot;,0)
+      _sged.btinsert := keybutton(&#x27;\eI[6:31] \euI\ennsert&#x27;,&quot;¡&quot;,0)
+      _sged.btdelete := keybutton(&#x27;\euD\enelete&#x27;,&quot;ð&quot;,0)
+      _sged.btdeleteall := mysimplebutton( &#x27;Delete All&#x27; )
+      _sged.btrepeatplus := mysimplebutton( &#x27;+&#x27; )
+      _sged.btrepeatminus := mysimplebutton( &#x27;-&#x27; )
+      g1 := GroupObject ,
+            MUIA_Frame , MUIV_Frame_Group ,
+            MUIA_FrameTitle , Gs(&#x27;Repeat&#x27;) ,
+            MUIA_Group_Horiz , MUI_TRUE ,
+            Child , _sged.btrepeatplus ,
+            Child , _sged.btrepeatminus ,
+      End
+      _sged.bttransposeminus := mysimplebutton( &#x27;-&#x27; )
+      _sged.bttransposeplus := mysimplebutton( &#x27;+&#x27; )
+      g2:= GroupObject ,
+            MUIA_Frame , MUIV_Frame_Group ,
+            MUIA_FrameTitle , Gs(&#x27;Transpose&#x27;) ,
+            MUIA_Group_Horiz , MUI_TRUE ,
+            Child , _sged.bttransposeplus ,
+            Child , _sged.bttransposeminus ,
+      End
+      _sged.lvsectionlist2 := ListviewObject ,
+            MUIA_FrameTitle , Gs(&#x27;Section Pool&#x27;) ,
+            MUIA_Listview_List , ListObject ,
+                  MUIA_Frame , MUIV_Frame_InputList ,
+            End ,
+      End
+
+      _sged.root := GroupObject ,
+            MUIA_Background,MUII_GroupBack,
+            Child , GroupObject ,
+                  MUIA_Group_Horiz , MUI_TRUE ,
+                  Child , _sged.lvsectionlist ,
+                  Child , GroupObject ,
+                        MUIA_Weight , 33 ,
+                        MUIA_Frame , MUIV_Frame_Group ,
+                        MUIA_FrameTitle , Gs(&#x27;Operations&#x27;) ,
+                        Child , _sged.btadd ,
+                        Child , HVSpace ,
+                        Child , _sged.btinsert ,
+                        Child , HVSpace ,
+                        Child , _sged.btdelete ,
+                        Child , _sged.btdeleteall ,
+                        Child , HVSpace ,
+                        Child , g1,
+                        Child , HVSpace ,
+                        Child , g2 ,
+                  End ,
+                  Child , _sged.lvsectionlist2 ,
+            End ,
+            Child, EaterObject,
+      End
+
+      _sged.base := WindowObject ,
+            MUIA_Window_ScreenTitle,cscreentitle,
+            MUIA_Window_Title , Gs(&#x27;Song Editor&#x27;) ,
+            MUIA_Window_ID , &quot;5WIN&quot; ,
+            WindowContents , _sged.root ,
+      End
+
+
+/* song options window setup */
+/* %songoptions */
+
+
+      _sgop.stname:= lstring({g1},&#x27;Name&#x27;)
+      _sgop.stannotation:=lstring({g4},&#x27;Annotation&#x27;)
+      _sgop.sltempo:=lslider({g2},&#x27;Tempo&#x27;,20,1000,120)
+      _sgop.sltranspose := lslider({g3},&#x27;Transpose&#x27;,-32,32,0)
+      _sgop.slleft := lknob({g5},&#x27;Left&#x27;,0,1024,256)
+      _sgop.slright := lknob({g6},&#x27;Right&#x27;,0,1024,256)
+      _sgop.chusedsp := lcheck({g7},&#x27;Use&#x27;,FALSE )
+      _sgop.btedit := keybutton(&#x27;Edit...&#x27;,NIL,0)
+
+      _sgop.root := GroupObject ,
+            MUIA_Background,MUII_GroupBack,
+            Child , g1 ,  -&gt; name
+            Child , HVSpace ,
+            Child , g4,
+            Child , HVSpace ,
+            Child , g2 ,  -&gt; tempo
+            Child , HVSpace ,
+            Child , g3 ,  -&gt; transp
+            Child , HVSpace ,
+            Child , HGroup ,
+                  Child , HGroup ,
+                        MUIA_Frame , MUIV_Frame_Group ,
+                        MUIA_FrameTitle , Gs(&#x27;Volume Control&#x27;) ,
+                        Child , HVSpace,
+                        Child , g5 ,
+                        Child , HVSpace,
+                        Child , g6 ,
+                        Child , HVSpace,  
+                  End ,
+                  Child , GroupObject ,
+                        MUIA_Frame , MUIV_Frame_Group ,
+                        MUIA_FrameTitle , Gs(&#x27;DSP Sequence&#x27;) ,
+                        Child , g7 ,
+                        Child , _sgop.btedit ,
+                  End ,
+            End ,
+            Child, EaterObject,
+      End
+
+      _sgop.base := WindowObject ,
+            MUIA_Window_ScreenTitle,cscreentitle,
+            MUIA_Window_Title , Gs(&#x27;Song Options&#x27;) ,
+            MUIA_Window_ID , &quot;6WIN&quot; ,
+            WindowContents , _sgop.root ,
+      End
+
+
+
+/* song dsp sequence window setup */
+/* %songdsp */
+
+      _sdsp.lvdspsequence := ListviewObject ,
+            MUIA_FrameTitle , Gs(&#x27;DSP Sequence&#x27;) ,
+            MUIA_Dropable,MUI_TRUE,
+            MUIA_Listview_DragType, 1,
+            MUIA_Listview_List , DSListObject ,
+                  MUIA_Frame , MUIV_Frame_InputList ,
+                  MUIA_List_DisplayHook, hooks.sdsp_disphook,
+                  MUIA_List_Format,Gs(&#x27;MIW=10 P=\e8 BAR,MIW=70 BAR,MIW=20 P=\er&#x27;),
+                  MUIA_List_Title,MUI_TRUE,
+                  MUIA_List_DragSortable , MUI_TRUE,
+                  MUIA_UserData,hooks.sdsp_dragdrop,
+            End ,
+            Chain ,
+
+      End
+      _sdsp.btadd := keybutton(&#x27;\eI[6:31]  \euA\endd&#x27;,&quot;æ&quot;,0)
+      _sdsp.btinsert := keybutton(&#x27;\eI[6:31] \euI\ennsert&#x27;,&quot;¡&quot;,0)
+      _sdsp.btdelete := keybutton(&#x27;\euD\enelete&#x27;,&quot;ð&quot;,0)
+      _sdsp.btdeleteall := mysimplebutton( &#x27;Delete All&#x27; )
+      _sdsp.lvdsppool := ListviewObject ,
+            MUIA_FrameTitle , Gs(&#x27;DSP Pool&#x27;) ,
+            MUIA_Listview_List , ListObject ,
+                  MUIA_Frame , MUIV_Frame_ReadList ,
+            End ,
+            Chain ,
+      End
+
+      _sdsp.lvparams := ListviewObject ,
+            MUIA_Weight,50,
+            MUIA_FrameTitle , Gs(&#x27;Parameters&#x27;) ,
+            MUIA_Listview_List , ListObject ,
+                  MUIA_Frame , MUIV_Frame_ReadList ,
+            End ,
+            Chain ,
+      End
+
+      _sdsp.sloffset:=lslider({g1},&#x27;Offset&#x27;,-256,256,0)
+      _sdsp.slcoef:=lslider({g2},&#x27;Coef&#x27;,-1024,1024,256,&#x27;%ld/256&#x27;)
+      _sdsp.stoffset:=StringObject,
+            MUIA_Frame,MUIV_Frame_String,
+            MUIA_String_Accept,cint2,
+            MUIA_String_MaxLen,7,
+            MUIA_String_Integer,0,
+            MUIA_Weight,25,
+            MUIA_String_AdvanceOnCR,MUI_TRUE,
+            Chain,
+            End
+
+      _sdsp.stcoef:=StringObject,
+            MUIA_Frame,MUIV_Frame_String, 
+            MUIA_String_Accept,cint2,
+            MUIA_String_MaxLen,7,
+            MUIA_String_Integer,256,
+            MUIA_Weight,25,
+            MUIA_String_AdvanceOnCR,MUI_TRUE,
+            Chain,
+            End
+      _sdsp.txparam:=TextObject,
+                  -&gt;MUIA_Background , MUII_TextBack ,
+                  -&gt;MUIA_Frame , MUIV_Frame_Text ,
+                  MUIA_Text_SetMin,MUI_TRUE,
+                  MUIA_Text_PreParse,ccenter,
+                  End
+
+      _sdsp.cylfotype:=CycleObject,
+            MUIA_Cycle_Entries ,__lfotypes ,
+            MUIA_Weight ,10 ,
+            Chain,
+      End
+
+      _sdsp.sllfoper:=lnumeric({g3},&#x27;Period&#x27;,5,300,50,&#x27;%ld/5s&#x27;)
+      _sdsp.chtempo:=lcheck({g4},&#x27;Parameter Depends On Tempo&#x27;,FALSE)
+      _sdsp.chlfo:=lcheck({g5},&#x27;LFO&#x27;,FALSE)
+      _sdsp.chlfotempo:=lcheck({g6},&#x27;By Lines&#x27;,FALSE)
+      _sdsp.chforce:=lcheck({g7},&#x27;Affect Excluded Tracks&#x27;,FALSE)
+      
+
+      _sdsp.cyccassign:=CycleObject,
+            MUIA_Cycle_Entries,__ccassigns,
+            Chain,End
+
+      _sdsp.root := GroupObject ,
+            MUIA_Background,MUII_GroupBack,
+            Child , GroupObject ,
+                  MUIA_Group_Horiz , MUI_TRUE ,
+                  Child , _sdsp.lvdspsequence ,
+                  Child , GroupObject ,
+                        MUIA_Weight , 80 ,
+                        MUIA_Frame , MUIV_Frame_Group ,
+                        MUIA_FrameTitle , Gs(&#x27;Operations&#x27;) ,
+                        Child , _sdsp.btadd ,
+                        Child , HVSpace ,
+                        Child , _sdsp.btinsert ,
+                        Child , HVSpace ,
+                        Child , _sdsp.btdelete ,
+                        Child , _sdsp.btdeleteall ,
+                        Child , HVSpace ,
+                        Child , Label (&#x27;\ecCmd Assign:&#x27;),
+                        Child ,_sdsp.cyccassign,
+                        Child, HVSpace,
+                  End ,
+                  Child , _sdsp.lvdsppool ,
+            End ,
+            Child , HGroup,
+                  MUIA_Frame,MUIV_Frame_Group,
+                  Child,_sdsp.lvparams,
+                  Child, VGroup,
+                        Child, _sdsp.txparam,
+                        Child, HGroup,
+                              Child, g1,
+                              Child, _sdsp.stoffset,
+                              End,
+                        Child, HGroup,
+                              Child, g2,
+                              Child, _sdsp.stcoef,
+                              End,
+                        Child, HGroup,
+                              Child,g4,
+                              Child,HVSpace,
+                              Child,g7,
+                              End,
+                        Child, HGroup,
+                              MUIA_Frame , MUIV_Frame_Group ,     
+                              Child,g5,
+                              Child,g6,    
+                              Child,g3,
+                              Child,Label(&#x27;Type&#x27;),
+                              Child,_sdsp.cylfotype,
+                              End,
+                        
+                        End,
+                  End,
+            Child, EaterObject,
+            
+      End
+
+      _sdsp.base := WindowObject ,
+            MUIA_Window_ScreenTitle,cscreentitle,
+            MUIA_Window_Title , Gs(&#x27;Song DSP Sequence&#x27;) ,
+            MUIA_Window_ID , &quot;7WIN&quot; ,
+            WindowContents , _sdsp.root ,
+      End
+
+
+ENDPROC
+
+
+                  /*---------*/
+                  /* %part 2 */
+                  /*---------*/
+
+PROC createpart2()
+
+
+/* instrument properties */
+/* %instrument */
+
+
+      _inst.txslot := TextObject ,
+            MUIA_Weight , 10 ,
+            MUIA_Background , MUII_TextBack ,
+            MUIA_Frame , MUIV_Frame_Text ,
+            MUIA_Text_SetMin , MUI_TRUE ,
+      End
+      _inst.stname := lstring({g1}, &#x27;&#x27;)
+      _inst.imleft := imgleft()
+      _inst.imright := imgright()
+      _inst.btfirst := keybutton(&#x27;First&#x27;,NIL,0,10)
+      _inst.btlast := keybutton(&#x27;Last&#x27;,NIL,0,10)
+      _inst.btpick := keybutton(&#x27;\euP\enick...&#x27;,&quot;¶&quot;,0,10)
+
+      _inst.txlinked := TextObject ,
+            MUIA_Background , MUII_TextBack ,
+            MUIA_Frame , MUIV_Frame_Text ,
+            MUIA_Text_Contents , &#x27;&lt;none&gt;&#x27; ,
+            MUIA_Text_SetMin , MUI_TRUE ,
+      End
+      _inst.imleftlinked := imgleft()
+      _inst.imrightlinked := imgright()
+      _inst.btpicklinked := keybutton(&#x27;P\eui\enck...&#x27;,&quot;¡&quot;,0,10)
+      _inst.btedit := keybutton(&#x27;\euE\endit...&#x27;,&quot;©&quot;,0,10)
+      _inst.cytype := CycleObject,
+            MUIA_Weight,10,
+            MUIA_Disabled,MUI_TRUE,
+            MUIA_Cycle_Entries , __instrtypes ,Chain,
+      End
+
+      _inst.lvparams:= ListviewObject ,
+            -&gt;MUIA_FrameTitle , Gs(&#x27;Dynamic params&#x27;) ,
+            MUIA_Weight,200,
+            MUIA_Listview_List , ListObject ,
+                  MUIA_Frame , MUIV_Frame_ReadList ,
+                  MUIA_List_SourceArray, [ Gs(&#x27;Volume&#x27;),Gs(&#x27;Panning&#x27;),
+                  Gs(&#x27;Pitch L&#x27;),Gs(&#x27;Pitch R&#x27;),NIL],
+            End ,
+            Chain ,
+      End
+
+      _inst.txinfo1 := TextObject ,
+            MUIA_Background , MUII_RegisterBack ,
+            -&gt;MUIA_Frame , MUIV_Frame_Text ,
+            MUIA_Text_SetMin , MUI_TRUE ,
+      End
+
+      _inst.slstatic:=lslider({g2},&#x27;Static value&#x27;,0,0,0)
+      _inst.slmodulation:=lslider({g3},&#x27;Modulation&#x27;,0,0,0)
+      _inst.chnegative := lcheck({g4}, &#x27;Negative&#x27;,FALSE,10 )
+
+      _inst.sledepth:=lslider({g5},&#x27;Depth&#x27;,0,256,0)
+      _inst.chenegative := lcheck({g6}, &#x27;Negative&#x27;,FALSE,10 )
+      _inst.chhold := lcheck({g7}, &#x27;Hold Mode&#x27;,FALSE )
+      _inst.slinitl := xnumeric(0,256,0)
+      _inst.slattackl := xnumeric(0,256,0)
+      _inst.slattackt := xnumeric(0,100,0,&#x27;%ld/10 s&#x27;)
+      _inst.cyattack := CycleObject ,
+            MUIA_Cycle_Entries , __modifytypes ,Chain,
+      End
+      _inst.sldecayl := xnumeric(0,256,0)
+      _inst.sldecayt := xnumeric(0,100,0,&#x27;%ld/10 s&#x27;)
+      _inst.cydecay := CycleObject ,
+            MUIA_Cycle_Entries , __modifytypes ,Chain,
+      End
+      _inst.slsustainl := xnumeric(0,256,0)
+      _inst.slsustaint := xnumeric(0,100,0,&#x27;%ld/10 s&#x27;)
+      _inst.cysustain := CycleObject ,
+            MUIA_Cycle_Entries , __modifytypes ,Chain,
+      End
+      _inst.slreleasel := xnumeric(0,256,0)
+      _inst.slreleaset := xnumeric(0,100,0,&#x27;%ld/10 s&#x27;)
+      _inst.cyrelease := CycleObject ,
+            MUIA_Cycle_Entries , __modifytypes ,Chain,
+      End
+
+      gz := VGroup ,
+            MUIA_Frame , MUIV_Frame_Group ,
+            MUIA_FrameTitle , Gs(&#x27;Envelope setup&#x27;) ,
+            Child, HGroup,
+                  Child, g5,
+                  Child,g6,
+            End,
+            Child, HGroup,
+                  Child, Label2(Gs(&#x27;\e8Attack: &#x27;)),
+                  Child,HVSpace,
+                  Child,Label2(Gs(&#x27;Init Level&#x27;)),
+                  Child,_inst.slinitl,
+                  Child, Label2(Gs(&#x27;Level&#x27;)),
+                  Child, _inst.slattackl,
+                  Child, Label2(Gs(&#x27;Time&#x27;)),
+                  Child, _inst.slattackt,
+                  Child, Label2(Gs(&#x27;Type&#x27;)),
+                  Child, _inst.cyattack,
+             End,
+             Child, HGroup,
+                  Child, Label2(Gs(&#x27;\e8Decay: &#x27;)),
+                  Child,HVSpace,
+                  Child, Label2(Gs(&#x27;Level&#x27;)),
+                  Child, _inst.sldecayl,
+                  Child, Label2(Gs(&#x27;Time&#x27;)),
+                  Child, _inst.sldecayt,
+                  Child, Label2(Gs(&#x27;Type&#x27;)),
+                  Child, _inst.cydecay,
+             End,
+             Child, HGroup,
+                  Child, Label2(Gs(&#x27;\e8Sustain: &#x27;)),
+                  Child, HVSpace,
+                  Child, g7, -&gt;chhold
+                  Child, Label2(Gs(&#x27;Level&#x27;)),
+                  Child, _inst.slsustainl,
+                  Child, Label2(Gs(&#x27;Time&#x27;)),
+                  Child, _inst.slsustaint,
+                  Child, Label2(Gs(&#x27;Type&#x27;)),
+                  Child, _inst.cysustain,
+                  
+             End,
+             Child, HGroup,
+                  Child, Label2(Gs(&#x27;\e8Release: &#x27;)),
+                  Child,HVSpace,
+                  Child, Label2(Gs(&#x27;Level&#x27;)),
+                  Child, _inst.slreleasel,
+                  Child, Label2(Gs(&#x27;Time&#x27;)),
+                  Child, _inst.slreleaset,
+                  Child, Label2(Gs(&#x27;Type&#x27;)),
+                  Child, _inst.cyrelease,
+             End,
+             
+      End
+
+      _inst.slldepth:=lslider({g5},&#x27;Depth&#x27;,0,256,0)
+      _inst.chlnegative := lcheck({g6}, &#x27;Negative&#x27;,FALSE,10 )
+      _inst.slperiod:=lslider({g7},&#x27;Period&#x27;,1,1000,1,&#x27;%ld/10 s&#x27;)
+      _inst.sllattackt:=lslider({g8},&#x27;Attack Time&#x27;,0,1000,0,&#x27;%ld/10 s&#x27;)
+      _inst.cywave := CycleObject ,
+            MUIA_Cycle_Entries , __lfotypes ,Chain,
+      End
+
+      gy := VGroup,
+            MUIA_Frame , MUIV_Frame_Group ,
+            MUIA_FrameTitle , Gs(&#x27;LFO setup&#x27;) ,
+            Child, HGroup,
+                  Child, g5,
+                  Child, g6,
+            End,
+            Child, g7,
+            Child, g8,
+            Child, HGroup,
+                  Child, Label2(Gs(&#x27;Wave Type&#x27;)),
+                  Child, _inst.cywave,
+            End,
+      End
+
+      _inst.chtransposable := lcheck({g5}, &#x27;Transposable&#x27;,MUI_TRUE )
+      _inst.cymtype := CycleObject ,
+            MUIA_Cycle_Entries , [Gs(&#x27;Normal&#x27;),Gs(&#x27;Fixed Rate&#x27;),NIL] ,Chain,
+      End
+      _inst.sltranspose := lslider({g6},&#x27;Transpose&#x27;,-24,24,0)
+      _inst.slfinetune := lslider({g7},&#x27;Finetune&#x27;,-8,8,0)
+      _inst.stfixedrate := lstring({g8},&#x27;Rate&#x27;,6,44100,cint1)
+      _inst.btscanrate := mysimplebutton(&#x27;Scan&#x27;,0,10)
+
+      gx:= VGroup,
+            MUIA_Frame , MUIV_Frame_Group ,
+            MUIA_FrameTitle , Gs(&#x27;Transposition Setup&#x27;) ,
+            Child, HGroup,
+                  Child, Label2(Gs(&#x27;Instr Type&#x27;)),
+                  Child, _inst.cymtype,
+                  Child, HVSpace,
+                  Child, g8,
+                  Child,_inst.btscanrate,
+                  Child, HVSpace,
+                  Child, g5,
+            End,
+            Child, HGroup,
+                  Child, g6,
+                  Child, g7,
+            End,
+      End
+
+      _inst.slphasediff := lslider({g5},&#x27;Phase Diff&#x27;,-50,50,0,&#x27;%ld ms&#x27;)
+      _inst.chinvertl := lcheck({g6}, &#x27;Invert L&#x27;,FALSE,10 )
+      _inst.chinvertr := lcheck({g7}, &#x27;Invert R&#x27;,FALSE,10 )
+
+      _inst.chloop := lcheck({g8}, &#x27;Loop On&#x27;,FALSE)
+      _inst.chpingpong := lcheck({g9}, &#x27;Ping Pong&#x27;,FALSE)
+      _inst.chreverse := lcheck({ga}, &#x27;Reverse&#x27;,FALSE)
+      _inst.stoffset :=       lstring({gb},&#x27;Offset&#x27;,11,-1,cint1)
+      _inst.stloops :=    lstring({gc},&#x27;Loop Start&#x27;,11,-1,cint1)
+      _inst.stloopl :=      lstring({gd},&#x27;Loop Length&#x27;,11,-1,cint1)
+      _inst.chinteractive := lcheck({ge}, &#x27;Interactive Editing&#x27;,FALSE)
+
+      gw:=  VGroup,
+            MUIA_Frame , MUIV_Frame_Group ,
+            MUIA_FrameTitle , Gs(&#x27;Sample Setup&#x27;) ,
+            Child, HGroup,
+                  Child, g8,
+                  Child, g9,
+                  Child, ga,
+                  Child, ge,
+            End,
+            Child,HGroup,
+                  Child, gb,
+                  Child, gc,
+                  Child, gd,
+            End,
+      End
+
+      _inst.chinterpolation := lcheck({g8}, &#x27;Interpolation&#x27;,MUI_TRUE )
+      _inst.chdsp := lcheck({g9}, &#x27;DSP&#x27;,FALSE )
+      _inst.slkeyontimeout := lslider({ga}, &#x27;KEYON Timeout&#x27;,0,100,0,&#x27;%ld/10 sec&#x27;)
+      _inst.chkillonzero := lcheck({gb}, &#x27;Kill Note On Zero Volume&#x27;,MUI_TRUE )
+      _inst.btdspedit:=mysimplebutton(&#x27;Edit...&#x27;)
+      
+      gv:= HGroup,
+            MUIA_Frame , MUIV_Frame_Group ,
+            MUIA_FrameTitle , Gs(&#x27;Misc Setup&#x27;) ,
+            Child,VGroup,
+                  MUIA_Weight,50,
+                  Child,g8,
+                  Child,gb,
+            End,
+            Child,HSpace(20),
+            Child,VGroup,
+                  Child,ga,
+                  Child,HGroup,
+                        -&gt;Child,HVSpace,
+                        Child,g9,
+                        Child,_inst.btdspedit,
+                  End,
+            End,
+            End
+
+      _inst.root := GroupObject ,
+            MUIA_Background,MUII_GroupBack,
+            Child , GroupObject ,
+                  MUIA_Frame , MUIV_Frame_Group ,
+                  MUIA_FrameTitle , Gs(&#x27;Instrument&#x27;) ,
+                  MUIA_Group_Horiz , MUI_TRUE ,
+                  Child , _inst.txslot ,
+                  Child , g1 ,  -&gt; str name
+                  Child , _inst.imleft ,
+                  Child , _inst.imright ,
+                  Child , _inst.btfirst ,
+                  Child , _inst.btlast ,
+                  Child , _inst.btpick ,
+            End ,
+            Child , GroupObject ,
+                  MUIA_Frame , MUIV_Frame_Group ,
+                  MUIA_FrameTitle , Gs(&#x27;Used Sample&#x27;) ,
+                  MUIA_Group_Horiz , MUI_TRUE ,
+                  Child , _inst.cytype ,
+                  Child , _inst.txlinked ,
+                  Child , _inst.imleftlinked ,
+                  Child , _inst.imrightlinked ,
+                  Child , _inst.btpicklinked ,
+                  Child , _inst.btedit ,
+            End ,
+            Child , HGroup ,
+                  MUIA_Frame , MUIV_Frame_Group ,
+                  MUIA_FrameTitle , Gs(&#x27;Dynamic Parameters&#x27;) ,
+                  Child , _inst.lvparams,
+                  Child , RegisterGroup([Gs(&#x27;General&#x27;),Gs(&#x27;Envelope&#x27;),Gs(&#x27;LFO&#x27;),NIL]),
+                        MUIA_Register_Frame, MUI_TRUE,
+                        Child, VGroup,
+                              MUIA_Frame , MUIV_Frame_Group ,
+                              MUIA_FrameTitle , Gs(&#x27;General Setup&#x27;) ,
+                              Child, _inst.txinfo1,
+                              Child, g2, -&gt;slstatic
+                              Child, HGroup,
+                                    Child, g3, -&gt;slmodulation
+                                    Child, g4, -&gt;chnegative
+                              End,
+                        End,
+                        Child, gz,
+                        Child, gy,
+                  End,
+            End,
+            Child,RegisterGroup([Gs(&#x27;Transposition&#x27;),Gs(&#x27;Stereo&#x27;),Gs(&#x27;Sample&#x27;),Gs(&#x27;Misc&#x27;),NIL]),
+                  MUIA_Register_Frame, MUI_TRUE,
+                  -&gt;MUIA_FrameTitle , Gs(&#x27;Static Properties&#x27;) ,
+                  Child, gx,
+                  Child, HGroup,
+                        MUIA_Frame , MUIV_Frame_Group ,
+                        MUIA_FrameTitle , Gs(&#x27;Stereo Setup&#x27;) ,
+                        Child, g5,
+                        Child, g6,
+                        Child, g7,
+                  End,
+                  Child,gw,
+                  Child,gv,
+            End,
+            Child, EaterObject,
+      End
+
+      _inst.base := WindowObject ,
+            MUIA_Window_ScreenTitle,cscreentitle,
+            MUIA_Window_Title , Gs(&#x27;Instrument Properties&#x27;) ,
+            MUIA_Window_ID , &quot;8WIN&quot; ,
+            WindowContents , _inst.root ,
+      End
+
+
+
+
+/* instrument dsp sequence setting */
+/* %instrumentdsp */
+
+
+      _idsp.lvdspsequence := ListviewObject ,
+            MUIA_FrameTitle , Gs(&#x27;DSP Sequence&#x27;) ,
+            MUIA_Listview_List , ListObject ,
+                  MUIA_Frame , MUIV_Frame_InputList ,
+            End ,
+      End
+      _idsp.btadd := keybutton(&#x27;\eI[6:31]  \euA\endd&#x27;,&quot;æ&quot;,0)
+      _idsp.btinsert := keybutton(&#x27;\eI[6:31] \euI\ennsert&#x27;,&quot;¡&quot;,0)
+      _idsp.btdelete := keybutton(&#x27;\euD\enelete&#x27;,&quot;ð&quot;,0)
+      _idsp.btdeleteall := mysimplebutton( &#x27;Delete All&#x27; )
+      _idsp.st0 := lstring( {g1},&#x27;#0&#x27;,9,0,cint2)
+      _idsp.st1 := lstring( {g2},&#x27;#1&#x27;,9,0,cint2)
+      _idsp.st2 := lstring( {g3},&#x27;#2&#x27;,9,0,cint2)
+      _idsp.st3 := lstring( {g4},&#x27;#3&#x27;,9,0,cint2)
+      _idsp.st4 := lstring( {g5},&#x27;#4&#x27;,9,0,cint2)
+      _idsp.st5 := lstring( {g6},&#x27;#5&#x27;,9,0,cint2)
+      _idsp.st6 := lstring( {g7},&#x27;#6&#x27;,9,0,cint2)
+      _idsp.st7 := lstring( {g8},&#x27;#7&#x27;,9,0,cint2)
+      g9 := GroupObject ,
+            MUIA_Frame , MUIV_Frame_Group ,
+            MUIA_FrameTitle , Gs(&#x27;DSP Init&#x27;) ,
+            MUIA_Group_Horiz , MUI_TRUE ,
+            Child , GroupObject ,
+                  MUIA_Group_SameSize , MUI_TRUE ,
+                  Child , g1,
+                  Child , g2 ,
+                  Child , g3 ,
+                  Child , g4 ,
+            End ,
+            Child , GroupObject ,
+                  MUIA_Group_SameSize , MUI_TRUE ,
+                  Child , g5 ,
+                  Child , g6 ,
+                  Child , g7 ,
+                  Child , g8 ,
+            End ,
+      End
+      _idsp.lvavailabledsps := ListviewObject ,
+            MUIA_FrameTitle , Gs(&#x27;DSP Pool&#x27;) ,
+            MUIA_Listview_List , ListObject ,
+                  MUIA_Frame , MUIV_Frame_InputList ,
+            End ,
+      End
+      _idsp.chenablemod:=lcheck( {ga} ,&#x27;Enable&#x27;,FALSE)
+      _idsp.btsetup:=mysimplebutton(&#x27;Setup...&#x27;)
+      _idsp.root := GroupObject ,
+            MUIA_Background,MUII_GroupBack,
+            Child , GroupObject ,
+                  MUIA_Group_Horiz , MUI_TRUE ,
+                  Child , _idsp.lvdspsequence ,
+                  Child , GroupObject ,
+                        MUIA_Weight , 80 ,
+                        MUIA_Frame , MUIV_Frame_Group ,
+                        MUIA_FrameTitle , Gs(&#x27;Operations&#x27;) ,
+                        Child , _idsp.btadd ,
+                        Child , HVSpace ,
+                        Child , _idsp.btinsert ,
+                        Child , HVSpace ,
+                        Child , _idsp.btdelete ,
+                        Child , _idsp.btdeleteall ,
+                        Child , HVSpace ,
+                        Child , g9 ,
+                  End ,
+                  Child , _idsp.lvavailabledsps ,
+            End ,
+            Child , GroupObject,
+                  MUIA_Group_Horiz,MUI_TRUE,
+                  MUIA_Frame , MUIV_Frame_Group ,
+                  MUIA_FrameTitle , Gs(&#x27;Modifications&#x27;) ,
+                  Child, ga,
+                  Child, HSpace(20),
+                  Child, _idsp.btsetup,
+            End ,
+            Child, EaterObject,
+            
+      End
+
+      _idsp.base := WindowObject ,
+            MUIA_Window_ScreenTitle,cscreentitle,
+            MUIA_Window_Title , Gs(&#x27;Instrument DSP Sequence&#x27;) ,
+            MUIA_Window_ID , &quot;12WI&quot; ,
+            WindowContents , _idsp.root ,
+      End
+
+
+ENDPROC
+
+                  /*---------*/
+                  /* %part 3 */
+                  /*---------*/
+
+
+
+
+PROC createpart3()
+
+
+/* sample editor setup */
+/* %sampleeditor */
+
+
+      _smed.txslot := TextObject ,
+            MUIA_Weight , 10 ,
+            MUIA_Background , MUII_TextBack ,
+            MUIA_Frame , MUIV_Frame_Text ,
+            MUIA_Text_SetMin , MUI_TRUE ,
+      End
+      _smed.stname := lstring({g1}, &#x27;Name&#x27;)
+      _smed.cysavefmt:= CycleObject ,
+            MUIA_Weight,10,
+            MUIA_Cycle_Entries , __savefmts ,Chain,
+      End
+      _smed.imleft := imgleft()
+      _smed.imright := imgright()
+      _smed.btfirst := keybutton(&#x27;First&#x27;,NIL,0,10)
+      _smed.btlast := keybutton(&#x27;Last&#x27;,NIL,0,10)
+      _smed.btpick := keybutton(&#x27;\euP\enick...&#x27;,&quot;¶&quot;,0,10)
+      _smed.editarea := SampleEdObject ,
+            MUIA_Frame , MUIV_Frame_ReadList ,
+      End
+
+      _smed.przoom:=    PropObject ,
+                        MUIA_Frame,MUIV_Frame_Prop,
+                        MUIA_FixWidth,8,
+                        MUIA_Prop_Entries,1024,
+                        MUIA_Prop_Visible,1,
+                        MUIA_Prop_First,0,
+                  End
+      _smed.proffset:=  PropObject ,
+                        MUIA_Frame,MUIV_Frame_Prop,
+                        MUIA_FixHeight,8,
+                        MUIA_Prop_Entries,1,
+                        MUIA_Prop_Visible,1,
+                        MUIA_Prop_First,0,
+                        MUIA_Prop_Horiz,MUI_TRUE,
+                  End
+
+      _smed.stbuffer := lstring({g2},&#x27;Frames&#x27;,11,-1,cint1)
+      _smed.strngstart := lstring({g3},&#x27;RngS&#x27;,11,-1,cint1)
+      _smed.strnglen := lstring({g4},&#x27;RngL&#x27;,11,-1,cint1)
+      _smed.stpitch := lstring({g5},&#x27;Rate&#x27;,6,-1,cint1)
+      _smed.btscan := keybutton(&#x27;Scan&#x27;,0,0,10)
+      _smed.ch16bit := lcheck2( {g6} ,&#x27;16-bit&#x27;,FALSE )
+      _smed.chstereo := lcheck2( {g7} ,&#x27;Stereo&#x27;,FALSE )
+      _smed.btplaydisplay := keybutton(&#x27;P\eul\enay&#x27;,&quot;£&quot;)
+      _smed.btrangeall := keybutton(&#x27;Range \euA\enll&#x27;,&quot;æ&quot;)
+      _smed.btshowrange := mysimplebutton( &#x27;Show Range&#x27; )
+      _smed.btshowall := keybutton(&#x27;\euS\enhow All&#x27;,&quot;ß&quot;)
+      _smed.btzoomin := keybutton(&#x27;Zoom \euI\enn&#x27;,&quot;¡&quot;)
+      _smed.btzoomout := keybutton(&#x27;Zoom \euO\enut&#x27;,&quot;ø&quot;)
+      _smed.txdispsize := TextObject ,
+            MUIA_Background , MUII_TextBack ,
+            MUIA_Frame , MUIV_Frame_Text ,
+            MUIA_Text_SetMin , MUI_TRUE ,
+      End
+      ga := GroupObject ,
+            MUIA_Group_Horiz , MUI_TRUE ,
+            Child , Label( &#x27;Display&#x27; ) ,
+            Child , HSpace( 5 ),
+            Child , _smed.btplaydisplay ,
+            Child , _smed.btrangeall ,
+            Child , _smed.btshowrange ,
+            Child , _smed.btshowall ,
+            Child , _smed.btzoomin ,
+            Child , _smed.btzoomout ,
+            Child , Label( &#x27;Disp.Size&#x27; ) ,
+            Child , _smed.txdispsize ,
+      End
+      _smed.btplayrange := mysimplebutton( &#x27;Play&#x27; )
+      _smed.btcopy := keybutton(&#x27;\euC\enopy&#x27;, &quot;ç&quot;)
+      _smed.btcut := keybutton(&#x27;Cut&#x27;,&quot;×&quot;)
+      _smed.btpaste := keybutton(&#x27;Pas\eut\ene&#x27;,&quot;þ&quot;)
+      _smed.btplace := mysimplebutton( &#x27;Place&#x27; )
+      _smed.btclear := mysimplebutton( &#x27;Clear&#x27; )
+      _smed.bterase := keybutton(&#x27;\euE\enrase&#x27;,&quot;©&quot;)
+      _smed.btreverse := mysimplebutton( &#x27;Reverse&#x27; )
+      gb := GroupObject ,
+            MUIA_Group_Horiz , MUI_TRUE ,
+            Child , Label( &#x27;Range&#x27; ) ,
+            Child , HSpace( 5 ) ,
+            Child , _smed.btplayrange ,
+            Child , _smed.btcopy ,
+            Child , _smed.btcut ,
+            Child , _smed.btpaste ,
+            Child , _smed.btplace ,
+            Child , _smed.btclear ,
+            Child , _smed.bterase ,
+            Child , _smed.btreverse ,
+      End
+      _smed.cyloop := CycleObject ,
+            MUIA_Cycle_Entries , __loops ,Chain,
+      End
+      _smed.cyediting := CycleObject ,
+            MUIA_Cycle_Entries , __editing ,Chain,
+            
+      End
+      _smed.btstepleft := mysimplebutton( &#x27;&lt;1&#x27; )
+      _smed.btstepright := mysimplebutton( &#x27;1&gt;&#x27; )
+      _smed.btmoveleft := mysimplebutton( &#x27;&lt;Mov&#x27; )
+      _smed.btmoveright := mysimplebutton( &#x27;Mov&gt;&#x27; )
+      _smed.btfindleft := mysimplebutton( &#x27;&lt;Find0&#x27; )
+      _smed.btfindright := mysimplebutton( &#x27;Find0&gt;&#x27; )
+      _smed.btstart := mysimplebutton( &#x27;Start&#x27; )
+      _smed.btend := mysimplebutton( &#x27;End&#x27; )
+      _smed.btaccept := mysimplebutton( &#x27;ACCEPT&#x27; )
+
+      _smed.root := GroupObject ,
+            MUIA_Background,MUII_GroupBack,
+            Child , GroupObject ,
+                  MUIA_Frame , MUIV_Frame_Group ,
+                  MUIA_FrameTitle , Gs(&#x27;Sample&#x27;) ,
+                  MUIA_Group_Horiz , MUI_TRUE ,
+                  Child , _smed.txslot ,
+                  Child , g1 ,
+                  Child , _smed.cysavefmt,
+                  Child , _smed.imleft ,
+                  Child , _smed.imright ,
+                  Child , _smed.btfirst ,
+                  Child , _smed.btlast ,
+                  Child , _smed.btpick ,
+            End ,
+            Child , HGroup ,
+                  Child ,  _smed.editarea ,
+                  Child , _smed.przoom ,
+                  End ,
+            Child , _smed.proffset,
+            Child , GroupObject ,
+                  MUIA_Frame , MUIV_Frame_Group ,
+                  MUIA_FrameTitle , Gs(&#x27;Properties&#x27;) ,
+                  MUIA_Group_Horiz , MUI_TRUE ,
+                  Child , g2 ,
+                  Child , g3 ,
+                  Child , g4 ,
+                  Child , g5 ,
+                  Child , _smed.btscan ,
+                  Child , g6 ,
+                  Child , g7 ,
+            End ,
+            Child , GroupObject ,
+                  MUIA_Frame , MUIV_Frame_Group ,
+                  MUIA_FrameTitle , Gs(&#x27;Operations&#x27;) ,
+                  Child , ga ,
+                  Child , gb ,
+            End ,
+            /*Child , GroupObject ,
+                  MUIA_Group_Horiz , MUI_TRUE ,
+                  Child , Label ( &#x27;LoopEd&#x27; ) ,
+                  Child , HSpace (5) ,
+                  Child , _smed.cyloop ,
+                  Child , _smed.cyediting ,
+                  Child , _smed.btstepleft ,
+                  Child , _smed.btstepright ,
+                  Child , _smed.btmoveleft ,
+                  Child , _smed.btmoveright ,
+                  Child , _smed.btfindleft ,
+                  Child , _smed.btfindright ,
+                  Child , _smed.btstart ,
+                  Child , _smed.btend ,
+                  Child , _smed.btaccept ,
+            End , TEMPORARILY DISABLED */
+            Child, EaterObject,
+      End
+
+
+/* sample editor menu setup */
+/* %sampleedmenu */
+
+
+      _smme.load        :=    lmenu (&#x27;Load...&#x27;)
+      _smme.loadfromlist      :=    lmenu(&#x27;Load From List...&#x27;,Gs(&#x27;L&#x27;))
+      _smme.save        :=    lmenu(&#x27;Save&#x27;,Gs(&#x27;S&#x27;))
+      _smme.saveas            :=    lmenu(&#x27;Save As...&#x27;)
+      _smme.flush             :=    lmenu( &#x27;Flush&#x27; )
+      _smme.quit        :=    lmenu(&#x27;Quit Editor&#x27;,Gs(&#x27;Q&#x27;))
+      _smme._project:=MenuitemObject ,
+                  MUIA_Menuitem_Title , Gs(&#x27;Project&#x27;) ,
+                  MUIA_Family_Child , _smme.load ,
+                  MUIA_Family_Child , _smme.loadfromlist ,
+                  MUIA_Family_Child , _smme.save ,
+                  MUIA_Family_Child , _smme.saveas ,
+                  MUIA_Family_Child , _smme.flush ,
+                  MUIA_Family_Child , _smme.quit ,
+                  End
+      _smme.invert            :=    lmenu(&#x27;Invert&#x27;)
+      _smme.centralize  :=    lmenu(&#x27;Centralize&#x27;)
+      _smme.signedunsigned    :=    lmenu(&#x27;Signed/Unsigned&#x27;)
+      _smme.swapbyteorder     :=    lmenu(&#x27;Swap Byte Order&#x27;)
+      _smme.mpegdecoder       :=    lmenu(&#x27;MPEG Audio Decoder...&#x27;)
+
+      _smme._tools := MenuitemObject ,
+                  MUIA_Menuitem_Title , Gs(&#x27;Tools&#x27;) ,
+                  MUIA_Family_Child , _smme.invert ,
+                  MUIA_Family_Child , _smme.centralize ,
+                  MUIA_Family_Child , _smme.signedunsigned ,
+                  MUIA_Family_Child , _smme.swapbyteorder ,
+                  MUIA_Family_Child , BarLabel,
+                  MUIA_Family_Child , _smme.mpegdecoder,
+      End
+
+      _smme.changevolume      :=    lmenu(&#x27;Change volume...&#x27;,Gs(&#x27;V&#x27;))
+      _smme.changepitch       :=    lmenu(&#x27;Change Pitch&#x27;)
+      _smme.makechord   :=    lmenu(&#x27;Make Chord&#x27;)
+
+      _smme._effects := MenuitemObject ,
+                  MUIA_Menuitem_Title , Gs(&#x27;Effects&#x27;) ,
+                  MUIA_Family_Child , _smme.changevolume ,
+                  MUIA_Family_Child , _smme.changepitch ,
+                  MUIA_Family_Child , _smme.makechord ,
+      End
+
+
+
+/* rubbbiiiiiishhhh  
+
+      myapp2.mnSedInterpolation := MenuitemObject ,
+            MUIA_Menuitem_Title , Gs(&#x27;Interpolation&#x27;) ,
+            MUIA_Menuitem_Checkit , MUI_TRUE ,
+            MUIA_Menuitem_Checked , MUI_TRUE ,
+            MUIA_Menuitem_Toggle , MUI_TRUE ,
+      End    */
+
+
+      _smme._settings := MenuitemObject ,
+            MUIA_Menuitem_Title ,Gs(&#x27;Settings&#x27;) ,
+            -&gt; MUIA_Family_Child , myapp2.mnSedInterpolation ,
+      End
+      _smme.base      := MenustripObject ,
+            MUIA_Family_Child , _smme._project ,
+            MUIA_Family_Child , _smme._tools ,
+            MUIA_Family_Child , _smme._effects ,
+            MUIA_Family_Child , _smme._settings ,
+      End
+
+      _smed.base  := WindowObject ,
+            MUIA_Window_ScreenTitle,cscreentitle,
+            MUIA_Window_Title , Gs(&#x27;Sample Editor&#x27;) ,
+            MUIA_Window_Menustrip , _smme.base ,
+            MUIA_Window_ID , &quot;13WI&quot; ,
+            WindowContents , _smed.root ,
+      End
+
+
+
+/* wave editor window setup  */
+/* %waveeditor */
+
+
+        _wved.txslot := TextObject ,
+                MUIA_Weight , 10 ,
+                MUIA_Background , MUII_TextBack ,
+                MUIA_Frame , MUIV_Frame_Text ,
+                MUIA_Text_SetMin , MUI_TRUE ,
+        End
+        _wved.stname := lstring({g1},&#x27;Name&#x27;)
+        _wved.imleft := imgleft()
+        _wved.imright := imgright()
+        _wved.btfirst := keybutton(&#x27;First&#x27;,0,0,10)
+        _wved.btlast := keybutton(&#x27;Last&#x27;,0,0,10)
+        _wved.btpick := keybutton(&#x27;\euP\enick...&#x27;,&quot;¶&quot;,0,10)
+        _wved.btcopyfromtemp := mysimplebutton( &#x27;Copy From Temp&#x27; )
+        _wved.btcopytotemp := mysimplebutton( &#x27;Copy To Temp&#x27; )
+        _wved.btdouble := mysimplebutton( &#x27;Double&#x27; )
+        _wved.bthalve := mysimplebutton( &#x27;Halve&#x27; )
+        _wved.cysize := CycleObject ,
+                MUIA_Cycle_Entries , __wsizes ,Chain,
+        End
+        _wved.btstretch := mysimplebutton( &#x27;STRETCH&#x27; )
+        _wved.btmixwithtemp := mysimplebutton( &#x27;Mix With Temp&#x27; )
+        _wved.btaddtemp := mysimplebutton( &#x27;Add Temp&#x27; )
+        _wved.btdoubletemp := mysimplebutton( &#x27;Double Temp&#x27; )
+        _wved.bthalvetemp := mysimplebutton( &#x27;Halve Temp&#x27; )
+
+
+        _wved.root := GroupObject ,
+            MUIA_Background,MUII_GroupBack,
+            Child , GroupObject ,
+                  MUIA_Frame , MUIV_Frame_Group ,
+                  MUIA_FrameTitle , Gs(&#x27;Wave&#x27;) ,
+                  MUIA_Group_Horiz , MUI_TRUE ,
+                  Child , _wved.txslot ,
+                  Child , g1 ,
+                  Child , _wved.imleft ,
+                        Child , _wved.imright ,
+                        Child , _wved.btfirst ,
+                  Child , _wved.btlast ,
+                      Child , _wved.btpick ,
+             End,
+                Child , GroupObject ,
+                  MUIA_Frame , MUIV_Frame_Group ,
+                  MUIA_FrameTitle , Gs(&#x27;Operations&#x27;) ,
+                        Child , GroupObject ,
+                            MUIA_Group_Horiz , MUI_TRUE ,
+                        Child , _wved.btcopyfromtemp ,
+                          Child , _wved.btcopytotemp ,
+                                    Child , _wved.btdouble ,
+                              Child , _wved.bthalve ,
+                              Child , HSpace(5) ,
+                              Child , Label( &#x27;Stretch Size&#x27; ) ,
+                              Child , _wved.cysize ,
+                              Child , _wved.btstretch ,
+                    End ,
+                  Child , GroupObject ,
+                       MUIA_Group_Horiz , MUI_TRUE ,
+                            Child , _wved.btmixwithtemp ,
+                            Child , _wved.btaddtemp ,
+                            Child , _wved.btdoubletemp ,
+                            Child , _wved.bthalvetemp ,
+                   End ,
+                  End ,
+                
+                Child, EaterObject,
+        End
+
+
+/* wave editor menu */
+/* %waveedmenu */
+
+
+        _wvme.load := lmenu(&#x27;Load...&#x27;)
+        _wvme.loadfromlist := lmenu(&#x27;Load From List...&#x27;, Gs(&#x27;L&#x27;))
+        _wvme.save := lmenu(&#x27;Save&#x27;,Gs( &#x27;S&#x27;))
+        _wvme.saveas := lmenu(&#x27;Save As...&#x27;) 
+        _wvme.flush := lmenu(&#x27;Flush&#x27;) 
+        _wvme.quit := lmenu ( &#x27;Quit Editor&#x27; , Gs(&#x27;Q&#x27;) )
+
+        _wvme._project := MenuitemObject ,
+                MUIA_Menuitem_Title , Gs(&#x27;Project&#x27;) ,
+                MUIA_Family_Child , _wvme.load ,
+                MUIA_Family_Child , _wvme.loadfromlist ,
+                MUIA_Family_Child , _wvme.save ,
+                MUIA_Family_Child , _wvme.saveas ,
+                MUIA_Family_Child , _wvme.flush ,
+                MUIA_Family_Child , _wvme.quit ,
+        End
+
+        _wvme.base := MenustripObject ,
+                MUIA_Family_Child , _wvme._project ,
+        End
+
+        _wved.base := WindowObject ,
+            MUIA_Window_ScreenTitle,cscreentitle,
+                MUIA_Window_Title , Gs(&#x27;Wave Editor&#x27;) ,
+                MUIA_Window_Menustrip , _wvme.base ,
+                MUIA_Window_ID , &quot;14WI&quot; ,
+                WindowContents , _wved.root ,
+        End
+
+
+
+/* play options setup */
+/* % playoptions */
+
+
+
+        _popt.txaudiomode := TextObject ,
+                MUIA_Background , MUII_TextBack ,
+                MUIA_Frame , MUIV_Frame_Text ,
+                MUIA_Text_SetMin , MUI_TRUE ,
+        End
+        _popt.btpick := keybutton(&#x27;\euP\enick...&#x27;,&quot;¶&quot;,0,10)
+        _popt.stmixfreq := lstring ({g1},&#x27;Requested&#x27;,6,-1,cint1)
+        _popt.txactual := TextObject ,
+                MUIA_Weight , 50 ,
+                MUIA_Background , MUII_TextBack ,
+                MUIA_Frame , MUIV_Frame_Text ,
+                MUIA_Text_SetMin , MUI_TRUE ,
+        End
+        _popt.cypresets := CycleObject ,
+                MUIA_Weight , 50 ,
+                MUIA_Cycle_Entries , __presets ,Chain,
+        End
+        ga := GroupObject ,
+                MUIA_Group_Horiz , MUI_TRUE ,
+                Child , g1 ,
+                Child , HSpace(20) ,
+                Child , TextObject ,
+                  MUIA_Text_PreParse , &#x27;\er&#x27; ,
+                  MUIA_Text_Contents , &#x27;Actual&#x27; ,
+                  MUIA_Weight , 50 ,
+                  MUIA_InnerLeft , 0 ,
+                  MUIA_InnerRight , 0 ,
+              End ,
+                Child , _popt.txactual ,
+                Child , HSpace(20) ,
+                Child , TextObject ,
+                  MUIA_Text_PreParse , &#x27;\er&#x27; ,
+                  MUIA_Text_Contents , &#x27;Presets&#x27; ,
+                          MUIA_Weight , 50 ,
+                        MUIA_InnerLeft , 0 ,
+                          MUIA_InnerRight , 0 ,
+              End ,
+                Child , _popt.cypresets ,
+        End
+
+        _popt.slmixfreq := lslider({g2},&#x27;&#x27;,2000,65535,44100)
+        _popt.sltimeres := lslider({g3},&#x27;Time Resolution&#x27;,1,10,1)
+        _popt.chmonomode := lcheck({g4}, &#x27;Mono Mode&#x27;,FALSE )
+
+        _popt.root := GroupObject ,
+                  MUIA_Background,MUII_GroupBack,
+                Child , GroupObject ,
+                    MUIA_Frame , MUIV_Frame_Group ,
+                  MUIA_FrameTitle , Gs(&#x27;Audio Mode&#x27;) ,
+                  MUIA_Group_Horiz , MUI_TRUE ,
+                  Child , _popt.txaudiomode ,
+                  Child , _popt.btpick ,
+              End ,
+                Child , GroupObject ,
+                    MUIA_Frame , MUIV_Frame_Group ,
+                  MUIA_FrameTitle , Gs(&#x27;MixFreq&#x27;) ,
+                  Child , ga ,
+                  Child , g2 ,
+            End ,
+                Child , g3 ,
+                Child , GroupObject ,
+                           MUIA_Frame , MUIV_Frame_Group ,
+                     MUIA_FrameTitle , Gs(&#x27;Mixing Shortcuts&#x27;) ,
+                             MUIA_Group_Horiz , MUI_TRUE ,
+                             Child , g4 ,
+                       Child , HVSpace ,
+              End ,
+            Child, EaterObject,
+        End
+
+      _popt.base := WindowObject ,
+            MUIA_Window_ScreenTitle,cscreentitle,
+                MUIA_Window_Title , Gs(&#x27;Play Options&#x27;) ,
+                MUIA_Window_ID , &quot;15WI&quot; ,
+                WindowContents , _popt.root ,
+        End
+
+
+
+ENDPROC
+
+
+
+
+                  /*---------*/
+                        /* %part 4 */
+                        /*---------*/
+
+
+
+
+
+PROC createpart4()
+
+/* pick instrument */
+/* %pickinstr */
+
+
+      _pcki.lv := ListviewObject ,
+            MUIA_FrameTitle , Gs(&#x27;Instrument Pool&#x27;) ,
+            MUIA_Listview_DoubleClick , MUI_TRUE ,
+            MUIA_Listview_List ,ListObject ,
+                  MUIA_Frame , MUIV_Frame_ReadList ,
+            End ,
+      End
+
+      _pcki.root := GroupObject ,
+            MUIA_Background,MUII_GroupBack,
+            Child , _pcki.lv ,
+            Child, EaterObject,
+      End
+
+      _pcki.base := WindowObject ,
+            MUIA_Window_ScreenTitle,cscreentitle,
+            MUIA_Window_Title , Gs(&#x27;Pick Instrument&#x27;) ,
+            MUIA_Window_ID , &quot;16WI&quot; ,
+            WindowContents , _pcki.root ,
+      End
+
+
+/* pick sample */
+/* %picksample */
+
+
+      _pcks.lv := ListviewObject ,
+            MUIA_FrameTitle , Gs(&#x27;Sample Pool&#x27;) ,
+            MUIA_Listview_DoubleClick , MUI_TRUE ,
+            MUIA_Listview_List ,ListObject ,
+                  MUIA_Frame , MUIV_Frame_ReadList ,
+            End ,
+      End
+
+      _pcks.root := GroupObject ,
+            MUIA_Background,MUII_GroupBack,
+            Child , _pcks.lv ,
+            Child, EaterObject,
+      End
+
+      _pcks.base := WindowObject ,
+            MUIA_Window_ScreenTitle,cscreentitle,
+            MUIA_Window_Title , Gs(&#x27;Pick Sample&#x27;) ,
+            MUIA_Window_ID , &quot;17WI&quot; ,
+            WindowContents , _pcks.root ,
+      End
+
+
+
+/* pick wave */
+/* %pickwave */
+
+
+      _pckw.lv := ListviewObject ,
+            MUIA_FrameTitle , Gs(&#x27;Wave Pool&#x27;) ,
+            MUIA_Listview_DoubleClick , MUI_TRUE ,
+            MUIA_Listview_List ,ListObject ,
+                  MUIA_Frame , MUIV_Frame_ReadList ,
+            End ,
+      End
+
+      _pckw.root := GroupObject ,
+            MUIA_Background,MUII_GroupBack,
+            Child , _pckw.lv ,
+            Child, EaterObject,
+      End
+
+      _pckw.base := WindowObject ,
+            MUIA_Window_ScreenTitle,cscreentitle,
+            MUIA_Window_Title , Gs(&#x27;Pick Wave&#x27;) ,
+            MUIA_Window_ID , &quot;18WI&quot; ,
+            WindowContents , _pckw.root ,
+      End
+
+
+
+/* pick track */
+/* %picktrack */
+
+
+      _pckt.lv := ListviewObject ,
+            MUIA_FrameTitle , Gs(&#x27;Track Pool&#x27;) ,
+            MUIA_Listview_DoubleClick , MUI_TRUE ,
+            MUIA_Listview_List ,ListObject ,
+                  MUIA_Frame , MUIV_Frame_ReadList ,
+            End ,
+      End
+
+      _pckt.root := GroupObject ,
+            MUIA_Background,MUII_GroupBack,
+            Child , _pckt.lv ,
+            Child, EaterObject,
+      End
+
+      _pckt.base := WindowObject ,
+            MUIA_Window_ScreenTitle,cscreentitle,
+            MUIA_Window_Title , Gs(&#x27;Pick Track&#x27;) ,
+            MUIA_Window_ID , &quot;19WI&quot; ,
+            WindowContents , _pckt.root ,
+      End
+
+
+
+/* load from list */
+/* %loadfromlist */
+
+
+      _lofl.cytype := CycleObject ,
+            MUIA_ControlChar , &quot;þ&quot; ,
+            MUIA_Cycle_Entries , __lists ,Chain,
+      End
+      _lofl.lvitems := ListviewObject ,
+            MUIA_FrameTitle , Gs(&#x27;Items&#x27;) ,
+            MUIA_Listview_List , ListObject ,
+                  MUIA_Frame , MUIV_Frame_ReadList ,
+            End ,
+      End
+      _lofl.lvdirectories := ListviewObject ,
+            MUIA_FrameTitle , Gs(&#x27;Directories&#x27;) ,
+            MUIA_Listview_List ,ListObject ,
+                  MUIA_Frame , MUIV_Frame_ReadList ,
+            End  ,
+      End
+      _lofl.txslot := TextObject ,
+            MUIA_Weight , 10 ,
+            MUIA_Background , MUII_TextBack ,
+            MUIA_Frame , MUIV_Frame_Text ,
+            MUIA_Text_SetMin , MUI_TRUE ,
+      End
+      _lofl.txname := TextObject ,
+            MUIA_Background , MUII_TextBack ,
+            MUIA_Frame , MUIV_Frame_Text ,
+            MUIA_Text_SetMin , MUI_TRUE ,
+      End
+
+      _lofl.imleft := imgleft()
+      _lofl.imright := imgright()
+      _lofl.btfirst := keybutton(&#x27;F\eui\enrst&#x27;,&quot;¡&quot;,0,10)
+      _lofl.btlast := keybutton(&#x27;\euL\enast&#x27;,&quot;£&quot;,0,10)
+      _lofl.btpick := keybutton(&#x27;\euP\enick...&#x27;,&quot;¶&quot;,0,10)
+
+      _lofl.root := GroupObject ,
+            MUIA_Background,MUII_GroupBack,
+            Child , _lofl.cytype ,
+            Child , GroupObject ,
+                  MUIA_Group_Horiz , MUI_TRUE ,
+                  Child , _lofl.lvitems ,
+                  Child , HSpace(10) ,
+                  Child , _lofl.lvdirectories ,
+            End ,
+            Child , GroupObject ,
+                  MUIA_Frame , MUIV_Frame_Group ,
+                  MUIA_FrameTitle , Gs(&#x27;Slot&#x27;) ,
+                  MUIA_Group_Horiz , MUI_TRUE ,
+                  Child , _lofl.txslot ,
+                  Child , _lofl.txname ,
+                  Child , _lofl.imleft ,
+                  Child , _lofl.imright ,
+                  Child , _lofl.btfirst ,
+                  Child , _lofl.btlast ,
+                  Child , _lofl.btpick ,
+            End ,
+            Child, EaterObject,
+      End
+
+      _lofl.base := WindowObject ,
+            MUIA_Window_ScreenTitle,cscreentitle,
+            MUIA_Window_Title , Gs(&#x27;Load From List&#x27;) ,
+            MUIA_Window_ID , &quot;20WI&quot; ,
+            WindowContents , _lofl.root ,
+      End
+
+
+
+/* list editor setup */
+/* %listeditor */
+
+
+      _lied.cytype := CycleObject ,
+            MUIA_ControlChar , &quot;þ&quot; ,
+            MUIA_Cycle_Entries , __lists ,Chain,
+      End
+      _lied.lvitems := ListviewObject ,
+            MUIA_FrameTitle , Gs(&#x27;Items&#x27;) ,
+            MUIA_Listview_List ,ListObject ,
+                  MUIA_Frame , MUIV_Frame_ReadList ,
+            End ,
+      End
+      _lied.lvdirs := ListviewObject ,
+            MUIA_FrameTitle , Gs(&#x27;Directories&#x27;) ,
+            MUIA_Listview_List , ListObject ,
+                  MUIA_Frame , MUIV_Frame_ReadList ,
+            End ,
+      End
+      _lied.btaddcuritem := keybutton(&#x27;Add\euC\enurItem&#x27;,&quot;ç&quot;)
+      _lied.btinscuritem := mysimplebutton( &#x27;InsertCurItem&#x27; )
+      _lied.btdelitem := keybutton(&#x27;\euD\eneleteItem&#x27;, &quot;ð&quot;)
+      _lied.btadddir := keybutton(&#x27;\euA\enddDir&#x27;,&quot;æ&quot;)
+      _lied.btinsdir := keybutton(&#x27;I\eun\ensertDir&#x27;,&quot;­&quot;)
+      _lied.btdeldir := keybutton(&#x27;D\eue\enleteDir&#x27;,&quot;©&quot;)
+      _lied.btclear := mysimplebutton( &#x27;CLR&#x27; )
+      _lied.btsavelist := mysimplebutton( &#x27;SAVE&#x27; )
+      _lied.txslot := TextObject ,
+            MUIA_Weight , 10 ,
+            MUIA_Background , MUII_TextBack ,
+            MUIA_Frame , MUIV_Frame_Text ,
+            MUIA_Text_SetMin , MUI_TRUE ,
+      End
+      _lied.txname := TextObject ,
+            MUIA_Background , MUII_TextBack ,
+            MUIA_Frame , MUIV_Frame_Text ,
+            MUIA_Text_SetMin , MUI_TRUE ,
+      End
+      _lied.imleft := imgleft()
+      _lied.imright := imgright()
+      _lied.btfirst := keybutton(&#x27;F\eui\enrst&#x27;,&quot;¡&quot;,0,10)
+      _lied.btlast := keybutton(&#x27;\euL\enast&#x27;,&quot;£&quot;,0,10)
+      _lied.btpick := keybutton(&#x27;\euP\enick...&#x27;,&quot;¶&quot;,0,10)
+
+      _lied.root := GroupObject ,
+            MUIA_Background,MUII_GroupBack,
+            Child , _lied.cytype ,
+            Child , GroupObject ,
+                  MUIA_Group_Horiz , MUI_TRUE ,
+                  Child , _lied.lvitems ,
+                  Child , HSpace(10) ,
+                  Child , _lied.lvdirs ,
+            End ,
+            Child , GroupObject ,
+                  MUIA_Frame , MUIV_Frame_Group ,
+                  MUIA_FrameTitle , Gs(&#x27;Operations&#x27;) ,
+                  MUIA_Group_Horiz , MUI_TRUE ,
+                  Child , _lied.btaddcuritem ,
+                  Child , _lied.btinscuritem ,
+                  Child , _lied.btdelitem ,
+                  Child , _lied.btadddir ,
+                  Child , _lied.btinsdir ,
+                  Child , _lied.btdeldir ,
+                  Child , _lied.btclear ,
+                  Child , _lied.btsavelist ,
+            End ,
+            Child , GroupObject ,
+                  MUIA_Frame , MUIV_Frame_Group ,
+                  MUIA_FrameTitle , Gs(&#x27;Slot&#x27;) ,
+                  MUIA_Group_Horiz , MUI_TRUE ,
+                  Child , _lied.txslot ,
+                  Child , _lied.txname ,
+                  Child , _lied.imleft ,
+                  Child , _lied.imright ,
+                  Child , _lied.btfirst ,
+                  Child , _lied.btlast ,
+                  Child , _lied.btpick ,
+            End ,
+            Child, EaterObject,
+      End
+
+      _lied.base := WindowObject ,
+            MUIA_Window_ScreenTitle,cscreentitle,
+            MUIA_Window_Title , Gs(&#x27;Instr/Smpl/Wave List Editor&#x27;) ,
+            MUIA_Window_ID , &quot;21WI&quot; ,
+            WindowContents , _lied.root ,
+      End
+
+
+/* changevolume  */
+/* %changevolume */
+
+
+      _cvol.slvolume := lslider({g1},&#x27;Volume (1/256)&#x27;,0,2048,256)
+      _cvol.btchange := keybutton(&#x27;\euC\enhange Volume&#x27;,&quot;ç&quot;)
+      _cvol.btdouble := keybutton(&#x27;\euD\enouble&#x27;,&quot;ð&quot;)
+      _cvol.bthalve := keybutton(&#x27;H\eua\enlve&#x27;,&quot;æ&quot;)
+      _cvol.btmaximum:= keybutton(&#x27;\euM\enaximum volume&#x27;,&quot;¸&quot;)
+
+      _cvol.root := GroupObject ,
+            MUIA_Background,MUII_GroupBack,
+            Child , g1 ,
+            Child , GroupObject ,
+                  MUIA_Group_Horiz , MUI_TRUE ,
+                  Child , _cvol.btchange ,
+                  Child , _cvol.btdouble ,
+                  Child , _cvol.bthalve ,
+                  Child , _cvol.btmaximum,
+            End ,
+            Child, EaterObject,
+      End
+
+      _cvol.base := WindowObject ,
+            MUIA_Window_ScreenTitle,cscreentitle,
+            MUIA_Window_Title , Gs(&#x27;Change Volume&#x27;) ,
+            MUIA_Window_ID , &quot;22WI&quot; ,
+            MUIA_Window_NoMenus , MUI_TRUE ,
+            WindowContents , _cvol.root ,
+      End
+
+
+/* change pitch widow setup*/
+/* %changepitch */
+
+
+
+      _cpit.stsource := lstring({g1},&#x27;&#x27;,6,-1,cint1)
+      _cpit.btscans := mysimplebutton( &#x27;Scan&#x27; )
+      _cpit.stdest := lstring({g2},&#x27;&#x27;,6,-1,cint1)
+      _cpit.btscand := mysimplebutton( &#x27;Scan&#x27; )
+      _cpit.btchange := keybutton(&#x27;\euC\enhange Pitch&#x27;,&quot;ç&quot;)
+      _cpit.btoctup := keybutton(&#x27;Octave \euU\enp&#x27;,&quot;µ&quot;)
+      _cpit.btoctdown := keybutton(&#x27;Octave \euD\enown&#x27;,&quot;ð&quot;)
+
+      _cpit.root := GroupObject ,
+            MUIA_Background,MUII_GroupBack,
+            Child , GroupObject ,
+                  MUIA_Frame , MUIV_Frame_Group ,
+                  MUIA_FrameTitle , Gs(&#x27;Source&#x27;) ,
+                  MUIA_Group_Horiz , MUI_TRUE ,
+                  Child , g1 ,
+                  Child , _cpit.btscans ,
+            End ,
+            Child , GroupObject ,
+                  MUIA_Frame , MUIV_Frame_Group ,
+                  MUIA_FrameTitle , Gs(&#x27;Destination&#x27;) ,
+                  MUIA_Group_Horiz , MUI_TRUE ,
+                  Child , g2 ,
+                  Child , _cpit.btscand ,
+            End ,
+            Child , GroupObject ,
+                  MUIA_Group_Horiz , MUI_TRUE ,
+                  Child , _cpit.btchange ,
+                  Child , _cpit.btoctup ,
+                  Child , _cpit.btoctdown ,
+            End ,
+            Child, EaterObject,
+      End
+
+      _cpit.base := WindowObject ,
+            MUIA_Window_ScreenTitle,cscreentitle,
+            MUIA_Window_Title , Gs(&#x27;Change Pitch&#x27;) ,
+            MUIA_Window_ID , &quot;23WI&quot; ,
+            MUIA_Window_NoMenus , MUI_TRUE ,
+            WindowContents , _cpit.root ,
+      End
+
+
+
+/* create chord window setup */
+/* %createchord */
+
+
+      _crch.sl2nd := lslider ({g1},&#x27;2nd Tone Offset&#x27;,-16,16,0)
+      _crch.sl3rd := lslider ({g2},&#x27;3rd Tone Offset&#x27;,-16,16,0)
+      _crch.sl4th := lslider ({g3},&#x27;4th Tone Offset&#x27;,-16,16,0)
+      _crch.btcreate := keybutton(&#x27;\euC\enreate Chord&#x27;,&quot;ç&quot;)
+
+      _crch.root := GroupObject ,
+            MUIA_Background,MUII_GroupBack,
+            Child , g1 ,
+            Child , g2 ,
+            Child , g3 ,
+            Child , _crch.btcreate ,
+            Child, EaterObject,
+      End
+
+      _crch.base := WindowObject ,
+            MUIA_Window_ScreenTitle,cscreentitle,
+            MUIA_Window_Title , Gs(&#x27;Chord Creation&#x27;) ,
+            MUIA_Window_ID , &quot;24WI&quot; ,
+            MUIA_Window_NoMenus , MUI_TRUE ,
+            WindowContents , _crch.root ,
+      End
+
+
+/* transpose window setup */
+/* %transpose */
+
+
+      _tran.cyapplyto := CycleObject ,
+            MUIA_Cycle_Entries , __transposes ,Chain,
+      End
+
+      _tran.sllevel := lslider({g1},&#x27;Transpose Level&#x27;,-32,32,0)
+      _tran.bttranspose := keybutton(&#x27;\euT\enranspose&#x27;,&quot;þ&quot;)
+      _tran.btoctup := keybutton(&#x27;Octave \euU\enp&#x27;,&quot;µ&quot;)
+      _tran.btoctdown := keybutton(&#x27;Octave \euD\enown&#x27;,&quot;ð&quot;)
+
+      _tran.root := GroupObject ,
+            MUIA_Background,MUII_GroupBack,
+            Child , GroupObject ,
+                  MUIA_Group_Horiz , MUI_TRUE ,
+                  Child , Label( &#x27;Apply To&#x27; ) ,
+                  Child , _tran.cyapplyto ,
+            End ,
+            Child , g1 ,
+            Child , GroupObject ,
+                  MUIA_Group_Horiz , MUI_TRUE ,
+                  Child , _tran.bttranspose ,
+                  Child , _tran.btoctup ,
+                  Child , _tran.btoctdown ,
+            End ,
+            Child, EaterObject,
+      End
+
+      _tran.base := WindowObject ,
+            MUIA_Window_ScreenTitle,cscreentitle,
+            MUIA_Window_Title , Gs(&#x27;Transposition&#x27;) ,
+            MUIA_Window_ID , &quot;25WI&quot; ,
+            MUIA_Window_NoMenus , MUI_TRUE ,
+            WindowContents , _tran.root ,
+      End
+
+
+/* dsp manager window setup */
+/* %dspmanager */
+
+
+      _dspm.lvdsps := ListviewObject ,
+            MUIA_FrameTitle , Gs(&#x27;DSP Pool&#x27;) ,
+            MUIA_Listview_Input , TRUE ,
+            MUIA_Listview_List , ListObject ,
+                  MUIA_Frame , MUIV_Frame_InputList ,
+             End ,
+      End
+
+      _dspm.lvinfo2 := FloattextObject,
+                  MUIA_Frame , MUIV_Frame_ReadList ,  
+                  MUIA_Floattext_TabSize,4,
+                  MUIA_Floattext_Justify,MUI_TRUE,
+                  End
+
+      _dspm.lvinfo := ListviewObject ,
+            MUIA_FrameTitle , Gs(&#x27;Info&#x27;) ,
+            MUIA_Listview_List, _dspm.lvinfo2,
+            MUIA_Listview_Input,FALSE,
+      End
+
+      _dspm.btload := keybutton(&#x27;\euL\enoad DSP...&#x27;,&quot;£&quot;)
+      _dspm.btflush := keybutton(&#x27;Fl\euu\ensh&#x27;,&quot;µ&quot;)
+      _dspm.btflushall := mysimplebutton( &#x27;Flush All...&#x27; )
+
+      _dspm.root := GroupObject ,
+            MUIA_Background,MUII_GroupBack,
+            Child,VGroup,
+                  MUIA_Frame,MUIV_Frame_Group,
+            Child , GroupObject ,
+                  MUIA_Group_Horiz , MUI_TRUE ,
+                  Child , _dspm.lvdsps ,
+                  Child , GroupObject ,
+                        MUIA_Frame , MUIV_Frame_Group ,
+                        MUIA_FrameTitle , Gs(&#x27;Operations&#x27;) ,
+                        MUIA_Weight , 50,
+                        Child , HVSpace ,
+                        Child , _dspm.btload ,
+                        Child , HVSpace ,
+                        Child , _dspm.btflush ,
+                        Child , HVSpace ,
+                        Child , _dspm.btflushall ,
+                        Child , HVSpace ,
+                  End ,
+                  
+            End ,
+            End,
+            
+            Child, _dspm.lvinfo,
+            Child, EaterObject,
+      End
+
+      _dspm.base := WindowObject ,
+            MUIA_Window_ScreenTitle,cscreentitle,
+            MUIA_Window_Title , Gs(&#x27;DSP Manager&#x27;) ,
+            MUIA_Window_ID , &quot;30WI&quot; ,
+            WindowContents , _dspm.root ,
+      End
+
+
+
+/* track editor window setup */
+/* %trackeditor */
+
+
+      _tred.txslot := TextObject ,
+            MUIA_Weight , 10 ,
+            MUIA_Background , MUII_TextBack ,
+            MUIA_Frame , MUIV_Frame_Text ,
+            MUIA_Text_SetMin , MUI_TRUE ,
+      End
+      _tred.stname := lstring({g1},&#x27;Name&#x27;)
+      _tred.imleft := imgleft()
+      _tred.imright := imgright()
+      _tred.btfirst := keybutton(&#x27;F&#x27;,0,0,10)
+      _tred.btlast := keybutton(&#x27;L&#x27;,0,0,10)
+      _tred.btpick := keybutton(&#x27;\euP&#x27;,&quot;¶&quot;,0,10)
+      _tred.chedit := KeyCheckMark( FALSE , &quot;`&quot; )
+
+      _tred.chedit:=KeyCheckMark( FALSE , &quot;`&quot; )
+      g2 := GroupObject ,
+            MUIA_Group_Columns , 2 ,
+            Child , KeyLabel2( &#x27;Edit&#x27; , &quot;`&quot; ),
+            Child , _tred.chedit ,
+      End
+      _tred.chspc := KeyCheckMark( FALSE , &quot;~&quot; )
+      g3 := GroupObject ,
+            MUIA_Group_Columns , 2 ,
+            Child , KeyLabel2( &#x27;Spc&#x27; , &quot;~&quot; ) ,
+            Child , _tred.chspc ,
+      End
+      _tred.cyoct := CycleObject ,
+            MUIA_Weight , 10 ,
+            MUIA_Cycle_Entries , [
+                  Gs(&#x27;1/2&#x27;) ,
+                  Gs(&#x27;2/3&#x27;) ,
+                  Gs(&#x27;3/4&#x27;) ,
+                  Gs(&#x27;4/5&#x27;) ,
+                  Gs(&#x27;5/6&#x27;) ,
+                  NIL ] ,
+      End
+      _tred.cyted := CycleObject ,
+            MUIA_Weight , 10 ,
+            MUIA_Cycle_Entries ,[
+                  Gs(&#x27;1 Chan&#x27;) ,
+                  Gs(&#x27;2 Chans&#x27;) ,
+                  Gs(&#x27;3 Chans&#x27;) ,
+                  Gs(&#x27;4 Chans&#x27;) ,
+                  NIL ] ,
+      End
+
+      _tred.cycom := CycleObject ,
+            MUIA_Weight , 10 ,
+            MUIA_Cycle_Entries , [
+                  Gs(&#x27;1 CL&#x27;),
+                  Gs(&#x27;2 CLs&#x27;),
+                  Gs(&#x27;3 CLs&#x27;),
+                  Gs(&#x27;4 CLs&#x27;),
+                  Gs(&#x27;5 CLs&#x27;),
+                  Gs(&#x27;6 CLs&#x27;),
+                  Gs(&#x27;7 CLs&#x27;),
+                  Gs(&#x27;8 CLs&#x27;),NIL ] ,
+      End
+
+      -&gt; channel #0
+
+      _tred.sttempo0 := CycleObject ,
+            MUIA_Weight , 10 ,
+            MUIA_Cycle_Entries ,__tempoctypes,
+      End
+
+      _tred.stlines0 := lstring({g5},&#x27;&#x27;,4,-1,cint1)
+      _tred.chon0 := KeyCheckMark( MUI_TRUE , &quot;(&quot; )
+      g6 := GroupObject ,
+            MUIA_Group_Columns , 2 ,
+            Child , KeyLabel2( &#x27;&#x27; , &quot;(&quot; ) ,
+            Child , _tred.chon0 ,
+      End
+      ga := GroupObject ,
+            MUIA_Group_Horiz , MUI_TRUE ,
+            Child , _tred.sttempo0 ,
+            Child , g5 ,
+            Child , g6 ,
+      End
+      _tred.lv0 := EditorObject ,
+            MUIA_Listview_MultiSelect , MUIV_Listview_MultiSelect_Default ,
+            MUIA_Listview_DoubleClick , MUI_TRUE ,
+            MUIA_Listview_List , ListObject ,
+                  MUIA_Frame , MUIV_Frame_InputList ,
+                  MUIA_Font,MUIV_Font_Fixed,
+            End ,
+      End
+      _tred.st0 := EffObject ,
+            MUIA_Frame , MUIV_Frame_String ,
+            MUIA_String_MaxLen , 20 ,
+            MUIA_String_AttachedList, _tred.lv0,
+      End
+
+      -&gt; channel #1
+
+      _tred.sttempo1 := CycleObject ,
+            MUIA_Weight , 10 ,
+            MUIA_Cycle_Entries ,__tempoctypes,
+      End
+      _tred.stlines1 := lstring({g5},&#x27;&#x27;,4,-1,cint1)
+      _tred.chon1 := KeyCheckMark( MUI_TRUE , &quot;)&quot; )
+      g6 := GroupObject ,
+            MUIA_Group_Columns , 2 ,
+            Child , KeyLabel2( &#x27;&#x27; , &quot;)&quot; ) ,
+            Child , _tred.chon1 ,
+      End
+      gb := GroupObject ,
+            MUIA_Group_Horiz , MUI_TRUE ,
+            Child , _tred.sttempo1 ,
+            Child , g5 ,
+            Child , g6 ,
+      End
+      _tred.lv1 := EditorObject ,
+            MUIA_Listview_MultiSelect , MUIV_Listview_MultiSelect_Default ,
+            MUIA_Listview_DoubleClick , MUI_TRUE ,
+            MUIA_Listview_List , ListObject ,
+                  MUIA_Frame , MUIV_Frame_InputList ,
+                  MUIA_Font,MUIV_Font_Fixed,
+            End ,
+      End
+      _tred.st1 := EffObject ,
+            MUIA_Frame , MUIV_Frame_String ,
+            MUIA_String_MaxLen , 20 ,
+            MUIA_String_AttachedList, _tred.lv1,
+      End
+
+      -&gt; channel #2
+
+      _tred.sttempo2 := CycleObject ,
+            MUIA_Weight , 10 ,
+            MUIA_Cycle_Entries ,__tempoctypes,
+      End
+      _tred.stlines2 := lstring({g5},&#x27;&#x27;,4,-1,cint1)
+      _tred.chon2 := KeyCheckMark( MUI_TRUE , &quot;/&quot; )
+      g6 := GroupObject ,
+            MUIA_Group_Columns , 2 ,
+            Child , KeyLabel2( &#x27;&#x27; , &quot;/&quot; ) ,
+            Child , _tred.chon2 ,
+      End
+      gc := GroupObject ,
+            MUIA_Group_Horiz , MUI_TRUE ,
+            Child , _tred.sttempo2 ,
+            Child , g5 ,
+            Child , g6 ,
+      End
+      _tred.lv2 := EditorObject ,
+            MUIA_Listview_MultiSelect , MUIV_Listview_MultiSelect_Default ,
+            MUIA_Listview_DoubleClick , MUI_TRUE ,
+            MUIA_Listview_List , ListObject ,
+                  MUIA_Frame , MUIV_Frame_InputList ,
+                  MUIA_Font,MUIV_Font_Fixed,
+            End ,
+      End
+      _tred.st2 := EffObject ,
+            MUIA_Frame , MUIV_Frame_String ,
+            MUIA_String_MaxLen , 20 ,
+            MUIA_String_AttachedList, _tred.lv2,
+      End
+
+      -&gt; channel #3
+
+      _tred.sttempo3 := CycleObject ,
+            MUIA_Weight , 10 ,
+            MUIA_Cycle_Entries ,__tempoctypes,
+      End
+      _tred.stlines3 := lstring({g5},&#x27;&#x27;,4,-1,cint1)
+      _tred.chon3 := KeyCheckMark( MUI_TRUE , &quot;*&quot; )
+      g6 := GroupObject ,
+            MUIA_Group_Columns , 2 ,
+            Child , KeyLabel2( &#x27;&#x27; , &quot;*&quot; ) ,
+            Child , _tred.chon3 ,
+      End
+      gd := GroupObject ,
+            MUIA_Group_Horiz , MUI_TRUE ,
+            Child , _tred.sttempo3 ,
+            Child , g5 ,
+            Child , g6 ,
+      End
+      _tred.lv3 := EditorObject ,
+            MUIA_Listview_MultiSelect , MUIV_Listview_MultiSelect_Default ,
+            MUIA_Listview_DoubleClick , MUI_TRUE ,
+            MUIA_Listview_List , ListObject ,
+                  MUIA_Frame , MUIV_Frame_InputList ,
+                  MUIA_Font,MUIV_Font_Fixed,
+            End ,
+      End
+      _tred.st3 := EffObject ,
+            MUIA_Frame , MUIV_Frame_String ,
+            MUIA_String_MaxLen , 20 ,
+            MUIA_String_AttachedList, _tred.lv3,
+      End
+
+      _tred.root := GroupObject ,
+            MUIA_Background,MUII_GroupBack,
+            Child , GroupObject ,
+                  MUIA_Group_Horiz , MUI_TRUE ,
+                  Child , _tred.txslot ,
+                  Child , g1 ,
+                  Child , _tred.imleft ,
+                  Child , _tred.imright ,
+                  Child , _tred.btfirst ,
+                  Child , _tred.btlast ,
+                  Child , _tred.btpick ,
+                  Child , g2 ,
+                  Child , g3 ,
+                  Child , _tred.cyoct ,
+                  Child , _tred.cycom ,
+                  Child , _tred.cyted ,
+            End ,
+            Child , GroupObject ,
+                  MUIA_Group_Horiz , MUI_TRUE ,
+                  MUIA_Frame,MUIV_Frame_Group ,
+                  Child , GroupObject ,
+                        -&gt;MUIA_Frame , MUIV_Frame_Group ,
+                        -&gt;MUIA_FrameTitle , Gs(&#x27;#0&#x27;) ,
+                        -&gt;MUIA_Background, MUII_GroupBack,
+                        Child , ga ,
+                        Child , _tred.lv0 ,
+                        Child , _tred.st0 ,
+                  End ,
+                  Child, balance(),
+                  Child , GroupObject ,
+                        -&gt;MUIA_Frame , MUIV_Frame_Group ,
+                        -&gt;MUIA_FrameTitle , Gs(&#x27;#1&#x27;) ,
+                        -&gt;MUIA_Background, MUII_GroupBack,
+                        Child , gb ,
+                        Child , _tred.lv1 ,
+                        Child , _tred.st1 ,
+                  End ,
+                  Child, balance(),
+                  Child , GroupObject ,
+                        -&gt;MUIA_Frame , MUIV_Frame_Group ,
+                        -&gt;MUIA_FrameTitle , Gs(&#x27;#2&#x27;) ,
+                        -&gt;MUIA_Background, MUII_GroupBack,
+                        Child , gc ,
+                        Child , _tred.lv2 ,
+                        Child , _tred.st2 ,
+                  End ,
+                  Child, balance(),
+                  Child , GroupObject ,
+                        -&gt;MUIA_Frame , MUIV_Frame_Group ,
+                        -&gt;MUIA_FrameTitle , Gs(&#x27;#3&#x27;) ,
+                        -&gt;MUIA_Background, MUII_GroupBack,
+                        Child , gd ,
+                        Child , _tred.lv3 ,
+                        Child , _tred.st3 ,
+                  End ,
+            End ,
+            Child , EaterObject,
+      End
+
+      _tred.base := WindowObject ,
+            MUIA_Window_ScreenTitle,cscreentitle,
+            MUIA_Window_Title , Gs(&#x27;Track Editor&#x27;) ,
+            MUIA_Window_ID , &quot;31WI&quot; ,
+            WindowContents , _tred.root ,
+      End
+
+
+
+/* track options window setup */
+/* %trackoptions */
+
+
+
+      _trop.slleft:=lknob({g1},&#x27;Left&#x27;,0,1024,256)
+      _trop.slright:=lknob({g2},&#x27;Right&#x27;,0,1024,256)
+      _trop.sltempoc:=lslider({g3}, &#x27;Tempo&#x27;,1,400,100,&#x27;%ld%%&#x27;)
+      _trop.chusedsp:=lcheck({g4},&#x27;Enabled&#x27;,FALSE)
+      _trop.btdsp:=mysimplebutton(&#x27;Edit...&#x27;)
+      _trop.chexclude:=lcheck({g5},&#x27;Exclude From Song DSP&#x27;,FALSE)
+      _trop.root := GroupObject,
+                  MUIA_Background,MUII_GroupBack,
+                  Child ,HGroup,
+                        Child, HGroup ,
+                              MUIA_Frame , MUIV_Frame_Group ,
+                              MUIA_FrameTitle , Gs(&#x27;Volume&#x27;) ,
+                              Child, g1,
+                              Child, g2,
+                              End ,
+                        Child,GroupObject,
+                              Child , g3, 
+                              
+                              Child, HGroup ,
+                                    MUIA_Frame , MUIV_Frame_Group ,
+                                    MUIA_FrameTitle , Gs(&#x27;DSP Sequence&#x27;) ,
+                                    Child, g4,
+                                    Child, HSpace(10),
+                                    Child, _trop.btdsp ,
+                                    End,
+                              Child , g5,
+                              End ,
+                        End ,
+                  
+                  Child , EaterObject,
+      End
+
+      _trop.base := WindowObject ,
+            MUIA_Window_ScreenTitle,cscreentitle,
+            MUIA_Window_Title , Gs(&#x27;Track Options&#x27;) ,
+            MUIA_Window_ID , &quot;32WI&quot; ,
+            WindowContents , _trop.root ,
+      End
+
+
+/* section editor setup */
+/* %sectioneditor */
+      
+
+
+      _sect.txslot := TextObject ,
+            MUIA_Weight , 20 ,
+            MUIA_Background , MUII_TextBack ,
+            MUIA_Frame , MUIV_Frame_Text ,
+            MUIA_Text_SetMin , MUI_TRUE ,
+      End
+
+      _sect.stname := lstring({g1},&#x27;Name&#x27;)
+
+      _sect.btfirst := keybutton(&#x27;F\eui\enrst&#x27;,&quot;¡&quot;,FALSE,20)
+      _sect.btlast := keybutton(&#x27;\euL\enast&#x27;,&quot;£&quot;,FALSE,20)
+      _sect.btdel := keybutton(&#x27;\euD\enel&#x27;, &quot;ð&quot;,FALSE,20)
+      _sect.btnew := keybutton(&#x27;\euN\enew&#x27;,&quot;­&quot;,FALSE,20)
+      _sect.btplay := keybutton(&#x27;\euP\enlay&#x27;,&quot;¶&quot;,FALSE,20)
+      _sect.imleft:=imgleft()
+      _sect.imright:=imgright()
+
+
+      _sect.lv1 := ListviewObject ,
+            MUIA_FrameTitle , Gs(&#x27;Pos:Rep&#x27;) ,
+            MUIA_Dropable,MUI_TRUE,
+            MUIA_Listview_DragType, 1,
+            MUIA_Listview_DoubleClick , MUI_TRUE ,Chain,
+            MUIA_Listview_List , DSListObject ,
+                  MUIA_Frame , MUIV_Frame_InputList ,
+                  MUIA_List_DragSortable , MUI_TRUE,
+                  MUIA_UserData,hooks.sect_dragdrop,
+                  End ,
+      End
+
+      _sect.btdelpos := mysimplebutton( &#x27;Del&#x27; )
+      _sect.rplus := mysimplebutton( &#x27;R+&#x27; )
+      _sect.rminus := mysimplebutton( &#x27;R-&#x27; )
+      _sect.btnewpos := mysimplebutton( &#x27;New&#x27; )
+      _sect.btinspos := mysimplebutton( &#x27;Insert&#x27; )
+
+      _sect.lv2 := ListviewObject ,
+            MUIA_FrameTitle , Gs (&#x27;Used Tracks&#x27;) ,
+            MUIA_Listview_MultiSelect , MUIV_Listview_MultiSelect_Default ,
+            MUIA_Listview_DoubleClick , MUI_TRUE ,Chain,
+            MUIA_Listview_List , ListObject ,
+                  MUIA_Frame , MUIV_Frame_InputList ,
+                  End ,
+      End
+
+      _sect.btdeltrack := mysimplebutton( &#x27;DelT&#x27; )
+      _sect.btaddtrack := keybutton(&#x27;\euA\enddT&#x27;,&quot;æ&quot;)
+      _sect.btclear := mysimplebutton( &#x27;Clr&#x27; )
+      _sect.playtracks := keybutton( &#x27;Pla\euy\en&#x27;,&quot;±&quot; )
+      _sect.btcopy := mysimplebutton( &#x27;-&gt;Buf&#x27; )
+      _sect.btpaste := mysimplebutton( &#x27;Buf-&gt;&#x27; )
+
+      _sect.lv3 := ListviewObject ,
+            MUIA_FrameTitle , Gs(&#x27;Track Pool&#x27;) ,
+            MUIA_Listview_MultiSelect , MUIV_Listview_MultiSelect_Default ,
+            MUIA_Listview_DoubleClick , MUI_TRUE ,Chain,
+            MUIA_Listview_List , ListObject ,
+                  MUIA_Frame , MUIV_Frame_InputList ,
+                  End ,
+      End
+
+
+      g2 := HGroup ,
+            MUIA_Frame , MUIV_Frame_Group ,
+            Child , GroupObject ,
+                  MUIA_Weight , 50 ,
+                  Child , _sect.lv1 ,
+                  Child , HGroup ,
+                        Child , _sect.btdelpos ,
+                        Child , _sect.rplus ,
+                        Child , _sect.rminus ,
+                        End ,
+                  Child , HGroup ,
+                        Child , _sect.btnewpos ,
+                        Child , _sect.btinspos ,
+                        End ,
+                  End ,
+            Child , balance(),
+            Child , GroupObject ,
+                  Child , _sect.lv2 ,
+                  Child , HGroup ,
+                        Child , _sect.btdeltrack ,
+                        Child , _sect.btaddtrack ,
+                        Child , _sect.btclear ,
+                        End ,
+                  Child , HGroup ,
+                        Child , _sect.playtracks ,
+                        Child , _sect.btcopy ,
+                        Child , _sect.btpaste ,
+                        End ,
+                  End ,
+            Child , balance(),
+            Child , GroupObject ,
+                  Child , _sect.lv3 ,
+                  End ,
+      End
+
+      _sect.root := GroupObject ,
+            MUIA_Background,MUII_GroupBack,
+            Child , GroupObject ,
+                  MUIA_Group_Horiz , MUI_TRUE ,
+                  Child , _sect.txslot ,
+                  Child , g1 ,
+                  Child , _sect.imleft,
+                  Child , _sect.imright,  
+                  Child , _sect.btfirst ,
+                  Child , _sect.btlast ,
+                  Child , _sect.btdel ,
+                  Child , _sect.btnew ,
+                  Child , _sect.btplay ,
+                  End ,
+            Child , g2 ,
+            Child , EaterObject ,
+      End
+
+      _sect.base := WindowObject ,
+            MUIA_Window_ScreenTitle,cscreentitle,
+            MUIA_Window_Title , Gs(&#x27;Section Editor&#x27;) ,
+            MUIA_Window_ID , &quot;33WI&quot; ,
+            WindowContents , _sect.root ,
+      End
+
+
+
+
+
+ENDPROC
+
+
+                  /*---------*/
+                        /* %part 5 */
+                        /*---------*/
+
+
+PROC createpart5()
+
+
+/* track dsp sequence window setup */
+/* %trackdsp */
+
+      _tdsp.lvdspsequence := ListviewObject ,
+            MUIA_FrameTitle , Gs(&#x27;DSP Sequence&#x27;) ,
+            MUIA_Dropable,MUI_TRUE,
+            MUIA_Listview_DragType, 1,
+            MUIA_Listview_List , DSListObject ,
+                  MUIA_Frame , MUIV_Frame_InputList ,
+                  MUIA_List_DisplayHook, hooks.tdsp_disphook,
+                  MUIA_List_Format,Gs(&#x27;MIW=10 P=\e8 BAR,MIW=70 BAR,MIW=20 P=\er&#x27;),
+                  MUIA_List_Title,MUI_TRUE,
+                  MUIA_List_DragSortable , MUI_TRUE,
+                  MUIA_UserData,hooks.tdsp_dragdrop,
+            End ,
+            Chain ,
+
+      End
+      _tdsp.btadd := keybutton(&#x27;\eI[6:31]  \euA\endd&#x27;,&quot;æ&quot;,0)
+      _tdsp.btinsert := keybutton(&#x27;\eI[6:31] \euI\ennsert&#x27;,&quot;¡&quot;,0)
+      _tdsp.btdelete := keybutton(&#x27;\euD\enelete&#x27;,&quot;ð&quot;,0)
+      _tdsp.btdeleteall := mysimplebutton( &#x27;Delete All&#x27; )
+      _tdsp.lvdsppool := ListviewObject ,
+            MUIA_FrameTitle , Gs(&#x27;DSP Pool&#x27;) ,
+            MUIA_Listview_List , ListObject ,
+                  MUIA_Frame , MUIV_Frame_ReadList ,
+            End ,
+            Chain ,
+      End
+
+      _tdsp.lvparams := ListviewObject ,
+            MUIA_Weight,50,
+            MUIA_FrameTitle , Gs(&#x27;Parameters&#x27;) ,
+            MUIA_Listview_List , ListObject ,
+                  MUIA_Frame , MUIV_Frame_ReadList ,
+            End ,
+            Chain ,
+      End
+
+      _tdsp.sloffset:=lslider({g1},&#x27;Offset&#x27;,-256,256,0)
+      _tdsp.slcoef:=lslider({g2},&#x27;Coef&#x27;,-1024,1024,256,&#x27;%ld/256&#x27;)
+      _tdsp.stoffset:=StringObject,
+            MUIA_Frame,MUIV_Frame_String,
+            MUIA_String_Accept,cint2,
+            MUIA_String_MaxLen,7,
+            MUIA_String_Integer,0,
+            MUIA_Weight,25,
+            MUIA_String_AdvanceOnCR,MUI_TRUE,
+            Chain,
+            End
+
+      _tdsp.stcoef:=StringObject,
+            MUIA_Frame,MUIV_Frame_String, 
+            MUIA_String_Accept,cint2,
+            MUIA_String_MaxLen,7,
+            MUIA_String_Integer,256,
+            MUIA_Weight,25,
+            MUIA_String_AdvanceOnCR,MUI_TRUE,
+            Chain,
+            End
+      _tdsp.txparam:=TextObject,
+                  -&gt;MUIA_Background , MUII_TextBack ,
+                  -&gt;MUIA_Frame , MUIV_Frame_Text ,
+                  MUIA_Text_SetMin,MUI_TRUE,
+                  MUIA_Text_PreParse,ccenter,
+                  End
+
+      _tdsp.cylfotype:=CycleObject,
+            MUIA_Cycle_Entries ,__lfotypes ,
+            MUIA_Weight ,10 ,
+            Chain,
+      End
+
+      _tdsp.sllfoper:=lnumeric({g3},&#x27;Period&#x27;,5,300,50,&#x27;%ld/5s&#x27;)
+      _tdsp.chtempo:=lcheck({g4},&#x27;Parameter Depends On Tempo&#x27;,FALSE)
+      _tdsp.chlfo:=lcheck({g5},&#x27;LFO&#x27;,FALSE)
+      _tdsp.chlfotempo:=lcheck({g6},&#x27;By Lines&#x27;,FALSE)
+      
+
+      _tdsp.cyccassign:=CycleObject,
+            MUIA_Cycle_Entries,__ccassigns,
+            Chain,End
+
+      _tdsp.root := GroupObject ,
+            MUIA_Background,MUII_GroupBack,
+            Child , GroupObject ,
+                  MUIA_Group_Horiz , MUI_TRUE ,
+                  Child , _tdsp.lvdspsequence ,
+                  Child , GroupObject ,
+                        MUIA_Weight , 80 ,
+                        MUIA_Frame , MUIV_Frame_Group ,
+                        MUIA_FrameTitle , Gs(&#x27;Operations&#x27;) ,
+                        Child , _tdsp.btadd ,
+                        Child , HVSpace ,
+                        Child , _tdsp.btinsert ,
+                        Child , HVSpace ,
+                        Child , _tdsp.btdelete ,
+                        Child , _tdsp.btdeleteall ,
+                        Child , HVSpace ,
+                        Child , Label (&#x27;\ecCmd Assign:&#x27;),
+                        Child ,_tdsp.cyccassign,
+                        Child, HVSpace,
+                  End ,
+                  Child , _tdsp.lvdsppool ,
+            End ,
+            Child , HGroup,
+                  MUIA_Frame,MUIV_Frame_Group,
+                  Child,_tdsp.lvparams,
+                  Child, VGroup,
+                        Child, _tdsp.txparam,
+                        Child, HGroup,
+                              Child, g1,
+                              Child, _tdsp.stoffset,
+                              End,
+                        Child, HGroup,
+                              Child, g2,
+                              Child, _tdsp.stcoef,
+                              End,
+                        Child, HGroup,
+                              Child,g4,
+                              Child,HVSpace,
+                              End,
+                        Child, HGroup,
+                              MUIA_Frame , MUIV_Frame_Group ,     
+                              Child,g5,
+                              Child,g6,    
+                              Child,g3,
+                              Child,Label(&#x27;Type&#x27;),
+                              Child,_tdsp.cylfotype,
+                              End,
+                        
+                        End,
+                  End,
+            Child, EaterObject,
+            
+      End
+
+      _tdsp.base := WindowObject ,
+            MUIA_Window_ScreenTitle,cscreentitle,
+            MUIA_Window_Title , Gs(&#x27;Track DSP Sequence&#x27;) ,
+            MUIA_Window_ID , &quot;34WI&quot; ,
+            WindowContents , _tdsp.root ,
+      End
+
+
+
+/* mpeg audio decoder window setup */
+/* %mpegdecoder */
+
+
+      _mpeg.stfile:=StringMUI(&#x27;&#x27;,255)
+
+      _mpeg.pampeg := PopaslObject ,
+            MUIA_Popasl_Type , 0 ,
+            MUIA_Popstring_String , _mpeg.stfile ,
+            MUIA_Popstring_Button , PopButton( MUII_PopFile ) ,
+            Chain,
+      End
+
+      _mpeg.txlayer := TextObject ,
+            MUIA_Background , MUII_TextBack ,
+            MUIA_Frame , MUIV_Frame_Text ,
+            MUIA_FrameTitle , Gs(&#x27;Layer&#x27;) ,
+            MUIA_Text_SetMin , MUI_TRUE ,
+            MUIA_Text_PreParse , ccenter ,
+      End
+
+      _mpeg.txbitrate := TextObject ,
+            MUIA_Background , MUII_TextBack ,
+            MUIA_Frame , MUIV_Frame_Text ,
+            MUIA_FrameTitle , Gs(&#x27;Bitrate&#x27;) ,
+            MUIA_Text_SetMin , MUI_TRUE ,
+            MUIA_Text_PreParse , ccenter ,
+      End
+
+      _mpeg.txfreq := TextObject ,
+            MUIA_Background , MUII_TextBack ,
+            MUIA_Frame , MUIV_Frame_Text ,
+            MUIA_FrameTitle , Gs(&#x27;Frequency&#x27;) ,
+            MUIA_Text_SetMin , MUI_TRUE ,
+            MUIA_Text_PreParse , ccenter ,
+      End
+
+      _mpeg.txmode := TextObject ,
+            MUIA_Background , MUII_TextBack ,
+            MUIA_Frame , MUIV_Frame_Text ,
+            MUIA_FrameTitle , Gs(&#x27;Mode&#x27;) ,
+            MUIA_Text_SetMin , MUI_TRUE ,
+            MUIA_Text_PreParse , ccenter ,
+      End
+
+      _mpeg.txduration := TextObject ,
+            MUIA_Background , MUII_TextBack ,
+            MUIA_Frame , MUIV_Frame_Text ,
+            MUIA_FrameTitle , Gs(&#x27;Duration&#x27;) ,
+            MUIA_Text_SetMin , MUI_TRUE ,
+            MUIA_Text_PreParse , ccenter ,
+      End
+
+
+      _mpeg.slstart := lslider({g1},Gs(&#x27;Start&#x27;),0,0,0,&#x27;%ld sec&#x27;)
+      _mpeg.slend := lslider({g2},Gs(&#x27;End&#x27;),0,0,0,&#x27;%ld sec&#x27;)
+
+      _mpeg.ch16bit := lcheck2({g3},Gs(&#x27;16-bit&#x27;),MUI_TRUE )
+      _mpeg.chstereo :=lcheck2({g4},Gs(&#x27;Stereo&#x27;),MUI_TRUE)
+
+      _mpeg.gampeg := GaugeObject ,
+            GaugeFrame ,
+            MUIA_Gauge_Horiz , MUI_TRUE ,
+            MUIA_Gauge_Max , 100 ,
+            MUIA_Gauge_InfoText,&#x27;&#x27;,
+      End
+
+      _mpeg.txmemory := TextObject ,
+            MUIA_Background , MUII_TextBack ,
+            MUIA_Frame , MUIV_Frame_Text ,
+            MUIA_FrameTitle , Gs(&#x27;Required Memory&#x27;) ,
+            MUIA_Text_SetMin , MUI_TRUE ,
+            MUIA_Text_PreParse , ccenter ,
+      End
+
+      _mpeg.btstart := keybutton(Gs(&#x27;\euS\enTART&#x27;),&#x27;ß&#x27;,MUI_TRUE)
+
+      -&gt;_mpeg.btabort := keybutton(Gs(&#x27;\euA\enBORT&#x27;),&#x27;æ&#x27;,MUI_TRUE)
+
+      _mpeg.txslot := TextObject ,
+            MUIA_Background , MUII_TextBack ,
+            MUIA_Frame , MUIV_Frame_Text ,
+            MUIA_FrameTitle , Gs(&#x27;Destination&#x27;) ,
+            MUIA_Text_SetMin , MUI_TRUE ,
+            MUIA_Text_PreParse , ccenter ,
+      End
+
+
+      _mpeg.root := GroupObject ,
+            MUIA_Background, MUII_GroupBack,
+            Child , GroupObject ,
+                        MUIA_Frame , MUIV_Frame_Group ,
+                        MUIA_FrameTitle , &#x27;MPEG File&#x27; ,
+                        Child , _mpeg.pampeg ,
+                        Child , HGroup ,
+                              Child , _mpeg.txlayer ,
+                              Child , _mpeg.txbitrate ,
+                              Child , _mpeg.txfreq ,
+                              Child , _mpeg.txmode ,
+                              Child , _mpeg.txduration ,
+                        End ,
+                  End ,
+            Child , HGroup ,
+                        Child , VGroup ,
+                              Child, g1,
+                              Child, g2,
+                        End,
+                        Child , VGroup,
+                              Child, g3,
+                              Child, g4,
+                        End,
+                  End ,
+            Child , _mpeg.gampeg ,
+            Child , HGroup ,
+                        Child , _mpeg.txmemory ,
+                        Child , _mpeg.btstart ,
+                        -&gt;Child , _mpeg.btabort ,
+                        Child , _mpeg.txslot ,
+                  End ,
+            Child, EaterObject,
+      End
+
+      _mpeg.base := WindowObject ,
+            MUIA_Window_ScreenTitle,cscreentitle,
+            MUIA_Window_Title , &#x27;MPEG Audio Decoder&#x27; ,
+            MUIA_Window_ID , &quot;35WI&quot; ,
+            WindowContents , _mpeg.root ,
+      End
+
+
+
+/* APPLICATION MENU CREATION */
+
+
+
+
+
+      _appm.open :=     lmenu (&#x27;Open...&#x27; , Gs(&#x27;O&#x27;))
+      _appm.save :=     lmenu ( &#x27;Save&#x27; , Gs(&#x27;S&#x27;))
+      _appm.saveas := lmenu (&#x27;Save As...&#x27;)
+      _appm.clear :=    lmenu (&#x27;Clear...&#x27;)
+      _appm.aboutaudiostream := lmenu (&#x27;About AudioSTREAM...&#x27;)
+      _appm.aboutmui := lmenu (&#x27;About MUI...&#x27;)
+      _appm.matrixor := lmenu (&#x27;MatriXor v1.1...&#x27;)
+      _appm.sleep := lmenu (&#x27;Iconify&#x27;)
+      _appm.quit := lmenu (&#x27;Quit&#x27; , Gs(&#x27;Q&#x27;))
+
+      _appm.moduleoptions := lmenu (&#x27;Properties...&#x27;)
+
+      _appm._project := MenuitemObject ,
+            MUIA_Menuitem_Title, Gs(&#x27;Project&#x27;) ,
+            MUIA_Family_Child , _appm.open ,
+            MUIA_Family_Child , _appm.save ,
+            MUIA_Family_Child , _appm.saveas ,
+            MUIA_Family_Child , _appm.clear ,
+            MUIA_Family_Child , _appm.moduleoptions ,
+            MUIA_Family_Child , BarLabel ,
+            MUIA_Family_Child , _appm.aboutaudiostream ,
+            MUIA_Family_Child , _appm.aboutmui ,
+            MUIA_Family_Child , BarLabel ,
+            MUIA_Family_Child , _appm.matrixor ,
+            MUIA_Family_Child , _appm.sleep ,
+            MUIA_Family_Child , _appm.quit ,
+      End
+
+
+      _appm.infowindow := lmenu (&#x27;Info Window&#x27;)
+      
+      _appm.sampleeditor := lmenu (&#x27;Sample Editor&#x27; ,Gs(&#x27;Z&#x27;))
+      _appm.waveeditor := lmenu (&#x27;Wave Editor&#x27;, Gs(&#x27;W&#x27;))
+      _appm.listeditor := lmenu (&#x27;List Editor&#x27; ,Gs(&#x27;R&#x27;))
+      _appm.dspmanager := lmenu (&#x27;DSP Manager&#x27;,Gs(&#x27;D&#x27;))
+
+      _appm._display := MenuitemObject  ,
+            MUIA_Menuitem_Title , Gs(&#x27;Display&#x27;) ,
+            MUIA_Family_Child , _appm.infowindow ,
+            MUIA_Family_Child , BarLabel ,
+            MUIA_Family_Child , _appm.sampleeditor ,
+            MUIA_Family_Child , _appm.waveeditor ,
+            MUIA_Family_Child , _appm.listeditor ,
+            MUIA_Family_Child , _appm.dspmanager ,
+      End
+
+      _appm.select := MenuitemObject,
+            MUIA_Menuitem_Title, Gs (&#x27;Select...&#x27;) ,
+      End
+      _appm.addnew := lmenu ( &#x27;Add New&#x27;)
+
+      _appm.deletecurrent := MenuitemObject ,
+             MUIA_Menuitem_Title, Gs(&#x27;Delete Current...&#x27;) ,
+            MUIA_Menuitem_Enabled , FALSE ,
+      End
+      _appm.sedit := MenuitemObject ,
+            MUIA_Menuitem_Title , Gs(&#x27;Edit...&#x27;) ,
+            MUIA_Menuitem_Enabled , FALSE ,
+      End
+      _appm.soptions := MenuitemObject ,
+            MUIA_Menuitem_Title , Gs(&#x27;Options...&#x27;) ,
+            MUIA_Menuitem_Enabled , FALSE ,
+      End
+      _appm.stranspose := MenuitemObject ,
+            MUIA_Menuitem_Title , Gs(&#x27;Transpose...&#x27;) ,
+            MUIA_Menuitem_Enabled , FALSE ,
+      End
+      _appm.sdsp := MenuitemObject ,
+            MUIA_Menuitem_Title , Gs(&#x27;DSP...&#x27;) ,
+            MUIA_Menuitem_Enabled , FALSE ,
+      End
+      _appm.smakeclone := MenuitemObject ,
+            MUIA_Menuitem_Title , Gs(&#x27;Make Clone&#x27;) ,
+            MUIA_Menuitem_Enabled , FALSE ,
+      End
+
+      _appm._song := MenuitemObject ,
+            MUIA_Menuitem_Title , Gs(&#x27;Song&#x27;) ,
+            MUIA_Family_Child , _appm.select ,
+            MUIA_Family_Child , BarLabel,
+            MUIA_Family_Child , _appm.addnew ,
+            MUIA_Family_Child , _appm.deletecurrent ,
+            MUIA_Family_Child , BarLabel ,
+            MUIA_Family_Child , _appm.sedit ,
+            MUIA_Family_Child , _appm.soptions ,
+            MUIA_Family_Child , _appm.stranspose ,
+            MUIA_Family_Child , _appm.sdsp ,
+            MUIA_Family_Child , BarLabel ,
+            MUIA_Family_Child , _appm.smakeclone ,
+      End
+
+      _appm.tpick := lmenu (&#x27;Pick...&#x27; , Gs(&#x27;[&#x27;))
+      _appm.tnewhere := lmenu (&#x27;New Here&#x27; , Gs(&#x27;/&#x27;))
+      _appm.tdelcurrent := lmenu (&#x27;Delete Current&#x27;)
+      _appm.tplay := lmenu (&#x27;Play&#x27;, Gs(&#x27;P&#x27;))
+      _appm.tedit := lmenu (&#x27;Edit...&#x27;)
+      _appm.toptions := lmenu (&#x27;Options...&#x27;)
+      _appm.ttranspose := lmenu (&#x27;Transpose...&#x27;)
+      _appm.tcopy := lmenu ( &#x27;Copy&#x27;)
+      _appm.tcut := lmenu (&#x27;Cut&#x27;)
+      _appm.tpaste := lmenu (&#x27;Paste&#x27;)
+      _appm.tswap := lmenu (&#x27;Swap&#x27;)
+      _appm.tclear := lmenu (&#x27;Clear&#x27;)
+      _appm.tmakeclone := lmenu (&#x27;Make Clone&#x27;)
+      _appm.tdsp := MenuitemObject ,
+            MUIA_Menuitem_Title , Gs(&#x27;DSP...&#x27;) ,
+      End
+
+      _appm._track := MenuitemObject ,
+            MUIA_Menuitem_Title , Gs(&#x27;Track&#x27;) ,
+            MUIA_Family_Child , _appm.tpick ,
+            MUIA_Family_Child , _appm.tnewhere ,
+            MUIA_Family_Child , _appm.tdelcurrent ,
+            MUIA_Family_Child , _appm.tplay ,
+            MUIA_Family_Child , BarLabel ,
+            MUIA_Family_Child , _appm.tedit ,
+            MUIA_Family_Child , _appm.toptions ,
+            MUIA_Family_Child , _appm.tdsp ,
+            MUIA_Family_Child , _appm.ttranspose ,
+            MUIA_Family_Child , BarLabel ,
+            MUIA_Family_Child , _appm.tcopy ,
+            MUIA_Family_Child , _appm.tcut ,
+            MUIA_Family_Child , _appm.tpaste ,
+            -&gt; MUIA_Family_Child , _appm.tswap ,
+            -&gt; MUIA_Family_Child , _appm.tclear , !!! unused area
+            -&gt; MUIA_Family_Child , BarLabel ,
+            -&gt; MUIA_Family_Child , _appm.tmakeclone ,
+            
+      End
+
+      _appm.pick := lmenu (&#x27;Pick...&#x27;, Gs(&#x27;U&#x27;))
+      _appm.iload := lmenu (&#x27;Load...&#x27;)
+      _appm.loadfromlist := lmenu (&#x27;Load From List...&#x27;, Gs(&#x27;L&#x27;))
+      _appm.isave := lmenu ( &#x27;Save&#x27;)
+      _appm.isaveas := lmenu (&#x27;Save As...&#x27;)
+      _appm.iflush := lmenu (&#x27;Flush...&#x27;)
+      _appm.iedit := lmenu (&#x27;Edit...&#x27;)
+      _appm.iproperties := lmenu (&#x27;Properties...&#x27;, Gs(&#x27;I&#x27;))
+      _appm.idsp := MenuitemObject ,
+            MUIA_Menuitem_Title , Gs(&#x27;DSP...&#x27;) ,
+            MUIA_Menuitem_Enabled , FALSE ,
+      End
+      _appm.irender := lmenu (&#x27;Render...&#x27;)
+      _appm.imakeclone := lmenu (&#x27;Make Clone&#x27;)
+
+      _appm._instrument := MenuitemObject ,
+            MUIA_Menuitem_Title , Gs(&#x27;Instrument&#x27;) ,
+            MUIA_Family_Child , _appm.pick ,
+            MUIA_Family_Child , BarLabel ,
+            MUIA_Family_Child , _appm.iload ,
+            MUIA_Family_Child , _appm.loadfromlist ,
+            MUIA_Family_Child , _appm.isave ,
+            MUIA_Family_Child , _appm.isaveas ,
+            MUIA_Family_Child , _appm.iflush ,
+            MUIA_Family_Child , BarLabel ,
+            MUIA_Family_Child , _appm.iedit ,
+            MUIA_Family_Child , _appm.iproperties ,
+            MUIA_Family_Child , _appm.idsp ,
+            MUIA_Family_Child , _appm.irender ,
+            MUIA_Family_Child , BarLabel ,
+            MUIA_Family_Child , _appm.imakeclone ,
+      End
+
+      _appm.copyrange := lmenu (&#x27;Copy Range&#x27;, Gs(&#x27;C&#x27;))
+      _appm.copyrange2:= lmenu (&#x27;Copy Range/All CLists&#x27;)
+      _appm.cutrange := lmenu (&#x27;Cut Range&#x27;, Gs(&#x27;X&#x27;))
+      _appm.cutrange2:= lmenu (&#x27;Cut Range/All CLists&#x27;)
+      _appm.clearrange := lmenu (&#x27;Clear Range&#x27;)
+      _appm.pasterange := lmenu (&#x27;Paste Range&#x27;, Gs(&#x27;V&#x27;))
+      _appm.transposerange := lmenu (&#x27;Transpose Range&#x27;)
+      _appm.selectchannel := lmenu (&#x27;Select Channel&#x27;, Gs(&#x27;A&#x27;))
+
+      _appm._edit := MenuitemObject ,
+            MUIA_Menuitem_Title , Gs(&#x27;Edit&#x27;) ,
+            MUIA_Family_Child , _appm.copyrange ,
+            MUIA_Family_Child , _appm.copyrange2 ,
+            MUIA_Family_Child , _appm.cutrange ,
+            MUIA_Family_Child , _appm.cutrange2 ,
+            MUIA_Family_Child , _appm.clearrange ,
+            MUIA_Family_Child , _appm.pasterange ,
+            MUIA_Family_Child , _appm.transposerange ,
+            MUIA_Family_Child , BarLabel ,
+            MUIA_Family_Child , _appm.selectchannel ,
+      End
+
+      _appm.playoptions := lmenu (&#x27;Play Options...&#x27;)
+      _appm.miscsettings := lmenu (&#x27;Misc Settings...&#x27;)
+      _appm.muisettings := lmenu (&#x27;MUI Settings...&#x27;)
+      _appm.loaddefault := lmenu (&#x27;Load Default&#x27;)
+      _appm.saveasdefault := lmenu (&#x27;Save As Default&#x27;)
+      _appm.pload := lmenu (&#x27;Load...&#x27;)
+      _appm.psaveas := lmenu (&#x27;Save As...&#x27;)
+
+      _appm._settings := MenuitemObject  ,
+            MUIA_Menuitem_Title , Gs(&#x27;Settings&#x27;) ,
+            MUIA_Family_Child , _appm.playoptions ,
+            MUIA_Family_Child , _appm.miscsettings ,
+            MUIA_Family_Child , _appm.muisettings ,
+            MUIA_Family_Child , BarLabel,
+            MUIA_Family_Child , _appm.loaddefault ,
+            MUIA_Family_Child , _appm.saveasdefault ,
+            MUIA_Family_Child , _appm.pload ,
+            MUIA_Family_Child , _appm.psaveas ,
+      End
+
+      _appl.menu := MenustripObject ,
+            MUIA_Family_Child , _appm._project ,
+            MUIA_Family_Child , _appm._display ,
+            MUIA_Family_Child , _appm._song ,
+            MUIA_Family_Child , _appm._track ,
+            MUIA_Family_Child , _appm._instrument ,
+            MUIA_Family_Child , _appm._edit ,
+            MUIA_Family_Child , _appm._settings ,
+      End
+
+
+
+ENDPROC
+
+
+
+-&gt;/////////////////////////////////////////////////////////////////////////////
+-&gt;/////////////////////////////////////////////////////////// PROC create /////
+-&gt;/////////////////////////////////////////////////////////////////////////////
+PROC gui_create( lb,h)
+
+                  x:=lb   -&gt; !!!!!!
+                  hooks:=h
+
+                  muimasterbase:=x.mmbase
+                  intuitionbase:=x.intbase
+                  asmiscbase:=x.strgbase
+                  class:=x.class
+                  effclass:=x.effclass
+                  editor:=x.editor
+                  dslist:=x.dslist
+                  sampleed:=x.sampleed
+
+      init_stuff()
+
+      createpart1()
+      createpart2()
+      createpart3()
+      createpart4()
+      createpart5()
+
+
+      _appl.app := ApplicationObject ,
+            ( IF x.icon THEN MUIA_Application_DiskObject ELSE TAG_IGNORE ) , x.icon ,
+            ( IF x.arexx THEN MUIA_Application_Commands ELSE TAG_IGNORE ) , ( IF x.arexx THEN x.arexx.commands ELSE NIL ) ,
+            ( IF x.arexx THEN MUIA_Application_RexxHook ELSE TAG_IGNORE ) , ( IF x.arexx THEN x.arexx.error ELSE NIL ) ,
+            -&gt; ( IF x.menu THEN MUIA_Application_Menu ELSE TAG_IGNORE ) , x.menu ,
+            MUIA_Application_Author , Gs(&#x27;Karel Vavra (xvavra1@br.fjfi.cvut.cz)/iMMORTAl&#x27;) ,
+            MUIA_Application_Menustrip , _appl.menu ,
+            MUIA_Application_Base , Gs(&#x27;AUDIOSTREAM&#x27;) ,
+            MUIA_Application_Title , Gs(&#x27;AudioSTREAM Pro&#x27;) ,
+            MUIA_Application_Version , Gs(&#x27;$VER: 0.01 XX.XX (XX.XX.XX)&#x27;) ,
+            MUIA_Application_Copyright , Gs(&#x27;(c) 1997,98 IMMORTAL Systems&#x27;) ,
+            MUIA_Application_Description , Gs(&#x27;Music Editing Software&#x27;) ,
+            MUIA_Application_HelpFile , Gs(&#x27;PROGDIR:Docs/Online.guide&#x27;) ,
+            SubWindow, _main.base ,
+            SubWindow , _info.base ,
+            SubWindow , _about.base ,
+            SubWindow , _sels.base ,
+            SubWindow , _mopt.base ,
+            SubWindow , _sged.base ,
+            SubWindow , _sgop.base ,
+            SubWindow , _sdsp.base ,
+            SubWindow , _inst.base ,
+            SubWindow , _idsp.base ,
+            SubWindow , _smed.base ,
+            SubWindow , _wved.base ,
+            SubWindow , _popt.base ,
+            SubWindow , _pcki.base ,
+            SubWindow , _pcks.base ,
+            SubWindow , _pckw.base ,
+            SubWindow , _pckt.base ,
+            SubWindow , _lofl.base ,
+            SubWindow , _lied.base ,
+            SubWindow , _cvol.base ,
+            SubWindow , _cpit.base ,
+            SubWindow , _crch.base ,
+            SubWindow , _tran.base ,
+            SubWindow , _dspm.base ,
+            SubWindow , _tred.base ,
+            SubWindow , _trop.base ,
+            SubWindow , _sect.base ,
+            SubWindow , _tdsp.base ,
+            SubWindow , _mpeg.base ,
+      End
+
+
+
+ENDPROC _appl.app
+
+
+
+
+PROC main()
+ENDPROC
+
+
+
+
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

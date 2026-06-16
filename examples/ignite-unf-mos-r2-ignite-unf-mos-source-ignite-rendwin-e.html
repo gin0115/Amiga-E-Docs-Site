@@ -1,0 +1,192 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>rendwin.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-ignite-unf-mos-r2.html">ignite-unf-mos-r2</a> &rsaquo; rendwin.e</div><h1>File: <code>rendwin.e</code></h1><p class="meta">166 lines · project <a href="../examples/pkg-ignite-unf-mos-r2.html"><code>ignite-unf-mos-r2</code></a></p><p class="pathctx">ignite-unf-mos-r2/ignite-unf-mos/source/ignite/rendwin.e</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/boopsi.html">amigalib/boopsi</a></li><li><a href="../modules/lists.html">amigalib/lists</a></li><li><a href="../modules/memory.html">exec/memory</a></li><li><a href="../modules/gfx.html">graphics/gfx</a></li><li><a href="../modules/rastport.html">graphics/rastport</a></li><li><a href="../modules/classes.html">intuition/classes</a></li><li><a href="../modules/classusr.html">intuition/classusr</a></li><li><a href="../modules/intuition.html">intuition/intuition</a></li><li><a href="../modules/intuitionbase.html">intuition/intuitionbase</a></li><li><a href="../modules/screens.html">intuition/screens</a></li><li><a href="../modules/mui.html">libraries/mui</a></li><li><a href="../modules/muip.html">libraries/muip</a></li><li><a href="../modules/muicustomclass.html">mui/muicustomclass</a></li><li><a href="../modules/muimaster.html">muimaster</a></li><li><a href="../modules/installhook.html">tools/installhook</a></li><li><a href="../modules/utility.html">utility</a></li><li><a href="../modules/hooks.html">utility/hooks</a></li><li><a href="../modules/tagitem.html">utility/tagitem</a></li></ul></div><h2>Source</h2><pre class="code">OPT MODULE, PREPROCESS
+
+-&gt;MODULE &#x27;*modules&#x27;
+
+MODULE &#x27;utility/tagitem&#x27;
+MODULE &#x27;utility/hooks&#x27;
+MODULE &#x27;graphics/gfx&#x27;
+MODULE &#x27;graphics/rastport&#x27;
+MODULE &#x27;intuition/classes&#x27;
+MODULE &#x27;intuition/classusr&#x27;
+MODULE &#x27;intuition/screens&#x27;
+MODULE &#x27;intuition/intuition&#x27;
+MODULE &#x27;intuition/intuitionbase&#x27;
+MODULE &#x27;libraries/mui&#x27;
+MODULE &#x27;libraries/muip&#x27;
+
+MODULE &#x27;muimaster&#x27;
+MODULE &#x27;utility&#x27;
+
+MODULE &#x27;mui/muicustomclass&#x27;
+MODULE &#x27;tools/installhook&#x27;
+MODULE &#x27;tools/thread&#x27;
+MODULE &#x27;amigalib/boopsi&#x27;
+MODULE &#x27;amigalib/lists&#x27;
+
+MODULE &#x27;exec/memory&#x27;
+
+MODULE &#x27;*ignite_defs&#x27;
+
+MODULE &#x27;*mystring&#x27;
+
+MODULE &#x27;exec/memory&#x27;
+
+                /****** RENDWIN **************************/
+
+OBJECT rendwindata
+   hook:hook
+   selfobj:PTR TO object
+   rm:PTR TO rendermsg
+   width:INT, height:INT, rastport:PTR TO rastport
+   zoneR:DOUBLE, zoneX:DOUBLE, zoneY:DOUBLE
+   widthGad, heightGad, rendBut, stopBut
+ENDOBJECT
+
+-&gt; the only exported item
+EXPORT PROC createRendWinClass()
+ENDPROC eMui_CreateCustomClass(NIL,MUIC_Window,NIL,SIZEOF rendwindata,{rendWinDispatcher})
+
+
+PROC rendWinDispatcher(cl:PTR TO iclass, obj:PTR TO object, msg:PTR TO msg)
+
+   SELECT msg.methodid
+   CASE OM_NEW            ; RETURN rendWinNew(cl, obj, msg)
+   CASE OM_DISPOSE        ; RETURN rendWinDispose(cl, obj, msg)
+   CASE OM_SET            ; RETURN rendWinSet(cl, obj, msg)
+   CASE OM_GET            ; RETURN rendWinGet(cl, obj, msg)
+   ENDSELECT
+
+ENDPROC doSuperMethodA(cl, obj, msg)
+
+PROC rendWinNew(cl:PTR TO iclass, obj:PTR TO object, msg:PTR TO opset) HANDLE
+   DEF data:PTR TO rendwindata, gr=NIL, gr2=NIL, tags:PTR TO tagitem, tag:PTR TO tagitem
+   DEF fractmcc:PTR TO mui_customclass
+
+   IF (obj := doSuperMethodA(cl, obj, [OM_NEW, [MUIA_Window_RootObject,
+   gr := VGroup, End, NIL]])) = NIL THEN (IF gr THEN Mui_DisposeObject(gr)) BUT RETURN NIL
+
+   data := INST_DATA(cl, obj)
+   data.selfobj := obj
+
+   installhook(data, {rendWinHookHandler})
+
+   replyport := CreateMsgPort()
+   IF replyport = NIL THEN Raise(&quot;PORT&quot;)
+
+   tags := msg.attrlist
+
+   WHILE tag := NextTagItem({tags})
+      SELECT tag.tag
+      CASE MUIA_RendWin_FractMCC
+         fractmcc := tag.data
+      CASE MUIA_RendWin_RenderMsg
+         data.rm := tag.data
+      ENDSELECT
+   ENDWHILE
+
+   data.rm.replyport := replyport
+
+   data.fractobj := NewObjectA(fractmcc.mcc_class, NIL, [NIL])
+   IF data.fractobj = NIL THEN Raise(&quot;FOBJ&quot;)
+
+   gr2 := VGroup,
+      Child, HGroup,
+         Child, data.widthGad :=  IString(800, NIL),
+         Child, data.heightGad := IString(600, NIL),
+      End,
+      Child, HGroup,
+         Child, data.rendBut := KeyButton(&#x27; Render &#x27;, &quot;r&quot;),
+         Child, data.stopBut := KeyButton(&#x27; Stop &#x27;, &quot;s&quot;),
+      End,
+   End
+
+   doMethodA(obj, [OM_ADDMEMBER, gr2])
+
+   doMethodA(obj, [OM_ADDMEMBER, data.fractobj])
+
+   DOMETHODA(obj, [MUIM_Notify, MUIA_Window_CloseRequest, MUI_TRUE,
+      obj, 3, MUIM_CallHook, data, RH_CLOSEREQUEST])
+
+EXCEPT
+
+   coerceMethodA(cl, obj, [OM_DISPOSE])
+   RETURN NIL
+
+ENDPROC obj
+
+
+
+
+PROC rendWinDispose(cl:PTR TO iclass, obj:PTR TO object, msg:PTR TO msg)
+   DEF data:PTR TO rendwindata
+
+   data := INST_DATA(cl,obj)
+
+
+   IF data.rm
+      AbortIO(data.rm)
+      WaitIO(data.rm)
+      CloseDevice(data.rm)
+      FreeVec(data.rm.parameters)
+      DeleteMsgPort(data.rm.replyport)
+      DeleteIORequest(data.rm)
+   ENDIF
+
+
+
+ENDPROC doSuperMethodA(cl, obj, msg)
+
+
+PROC rendWinSet(cl:PTR TO iclass, obj:PTR TO object, msg:PTR TO opset)
+   DEF data:PTR TO rendwindata, tags:PTR TO tagitem, tag:PTR TO tagitem
+
+   data := INST_DATA(cl,obj)
+
+   tags := msg.attrlist
+   WHILE tag := NextTagItem({tags})
+      SELECT tag.tag
+
+      ENDSELECT
+   ENDWHILE
+
+ENDPROC doSuperMethodA(cl, obj, msg)
+
+
+PROC rendWinGet(cl:PTR TO iclass, obj:PTR TO object, msg:PTR TO opget)
+   DEF data:PTR TO rendwindata
+
+   data := INST_DATA(cl, obj)
+
+   SELECT msg.attrid
+   CASE MUIA_RendWin_IsRendWin ; PutLong(msg.storage, TRUE) ; RETURN MUI_TRUE
+   ENDSELECT
+
+ENDPROC doSuperMethodA(cl, obj, msg)
+
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

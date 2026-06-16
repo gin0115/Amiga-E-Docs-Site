@@ -1,0 +1,129 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>LED.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-evo.html">evo</a> &rsaquo; LED.e</div><h1>File: <code>LED.e</code></h1><p class="meta">103 lines · project <a href="../examples/pkg-evo.html"><code>evo</code></a></p><p class="pathctx">evo/Src/reaction_examples/LED.e</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/classes.html">intuition/classes</a></li></ul></div><h2>Source</h2><pre class="code">OPT OSVERSION=37
+
+MODULE &#x27;intuition/classes&#x27;,&#x27;reaction/reaction_macros&#x27;,&#x27;intuition/screens&#x27;,&#x27;intuition/intuition&#x27;,&#x27;window&#x27;,&#x27;classes/window&#x27;,&#x27;gadgets/layout&#x27;,&#x27;images/led&#x27;,&#x27;intuition/imageclass&#x27;,&#x27;layout&#x27;,&#x27;amigalib/boopsi&#x27;,&#x27;dos/dos&#x27;,&#x27;devices/inputevent&#x27;,&#x27;exec/libraries&#x27;
+
+DEF winObject:PTR TO object
+DEF ledbase=NIL:PTR TO lib
+
+PROC anykey()
+  DEF going = TRUE
+  DEF code:PTR TO INT,qual:PTR TO LONG,result,thesignal
+
+  GetAttr(WINDOW_SIGMASK, winObject, {thesignal})
+  WHILE(going)
+    IF ((Wait(thesignal OR SIGBREAKF_CTRL_C)) AND SIGBREAKF_CTRL_C) THEN going:=FALSE
+
+    WHILE(((result:=DoMethod(winObject, WM_HANDLEINPUT, code:=[0]:INT))) &lt;&gt; WMHI_LASTMSG)
+      SELECT (result AND WMHI_CLASSMASK)
+        CASE WMHI_CLOSEWINDOW
+          going:=FALSE
+        CASE WMHI_RAWKEY
+          GetAttr(WINDOW_QUALIFIER, winObject, qual:=[0]:LONG)
+          IF ((code[] &lt; 128) AND ((qual[] AND IEQUALIFIER_REPEAT)=0)) THEN going:=FALSE
+      ENDSELECT
+    ENDWHILE
+  ENDWHILE
+ENDPROC
+
+PROC main()
+  DEF drawInfoPtr: PTR TO drawinfo
+  DEF screenPtr:PTR TO screen
+  DEF win:PTR TO window
+  DEF im:PTR TO image
+  DEF ledvalues:PTR TO LONG
+  DEF lvals
+  
+  ledvalues:= [[26,50,44,89,12,34,56,78]:INT,
+              [$DE,$AD,$BE, $EF,$C0,$DE,$DB,$AD]:INT,
+              [0,$C,$5F37,$3700,$7676,$F1F,$6D00,0]:INT,
+              [$776B,$5B5D,$2F,$F02,$E7B,$2F,$5F7B,$12]:INT]
+
+  IF ((windowbase:=OpenLibrary(&#x27;window.class&#x27;,47)) AND (layoutbase:=OpenLibrary(&#x27;gadgets/layout.gadget&#x27;,37)) AND
+     (ledbase:=OpenLibrary(&#x27;images/led.image&#x27;,37)))
+     
+    IF ((winObject:=WindowObject,
+            WA_PUBSCREEN,                 NIL,
+            WA_TITLE,                     &#x27;Press any key&#x27;,
+            WA_ACTIVATE,                  TRUE,
+            WA_DEPTHGADGET,               TRUE,
+            WA_DRAGBAR,                   TRUE,
+            WA_CLOSEGADGET,               TRUE,
+            WA_SIZEGADGET,                TRUE,
+            WA_IDCMP,                     IDCMP_NEWSIZE,
+            WINDOW_POSITION,              WPOS_CENTERMOUSE,
+            WINDOW_PARENTGROUP,
+            VLayoutObject,
+                LAYOUT_ADDIMAGE,
+                im:=LedObject,
+                    IA_FGPEN,             1,
+                    IA_BGPEN,             0,
+                    LED_PAIRS,            8,
+                    LED_SIGNED,           TRUE,
+                    LED_NEGATIVE,         TRUE,
+                    LED_TIME,             FALSE,
+                    LED_COLON,            FALSE,
+                    LED_RAW,              FALSE,
+                    LED_VALUES,           ledvalues[0],
+                LedEnd,
+                CHILD_MINWIDTH,           288,
+                CHILD_MINHEIGHT,          64,
+            LayoutEnd,
+        WindowEnd))
+
+      IF (win:=RA_OpenWindow(winObject))
+        screenPtr:=LockPubScreen(NIL)
+        drawInfoPtr:=GetScreenDrawInfo(screenPtr)
+        UnlockPubScreen(NIL,screenPtr)
+        anykey()
+
+        IF (ledbase.version &gt;  47) OR ((ledbase.version = 47) AND (ledbase.revision &gt;= 3))
+
+          SetAttrsA(im,[LED_NEGATIVE,FALSE,LED_HEXADECIMAL,TRUE,LED_VALUES,ledvalues[1],TAG_DONE])
+          DrawImageState(win.rport, im, 0, 0, IDS_NORMAL, drawInfoPtr)
+          anykey();
+
+          SetAttrsA(im,[LED_RAW,TRUE,LED_VALUES,ledvalues[2],TAG_DONE])
+          DrawImageState(win.rport, im, 0, 0, IDS_NORMAL, drawInfoPtr)
+          anykey()
+
+          SetAttrsA(im,[LED_VALUES,ledvalues[3],TAG_DONE])
+          DrawImageState(win.rport, im, 0, 0, IDS_NORMAL, drawInfoPtr)
+          anykey()
+
+        ENDIF
+        DisposeObject(winObject)
+      ENDIF
+    ENDIF
+  ENDIF
+
+  CloseLibrary(ledbase);
+  CloseLibrary(layoutbase);
+  CloseLibrary(windowbase); 
+ENDPROC
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

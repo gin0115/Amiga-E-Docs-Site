@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>GTTest1.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-aepd28.html">AEPD28</a> &rsaquo; GTTest1.e</div><h1>File: <code>GTTest1.e</code></h1><p class="meta">79 lines · project <a href="../examples/pkg-aepd28.html"><code>AEPD28</code></a></p><p class="pathctx">AEPD28/EPD28/Amiga_E-Programme/GTLayOut/GTTest1.e</p><p class="prose">** gttest1.e adapted to E By Aris Basic ** ** Original source its from <a href="../modules/gtlayout.html">gtlayout</a>.doc by Olaf &#x27;Olsen&#x27; Barthel ** ** This is test program for use of <a href="../modules/gtlayout.html">gtlayout</a>.<a href="../modules/library.html">library</a> (by Olaf &#x27;Olsen&#x27; Barthel [ I think so ]) ** with AmigaE by Wouter van Oortmerssen ** ** USE THIS THAT`S PD **</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/gtlayout.html">gtlayout</a></li><li><a href="../modules/tagitem.html">utility/tagitem</a></li></ul></div><h2>Source</h2><pre class="code">/*
+** gttest1.e adapted to E By  Aris Basic
+**
+** Original source its from gtlayout.doc by Olaf &#x27;Olsen&#x27; Barthel
+**
+** This is test program for use of gtlayout.library (by Olaf &#x27;Olsen&#x27; Barthel [ I think so ])
+** with AmigaE by Wouter van Oortmerssen
+**
+** USE THIS THAT`S PD
+**
+*/
+
+MODULE &#x27;gtlayout&#x27;,&#x27;gadtools&#x27;,&#x27;libraries/gtlayout&#x27;,&#x27;libraries/gadtools&#x27;
+MODULE &#x27;utility/tagitem&#x27;,&#x27;intuition/intuition&#x27;
+
+/* define some program variables.handle must not be defined like PTR TO layouthandle
+   because we don`t use anything from these structure(object) */
+
+DEF handle:PTR TO layouthandle,win:PTR TO window,gad
+
+PROC main()
+
+DEF msg:PTR TO intuimessage,msgqualifier,msgclass,msgcode,msggadget:PTR TO gadget,done=FALSE
+
+IF (gadtoolsbase:=OpenLibrary(&#x27;gadtools.library&#x27;,0))
+   IF (gtlayoutbase:=OpenLibrary(&#x27;gtlayout.library&#x27;,0))
+/* create new object handle */
+      IF (handle:=Lt_CreateHandleTagList(NIL,[LH_AUTOACTIVATE,FALSE,TAG_DONE]))
+/* add Group to handle ( Handle Must have min. one group ).Group is like one VERTICAL group definied */
+         Lt_NewA(handle,[LA_TYPE,VERTICAL_KIND,LA_LABELTEXT,&#x27;Main Group&#x27;,TAG_DONE])
+/* add Button gadget to the group  */
+            Lt_NewA(handle,[LA_TYPE,BUTTON_KIND,LA_LABELTEXT,&#x27;A Button&#x27;,LA_ID,11,TAG_DONE])
+/* add Separator line to the group */
+            Lt_NewA(handle,[LA_TYPE,XBAR_KIND,TAG_DONE])
+/* add second Button gadget to the group */
+            Lt_NewA(handle,[LA_TYPE,BUTTON_KIND,LA_LABELTEXT,&#x27;Another Button&#x27;,LA_ID,22,TAG_DONE])
+/* end of group (That was also posibile to do with Lt_EndGroup(handle)) */
+            Lt_NewA(handle,[LA_TYPE,END_KIND])
+/* build a Window with this gadgets.This funktion is to use in a way of OpenWindowTagList
+   WARNING !!! Read gtlayout.doc from Term-43-source.lha Some Tags From ^ can`t be used. */
+         IF (win:=Lt_BuildA(handle,[LAWN_TITLE,&#x27;Window Title&#x27;,LAWN_IDCMP,IDCMP_CLOSEWINDOW,WA_CLOSEGADGET,TRUE,WA_FLAGS,WFLG_DRAGBAR,TAG_DONE]))
+/* standard wait for IMessage programm structure */
+            WHILE done=FALSE
+                  WaitPort(win.userport)
+                  WHILE (msg:=Gt_GetIMsg(win.userport))
+                        msgclass:=msg.class
+                        msgcode:=msg.code
+                        msgqualifier:=msg.qualifier
+                        msggadget:=msg.iaddress
+                        Gt_ReplyIMsg(msg)
+/* This funktion must be done . These makes that messages are clean from not usable things and
+   and does some things alone (like REFRESH) */
+                        Lt_HandleInput(handle,msgqualifier,{msgclass},{msgcode},{msggadget})
+                        SELECT msgclass
+                               CASE IDCMP_CLOSEWINDOW
+                                    done:=TRUE
+                               CASE IDCMP_GADGETUP
+                                    IF msgclass=IDCMP_GADGETUP
+                                       gad:=msggadget.gadgetid
+                                       SELECT gad
+                                              CASE 11
+                                                   WriteF(&#x27;First Gadget\n&#x27;)
+                                              CASE 22
+                                                   WriteF(&#x27;Second Gadget\n&#x27;)
+                                       ENDSELECT
+                                    ENDIF
+                        ENDSELECT
+                  ENDWHILE
+            ENDWHILE
+/* This Funktion Close the Window and dispose handle */
+            Lt_DeleteHandle(handle)
+         ENDIF
+      ENDIF
+   CloseLibrary(gtlayoutbase)
+   ENDIF
+CloseLibrary(gadtoolsbase)
+ENDIF
+ENDPROC
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

@@ -1,0 +1,186 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>rawip_tcp.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-goportscan-src.html">GoPortscan_src</a> &rsaquo; rawip_tcp.e</div><h1>File: <code>rawip_tcp.e</code></h1><p class="meta">160 lines · project <a href="../examples/pkg-goportscan-src.html"><code>GoPortscan_src</code></a></p><p class="pathctx">GoPortscan_src/GoPortscan_Src/EXPERIMENTAL/rawip_tcp.e</p><p class="prose">Description: Experimental source on doing raw tcp over raw ip. Ie basically constructing the datagrams yourself rather than letting the <a href="../modules/stack.html">stack</a> do it. This is basically how datagrams can be spoofed.</p><h2>Source</h2><pre class="code">
+/*
+    Description: Experimental source on doing raw tcp over raw ip. Ie basically
+                 constructing the datagrams yourself rather than letting the
+                 stack do it.
+
+                 This is basically how datagrams can be spoofed.
+*/
+
+
+MODULE  &#x27;socket_pragmas&#x27;,
+        &#x27;amitcp/sys/socket&#x27;,
+        &#x27;amitcp/sys/types&#x27;,
+        &#x27;amitcp/sys/time&#x27;,
+        &#x27;amitcp/sys/param&#x27;,
+        &#x27;amitcp/sys/errno&#x27;,
+        &#x27;amitcp/netinet/in&#x27;,
+        &#x27;amitcp/netinet/tcp&#x27;,
+        &#x27;amitcp/netinet/ip&#x27;,
+        &#x27;amitcp/netdb&#x27;
+
+CONST SEQNUM=19901000, TH_OFFSET=5, TCP_WINDOW_SIZE=512
+
+OBJECT intfold
+    arr[100]:ARRAY OF INT
+ENDOBJECT
+
+OBJECT pseudo
+src:in_addr
+dst:in_addr
+place:CHAR
+protocol:CHAR
+len:INT
+ENDOBJECT
+
+PROC main()
+DEF tcphead:PTR TO tcphdr,
+    iphdr:PTR TO ip,
+    pseudohdr:PTR TO pseudo,
+    sain:PTR TO sockaddr_in,
+    hst:PTR TO hostent,
+    sock,
+    loop,
+    hostname[200]:STRING,
+    on:PTR TO CHAR
+
+
+IF arg[]=0
+    StrCopy(hostname, &#x27;localhost&#x27;)
+ELSE
+    StrCopy(hostname, arg)
+ENDIF
+
+
+
+IF (socketbase:=OpenLibrary(&#x27;bsdsocket.library&#x27;,NIL))&lt;&gt;NIL
+    IF hst:=Gethostbyname(hostname)
+        IF (sock:=Socket(AF_INET, SOCK_RAW, IPPROTO_RAW))&lt;&gt;-1
+            on:=1
+            Setsockopt(sock, IPPROTO_IP, IP_HDRINCL, {on}, 4 )
+            sain:=New(SIZEOF sockaddr)
+            sain.family:=AF_INET
+            CopyMem(Long(hst.addr_list), sain.addr, hst.length)
+
+            FOR loop:=1 TO 1
+
+                iphdr:=New((SIZEOF ip) + (SIZEOF tcphdr))
+                tcphead:=iphdr + (SIZEOF ip)
+                pseudohdr:=New(SIZEOF pseudo)
+
+                set_ip_hl(iphdr, 5)
+                set_ip_v(iphdr, IPVERSION)
+                iphdr.ttl:=128
+                iphdr.len:=(SIZEOF ip) + (SIZEOF tcphdr)
+                iphdr.id:=90
+                iphdr.p:=IPPROTO_TCP
+                iphdr.src.addr:=Inet_addr(&#x27;192.168.10.6&#x27;)
+                iphdr.dst.addr:=Inet_addr(&#x27;192.168.10.6&#x27;)
+                iphdr.sum:=cksum(iphdr, SIZEOF ip)
+                
+                pseudohdr.src.addr:=Inet_addr(&#x27;192.168.10.6&#x27;)
+                pseudohdr.dst.addr:=Inet_addr(&#x27;192.168.10.6&#x27;)
+                pseudohdr.place:=0
+                pseudohdr.protocol:=IPPROTO_TCP
+                pseudohdr.len:=(SIZEOF ip)
+
+                tcphead.sport:=139
+                tcphead.dport:=139
+                tcphead.seq:=SEQNUM
+                tcphead.ack:=0
+                set_tcphdr_off(tcphead, TH_OFFSET)
+                set_tcphdr_x2(tcphead, 0)
+                tcphead.win:=TCP_WINDOW_SIZE
+                tcphead.flags:=%00000010
+                tcphead.urp:=0
+                tcphead.sum:=tcpcksum(tcphead, (SIZEOF tcphdr), pseudohdr, (SIZEOF pseudo))
+
+                Sendto(sock, iphdr, (SIZEOF ip) + (SIZEOF tcphdr) , NIL, sain, SIZEOF sockaddr_in)
+                -&gt;Delay(1)
+            ENDFOR
+
+        ELSE
+            WriteF(&#x27;Problem with creating the socket&#x27;)
+        ENDIF
+    ELSE
+        WriteF(&#x27;Problem with host lookup\n&#x27;)
+    ENDIF
+
+    CloseSocket(sock)
+    CloseLibrary(socketbase)
+ELSE
+    WriteF(&#x27;Unable to open bsdsocket.library\n&#x27;)
+ENDIF
+
+
+ENDPROC
+
+PROC cksum(hdr:PTR TO intfold, hdrsize:LONG)
+DEF accumulator=0:LONG,
+    loop
+
+-&gt;WriteF(&#x27;Using Headersize $\h (\d)\n&#x27;,hdrsize, hdrsize)
+
+FOR loop:=0 TO ((hdrsize-1)/2)
+    accumulator:=accumulator+hdr.arr[loop]
+ENDFOR
+
+accumulator:=(Shr(accumulator, 16)) + (Eor(accumulator, $FFFF))
+accumulator:=accumulator + (Shr(accumulator, 16))
+
+-&gt;WriteF(&#x27;IP Checksum = $\h (\d)\n&#x27;,accumulator, accumulator)
+
+ENDPROC accumulator
+
+
+
+PROC tcpcksum(hdr1:PTR TO intfold, hdrsize1:LONG, hdr2:PTR TO intfold, hdrsize2:LONG)
+DEF accumulator=0:LONG,
+    loop
+
+FOR loop:=0 TO ((hdrsize1-1)/2)
+    accumulator:=accumulator+hdr1.arr[loop]
+ENDFOR
+
+FOR loop:=0 TO ((hdrsize2-1)/2)
+    accumulator:=accumulator+hdr2.arr[loop]
+ENDFOR
+
+accumulator:=(Shr(accumulator, 16)) + (Eor(accumulator, $FFFF))
+accumulator:=accumulator + (Shr(accumulator, 16))
+
+-&gt;Im not entirely sure why this is needed, but it always seems to be 2 out.
+-&gt;accumulator:=accumulator-2
+
+-&gt;WriteF(&#x27;len 1 \d           len 2 \d\n&#x27;, hdrsize1, hdrsize2)
+-&gt;WriteF(&#x27;TCP Checksum = $\h (\d)\n&#x27;,accumulator, accumulator)
+
+ENDPROC accumulator
+
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

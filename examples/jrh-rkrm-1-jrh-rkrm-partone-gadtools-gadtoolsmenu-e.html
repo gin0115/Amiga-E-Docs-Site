@@ -1,0 +1,124 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>gadtoolsmenu.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-jrh-rkrm-1.html">JRH-RKRM-1</a> &rsaquo; gadtoolsmenu.e</div><h1>File: <code>gadtoolsmenu.e</code></h1><p class="meta">98 lines · project <a href="../examples/pkg-jrh-rkrm-1.html"><code>JRH-RKRM-1</code></a></p><p class="pathctx">JRH-RKRM-1/JRH-RKRM-PartOne/GadTools/gadtoolsmenu.e</p><p class="prose">gadtoolsmenu.e <a href="../modules/example.html">Example</a> showing the basic usage of the menu system with a <a href="../modules/window.html">window</a>. Menu <a href="../modules/layout.html">layout</a> is done with GadTools, as is recommended for applications.</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/gadtools.html">gadtools</a></li></ul></div><h2>Source</h2><pre class="code">-&gt; gadtoolsmenu.e
+-&gt; Example showing the basic usage of the menu system with a window.
+-&gt; Menu layout is done with GadTools, as is recommended for applications.
+
+OPT PREPROCESS
+
+MODULE &#x27;gadtools&#x27;,
+       &#x27;intuition/intuition&#x27;,
+       &#x27;libraries/gadtools&#x27;
+
+ENUM ERR_NONE, ERR_LIB, ERR_MENU, ERR_VIS, ERR_WIN
+
+RAISE ERR_LIB  IF OpenLibrary()=NIL,
+      ERR_MENU IF CreateMenusA()=NIL,
+      ERR_VIS  IF GetVisualInfoA()=NIL,
+      ERR_WIN  IF OpenWindowTagList()=NIL
+
+-&gt; E-Note: used to convert an INT to unsigned
+#define UNSIGNED(x) ((x) AND $FFFF)
+
+-&gt; Watch the menus and wait for the user to select the close gadget or quit
+-&gt; from the menus.
+PROC handle_window_events(win, menuStrip)
+  DEF done=FALSE, menuNumber, menuNum, itemNum, subNum,
+      item:PTR TO menuitem, class
+  REPEAT
+    -&gt; E-Note: we can use WaitIMessage in this example
+    class:=WaitIMessage(win)
+    SELECT class
+    CASE IDCMP_CLOSEWINDOW
+      done:=TRUE
+    CASE IDCMP_MENUPICK
+      -&gt; E-Note: convert message code to an unsigned INT
+      menuNumber:=UNSIGNED(MsgCode())
+      WHILE (menuNumber&lt;&gt;MENUNULL) AND (done=FALSE)
+        item:=ItemAddress(menuStrip, menuNumber)
+
+        -&gt; Process the item here!
+        menuNum:=MENUNUM(menuNumber)
+        itemNum:=ITEMNUM(menuNumber)
+        subNum:=SUBNUM(menuNumber)
+
+        -&gt; Stop if quit is selected
+        IF (menuNum=0) AND (itemNum=5) THEN done:=TRUE
+
+        -&gt; E-Note: convert item.nextselect to an unsigned INT
+        menuNumber:=UNSIGNED(item.nextselect)
+      ENDWHILE
+    ENDSELECT
+  UNTIL done
+ENDPROC
+
+-&gt; Open all of the required libraries and set-up the menus
+PROC main() HANDLE
+  DEF win=NIL:PTR TO window, my_VisualInfo=NIL, menuStrip=NIL
+  gadtoolsbase:=OpenLibrary(&#x27;gadtools.library&#x27;, 37)
+  win:=OpenWindowTagList(NIL, [WA_WIDTH,  400, WA_ACTIVATE,    TRUE,
+                               WA_HEIGHT, 100, WA_CLOSEGADGET, TRUE,
+                               WA_TITLE,  &#x27;Menu Test Window&#x27;,
+                               WA_IDCMP,  IDCMP_CLOSEWINDOW OR IDCMP_MENUPICK,
+                               NIL])
+  my_VisualInfo:=GetVisualInfoA(win.wscreen, [NIL])
+  menuStrip:=CreateMenusA([NM_TITLE, 0, &#x27;Project&#x27;,     0, 0, 0, 0,
+                            NM_ITEM, 0, &#x27;Open...&#x27;,   &#x27;O&#x27;, 0, 0, 0,
+                            NM_ITEM, 0, &#x27;Save&#x27;,      &#x27;S&#x27;, 0, 0, 0,
+                            NM_ITEM, 0, NM_BARLABEL,   0, 0, 0, 0,
+                            NM_ITEM, 0, &#x27;Print&#x27;,       0, 0, 0, 0,
+                             NM_SUB, 0, &#x27;Draft&#x27;,       0, 0, 0, 0,
+                             NM_SUB, 0, &#x27;NLQ&#x27;,         0, 0, 0, 0,
+                            NM_ITEM, 0, NM_BARLABEL,   0, 0, 0, 0,
+                            NM_ITEM, 0, &#x27;Quit...&#x27;,   &#x27;Q&#x27;, 0, 0, 0,
+                           NM_TITLE, 0, &#x27;Edit&#x27;,        0, 0, 0, 0,
+                            NM_ITEM, 0, &#x27;Cut&#x27;,       &#x27;X&#x27;, 0, 0, 0,
+                            NM_ITEM, 0, &#x27;Copy&#x27;,      &#x27;C&#x27;, 0, 0, 0,
+                            NM_ITEM, 0, &#x27;Paste&#x27;,     &#x27;V&#x27;, 0, 0, 0,
+                            NM_ITEM, 0, NM_BARLABEL,   0, 0, 0, 0,
+                            NM_ITEM, 0, &#x27;Undo&#x27;,      &#x27;Z&#x27;, 0, 0, 0,
+                             NM_END, 0, NIL,           0, 0, 0, 0]:newmenu,
+                          [NIL])
+  IF LayoutMenusA(menuStrip, my_VisualInfo, [NIL])
+    IF SetMenuStrip(win, menuStrip)
+      handle_window_events(win, menuStrip)
+
+      ClearMenuStrip(win)
+    ENDIF
+    FreeMenus(menuStrip)
+  ENDIF
+EXCEPT DO
+  IF my_VisualInfo THEN FreeVisualInfo(my_VisualInfo)
+  IF win THEN CloseWindow(win)
+  IF gadtoolsbase THEN CloseLibrary(gadtoolsbase)
+  SELECT exception
+  CASE ERR_LIB;  WriteF(&#x27;Error: Could not open gadtools.library\n&#x27;)
+  CASE ERR_MENU; WriteF(&#x27;Error: Could not create menu\n&#x27;)
+  CASE ERR_VIS;  WriteF(&#x27;Error: Could not get visual info\n&#x27;)
+  CASE ERR_WIN;  WriteF(&#x27;Error: Could not open window\n&#x27;)
+  ENDSELECT
+ENDPROC</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

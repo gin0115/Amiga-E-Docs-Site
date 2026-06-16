@@ -1,0 +1,167 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>pAmigaIntuition.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-portable.html">PortablE</a> &rsaquo; pAmigaIntuition.e</div><h1>File: <code>pAmigaIntuition.e</code></h1><p class="meta">141 lines · project <a href="../examples/pkg-portable.html"><code>PortablE</code></a></p><p class="pathctx">PortablE/PortablE/PEmodules/CSH/pAmigaIntuition.e</p><p class="prose">pAmigaIntuition.e 30-06-2016 A collection of useful procedures/wrappers for the <a href="../modules/intuition.html#fn-intuition">Intuition</a> <a href="../modules/library.html">library</a>. Copyright (c) 2009, 2010, 2011, 2012, 2016 Christopher Steven Handley ( http://cshandley.co.uk/email )</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/exec.html">exec</a></li><li><a href="../modules/graphics.html">graphics</a></li><li><a href="../modules/utility.html">utility</a></li></ul></div><h2>Source</h2><pre class="code">/* pAmigaIntuition.e 30-06-2016
+	A collection of useful procedures/wrappers for the Intuition library.
+	Copyright (c) 2009, 2010, 2011, 2012, 2016 Christopher Steven Handley ( http://cshandley.co.uk/email )
+*/
+OPT INLINE, PREPROCESS
+PUBLIC MODULE &#x27;intuition&#x27;
+MODULE &#x27;utility&#x27;
+MODULE &#x27;exec&#x27;, &#x27;dos/dos&#x27;, &#x27;utility/tagitem&#x27;
+MODULE &#x27;graphics&#x27;, &#x27;exec/types&#x27;
+
+PROC new()
+	utilitybase := OpenLibrary(&#x27;utility.library&#x27;, 0)
+	IF utilitybase=NIL THEN CleanUp(RETURN_ERROR)
+ENDPROC
+
+PROC end()
+	CloseLibrary(utilitybase)
+ENDPROC
+
+/*****************************/
+
+-&gt;this doesn&#x27;t do anything useful, except allow (non-functional) wheel code to compile on non-AmigaOS4 targets
+#ifndef pe_TargetOS_AmigaOS4
+	CONST IDCMP_EXTENDEDMOUSE = $08000000
+	CONST IMSGCODE_INTUIWHEELDATA = $8000
+	OBJECT intuiwheeldata ; wheelx ; wheely ; ENDOBJECT
+#endif
+
+/*****************************/
+
+PROC menuNumExtractTitle(number) RETURNS title IS MENUNUM(number)
+PROC menuNumExtractItem( number) RETURNS item  IS ITEMNUM(number)
+PROC menuNumExtractSub(  number) RETURNS sub   IS SUBNUM( number)
+
+PROC menuNumCombine(title, item, sub) RETURNS number IS FULLMENUNUM(title, item, sub)
+
+/*****************************/
+
+-&gt;NOTE: If you don&#x27;t want a centered window, then use the WA_TOP &amp; WA_LEFT tags.
+-&gt;NOTE: WFLG_DRAGBAR and WFLG_DEPTHGADGET are set by default (unless WFLG_BORDERLESS is used), so supply these flags to REMOVE them!
+-&gt;EX: idcmpFlags=IDCMP_CLOSEWINDOW, DEFAULT_IDCMP
+-&gt;EX:   winFlags= WFLG_CLOSEGADGET, WFLG_ACTIVATE, WFLG_SIZEGADGET, WFLG_BORDERLESS
+PROC openWindow(width, height, title:ARRAY OF CHAR, scr=NIL:PTR TO screen, idcmpFlags=0, winFlags=0, tagList=NILA:ARRAY OF tagitem) RETURNS win:PTR TO window, originX, originY, wasNotOnFrontScreen:BOOL
+	DEF pubScr:PTR TO screen, intuiBase:PTR TO intuitionbase, xpos, ypos, rWidth, rHeight, hasTitleBar:BOOL
+	
+	IF winFlags AND WFLG_BORDERLESS = 0
+		-&gt;auto-set DRAGBAR &amp; DEPTHGADGET
+		winFlags := winFlags XOR (WFLG_DRAGBAR OR WFLG_DEPTHGADGET)
+		
+		-&gt;determine if window will have a title bar
+		hasTitleBar := winFlags AND (WFLG_CLOSEGADGET OR WFLG_DRAGBAR OR WFLG_DEPTHGADGET OR WFLG_RMBTRAP) &lt;&gt; 0
+	ELSE
+		hasTitleBar := FALSE
+	ENDIF
+	
+	-&gt;open suitably sized window
+	IF scr
+		pubScr := NIL
+	ELSE
+		pubScr := LockPubScreen(NILA)
+		IF pubScr = NIL THEN Throw(&quot;RES&quot;, &#x27;pAmiga; openWindow(); failed to lock default public screen&#x27;)
+		
+		scr := pubScr
+	ENDIF
+	
+	originX := IF winFlags AND WFLG_BORDERLESS THEN 0      ELSE scr.wborleft
+	originY := IF winFlags AND WFLG_BORDERLESS THEN 0      ELSE scr.wbortop
+	rWidth  := IF winFlags AND WFLG_BORDERLESS THEN width  ELSE originX + width  + scr.wborright
+	rHeight := IF winFlags AND WFLG_BORDERLESS THEN height ELSE originY + height + scr.wborbottom
+	IF hasTitleBar
+		-&gt;(window will have a titlebar) so account for it
+		originY := originY + 1 + scr.font.ysize
+		rHeight := rHeight + 1 + scr.font.ysize
+	ENDIF
+	
+	xpos := scr.width  - rWidth  / 2 ; IF tagList THEN xpos := GetTagData(WA_LEFT, xpos, tagList)
+	ypos := scr.height - rHeight / 2 ; IF tagList THEN ypos := GetTagData(WA_TOP , ypos, tagList)
+	
+	win := OpenWindowTagList(NIL, [
+		WA_LEFT, xpos,
+		WA_TOP,  ypos,
+		-&gt;WA_WIDTH,  rWidth,
+		-&gt;WA_HEIGHT, rHeight,
+		WA_INNERWIDTH,  width,
+		WA_INNERHEIGHT, height,
+		WA_DETAILPEN, $FF,
+		WA_BLOCKPEN,  $FF,
+		WA_IDCMP, idcmpFlags,
+		WA_FLAGS, winFlags,
+		IF hasTitleBar THEN WA_TITLE ELSE TAG_IGNORE, title,
+		IF scr THEN WA_CUSTOMSCREEN ELSE TAG_IGNORE, scr,
+		IF tagList THEN TAG_MORE ELSE TAG_DONE, tagList
+	]:tagitem)
+	
+	IF winFlags AND WFLG_SIZEGADGET THEN WindowLimits(win, win.width-width+1 !!INT, win.height-height+1 !!INT, -1, -1)
+	
+	IF winFlags AND WFLG_ACTIVATE
+		intuiBase := intuitionbase!!PTR
+		wasNotOnFrontScreen := (scr &lt;&gt; intuiBase.firstscreen)
+		ScreenToFront(scr)
+	ELSE
+		wasNotOnFrontScreen := FALSE
+	ENDIF
+FINALLY
+	IF exception
+		IF win THEN CloseW(win)
+	ENDIF
+	IF pubScr THEN UnlockPubScreen(NILA, pubScr)
+ENDPROC
+
+PROC closeWindow(win:PTR TO window, wasNotOnFrontScreen=FALSE:BOOL) RETURNS nil:PTR TO window
+	DEF winMsg:PTR TO intuimessage
+	
+	IF win = NIL THEN RETURN
+	
+	-&gt;undo moving screen to front
+	IF wasNotOnFrontScreen THEN ScreenToBack(win.wscreen)
+	
+	-&gt;close window
+	Forbid()
+	-&gt;IF win.userport THEN StripIntuiMessages(win.userport, win)
+	IF win.userport THEN WHILE winMsg := GetMsg(win.userport) !!PTR DO IF winMsg.execmessage.ln.type = NT_MESSAGE THEN ReplyMsg(winMsg.execmessage)
+	-&gt;ModifyIDCMP(win, 0)
+	CloseWindow(win)
+	Permit()
+	
+	nil := NIL
+ENDPROC
+
+/*****************************/
+
+PROC blankMousePointer(win:PTR TO window)
+	SetPointer(win, [0,0]:UINT, 0, 0, 0, 0)
+ENDPROC
+
+PROC unblankMousePointer(win:PTR TO window)
+	IF win THEN ClearPointer(win)
+ENDPROC
+
+/*****************************/
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

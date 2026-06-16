@@ -1,0 +1,185 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>cf.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-aepd02.html">aepd02</a> &rsaquo; cf.e</div><h1>File: <code>cf.e</code></h1><p class="meta">159 lines · project <a href="../examples/pkg-aepd02.html"><code>aepd02</code></a></p><p class="pathctx">aepd02/EPD02/Amiga_E-Programme/Fill/Source/cf.e</p><p class="prose">Creates a file of size specified in command line.</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/dos.html">dos/dos</a></li></ul></div><h2>Source</h2><pre class="code">/* Creates a file of size specified in command line. */
+
+
+
+
+MODULE &#x27;dos/Dos&#x27;
+
+
+
+/* Runtime exceptions. */
+ENUM ER_NONE,
+     ER_USAGE,
+     ER_MEM,
+     ER_OUTFILE
+
+
+
+/*=== Command-line Argument Parser =======================================*/
+
+CONST BUFSIZE = 488
+
+DEF argFileSize,
+    argDestPath = NIL
+
+
+
+PROC skipSpaces (bool, theString, startPos)
+  DEF char [1] : STRING,
+      endPos, length
+
+  length := StrLen (theString)
+  IF startPos = length THEN RETURN startPos
+
+  endPos := startPos
+  MidStr (char, theString, endPos, 1)
+  WHILE (StrCmp (char, &#x27; &#x27;, 1)) = bool
+     /* bool=TRUE then skip space; bool=FALSE then skip non-space */
+    IF endPos = length THEN RETURN endPos
+    INC endPos
+    MidStr (char, theString, endPos, 1)
+  ENDWHILE
+ENDPROC endPos
+  /* skipSpaces */
+
+
+PROC getArg (theArg, index)
+  DEF startPos, endPos,
+      i, length
+
+  IF arg [] &lt;= 0
+    StrCopy (theArg, &#x27;&#x27;, ALL)
+    RETURN FALSE
+  ENDIF
+
+  length := StrLen (arg)
+  startPos := 0
+  endPos := skipSpaces (FALSE, arg, startPos)
+
+  FOR i := 2 TO index
+    startPos := skipSpaces (FALSE, arg, startPos)
+    startPos := skipSpaces (TRUE, arg, startPos)
+    IF startPos = length
+      /* Request past end of argument is invalid. */
+      StrCopy (theArg, &#x27;&#x27;, ALL)
+      RETURN FALSE
+    ENDIF
+    endPos := skipSpaces (FALSE, arg, startPos)
+  ENDFOR
+
+  MidStr (theArg, arg, startPos, (endPos - startPos))
+
+ENDPROC TRUE
+  /* getArg */
+
+
+
+PROC parseCommandLineArguments () HANDLE
+  DEF index = 1,
+      theArg
+
+  theArg := String (StrLen (arg))
+  IF theArg = NIL THEN Raise (ER_MEM)
+
+  FOR index := 1 TO 2
+    IF getArg (theArg, index)
+      IF index = 1
+          argFileSize := Val (theArg, NIL)
+          IF argFileSize &lt; 0 THEN Raise (ER_USAGE)
+      ELSE  /* Last arg, must be DestPath. */
+        argDestPath := String (StrLen (theArg))
+        IF argDestPath = NIL THEN Raise (ER_MEM)
+        StrCopy (argDestPath, theArg, ALL)
+      ENDIF
+    ENDIF
+  ENDFOR
+
+  Dispose (theArg)
+
+EXCEPT
+
+  IF theArg THEN Dispose (theArg)
+  Raise (exception)
+
+ENDPROC
+  /* parseCommandLineArguments */
+
+
+/*=== End Command-line Argument Parser ===================================*/
+
+
+PROC main () HANDLE
+  DEF destFileHandle = NIL,
+      numberOfWrites,
+      bytesWritten,
+      buffer, i
+
+  IF arg [] = 0 THEN Raise (ER_USAGE)
+
+  parseCommandLineArguments ()
+  IF argDestPath = NIL THEN Raise (ER_USAGE)
+
+  buffer := String (BUFSIZE)
+  IF buffer = NIL THEN Raise (ER_MEM)
+  FOR i := 1 TO BUFSIZE DO StrAdd (buffer, &#x27;x&#x27;, ALL)
+
+  WriteF (&#x27;\n\nCreating file: \s&#x27;, argDestPath)
+
+  destFileHandle := Open (argDestPath, NEWFILE)
+  IF destFileHandle = NIL THEN Raise (ER_OUTFILE)
+
+  numberOfWrites := argFileSize / BUFSIZE
+  FOR i := 1 TO numberOfWrites
+    bytesWritten := Write (destFileHandle, buffer, BUFSIZE)
+    IF bytesWritten &lt; BUFSIZE THEN Raise (ER_OUTFILE)
+  ENDFOR
+  FOR i := 1 TO (argFileSize - (numberOfWrites * BUFSIZE)) DO Out (destFileHandle, &#x27;x&#x27;)
+
+  Close (destFileHandle)
+
+  WriteF (&#x27;\nDone.\n\n&#x27;)
+
+  CleanUp (0)
+
+EXCEPT
+
+  IF destFileHandle THEN Close (destFileHandle)
+
+  SELECT exception
+    CASE ER_USAGE;             WriteF (&#x27;\nUsage:  CreateFile &lt;bytes&gt; &lt;filespec&gt;&#x27;)
+    CASE ER_MEM;               WriteF (&#x27;\nInsufficient memory.&#x27;)
+    CASE ER_OUTFILE;           WriteF (&#x27;\nError opening or writing to file.&#x27;)
+  ENDSELECT
+
+  WriteF (&#x27;\n\n&#x27;)
+
+  CleanUp (exception)
+
+ENDPROC
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

@@ -1,0 +1,297 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Gui2E.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-aepd15.html">AEPD15</a> &rsaquo; Gui2E.e</div><h1>File: <code>Gui2E.e</code></h1><p class="meta">271 lines · project <a href="../examples/pkg-aepd15.html"><code>AEPD15</code></a></p><p class="pathctx">AEPD15/EPD15/Amiga_E-Programme/Gui2E/Gui2E.e</p><p class="prose">*****************************************************************************************</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/forms.html">gadtoolsbox/forms</a></li><li><a href="../modules/intuition.html">intuition/intuition</a></li></ul></div><h2>Source</h2><pre class="code">/*******************************************************************************************/
+/* Source code generate by Gui2E v0.1 © 1994 NasGûl                                        */
+/*******************************************************************************************/
+/********************************************************************************
+ * &lt;&lt; EUTILS HEADER &gt;&gt;
+ ********************************************************************************
+ ED               &quot;EDG&quot;
+ EC               &quot;EC&quot;
+ PREPRO           &quot;EPP&quot;
+ SOURCE           &quot;Gui2E.e&quot;
+ EPPDEST          &quot;G_EPP.e&quot;
+ EXEC             &quot;Gui2E&quot;
+ ISOURCE          &quot; &quot;
+ HSOURCE          &quot; &quot;
+ ERROREC          &quot; &quot;
+ ERROREPP         &quot; &quot;
+ VERSION          &quot;0&quot;
+ REVISION         &quot;1&quot;
+ NAMEPRG          &quot;Gui2E&quot;
+ NAMEAUTHOR       &quot;NasGûl&quot;
+ ********************************************************************************
+ * HISTORY :
+ *******************************************************************************/
+
+OPT OSVERSION=37
+
+MODULE &#x27;intuition/intuition&#x27;,&#x27;gadtools&#x27;,&#x27;libraries/gadtools&#x27;,&#x27;intuition/gadgetclass&#x27;,&#x27;intuition/screens&#x27;,
+       &#x27;graphics/text&#x27;,&#x27;exec/lists&#x27;,&#x27;exec/nodes&#x27;,&#x27;exec/ports&#x27;,&#x27;eropenlib&#x27;,&#x27;utility/tagitem&#x27;,
+       &#x27;asl&#x27;,&#x27;libraries/asl&#x27;
+MODULE &#x27;gadtoolsbox/forms&#x27;,&#x27;readguifile&#x27;
+
+ENUM ER_NONE,ER_LOCKSCREEN,ER_VISUAL,ER_CONTEXT,ER_MENUS,ER_GADGET,ER_WINDOW
+CONST F_LOAD=0,F_SAVE=1
+PMODULE &#x27;ReadGUI&#x27;
+DEF screen:PTR TO screen,
+    visual=NIL,
+    tattr:PTR TO textattr,
+    reelquit=FALSE
+/****************************************
+ * gui Definitions
+ ****************************************/
+DEF gui_window=NIL:PTR TO window
+DEF gui_glist=NIL
+/* Gadgets */
+CONST GA_GLCONV=0
+CONST GA_G_GENPROCLIB=1
+CONST GA_G_GENMES=2
+CONST GA_G_INFO=3
+/* Gadgets labels of gui */
+DEF glconv
+DEF g_genproclib
+DEF g_genmes
+DEF g_info
+/* var def */
+DEF genlib=FALSE
+DEF genmes=FALSE
+DEF source[256]:STRING
+DEF destin[256]:STRING
+DEF f_out
+DEF reelstdout
+PROC p_OpenLibraries() HANDLE /*&quot;p_OpenLibraries()&quot;*/
+    IF (intuitionbase:=OpenLibrary(&#x27;intuition.library&#x27;,37))=NIL THEN Raise(ER_INTUITIONLIB)
+    IF (gadtoolsbase:=OpenLibrary(&#x27;gadtools.library&#x27;,37))=NIL THEN Raise(ER_GADTOOLSLIB)
+    IF (gfxbase:=OpenLibrary(&#x27;graphics.library&#x27;,37))=NIL THEN Raise(ER_GRAPHICSLIB)
+    IF (aslbase:=OpenLibrary(&#x27;asl.library&#x27;,37))=NIL THEN Raise(ER_ASLLIB)
+    Raise(ER_NONE)
+EXCEPT
+    RETURN exception
+ENDPROC
+PROC p_CloseLibraries()  /*&quot;p_CloseLibraries()&quot;*/
+    IF aslbase THEN CloseLibrary(aslbase)
+    IF gfxbase THEN CloseLibrary(gfxbase)
+    IF gadtoolsbase THEN CloseLibrary(gadtoolsbase)
+    IF intuitionbase THEN CloseLibrary(intuitionbase)
+ENDPROC
+PROC p_SetUpScreen() HANDLE /*&quot;p_SetUpScreen()&quot;*/
+    IF (screen:=LockPubScreen(&#x27;Workbench&#x27;))=NIL THEN Raise(ER_LOCKSCREEN)
+    IF (visual:=GetVisualInfoA(screen,NIL))=NIL THEN Raise(ER_VISUAL)
+    Raise(ER_NONE)
+EXCEPT
+    RETURN exception
+ENDPROC
+PROC p_SetDownScreen() /*&quot;p_SetDownScreen()&quot;*/
+    IF visual THEN FreeVisualInfo(visual)
+    IF screen THEN UnlockPubScreen(NIL,screen)
+ENDPROC
+PROC p_InitguiWindow() HANDLE /*&quot;p_InitguiWindow()&quot;*/
+    IF (gui_glist:=CreateContext({gui_glist}))=NIL THEN Raise(ER_CONTEXT)
+    IF (glconv:=CreateGadgetA(BUTTON_KIND,gui_glist,[21,17,245,13,&#x27;Convert Gui File&#x27;,tattr,0,16,visual,0]:newgadget,[GA_RELVERIFY,TRUE,GA_DISABLED,FALSE,GT_UNDERSCORE,&quot;_&quot;,TAG_DONE,0]))=NIL THEN Raise(ER_GADGET)
+    IF (g_genproclib:=CreateGadgetA(CHECKBOX_KIND,glconv,[21,34,26,11,&#x27;Generate OpenCLoseLib&#x27;,tattr,1,2,visual,0]:newgadget,[GA_RELVERIFY,TRUE,GTCB_CHECKED,FALSE,GT_UNDERSCORE,&quot;_&quot;, TAG_DONE,0]))=NIL THEN Raise(ER_GADGET)
+    IF (g_genmes:=CreateGadgetA(CHECKBOX_KIND,g_genproclib,[21,48,26,11,&#x27;Generate Message Proc&#x27;,tattr,2,2,visual,0]:newgadget,[GA_RELVERIFY,TRUE,GTCB_CHECKED,FALSE,GT_UNDERSCORE,&quot;_&quot;, TAG_DONE,0]))=NIL THEN Raise(ER_GADGET)
+    IF (g_info:=CreateGadgetA(TEXT_KIND,g_genmes,[21,70,245,13,&#x27;&#x27;,tattr,3,0,visual,0]:newgadget,[GTTX_BORDER,TRUE,GTTX_TEXT,&#x27;None.&#x27;,GTTX_COPYTEXT,FALSE,GT_UNDERSCORE,&quot;_&quot;,TAG_DONE,0]))=NIL THEN Raise(ER_GADGET)
+    Raise(ER_NONE)
+EXCEPT
+    RETURN exception
+ENDPROC
+PROC p_RenderguiWindow() /*&quot;p_RenderguiWindow()&quot;*/
+    DrawBevelBoxA(gui_window.rport,9,14,270,74,[GT_VISUALINFO,visual,TAG_DONE,0])
+    RefreshGList(glconv,gui_window,NIL,-1)
+    Gt_RefreshWindow(gui_window,NIL)
+ENDPROC
+PROC p_OpenguiWindow() HANDLE /*&quot;p_OpenguiWindow()&quot;*/
+    IF (gui_window:=OpenWindowTagList(NIL,
+                      [WA_LEFT,10,
+                       WA_TOP,10,
+                       WA_WIDTH,287,
+                       WA_HEIGHT,91,
+                       WA_IDCMP,$244,
+                       WA_FLAGS,$102E+WFLG_HASZOOM,
+                       WA_GADGETS,gui_glist,
+                       WA_ZOOM,[10,10,287,11]:INT,
+                       WA_TITLE,&#x27;Gui2E © 1994 NasGûl&#x27;,
+                       WA_SCREENTITLE,&#x27;Made With GadToolsBox v2.0 © 1991-1993&#x27;,
+                       TAG_DONE]))=NIL THEN Raise(ER_WINDOW)
+    p_RenderguiWindow()
+    Gt_RefreshWindow(gui_window,NIL)
+    Raise(ER_NONE)
+EXCEPT
+    RETURN exception
+ENDPROC
+PROC p_RemguiWindow() /*&quot;p_RemguiWindow()&quot;*/
+    IF gui_window THEN CloseWindow(gui_window)
+    IF gui_glist THEN FreeGadgets(gui_glist)
+ENDPROC
+PROC p_LookAllMessage() /*&quot;p_LookAllMessage()&quot;*/
+    DEF sigreturn
+    DEF guiport:PTR TO mp
+    IF gui_window THEN guiport:=gui_window.userport ELSE guiport:=NIL
+    sigreturn:=Wait(Shl(1,guiport.sigbit) OR
+                    $F000)
+    IF (sigreturn AND Shl(1,guiport.sigbit))
+        p_LookguiMessage()
+    ENDIF
+    IF (sigreturn AND $F000)
+        reelquit:=TRUE
+    ENDIF
+ENDPROC
+PROC p_LookguiMessage() /*&quot;p_LookguiMessage()&quot;*/
+   DEF mes:PTR TO intuimessage
+   DEF g:PTR TO gadget
+   DEF type=0,infos=NIL
+   IF mes:=Gt_GetIMsg(gui_window.userport)
+       type:=mes.class
+       SELECT type
+           CASE IDCMP_MENUPICK
+              infos:=mes.code
+              SELECT infos
+              ENDSELECT
+           CASE IDCMP_CLOSEWINDOW
+              reelquit:=TRUE
+           CASE IDCMP_GADGETDOWN
+              type:=IDCMP_GADGETUP
+           CASE IDCMP_REFRESHWINDOW
+              p_RenderguiWindow()
+           CASE IDCMP_GADGETUP
+           /*CASE gad*/
+              g:=mes.iaddress
+              infos:=g.gadgetid
+              SELECT infos
+                  CASE GA_GLCONV
+                      IF p_FileRequester(F_LOAD)
+                          IF g_ReadGUIFile(source)
+                              p_Alert(&#x27;Read Source Ok.&#x27;)
+                              IF p_FileRequester(F_SAVE)
+                                  IF f_out:=Open(destin,1006)
+                                      stdout:=f_out
+                                      g_WriteFHeader()
+                                      g_WriteFDef(myguibase.adrlistwindow)
+                                      IF genlib THEN g_WriteFOpenCloseLib()
+                                      g_WriteFScreen()
+                                      g_WriteFWindowList(myguibase.adrlistwindow)
+                                      IF genmes
+                                          g_WriteFLookMessage(myguibase.adrlistwindow)
+                                          g_WriteFWinMessage(myguibase.adrlistwindow)
+                                      ENDIF
+                                      IF (genmes OR genlib) THEN g_WriteFMain(myguibase.adrlistwindow)
+                                  ELSE
+                                      p_Alert(&#x27;Error Output.&#x27;)
+                                  ENDIF
+                                  g_RemGUIBase()
+                                  g_InitGUIBase()
+                                  IF f_out THEN Close(f_out)
+                                  stdout:=reelstdout
+                                  p_Alert(&#x27;Save File ok.&#x27;)
+                              ELSE
+                                  p_Alert(&#x27;Save Aborded.&#x27;)
+                                  g_RemGUIBase()
+                                  g_InitGUIBase()
+                              ENDIF
+                          ELSE
+                              p_Alert(&#x27;Not a GUI FIle.&#x27;)
+                          ENDIF
+                      ENDIF
+                  CASE GA_G_GENPROCLIB
+                      infos:=mes.code
+                      IF infos THEN genlib:=TRUE ELSE genlib:=FALSE
+                  CASE GA_G_GENMES
+                      infos:=mes.code
+                      IF infos THEN genmes:=TRUE ELSE genmes:=FALSE
+                  CASE GA_G_INFO
+              ENDSELECT
+       ENDSELECT
+       Gt_ReplyIMsg(mes)
+   ENDIF
+ENDPROC
+PROC p_FileRequester(t) /*&quot;p_FileRequester(t)&quot;*/
+    DEF req:PTR TO filerequestr
+    DEF ret=FALSE
+    DEF f=FALSE
+    DEF tag
+    IF t=F_LOAD
+        tag:=[ASL_HAIL,&#x27;Gui2E : Load&#x27;,0]
+    ELSE
+        tag:=[ASL_FUNCFLAGS,FILF_SAVE,ASL_HAIL,&#x27;Gui2E : Save&#x27;,0]
+        f:=TRUE
+    ENDIF
+    IF req:=AllocAslRequest(ASL_FILEREQUEST,tag)
+        IF RequestFile(req)
+            AddPart(req.dir,&#x27;&#x27;,256)
+            IF f=FALSE THEN StringF(source,&#x27;\s\s&#x27;,req.dir,req.file) ELSE StringF(destin,&#x27;\s\s&#x27;,req.dir,req.file)
+            ret:=TRUE
+        ENDIF
+        FreeAslRequest(req)
+    ENDIF
+    RETURN ret
+ENDPROC
+PROC p_Alert(texte) /*&quot;p_Alert(texte)&quot;*/
+    Gt_SetGadgetAttrsA(g_info,gui_window,NIL,[GTTX_BORDER,TRUE,GTTX_TEXT,texte,GTTX_COPYTEXT,FALSE,GT_UNDERSCORE,&quot;_&quot;,TAG_DONE,0])
+ENDPROC
+PROC main() HANDLE /*&quot;main()&quot;*/
+    DEF testmain
+    tattr:=[&#x27;topaz.font&#x27;,8,0,0]:textattr
+    reelstdout:=stdout
+    string_kind:=[&#x27;GENERIC_KIND&#x27;,
+                  &#x27;BUTTON_KIND&#x27;,
+                  &#x27;CHECKBOX_KIND&#x27;,
+                  &#x27;INTEGER_KIND&#x27;,
+                  &#x27;LISTVIEW_KIND&#x27;,
+                  &#x27;MX_KIND&#x27;,
+                  &#x27;NUMBER_KIND&#x27;,
+                  &#x27;CYCLE_KIND&#x27;,
+                  &#x27;PALETTE_KIND&#x27;,
+                  &#x27;&#x27;,
+                  &#x27;SCROLLER_KIND&#x27;,
+                  &#x27;SLIDER_KIND&#x27;,
+                  &#x27;STRING_KIND&#x27;,
+                  &#x27;TEXT_KIND&#x27;]
+    IF (testmain:=p_OpenLibraries())&lt;&gt;ER_NONE THEN Raise(testmain)
+    IF (testmain:=p_SetUpScreen())&lt;&gt;ER_NONE THEN Raise(testmain)
+    g_InitGUIBase()
+    IF (testmain:=p_InitguiWindow())&lt;&gt;ER_NONE THEN Raise(testmain)
+    IF (testmain:=p_OpenguiWindow())&lt;&gt;ER_NONE THEN Raise(testmain)
+    REPEAT
+        p_LookAllMessage()
+    UNTIL reelquit=TRUE
+    Raise(ER_NONE)
+EXCEPT
+    g_RemGUIBase()
+    p_RemguiWindow()
+    p_SetDownScreen()
+    p_CloseLibraries()
+    SELECT exception
+        CASE ER_LOCKSCREEN; WriteF(&#x27;Lock Screen Failed.&#x27;)
+        CASE ER_VISUAL;     WriteF(&#x27;Error Visual.&#x27;)
+        CASE ER_CONTEXT;    WriteF(&#x27;Error Context.&#x27;)
+        CASE ER_MENUS;      WriteF(&#x27;Error Menus.&#x27;)
+        CASE ER_GADGET;     WriteF(&#x27;Error Gadget.&#x27;)
+        CASE ER_WINDOW;     WriteF(&#x27;Error Window.&#x27;)
+    ENDSELECT
+ENDPROC
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

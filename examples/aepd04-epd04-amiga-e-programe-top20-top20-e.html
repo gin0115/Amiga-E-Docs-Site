@@ -1,0 +1,216 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Top20.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-aepd04.html">AEPD04</a> &rsaquo; Top20.e</div><h1>File: <code>Top20.e</code></h1><p class="meta">190 lines · project <a href="../examples/pkg-aepd04.html"><code>AEPD04</code></a></p><p class="pathctx">AEPD04/EPD04/Amiga_E-Programe/Top20/Top20.e</p><p class="prose">Anubis-Top20 Amiga E © TOB 1993</p><h2>Source</h2><pre class="code">/* Anubis-Top20 Amiga E © TOB 1993 */
+
+/* OBJECTS */
+/*|||*/
+OBJECT ob_brett
+ name[20]:ARRAY,
+ brettpfad[60]:ARRAY,
+ diskpfad[80]:ARRAY,
+ passwort[16]:ARRAY,
+ verwalter[16]:ARRAY,
+ leselevel:CHAR,
+ schreiblevel:CHAR,
+ maxmsg:LONG,
+ typ:INT,
+ date:LONG,
+ gruppe:LONG,
+ infoline[60]:ARRAY,
+ nettyp:LONG,
+ special:LONG,
+ bytelimit:LONG,
+ kosten:LONG,
+ pad[20]:ARRAY
+ENDOBJECT
+
+OBJECT ob_index
+ absender[80]:ARRAY,
+ betreff[80]:ARRAY,
+ kurzbetreff[60]:ARRAY,
+ size:LONG,
+ edate:LONG,
+ qdate:LONG,
+ ldate:LONG,
+ typ:LONG,
+ nr:LONG,
+ nrbrett:LONG,
+ mode:LONG,
+ count:LONG,
+ special:LONG,
+ msgid[60]:ARRAY,
+ bezug[60]:ARRAY,
+ pad[40]:ARRAY
+ENDOBJECT
+
+/*|||*/
+
+/* KONSTANTEN */
+/*|||*/
+/* Konstanten für Brettdaten */
+
+CONST BRETTCOUNT=304
+CONST BTYPE_ASCII=0,BTYPE_BIN=1,BTYPE_NET=2,BTYPE_BDIR=3
+
+/* Konstanten für Indexdaten */
+
+CONST INDEXCOUNT=420
+CONST IMODE_READ=0,IMODE_PROT=1,IMODE_DEL=2
+CONST ITYPE_ASC=0,ITYPE_BIN=1
+
+/*|||*/
+/* VARIABLEN */
+/*|||*/
+/* Variablen für Brettdaten */
+
+DEF brettliste=NIL,brettlaenge=0,brettanzahl=0,brett=NIL:PTR TO ob_brett
+
+/* Variablen für Indexdaten */
+
+DEF indexliste=NIL,indexlaenge=0,indexanzahl=0,index=NIL:PTR TO ob_index
+
+/*|||*/
+
+OBJECT ob_top
+ betreff:LONG,
+ kurz:LONG,
+ zug:LONG
+ENDOBJECT
+
+DEF top20[20]:ARRAY OF ob_top
+
+PROC main()
+ WriteF(&#x27;Anubis-Top20 - Amiga_E-Shellversion 1.1 - © TOB 1993\n&#x27;)
+ WriteF(&#x27;~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n&#x27;)
+ brettliste_laden()
+ IF brettanzahl=0 THEN RETURN
+ get_top20()
+ ausgabe()
+ CleanUp(0)
+ENDPROC
+
+PROC brettliste_laden()
+/*|||*/
+ DEF handle,name,flen=TRUE
+ name:=&#x27;Anubis:Daten/Brettliste&#x27;
+ IF (flen:=FileLength(name))=-1 THEN RETURN
+ IF (brettliste:=New(flen+1))=NIL THEN RETURN
+ IF (handle:=Open(name,1005))=NIL THEN RETURN
+ brettlaenge:=Read(handle,brettliste,flen)
+ Close(handle)
+ IF brettlaenge&lt;flen THEN RETURN
+ brettanzahl:=(brettlaenge/BRETTCOUNT)-1
+ENDPROC
+/*|||*/
+PROC index_laden(pfad)
+/*|||*/
+ DEF handle,name[86]:STRING,flen=TRUE
+ StringF(name,&#x27;\s\s&#x27;,pfad,&#x27;/Index&#x27;)
+ indexanzahl:=0
+ IF indexliste&lt;&gt;NIL THEN Dispose(indexliste)
+ IF (flen:=FileLength(name))=-1 THEN RETURN
+ IF (indexliste:=New(flen+1))=NIL THEN RETURN
+ IF (handle:=Open(name,1005))=NIL THEN RETURN
+ indexlaenge:=Read(handle,indexliste,flen)
+ Close(handle)
+ IF indexlaenge&lt;flen THEN RETURN
+ indexanzahl:=(indexlaenge/INDEXCOUNT)-1
+ENDPROC
+/*|||*/
+PROC get_top20()
+/*|||*/
+ DEF i,j,pfad[80]:STRING,name[80]:STRING
+ name:=UpperStr(name)
+ FOR i:=0 TO 19
+  top20[i].zug:=0
+  top20[i].betreff:=String(80)
+  top20[i].kurz:=String(60)
+ ENDFOR
+ FOR i:=0 TO brettanzahl
+  brett:=brettliste+(i*BRETTCOUNT)
+  pfad:=brett.diskpfad
+  index_laden(pfad)
+  IF indexlaenge&gt;0
+   FOR j:=0 TO indexanzahl
+    index:=indexliste+(j*INDEXCOUNT)
+    IF (index.count&gt;top20[19].zug) AND (index.typ=ITYPE_BIN) THEN sethigh()
+   ENDFOR
+  ENDIF
+ ENDFOR
+ENDPROC
+/*|||*/
+PROC sethigh()
+/*|||*/
+ DEF i,pos=-1
+ IF index.count &gt; 0
+  pos:=posi(index.count)
+  IF pos&gt;=0
+   FOR i:=19 TO (pos+1) STEP -1
+    top20[i].zug:=top20[i-1].zug
+    top20[i].betreff:=String(80)
+    StrAdd(top20[i].betreff,top20[i-1].betreff,ALL)
+    top20[i].kurz:=String(60)
+    StrAdd(top20[i].kurz,top20[i-1].kurz,ALL)
+   ENDFOR
+   top20[pos].zug:=index.count
+   top20[pos].betreff:=String(80)
+   StrAdd(top20[pos].betreff,index.betreff,ALL)
+   top20[pos].kurz:=String(60)
+   StrAdd(top20[pos].kurz,index.kurzbetreff,ALL)
+  ENDIF
+ ENDIF
+ENDPROC
+/*|||*/
+PROC posi(count)
+/*|||*/
+ DEF i,pos=-1
+ FOR i:=19 TO 0 STEP -1
+  IF count&gt;top20[i].zug THEN pos:=i
+ ENDFOR
+ENDPROC pos
+/*|||*/
+PROC ausgabe()
+/*|||*/
+ DEF i
+ WriteF(&#x27;\s[3] \s[3] \l\s[30] \l\s[30]\n&#x27;,&#x27;Nr.&#x27;,&#x27;Zgr&#x27;,&#x27;Filename&#x27;,&#x27;Beschreibung&#x27;)
+ WriteF(&#x27;\s[79]\n&#x27;,&#x27;~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~&#x27;)
+ FOR i:=0 TO 19
+  WriteF(&#x27;\r\d[2]  \r\d[3] \l\s[30] \l\s[38]\n&#x27;,(i+1),top20[i].zug,top20[i].betreff,top20[i].kurz)
+ ENDFOR
+ENDPROC
+/*|||*/
+
+/*
+        mfG,
+            TOB
+
+
+He who reads many fortunes gets confused.
+
+*/
+
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

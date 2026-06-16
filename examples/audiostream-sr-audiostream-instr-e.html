@@ -1,0 +1,202 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>instr.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-audiostream-sr.html">audiostream_sr</a> &rsaquo; instr.e</div><h1>File: <code>instr.e</code></h1><p class="meta">176 lines · project <a href="../examples/pkg-audiostream-sr.html"><code>audiostream_sr</code></a></p><p class="pathctx">audiostream_sr/AudioSTREAM/instr.e</p><p class="prose">AudioSTREAM Professional (c) 1997-98 Immortal SYSTEMS Source codes for version 1.0 ================================================= Source: <a href="../modules/instr.html">instr</a>.e Description: instrument related stuff Version: 1.0 --------------------------------------------------------------------</p><h2>Source</h2><pre class="code"> /*
+
+      AudioSTREAM Professional
+      (c) 1997-98 Immortal SYSTEMS
+
+      Source codes for version 1.0
+
+      =================================================
+
+      Source:     instr.e
+      Description:    instrument related stuff
+      Version:    1.0
+ --------------------------------------------------------------------
+*/
+
+
+OPT MODULE
+OPT PREPROCESS
+
+
+MODULE &#x27;*declarations&#x27;,&#x27;muimaster&#x27;,&#x27;libraries/mui&#x27;,&#x27;tools/boopsi&#x27;,&#x27;devices/inputevent&#x27;,&#x27;*global&#x27;
+MODULE &#x27;*gui_declarations&#x27;,&#x27;*common&#x27;,&#x27;utility/hooks&#x27;,&#x27;tools/installhook&#x27;,&#x27;*adst:dsp/dummy&#x27;
+
+
+#define CIP curinsp
+
+OBJECT obj_instrdata
+     linked:INT -&gt;linked slot
+     type:INT   -&gt;0=sample
+
+     transposable:INT
+     mtype:INT  -&gt;0=melodic 1=fixed rate
+     rate
+     transpose:INT
+     finetune:INT
+     phasediff:INT -&gt; -50ms..50ms
+     invertl:INT
+     invertr:INT
+     loopon:INT
+     pingpong:INT
+     reverse:INT
+     offset
+     loopstart
+     looplen
+     interpolation:INT
+     killonzero:INT
+     ktimeout:INT -&gt; 0..100 in 1/10 sec
+
+     -&gt; params: 0=volume 1=panning 2=pitchL 3=pitchR
+     paramg[4]:ARRAY OF obj_gendata
+     parame[4]:ARRAY OF obj_envldata
+     paraml[4]:ARRAY OF obj_lfodata
+ENDOBJECT
+
+
+
+
+OBJECT obj_instrument OF obj_base
+      data:obj_instrdata
+
+      interactive:INT
+ENDOBJECT
+
+
+EXPORT OBJECT obj_inslist OF obj_sss
+ENDOBJECT
+
+EXPORT DEF upd
+EXPORT DEF changed
+EXPORT DEF inl:PTR TO obj_inslist
+
+      DEF curinsp:PTR TO obj_instrument
+
+            EXPORT DEF _inst:PTR TO objw_instrument
+            EXPORT DEF _pcki:PTR TO objw_pickinstrument
+            EXPORT DEF _appl:PTR TO obj_application
+
+
+
+-&gt;  inslist stuff
+
+PROC renam(slot,name) OF obj_inslist
+      SUPER self.renam(slot,name)
+      domethod(_pcki.lv,[MUIM_List_Redraw,MUIV_List_Redraw_All])
+      CHANGED
+ENDPROC
+
+PROC newone() OF obj_inslist
+      DEF temp:PTR TO obj_instrument
+
+      NEW temp.create()
+ENDPROC temp
+
+PROC freeone(entry:PTR TO obj_instrument) OF obj_inslist
+      END entry
+ENDPROC
+
+PROC newentry(slot) OF obj_inslist
+      -&gt; assumes that the slot is EMPTY
+
+      SUPER self.newentry(slot)
+      refreshpickinstr()
+      self.setactive(slot)
+
+ENDPROC
+
+PROC delentry(slot) OF obj_inslist
+
+      SUPER self.delentry(slot)
+      refreshpickinstr()
+      self.setactive(slot)
+ENDPROC
+
+PROC delall() OF obj_inslist
+DEF slot
+
+    slot:=self.getactive()
+      SUPER self.delall()
+      refreshpickinstr()
+      self.setactive(slot)
+ENDPROC
+
+
+PROC setactive(slot) OF obj_inslist
+DEF i,pos,a
+
+      IF slot=-1 THEN RETURN
+      SUPER self.setactive(slot)
+      CIP:=self.getp(slot)
+
+      domethod(_inst.txslot,[MUIM_SetAsString,MUIA_Text_Contents,
+      &#x27;%02.2lx&#x27;,slot])
+
+      IF CIP
+            a:=self.findpos(slot)
+            nset(_pcki.lv,MUIA_List_Active,a)
+      ELSE
+            nset(_pcki.lv,MUIA_List_Active,MUIV_List_Active_Off)
+            self.resetgui()
+      ENDIF
+ENDPROC
+
+PROC resetgui() OF obj_inslist
+
+      nset(_inst.stname,MUIA_String_Contents,&#x27;Unused slot&#x27;)
+      nset(_inst.txlinked,MUIA_Text_Contents,&#x27;No used item&#x27;)
+      nset(_inst.cytype,MUIA_Cycle_Active,0)
+      domethod(_inst.lvparams,[MUIM_List_Clear])
+ENDPROC
+
+-&gt; ----------------------------------------------
+
+PROC refreshpickinstr()
+DEF tctp:PTR TO obj_instrument
+DEF i,j,k,e
+      get(_pcki.lv,MUIA_List_Active,{e})
+      nset(_pcki.lv,MUIA_List_Quiet,MUI_TRUE)
+      domethod(_pcki.lv,[MUIM_List_Clear])
+
+      FOR i:=0 TO inl.max-1
+            tctp:=inl.getp(i)
+            IF tctp
+                        j:=fslot(i)
+                        k:=tctp.xb
+                        MOVE.L k,A0
+                        MOVE.L j,D0
+                        MOVE.W D0,(A0)
+                        MOVE.W #&quot;: &quot;,2(A0)
+                        domethod(_pcki.lv,[MUIM_List_InsertSingle,
+                                    tctp.xb,MUIV_List_Insert_Bottom])
+                        ENDIF
+      ENDFOR
+      nset(_pcki.lv,MUIA_List_Quiet,FALSE)
+      nset(_pcki.lv,MUIA_List_Active,e)
+ENDPROC
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

@@ -1,0 +1,212 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>UseGaugeGClass.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-aepd44.html">AEPD44</a> &rsaquo; UseGaugeGClass.e</div><h1>File: <code>UseGaugeGClass.e</code></h1><p class="meta">186 lines · project <a href="../examples/pkg-aepd44.html"><code>AEPD44</code></a></p><p class="pathctx">AEPD44/EPD44/Programme/BOOPSI-Klassen/GaugeGClass/UseGaugeGClass.e</p><p class="prose">-- --------------------------------------------------------------- -- * * -- Autor..............: Daniel Kasmeroglu (Gideon) -- * * -- Programmname.......: UseGaugeGClass.e -- * * -- Original von.......: Holger Engels -- * * -- Version............: 0.1 -- * * -- -- -- -- * * -- History............: </p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/intuition.html">intuition/intuition</a></li></ul></div><h2>Source</h2><pre class="code">/* -- --------------------------------------------------------------- -- *
+ * -- Autor..............: Daniel Kasmeroglu (Gideon)                 -- *
+ * -- Programmname.......: UseGaugeGClass.e                           -- *
+ * -- Original von.......: Holger Engels                              -- *
+ * -- Version............: 0.1                                        -- *
+ * -- --                                                           -- -- *
+ * -- History............:                                            -- *
+ * --     0.1            - Die erste Version !                        -- *
+ * --                      (24.03.1996)                               -- *
+ * -- --------------------------------------------------------------- -- */
+
+ 
+     /* -- ------------------------------------------------- -- *
+      * --                  Compiler-Optionen                -- *
+      * -- ------------------------------------------------- -- */
+
+OPT OSVERSION = 37            -&gt;: BOOPSI gibt es erst ab Amiga OS 2.04
+OPT REG = 5                   -&gt;: Register-Optimierung einschalten
+OPT PREPROCESS                -&gt;: Präprozessor einschalten
+
+
+     /* -- ------------------------------------------------- -- *
+      * --                     E-Module                      -- *
+      * -- ------------------------------------------------- -- */
+
+MODULE &#x27;intuition/intuition&#x27;,
+       &#x27;intuition/intuitionbase&#x27;,
+       &#x27;intuition/classusr&#x27;,
+       &#x27;intuition/gadgetclass&#x27;,
+       &#x27;intuition/imageclass&#x27;,
+       &#x27;intuition/classes&#x27;,
+       &#x27;intuition/icclass&#x27;,
+       &#x27;intuition/cghooks&#x27;,
+       &#x27;intuition/screens&#x27;,
+       &#x27;graphics/displayinfo&#x27;,
+       &#x27;graphics/text&#x27;,
+       &#x27;utility/tagitem&#x27;,
+       &#x27;libraries/gadtools&#x27;,
+       &#x27;gadtools&#x27;,
+       &#x27;utility&#x27;,
+       &#x27;*ram:gaugegclass&#x27;
+
+
+     /* -- ------------------------------------------------- -- *
+      * --             Exception-Handler benutzen            -- *
+      * -- ------------------------------------------------- -- */
+
+RAISE &quot;OLIB&quot; IF OpenLibrary()       = NIL,
+      &quot;LPUB&quot; IF LockPubScreen()     = NIL,
+      &quot;VISU&quot; IF GetVisualInfoA()    = NIL,
+      &quot;DRIN&quot; IF GetScreenDrawInfo() = NIL,
+      &quot;OWIN&quot; IF OpenWindowTagList() = NIL
+
+
+ENUM PARTOFALL,
+     PERCENT
+
+
+     /* -- ------------------------------------------------- -- *
+      * --                  Globale Variablen                -- *
+      * -- ------------------------------------------------- -- */
+
+DEF glo_screen        : PTR TO screen    
+DEF glo_window        : PTR TO window    -&gt;: unser Fenster
+DEF glo_drawinfo      : PTR TO drawinfo
+DEF glo_gadgetpart    : PTR TO gadget
+DEF glo_gadgetpercent : PTR TO gadget
+DEF glo_gaugegcl      : PTR TO iclass    -&gt;: unsere private Klasse
+DEF glo_visual
+
+
+     /* -- ------------------------------------------------- -- *
+      * --                    Hauptprogramm                  -- *
+      * -- ------------------------------------------------- -- */
+
+PROC main() HANDLE
+DEF ma_top,ma_flags,ma_wtitle,ma_stitle
+
+  ma_wtitle    := String(30)
+  ma_stitle    := String(100)
+
+  StrCopy(ma_wtitle,&#x27;GaugeGClass Test&#x27;,ALL)
+  StrCopy(ma_stitle,&#x27;GaugeGClass - Public Domain -&#x27;,ALL)
+
+  -&gt;: Fenster-Flags
+  ma_flags     := WFLG_DRAGBAR + WFLG_DEPTHGADGET + WFLG_CLOSEGADGET
+
+  -&gt;: alles was nötig ist, öffnen
+  gadtoolsbase := OpenLibrary(&#x27;gadtools.library&#x27;,37)
+  utilitybase  := OpenLibrary(&#x27;utility.library&#x27;,37)
+
+  glo_screen   := LockPubScreen(NIL)
+  ma_top       := glo_screen.wbortop + glo_screen.font.ysize + 1
+  glo_visual   := GetVisualInfoA(glo_screen,TAG_DONE)
+  glo_drawinfo := GetScreenDrawInfo(glo_screen)
+
+  glo_window   := OpenWindowTagList(NIL,
+  [WA_LEFT,                         200,
+   WA_TOP,                       ma_top,
+   WA_WIDTH,                        300,
+   WA_HEIGHT,                       200,
+   WA_AUTOADJUST,                  TRUE,
+   WA_IDCMP,          IDCMP_CLOSEWINDOW,
+   WA_FLAGS,                   ma_flags,
+   WA_ACTIVATE,                    TRUE,
+   WA_TITLE,                  ma_wtitle,
+   WA_SCREENTITLE,            ma_stitle,
+   WA_PUBSCREEN,             glo_screen,
+   TAG_DONE,                   TAG_DONE])
+
+  demonstrategauge()  -&gt;: Aufruf der eigentlichen Testroutine
+                                       
+EXCEPT DO
+
+  IF glo_window   &lt;&gt; NIL THEN CloseWindow(glo_window)
+  IF glo_drawinfo &lt;&gt; NIL THEN FreeScreenDrawInfo(glo_screen,glo_drawinfo)
+  IF glo_visual   &lt;&gt; NIL THEN FreeVisualInfo(glo_visual)
+  IF glo_screen   &lt;&gt; NIL THEN UnlockPubScreen(NIL,glo_screen)
+  IF utilitybase  &lt;&gt; NIL THEN CloseLibrary(utilitybase)
+  IF gadtoolsbase &lt;&gt; NIL THEN CloseLibrary(gadtoolsbase)
+
+ENDPROC
+
+
+PROC demonstrategauge()
+DEF t
+   
+  -&gt;: installieren unserer privaten GaugeGClass
+  glo_gaugegcl := gau_InitGAUGEClass()
+  IF glo_gaugegcl
+
+    -&gt;: erstellen von zwei GaugeGadgets
+    glo_gadgetpart := NewObjectA(glo_gaugegcl,NIL,
+    [GA_LEFT,                                   9,
+     GA_TOP,                                   21,
+     GA_WIDTH,                                120,
+     GA_HEIGHT,                                15,
+     GA_ID,                             PARTOFALL,
+     GAUGE_PART,                                0,
+     GAUGE_FULL,                               12,
+     GAUGE_PARTOFALL,                        TRUE,
+     TAG_DONE,                           TAG_DONE])
+    
+    glo_gadgetpercent := NewObjectA(glo_gaugegcl,NIL,
+    [GA_PREVIOUS,                     glo_gadgetpart,
+     GA_LEFT,                                      9,
+     GA_TOP,                                      45,
+     GA_WIDTH,                                   120,
+     GA_HEIGHT,                                   15,
+     GA_ID,                                  PERCENT,
+     GAUGE_PART,                                   0,
+     GAUGE_FULL,                                  12,
+     GAUGE_PERCENTAGE,                          TRUE,
+     TAG_DONE,                              TAG_DONE])
+         
+    -&gt;: Gadgets werden ans Fenster gehängt und aufgefordert, sich darzustellen
+    AddGList(glo_window,glo_gadgetpart,-1,-1,NIL)
+
+    RefreshGadgets(glo_gadgetpart,glo_window,NIL)
+         
+    FOR t := 1 TO 12
+      Delay(50)
+      -&gt;: Ein paar Werte an die Schalter senden
+      SetGadgetAttrsA(glo_gadgetpart,   glo_window,NIL,[GAUGE_PART,t,TAG_DONE])
+      SetGadgetAttrsA(glo_gadgetpercent,glo_window,NIL,[GAUGE_PART,t,TAG_DONE])
+    ENDFOR
+    
+    -&gt;: auf ein Intuition-Event warten
+    WaitPort(glo_window.userport)
+         
+    -&gt;: Schalter entfernen
+    RemoveGList(glo_window,glo_gadgetpart,-1)
+        
+    -&gt;: GadgetObjects werden aufgerufen, sich zu terminieren
+    IF glo_gadgetpart    &lt;&gt; NIL THEN DisposeObject(glo_gadgetpart)
+    IF glo_gadgetpercent &lt;&gt; NIL THEN DisposeObject(glo_gadgetpercent)
+            
+    -&gt;: private Klassen müsen nach ihrer Nutzung wieder entfernt werden
+    gau_FreeGAUGEClass(glo_gaugegcl)
+
+  ELSE
+    WriteF(&#x27;Klasse konnte nicht erstellt werden !\n&#x27;)
+  ENDIF
+
+ENDPROC
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

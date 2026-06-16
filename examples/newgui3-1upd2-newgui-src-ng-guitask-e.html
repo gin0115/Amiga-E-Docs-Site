@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ng_guitask.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-newgui3-1upd2.html">NewGUI3_1upd2</a> &rsaquo; ng_guitask.e</div><h1>File: <code>ng_guitask.e</code></h1><p class="meta">86 lines · project <a href="../examples/pkg-newgui3-1upd2.html"><code>NewGUI3_1upd2</code></a></p><p class="pathctx">NewGUI3_1upd2/NewGUI/Src/ng_guitask.e</p><p class="prose">* Asynchron NewGUI-Handling with a subtask * -========================================- * * © 1998 THE DARK FRONTIER Softwareentwicklungen *</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/tasks.html">amigalib/tasks</a></li><li><a href="../modules/dos.html">dos/dos</a></li><li><a href="../modules/tasks.html">exec/tasks</a></li><li><a href="../modules/newgui.html">newgui/newgui</a></li><li><a href="../modules/ecode.html">other/ecode</a></li></ul></div><h2>Source</h2><pre class="code">/* 
+ *  Asynchron NewGUI-Handling with a subtask
+ * -========================================-
+ * 
+ * © 1998 THE DARK FRONTIER Softwareentwicklungen
+ * 
+ */
+
+OPT     OSVERSION = 37
+OPT     MODULE
+
+MODULE  &#x27;amigalib/tasks&#x27;
+MODULE  &#x27;dos/dos&#x27;
+MODULE  &#x27;exec/tasks&#x27;
+MODULE  &#x27;newgui/newgui&#x27;
+MODULE  &#x27;other/ecode&#x27;
+
+EXPORT OBJECT  guitaskinfo
+ maintask       :PTR TO tc
+ guitask        :PTR TO tc
+ tags           :PTR TO LONG
+ gui            :PTR TO guihandle
+ sig            :LONG
+ signum         :INT
+ENDOBJECT
+
+EXPORT CONST   NG_STACK_SIZE = 4096             -&gt; Std-Stack-Size (increase it if needed!)
+
+PROC handlegui()                                -&gt; Gui-Handling (Task-Code)
+ DEF    task=NIL:PTR TO tc,                     -&gt; PTR to our Task (for userdata = guitaskinfo!!!)
+        info:PTR TO guitaskinfo,                -&gt; guitaskinfo (for maintask, tags and guihandle!)
+        gui=NIL:PTR TO guihandle,               -&gt; Guihandle to our gui!
+        res=-1                                  -&gt; resultcode of the gui(s)
+  task:=FindTask(NIL)                           -&gt; Find our Task
+   info:=task.userdata                          -&gt; Get the guitaskinfo-structure
+    gui:=guiinitA(info.tags,NIL)                -&gt; open our gui with the given tags
+     info.gui:=gui                              -&gt; Save the gui-ptr (because it could be that our task is killed until we had closed the gui!)
+      Signal(info.maintask,info.sig)            -&gt; signal our main-Task that we are ready!
+      WHILE (res&lt;0)                             -&gt; normal message-handling-loop
+       Wait(gui.sig)
+       res:=guimessage(gui)
+      ENDWHILE
+     IF (gui&lt;&gt;NIL) THEN cleangui(gui,TRUE)      -&gt; clean our gui with the sub-guis
+    info.gui:=NIL                               -&gt; set the guihandle in the guitaskinfo-structure to NIL
+   Signal(info.maintask,info.sig)               -&gt; signal our main-Task that it should close (us)
+  Wait(NIL)                                     -&gt; Wait unti we are killed
+ENDPROC res                                     -&gt; Unneccesary, because we are killed, so return-codes are nonsens!
+
+EXPORT PROC ng_newtask(tags,stacksize)          -&gt; Init the new Task
+ DEF    task=NIL:PTR TO tc,                     -&gt; The new Task
+        code=NIL,                               -&gt; The code for the guihandling
+        info:PTR TO guitaskinfo                 -&gt; guitaskinfo-structure
+   IF (code:=eCodeTask({handlegui}))            -&gt; Make the Code read for task-use
+    NEW info                                    -&gt; Allocate the guitaskinfo-structure
+     info.maintask:=FindTask(NIL)               -&gt; Save the adress from the main-task in the structure
+      info.tags:=tags                           -&gt; save the given tags for the gui
+       info.signum:=-1                          -&gt; Preset Signal-Value
+        info.signum:=AllocSignal(-1)            -&gt; Allocate a Signalbit
+       IF (info.signum=-1) THEN Raise(ERR_NG_SIGNAL)    -&gt; Could not allocate Signal-Bit
+      info.sig:=Shl(1,info.signum)              -&gt; Get the Signalbit our of the given Signal-number
+     IF (task:=createTask(&#x27;NewGUI&#x27;,-1,code,stacksize,info))     -&gt; Create the Task (with the guitaskinfo as task.userdata!!)
+      task.userdata:=info                       -&gt; ???
+      info.guitask:=task                        -&gt; Save our Task-Address for later useage (Killing!)
+     ELSE
+      Raise(ERR_NG_TASK)                        -&gt; Error with createTask()
+     ENDIF
+   ELSE
+    Raise(ERR_NG_CODE)                          -&gt; Error with eCodeTask()
+   ENDIF
+ENDPROC info                                    -&gt; Return the guitaskinfo-structure
+
+EXPORT PROC ng_endtask(info:PTR TO guitaskinfo) -&gt; End the Task and remove all related things
+ DEF    task:PTR TO tc                          -&gt; PTR to our task-structure
+  task:=info.guitask                            -&gt; get the PTR to our gui-task out of the guitaskinfo
+   Forbid()                                     -&gt; Forbit the task-switching!
+    deleteTask(task)                            -&gt; Remove the Task and kill it!
+   Permit()                                     -&gt; Permit the task-switching!
+  FreeSignal(info.signum)                       -&gt; Free the allocated Signal-Bit
+ IF (info.gui&lt;&gt;NIL) THEN cleangui(info.gui,TRUE)-&gt; If there is a opened gui -&gt; Close it!
+ END info                                       -&gt; Free the allocated info-Structure
+ENDPROC
+
+EXPORT PROC ng_checkgui(info:PTR TO guitaskinfo)        IS IF (SetSignal(NIL,NIL) AND info.sig) THEN TRUE ELSE FALSE
+                                                -&gt; Check if the signal from the sub-(gui-)task arrived
+                                                -&gt; Should be called sometimes!
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

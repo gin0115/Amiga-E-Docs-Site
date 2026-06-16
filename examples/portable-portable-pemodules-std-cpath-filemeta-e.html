@@ -1,0 +1,323 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>cPath_FileMeta.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-portable.html">PortablE</a> &rsaquo; cPath_FileMeta.e</div><h1>File: <code>cPath_FileMeta.e</code></h1><p class="meta">297 lines · project <a href="../examples/pkg-portable.html"><code>PortablE</code></a></p><p class="pathctx">PortablE/PortablE/PEmodules/std/cPath_FileMeta.e</p><p class="prose">std/cPath_FileMeta.e 01-08-2020 Meta-data write-back caching <a href="../modules/class.html">class</a> layer for portable file access. Copyright (c) 2007,2008,2009,2010,2011,2012,2013,2014,2015,2020 Christopher Steven Handley ( http://cshandley.co.uk/email ) All rights reserved. Redistribution and use in source and binary <a href="../modules/forms.html">forms</a>, with </p><h2>Source</h2><pre class="code">/* std/cPath_FileMeta.e 01-08-2020
+	Meta-data write-back caching class layer for portable file access.
+
+
+Copyright (c) 2007,2008,2009,2010,2011,2012,2013,2014,2015,2020 Christopher Steven Handley ( http://cshandley.co.uk/email )
+All rights reserved.
+
+Redistribution and use in source and binary forms, with or without modification,
+are permitted provided that the following conditions are met:
+
+* The source code must not be modified after it has been translated or converted
+away from the PortablE programming language.  For clarification, the intention
+is that all development of the source code must be done using the PortablE
+programming language (as defined by Christopher Steven Handley).
+
+* Redistributions of source code must retain the above copyright notice, this
+list of conditions and the following disclaimer.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS &quot;AS IS&quot; AND
+ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+DISCLAIMED.  IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR
+TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
+THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+*/
+
+-&gt;Basically completed 03-01-09, restarted 15-11-08, stopped 10-11-07, started 07-11-07.
+-&gt;Rewrite basically finished 28-03-14, started 04-03-14.
+-&gt;Separated meta-data caching from data-content caching 01-08-2020.
+
+OPT INLINE
+MODULE &#x27;target/std/pTime&#x27;
+PUBLIC MODULE &#x27;target/std/cPath_File&#x27;
+MODULE &#x27;target/std/cPath_shared&#x27;
+
+PRIVATE
+CONST DEBUG = FALSE
+
+PUBLIC
+
+/*****************************/
+PRIVATE
+SET CACHEDIRTY_ATTR, CACHEDIRTY_TIME, CACHEDIRTY_EXTRA
+SET SUPPORTS_SETTIME, SUPPORTS_SETATTR, SUPPORTS_SETEXTRA_FULLY
+
+DEF fileDiskSupports:BYTE, fileDiskName:OWNS STRING
+PUBLIC
+
+PROC new()
+	fileDiskSupports := 0
+	fileDiskName := NILS
+ENDPROC
+
+PROC end()
+	END fileDiskName
+ENDPROC
+
+CLASS cFileMeta OF cHostFile
+	cacheAttr
+	cacheTime:BIGVALUE
+	cacheExtra:OWNS PTR TO cHostExtra
+	cacheExtraValid:BOOL		-&gt;only TRUE after open() has finished setting cacheExtra
+	cacheDirty:BYTE				-&gt;flags indicating which elements need flushing
+	
+	diskSupports:BYTE			-&gt;which elements are supported by the current device
+	diskName:OWNS STRING		-&gt;name of the device
+ENDCLASS
+
+PROC new(padByte=0:BYTE) OF cFileMeta
+	SUPER self.new(padByte)
+	NEW self.cacheExtra.new()
+	
+	self.diskSupports := 0
+	self.diskName := NILS
+ENDPROC
+
+PROC end() OF cFileMeta
+	SUPER self.end()	-&gt;this should automatically close() the file if it is open
+	END self.cacheExtra
+	
+	END self.diskName
+ENDPROC
+
+PROC open(filePath:ARRAY OF CHAR, readOnly=FALSE:BOOL, forceOpen=FALSE:BOOL, atPastEndNotStart=FALSE:BOOL) OF cFileMeta RETURNS success:BOOL
+	IF success := SUPER self.open(filePath, readOnly, forceOpen, atPastEndNotStart)
+		-&gt;cache file&#x27;s state
+		self.cacheAttr := SUPER self.getAttributes()
+		self.cacheTime := SUPER self.getTime()
+		self.cacheExtraValid := FALSE
+		self.cacheExtra.setExtra(self)
+		self.cacheExtraValid := TRUE
+		self.cacheDirty := 0
+		
+		self.evaluateDisk(filePath, readOnly)
+	ENDIF
+ENDPROC
+
+PROC close() OF cFileMeta
+	IF self.readOnly = FALSE
+		IF self.cacheExtra.queryExtra(&quot;LINK&quot;) = NILA THEN self.setTime(self.getTime())	-&gt;force file&#x27;s time to be correctly set by final flush
+		self.flush()
+	ENDIF
+	
+	SUPER self.close()
+ENDPROC
+
+PRIVATE
+PROC evaluateDisk(path:ARRAY OF CHAR, readOnly:BOOL) OF cFileMeta
+	DEF openDiskName:OWNS STRING, expandedPath:OWNS STRING, success:BOOL, unknown:BOOL
+	
+	expandedPath := ExpandPath(path)
+	openDiskName := ExtractDevice(expandedPath)
+	IF EstrLen(openDiskName) = 0
+		END openDiskName
+		openDiskName := NEW &#x27;:/&#x27;
+	ENDIF
+	
+	IF StrCmpPath(openDiskName, IF self.diskName THEN self.diskName ELSE &#x27;&#x27;)
+		-&gt;(already evaluated disk) so do nothing, thus reusing disk evaluation
+		
+	ELSE IF StrCmpPath(openDiskName, IF fileDiskName THEN fileDiskName ELSE &#x27;&#x27;)
+		-&gt;(global cache holds disk evaluation) so use it
+		END self.diskName
+		self.diskName := StrJoin(fileDiskName)
+		self.diskSupports := fileDiskSupports
+		
+	ELSE IF readOnly
+		-&gt;(disk evaluation not cached) but read-only, so only store basic evaluation (which will not be re-used)
+		END self.diskName
+		self.diskName := PASS openDiskName
+		
+		self.diskSupports := 0
+		END self.diskName	-&gt;destroy this so incomplete diskSupports will not be reused
+	ELSE
+		-&gt;(disk evaluation not cached) so evaluate &amp; store it
+		END self.diskName
+		self.diskName := PASS openDiskName
+		
+		self.diskSupports := 0
+		IF SUPER self.setAttributes(self.cacheAttr) THEN self.diskSupports := self.diskSupports OR SUPPORTS_SETATTR
+		IF SUPER self.setTime(self.cacheTime)       THEN self.diskSupports := self.diskSupports OR SUPPORTS_SETTIME
+		
+		success, unknown := SUPER self.changeExtra(&quot;COMM&quot;, &#x27;anything&#x27;)	-&gt;work-around SMBFS issue (setting the same (empty?) comment doesn&#x27;t seem to fail)
+		IF success OR unknown
+			self.cacheExtraValid := FALSE
+			IF SUPER self.setExtra(self.cacheExtra) THEN self.diskSupports := self.diskSupports OR SUPPORTS_SETEXTRA_FULLY
+			self.cacheExtraValid := TRUE
+		ENDIF
+		
+		-&gt;also store in global cache
+		END fileDiskName
+		fileDiskName := StrJoin(self.diskName)
+		fileDiskSupports := self.diskSupports
+		
+		IF DEBUG
+			IF self.diskSupports AND SUPPORTS_SETATTR        THEN Print(&#x27;Disk &quot;\s&quot; supports setAttributes()\n&#x27;, self.diskName)
+			IF self.diskSupports AND SUPPORTS_SETTIME        THEN Print(&#x27;Disk &quot;\s&quot; supports setTime()\n&#x27;, self.diskName)
+			IF self.diskSupports AND SUPPORTS_SETEXTRA_FULLY THEN Print(&#x27;Disk &quot;\s&quot; supports setExtra()\n&#x27;, self.diskName)
+		ENDIF
+	ENDIF
+FINALLY
+	END openDiskName, expandedPath
+ENDPROC
+PUBLIC
+
+PROC flush() OF cFileMeta
+	DEF success:BOOL, temp:BOOL
+	
+	IF self.readOnly = FALSE
+		success := TRUE
+		IF self.cacheDirty AND CACHEDIRTY_EXTRA
+			-&gt;(user has previously used setExtra()) so need to flush it
+			self.cacheExtraValid := FALSE
+			IF self.diskSupports AND SUPPORTS_SETEXTRA_FULLY
+				success := success AND (temp := SUPER self.setExtra(self.cacheExtra))
+				IF DEBUG THEN IF temp = FALSE THEN Print(&#x27;flush() FAILED to setExtra() because &quot;\s&quot;; support=\d, file=&quot;\s&quot;\n&#x27;, self.infoFailureReason(), self.diskSupports AND SUPPORTS_SETEXTRA_FULLY, self.getPath() /*leak*/)
+			ELSE
+				IF SUPER self.setExtra(self.cacheExtra) = FALSE THEN self.cacheExtra.setExtra(self)		-&gt;update cache since didn&#x27;t fully set everything
+			ENDIF
+			self.cacheExtraValid := TRUE
+		ENDIF
+		IF self.cacheDirty AND CACHEDIRTY_ATTR
+			IF self.diskSupports AND SUPPORTS_SETATTR
+				success := success AND (temp := SUPER self.setAttributes(self.cacheAttr))	-&gt;Attr will only be dirty if disk supports it
+				IF DEBUG THEN IF temp = FALSE THEN Print(&#x27;flush() FAILED to setAttributes() because &quot;\s&quot;; support=\d, file=&quot;\s&quot;\n&#x27;, self.infoFailureReason(), self.diskSupports AND SUPPORTS_SETATTR, self.getPath() /*leak*/)
+			ENDIF
+		ENDIF
+		IF self.cacheDirty AND CACHEDIRTY_TIME
+			IF self.diskSupports AND SUPPORTS_SETTIME
+				success := success AND (temp := SUPER self.setTime(self.cacheTime))		-&gt;ditto for Time	-&gt;do Time last to ensure it does not get changed
+				IF DEBUG THEN IF temp = FALSE THEN Print(&#x27;flush() FAILED to setTime() because &quot;\s&quot;; support=\d, file=&quot;\s&quot;\n&#x27;, self.infoFailureReason(), self.diskSupports AND SUPPORTS_SETTIME, self.getPath() /*leak*/)
+			ENDIF
+		ENDIF
+		self.cacheDirty := 0
+		IF DEBUG THEN success := TRUE
+		IF success = FALSE THEN Throw(&quot;FILE&quot;, &#x27;cFile.flush(); failed to set one of more of: time, attributes &amp; extra&#x27;)
+	ENDIF
+	
+	SUPER self.flush()
+	
+	self.cacheAttr := SUPER self.getAttributes()
+	self.cacheTime := SUPER self.getTime()
+	self.cacheExtraValid := FALSE
+	self.cacheExtra.setExtra(self)
+	self.cacheExtraValid := TRUE
+ENDPROC
+
+PROC setAttributes(attr, mask=-1) OF cFileMeta RETURNS success:BOOL
+	DEF newAttr
+	
+	-&gt;use check
+	IF self.readOnly THEN Throw(&quot;EMU&quot;, &#x27;cFile.setAttributes(); file opened in read only mode&#x27;)
+	
+	IF self.diskSupports AND SUPPORTS_SETATTR
+		-&gt;calculate new attributes
+		mask := mask AND self.getAttributesSupported()
+		attr := attr AND mask		-&gt;clear any bits that the mask excludes (mistakes?)
+		
+		newAttr := self.cacheAttr
+		newAttr := newAttr AND NOT mask		-&gt;clear any bits that will be changed; i.e. only copy bits that are not changing
+		newAttr := newAttr OR attr			-&gt;add changed bits
+		
+		-&gt;store new attributes
+		self.cacheAttr := newAttr
+		self.cacheDirty := self.cacheDirty OR CACHEDIRTY_ATTR
+		success := TRUE
+	ELSE
+		success := FALSE
+		self.failureReason := &#x27;not supported by disk&#x27;
+		self.failureOrigin := &#x27;cFile.setAttributes()&#x27;
+	ENDIF
+ENDPROC
+
+PROC getAttributes() OF cFileMeta RETURNS attr IS self.cacheAttr
+
+
+PROC setExtra(extra:PTR TO cExtra) OF cFileMeta RETURNS success:BOOL
+	success := self.cacheExtra.setExtra(extra)
+	self.cacheDirty := self.cacheDirty OR CACHEDIRTY_EXTRA
+	
+	IF success = FALSE
+		self.failureReason := &#x27;not supported by host&#x27;
+		self.failureOrigin := &#x27;cFile.setExtra()&#x27;
+	ENDIF
+ENDPROC
+
+PROC getExtra() OF cFileMeta RETURNS extra:OWNS PTR TO cExtra IS self.cacheExtra.getExtra()
+
+PROC changeExtra(specific:QUAD, value) OF cFileMeta RETURNS success:BOOL, unknown:BOOL
+	IF self.cacheExtraValid = FALSE
+		-&gt;(self.cacheExtra should not be used) so pass query to super class
+		success, unknown := SUPER self.changeExtra(specific, value)
+	ELSE
+		IF (specific = &quot;SLNK&quot;) OR (specific = &quot;HLNK&quot;) THEN self.flush()		-&gt;a link may be created or destroyed, so ensure all pending changes are flushed first
+		
+		success, unknown := self.cacheExtra.changeExtra(specific, value)
+		self.cacheDirty := self.cacheDirty OR CACHEDIRTY_EXTRA
+		
+		IF (specific = &quot;SLNK&quot;) OR (specific = &quot;HLNK&quot;) THEN self.flush()		-&gt;ensure any link change is performed immediately, and the cache knows about any changes
+		
+		IF success = FALSE
+			self.failureReason := &#x27;not supported by host&#x27;
+			self.failureOrigin := &#x27;cFile.changeExtra()&#x27;
+		ENDIF
+	ENDIF
+ENDPROC
+
+PROC queryExtra(specific:QUAD) OF cFileMeta RETURNS value, unknown:BOOL
+	IF self.cacheExtraValid = FALSE
+		-&gt;(open() has not yet set-up self.cacheExtra) so pass query to super class
+		value, unknown := SUPER self.queryExtra(specific)
+	ELSE
+		value, unknown := self.cacheExtra.queryExtra(specific)
+	ENDIF
+ENDPROC
+
+PROC setTime(time:BIGVALUE) OF cFileMeta RETURNS success:BOOL
+	-&gt;use check
+	IF self.readOnly THEN Throw(&quot;EMU&quot;, &#x27;cFile.setTime(); file opened in read only mode&#x27;)
+	
+	IF self.diskSupports AND SUPPORTS_SETTIME
+		self.cacheTime := time
+		self.cacheDirty := self.cacheDirty OR CACHEDIRTY_TIME
+		success := TRUE
+	ELSE
+		success := FALSE
+		self.failureReason := &#x27;not supported by disk&#x27;
+		self.failureOrigin := &#x27;cFile.setTime()&#x27;
+	ENDIF
+ENDPROC
+
+PROC getTime() OF cFileMeta RETURNS time:BIGVALUE IS self.cacheTime
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

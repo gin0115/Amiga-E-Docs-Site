@@ -1,0 +1,309 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>common.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-ecx-2-3-1-src.html">ECX_2.3.1-src</a> &rsaquo; common.e</div><h1>File: <code>common.e</code></h1><p class="meta">283 lines · project <a href="../examples/pkg-ecx-2-3-1-src.html"><code>ECX_2.3.1-src</code></a></p><p class="pathctx">ECX_2.3.1-src/ecx-2.3.1-src/common.e</p><p class="prose">ECX/<a href="../modules/common.html">common</a>.e</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/dos.html">dos/dos</a></li></ul></div><h2>Source</h2><pre class="code">-&gt; ECX/common.e
+
+/* ECX by Leif Salomonsson [ecx tele2 se] is Copyright (c) 2002-2008 */
+/* Released under the ECX COMPILER LICENSE, See ECXCOMPILERLICENSE.TXT */
+
+OPT MODULE
+OPT PREPROCESS
+
+-&gt; common.e new file created Sept 2007. Moved some common stuff out of ecx52.e source.
+
+-&gt;#define DBG_HASH
+
+MODULE &#x27;*compiler&#x27;
+MODULE &#x27;*binary&#x27;
+MODULE &#x27;dos/dos&#x27;
+
+EXPORT DEF itmz_labelhashtable:PTR TO LONG -&gt; main inits
+EXPORT DEF g_symbolssize -&gt; main reads
+
+-&gt; we &quot;import&quot; these from main (error reporting)
+EXPORT DEF g_currentproc:PTR TO proc, g_linenum, g_sourcename
+EXPORT DEF g_nowarn
+EXPORT DEF g_warnlist, g_optmodule
+
+EXPORT PROC newString(size) IS String(size)
+
+
+EXPORT PROC endString(s:PTR TO LONG) IS DisposeLink(s)
+
+
+PROC hashNewHLN(str, i)
+   DEF hln:PTR TO hln, len, nstr
+   #ifdef DBG_HASH
+   DEBUGF(&#x27;hashNewHLN(\a\s\a, \d)\n&#x27;, str, i)
+   #endif
+   NEW hln
+   len := StrLen(str)
+   nstr := String(len)
+   IF nstr = NIL THEN Raise(&quot;MEM&quot;)
+   hln.name := nstr
+   StrCopy(nstr, str)
+   hln.hnext := itmz_labelhashtable[i]
+   itmz_labelhashtable[i] := hln
+   g_symbolssize := g_symbolssize + len  -&gt; v40. to get idea of max strtabsize/symbolhunksize
+ENDPROC hln
+
+PROC hashFindHLN(str, i)
+   DEF hln:PTR TO hln
+   #ifdef DBG_HASH
+   DEBUGF(&#x27;hashFindHLN(\a\s\a, \d)\n &#x27;, str, i)
+   #endif
+   hln := itmz_labelhashtable[i]
+   WHILE hln
+      IF StrCmp(hln.name, str) THEN RETURN hln
+      hln := hln.hnext
+   ENDWHILE
+ENDPROC NIL
+
+EXPORT PROC getLabelHLN(str)
+   DEF hln:PTR TO hln, i
+   #ifdef DBG_HASH
+   DEBUGF(&#x27;getLabelHLN(\a\s\a) : &#x27;, str)
+   #endif
+   i := hashfunc(str)
+   hln := hashFindHLN(str, i)
+   IF hln = NIL THEN hln := hashNewHLN(str, i)
+   #ifdef DBG_HASH
+   DEBUGF(&#x27;I:\d HLN:$\h = [$\h,$\h]\n&#x27;, i, hln,hln.ident,hln.ident2)
+   #endif
+ENDPROC hln
+
+EXPORT PROC hashfunc(s) -&gt; v50
+   DEF i, v=0, a=1, c
+   #ifdef DBG_HASH
+   DEBUGF(&#x27;hashfunc(\a\s\a) : &#x27;, s)
+   #endif
+   WHILE (c := s[]++)
+      v := v * a + c
+      a++
+   ENDWHILE
+   i := Abs(Mod(v, LHASHSIZE))
+   #ifdef DBG_HASH
+   DEBUGF(&#x27;Abs(Mod(\h, \d)) = \d\n&#x27;, v, LHASHSIZE, i)
+   #endif
+   i := Min(i, LHASHSIZE-1) -&gt; work around mos emu bug
+ENDPROC i
+
+
+EXPORT PROC reportErr(err, extra=NIL)
+   DEF str[100]:STRING
+
+   WriteF(&#x27;ERROR: \s \s\s\s\n&#x27;,
+           err,
+           IF extra THEN &#x27;&quot;&#x27; ELSE &#x27;&#x27;,
+           IF extra THEN extra ELSE &#x27;&#x27;,
+           IF extra THEN &#x27;&quot;&#x27; ELSE &#x27;&#x27;)
+
+   IF g_currentproc THEN WriteF(&#x27;Procedure: \s\n&#x27;, g_currentproc.name)
+
+   IF g_linenum &lt;&gt; 0 THEN WriteF(&#x27;Line \d: \s\n&#x27;, Abs(g_linenum), getSourceLine(str))
+
+   Raise(&quot;ERR&quot;)
+ENDPROC
+
+EXPORT PROC reportIErr(err, extra=NIL)   -&gt; v48
+   DEF str[100]:STRING
+
+   WriteF(&#x27;INTERNAL ERROR: \s \s\s\s\n&#x27;,
+           err,
+           IF extra THEN &#x27;&quot;&#x27; ELSE &#x27;&#x27;,
+           IF extra THEN extra ELSE &#x27;&#x27;,
+           IF extra THEN &#x27;&quot;&#x27; ELSE &#x27;&#x27;)
+
+   IF g_currentproc THEN WriteF(&#x27;Procedure: \s\n&#x27;, g_currentproc.name)
+
+   IF g_linenum &lt;&gt; 0 THEN WriteF(&#x27;Line \d: \s\n&#x27;, Abs(g_linenum), getSourceLine(str))
+
+   Raise(&quot;ERR&quot;)
+ENDPROC
+
+-&gt; 1.10.0: added &quot;more&quot;  arg
+EXPORT PROC addWarning(err,more=NIL)
+   DEF warn:PTR TO warn, errlen, str, tstr[256]:STRING
+   IF g_nowarn THEN RETURN
+   StringF(tstr, &#x27;\s \c\s\c&#x27;, err,
+      IF more THEN &quot;\q&quot; ELSE &quot; &quot;,
+      IF more THEN more ELSE &#x27;&#x27;,
+      IF more THEN &quot;\q&quot; ELSE &quot; &quot;)
+
+   warn := g_warnlist
+   WHILE warn
+      IF StrCmp(warn.message, tstr)
+         warn.count := warn.count + 1
+         RETURN
+      ENDIF
+      warn := warn.next
+   ENDWHILE
+
+   str := String(EstrLen(tstr))
+   IF str = NIL THEN Raise(&quot;MEM&quot;)
+   StrCopy(str, tstr)
+   g_warnlist := NEW [g_warnlist, str, 1]:warn
+
+ENDPROC
+
+PROC getSourceLine(strbuf) HANDLE
+   DEF fname[200]:STRING
+   DEF fh=NIL, fbuf, mem=NIL
+   DEF fib:fileinfoblock
+   DEF linenr=1
+
+   IF g_linenum = -1 THEN RETURN StrCopy(strbuf, &#x27;???&#x27;)
+
+   StrCopy(fname, g_sourcename)
+   fh := Open(fname, OLDFILE)
+   IF fh = NIL THEN Throw(&quot;OPEN&quot;, fname)
+   IF ExamineFH(fh, fib) = NIL THEN Throw(&quot;EXAM&quot;, fname)
+   mem := NewR(4+fib.size)
+   fbuf := mem
+   IF Read(fh, fbuf, fib.size) &lt;&gt; fib.size THEN Throw(&quot;READ&quot;, fname)
+   /* find line */
+   WHILE (fbuf[]&lt;&gt;NIL) AND (linenr &lt;&gt; g_linenum)
+      IF fbuf[] = 10 THEN linenr++
+      fbuf++
+   ENDWHILE
+   IF linenr = g_linenum  -&gt; line found
+      strCopyNL(strbuf, fbuf)
+   ELSE
+      StrCopy(strbuf, &#x27;???&#x27;)
+   ENDIF
+
+EXCEPT DO
+   IF fh THEN Close(fh)
+   IF mem THEN Dispose(mem)
+   ReThrow()
+ENDPROC strbuf
+
+PROC strCopyNL(estr, str)
+   DEF pos=NIL
+   pos := InStr(str, &#x27;\n&#x27;)
+   IF pos = -1
+      StrCopy(estr, str)
+      RETURN NIL, EstrLen(estr)
+   ELSE
+      StrCopy(estr, str, pos)
+      RETURN str+pos+1, pos
+   ENDIF
+ENDPROC
+
+-&gt; returns ptr to member.
+-&gt; &quot;mname&quot;: hashed name.
+EXPORT PROC findMember(o:PTR TO object, mname)
+   DEF m:REG PTR TO member, a:REG
+   a := o.nrofmembers
+   WHILE a
+      a--
+      m := o.membertable[a]
+      IF m
+         IF m.name = mname THEN RETURN m
+      ENDIF
+   ENDWHILE
+ENDPROC NIL
+
+-&gt; used from expressions. returns ptr to proc, mid.
+-&gt; &quot;mname&quot;: hashed name
+EXPORT PROC findMethod(o:PTR TO object, mname)
+   DEF m:REG PTR TO proc, a:REG
+   a := o.nrofmethods
+   WHILE a
+      a--
+      m := o.methodtable[a]
+      IF m
+         IF m.name = mname THEN RETURN m, a
+      ENDIF
+   ENDWHILE
+ENDPROC NIL, NIL
+
+/*
+-&gt; 1.6.0
+EXPORT PROC addMethDbgSym(oname, methname, methoffset)
+   DEF hln:PTR TO hln, str[300]:STRING, label:PTR TO codelab
+
+   IF g_optmodule THEN RETURN
+
+   StrCopy(str, oname)
+   StrAdd(str, &#x27;.&#x27;)
+   StrAdd(str, methname)
+
+   NEW label
+   label.offset := methoffset
+   label.ltype := LTYPE_LAB
+   label.identID := IDENT_LABEL
+
+   hln := getLabelHLN(str)
+   label.name := hln.name
+   hln.ident := label
+
+ENDPROC
+*/
+
+-&gt; 1.6.0
+EXPORT OBJECT strtabcontext
+   memory:PTR TO CHAR
+   offset:LONG
+   count:LONG
+ENDOBJECT
+
+-&gt; 1.10.0 moved here
+EXPORT PROC getTableStrOfs(stc:PTR TO strtabcontext, str, merge=FALSE)
+   DEF len, ofs, ptr
+
+   #ifdef DBG_BMOD
+   DEBUGF(&#x27;getTableStrOfs($\h, \a\s\a, \d) : &#x27;, stc, str, merge)
+   #endif
+
+   IF merge
+      ptr := stc.memory
+      WHILE ptr[]
+         IF StrCmp(str, ptr)
+            ofs := ptr - (stc.memory)
+            #ifdef DBG_BMOD
+            DEBUGF(&#x27;\d\n&#x27;, ofs)
+            #endif
+            RETURN ofs
+         ENDIF
+         ptr := ptr + StrLen(ptr) + 1
+      ENDWHILE
+   ENDIF
+
+   stc.count := stc.count + 1
+
+   ptr := stc.memory
+   len := StrLen(str) + 1
+   ofs := stc.offset
+   CopyMem(str, ptr + ofs, len)
+   stc.offset := ofs + len
+
+   #ifdef DBG_BMOD
+   DEBUGF(&#x27;\d\n&#x27;, ofs)
+   #endif
+
+ENDPROC ofs
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

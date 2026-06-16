@@ -1,0 +1,851 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>EPP.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-aepd02.html">aepd02</a> &rsaquo; EPP.e</div><h1>File: <code>EPP.e</code></h1><p class="meta">825 lines · project <a href="../examples/pkg-aepd02.html"><code>aepd02</code></a></p><p class="pathctx">aepd02/EPD02/Amiga_E-Programme/EPP/sources/EPP.e</p><p class="prose">EPP V1.1 - E Preprocessor. Copyright ©1993 Barry Wills. All rights reserved.</p><h2>Source</h2><pre class="code">/*
+   EPP V1.1 - E Preprocessor.
+   Copyright ©1993 Barry Wills.  All rights reserved.
+*/
+
+
+
+PMODULE &#x27;PMODULES:commandLineArgs&#x27;
+PMODULE &#x27;PMODULES:cSkipWhite&#x27;
+PMODULE &#x27;PMODULES:cSkipToChar&#x27;
+PMODULE &#x27;PMODULES:cSkipToEDelim&#x27;
+
+
+
+/*===  Runtime exceptions.  ==============================================*/
+
+ENUM ER_NONE,
+     ER_MEM,
+     ER_USAGE,
+     ER_OPENING_INFILE,
+     ER_OPENING_OUTFILE,
+     ER_WRITING_FILE,
+     ER_SYNTAX
+
+
+
+RAISE ER_MEM IF New () = NIL,
+      ER_MEM IF List () = NIL,
+      ER_MEM IF String () = NIL
+
+
+
+/*===  Global constants.  ================================================*/
+
+CONST DEFAULT_BUFSIZE         = 128,
+      MINIMUM_BUFSIZE         = 20,
+      LARGEST_TOKEN_SUPPORTED = 64  /* Largest identifier expected. */
+
+
+
+/*===  Object type definitions.  =========================================*/
+
+/* V0.13b - My answer to the slow IO problem.  I decided to try an input */
+/* juggling act instead of restructuring the program.  String input was  */
+/* definitely the bottleneck, so that&#x27;s where I decided to hack.  See    */
+/* function read () for more details.                                    */
+
+OBJECT readDataType
+  inputBuffer : LONG
+  length : LONG        /* num bytes read into inputBuffer    */
+  pos : LONG           /* next available char in inputBuffer */
+  turboMode : LONG     /* TURBO mode for this module only.   */
+ENDOBJECT
+
+
+
+/*===  Global variables.  ================================================*/
+
+
+DEF defsFileHandle    = NIL,
+    procsFileHandle   = NIL,
+    procsFileName     = NIL,
+    theModuleList     = NIL,
+    argMainModuleName = NIL,
+    argOutFileName    = NIL,
+    argBufSize,
+    argLineLength,
+    argIncludeComments = FALSE,
+    argProgressIsVerbose = TRUE,
+    argTurboMode = FALSE,
+    nestedCommentCount = 0,
+    userBreak = FALSE
+
+
+/*===  Main procedures.  =================================================*/
+
+PROC getArgs ()
+  DEF tempArg [108] : STRING,
+      i = 1
+
+  IF arg [] = 0 THEN Raise (ER_USAGE)
+
+  argBufSize := DEFAULT_BUFSIZE
+  argLineLength := DEFAULT_BUFSIZE
+
+  WHILE getArg (tempArg, i++)
+
+    IF (tempArg [0] = &quot;-&quot;)
+      /* Get switch. */
+      IF tempArg [1] = &quot;b&quot;  /* File buffer size. */
+        MidStr (tempArg, tempArg, 2, ALL)
+        IF (argBufSize := Val (tempArg, NIL)) = -1 THEN Raise (ER_USAGE)
+        IF (argBufSize &lt; MINIMUM_BUFSIZE)
+          WriteF (&#x27;\n ··· Using mimimum buffer size \d&#x27;, MINIMUM_BUFSIZE)
+          argBufSize := MINIMUM_BUFSIZE
+        ENDIF
+      ELSEIF tempArg [1] = &quot;l&quot;  /* Line length. */
+        MidStr (tempArg, tempArg, 2, ALL)
+        IF (argLineLength := Val (tempArg, NIL)) = -1 THEN Raise (ER_USAGE)
+        IF (argLineLength &lt; MINIMUM_BUFSIZE)
+          WriteF (&#x27;\n ··· Using mimimum line length \d&#x27;, MINIMUM_BUFSIZE)
+          argLineLength := MINIMUM_BUFSIZE
+        ENDIF
+      ELSEIF tempArg [1] = &quot;s&quot;  /* Progress messages. */
+        argProgressIsVerbose := FALSE
+      ELSEIF tempArg [1] = &quot;c&quot;  /* Include comments in output source. */
+        argIncludeComments := TRUE
+      ELSEIF tempArg [1] = &quot;t&quot;  /* Turbo proc copy mode. */
+        argTurboMode := TRUE
+      ENDIF
+    ELSEIF argMainModuleName = NIL
+      /* Not a switch:  get main input file name. */
+      argMainModuleName := String (StrLen (arg))
+      StrCopy (argMainModuleName, tempArg, ALL)
+    ELSEIF argOutFileName = NIL
+      /* Not a switch, already got main input file name: */
+      /* get output file name.                           */
+      argOutFileName := String (StrLen (arg))
+      StrCopy (argOutFileName, tempArg, ALL)
+    ELSE
+      /* Not a switch, already got main input file  */
+      /* name and output file name:  too many args. */
+      Raise (ER_USAGE)
+    ENDIF
+  ENDWHILE
+
+  /* Must have these two args as a minimum. */
+  IF (argMainModuleName = NIL) OR
+     (argOutFileName = NIL) THEN Raise (ER_USAGE)
+
+ENDPROC
+  /* getArgs */
+
+
+
+PROC buildEProgramName (theFileName)
+  DEF length,
+      fileExtension [2] : STRING
+  length := StrLen (theFileName)
+  MidStr (fileExtension, theFileName, length - 2, 2)
+  LowerStr (fileExtension)
+  IF StrCmp (fileExtension, &#x27;.e&#x27;, ALL) = FALSE THEN length := length + 2
+  IF StrCmp (fileExtension, &#x27;.e&#x27;, ALL) = FALSE
+    StrAdd (theFileName, &#x27;.e&#x27;, ALL)
+  ENDIF
+ENDPROC
+  /* buildEProgramName */
+
+
+
+PROC isInList (theModuleName, theList)
+  DEF moduleName
+  IF (moduleName := theList) = NIL THEN RETURN FALSE
+  REPEAT
+    IF StrCmp (moduleName, theModuleName, ALL) THEN RETURN TRUE
+  UNTIL (moduleName := Next (moduleName)) = NIL
+ENDPROC  FALSE
+  /* isInList */
+
+
+
+PROC continueGettingComments (pos)
+  DEF p : PTR TO CHAR
+  p := ^pos
+
+  WHILE (p [] &gt; 0) AND (nestedCommentCount)
+    IF (p [] = &quot;*&quot;)    /* Closing comment? */
+      IF (p [1] = &quot;/&quot;)
+        DEC nestedCommentCount
+        INC p
+      ENDIF
+    ELSEIF (p [] = &quot;/&quot;)    /* Nested comment? */
+      IF (p [1] = &quot;*&quot;)
+        INC nestedCommentCount
+        INC p
+      ENDIF
+    ENDIF
+    INC p
+  ENDWHILE
+
+  ^pos := p
+ENDPROC
+
+
+
+PROC checkEnclosing (pos, c)
+  DEF p : PTR TO CHAR
+  p := ^pos
+
+  /* If found an open quote, &quot;&#x27;&quot;, or comment, search for it&#x27;s partner */
+
+  IF c = &quot;&#x27;&quot;
+    REPEAT
+      INC p
+    UNTIL ((p [] = 0) OR (p [] = &quot;&#x27;&quot;))
+  ELSEIF c = 34  /* QUOTE */
+    REPEAT
+      INC p
+    UNTIL ((p [] = 0) OR (p [] = 34))
+  ELSEIF c = &quot;/&quot;
+    IF (p [1] = &quot;*&quot;)
+      p := p + 2
+      INC nestedCommentCount
+      continueGettingComments ({p})
+    ENDIF
+  ELSEIF c = &quot;*&quot;
+    IF (p [1] = &quot;/&quot;)
+      p := p + 2
+      DEC nestedCommentCount
+      continueGettingComments ({p})
+    ENDIF
+  ENDIF
+
+  ^pos := p
+ENDPROC
+  /* checkEnclosing */
+
+
+
+PROC skipToValidToken (pos : PTR TO CHAR,
+                       proc_endproc)
+  DEF c
+
+  /* Finds the next important E keyword in theString and returns its pos. */
+  /* Thanks to Son Le for coming up with this routine to speed up the     */
+  /* parsing!                                                             */
+
+  /* Nested comments?  If so, find closing comment brackets. */
+  IF nestedCommentCount THEN continueGettingComments ({pos})
+
+  WHILE (c := pos [])
+    SELECT c
+      CASE &quot;&#x27;&quot;
+        checkEnclosing ({pos}, c)
+      CASE 34  /* Quote */
+        checkEnclosing ({pos}, c)
+      CASE &quot;/&quot;
+        checkEnclosing ({pos}, c)
+      CASE &quot;*&quot;
+        checkEnclosing ({pos}, c)
+
+      CASE &quot;P&quot;  /* PROC or PMODULE */
+        IF ((pos [1] = &quot;R&quot;) OR
+            (pos [1] = &quot;M&quot;)) THEN RETURN pos
+
+      CASE &quot;E&quot;  /* ENDPROC or ENUM */
+        IF (pos [1] = &quot;N&quot;) THEN RETURN pos
+    ENDSELECT
+    IF (proc_endproc = FALSE)   /* if proc_endproc is true, we search only */
+      SELECT c                  /* for the keywords PROC or ENDPROC (ENUM) */
+
+        CASE &quot;O&quot;  /* OPT or OBJECT */
+          IF ((pos [1] = &quot;P&quot;) OR (pos [1] = &quot;B&quot;)) THEN RETURN pos
+
+        CASE &quot;R&quot;  /* RAISE */
+          IF (pos [1] = &quot;A&quot;) THEN RETURN pos
+
+        CASE &quot;C&quot;  /* CONST */
+          IF (pos [1] = &quot;O&quot;) THEN RETURN pos
+
+        CASE &quot;D&quot;  /* DEF */
+          IF (pos [1] = &quot;E&quot;) THEN RETURN pos
+      ENDSELECT
+    ENDIF
+    IF pos [] THEN INC pos
+  ENDWHILE
+ENDPROC  pos
+  /* skipToValidToken */
+
+
+
+PROC getToken (token, startPos : PTR TO CHAR)
+  /*  Get an E token and place it in token. */
+  DEF endPos
+  startPos := cSkipWhite (startPos)
+  endPos := (cSkipToEDelim (startPos) - startPos)
+  MidStr (token, startPos, 0, endPos)
+ENDPROC  (startPos + endPos)
+  /* getToken */
+
+
+
+PROC getModuleName (name, startPos)
+  /* Look for a module name (&#x27;identifier&#x27;) and place it in name. */
+  DEF endPos
+
+  ^startPos := cSkipToChar (&quot;&#x27;&quot;, ^startPos)
+  IF Char (^startPos) &lt;&gt; &quot;&#x27;&quot; THEN Raise (ER_SYNTAX)
+  ^startPos := ^startPos + 1
+
+  endPos := (cSkipToChar (&quot;&#x27;&quot;, ^startPos) - ^startPos)
+  IF Char (^startPos + endPos) = &quot;&#x27;&quot;
+    MidStr (name, ^startPos, 0, endPos)
+    StrAdd (name, &#x27;.e&#x27;, ALL)
+    ^startPos := ^startPos + endPos
+  ELSE
+    ^startPos := ^startPos + endPos
+    Raise (ER_SYNTAX)
+  ENDIF
+ENDPROC
+  /* getModuleName */
+
+
+
+PROC read (fileHandle,
+           rData : PTR TO readDataType,
+           sourceLine)
+  DEF inputBuffer,
+      i = 0,
+      pos
+
+  inputBuffer := rData.inputBuffer
+  pos := rData.pos
+
+  WHILE i &lt; argBufSize
+    IF pos &gt;= rData.length
+      rData.length := Read (fileHandle, inputBuffer, argBufSize)
+      IF rData.length &lt; 1
+          IF i &gt; 0
+            sourceLine [i++] := 10
+            sourceLine [i] := 0
+            rData.length := i
+          ENDIF
+          rData.pos := rData.length
+          RETURN i
+      ENDIF
+      pos := 0
+    ENDIF
+    sourceLine [i] := inputBuffer [pos++]
+    IF (sourceLine [i++] = 10) OR  /* LF */
+       (i = argLineLength)
+      SetStr (sourceLine, i)
+      rData.pos := pos
+      RETURN i
+    ENDIF
+  ENDWHILE
+
+ENDPROC
+  /* read */
+
+
+
+PROC copyProc (rData : PTR TO readDataType,  /* Input file buffer info. */
+               sourceLine,         /* The current source line being considered. */
+               inFileHandle,       /* Which file to continue reading from. */
+               moduleName,         /* The name of the module for inclusion in comments. */
+               tempStr,            /* Why allocate another work variable? */
+               currentPos,         /* Where sourceLine examination is to continue. */
+               length,             /* Length of current sourceLine. */
+               lineCount)          /* Keep track in case an error occurs. */
+
+  /* Copy until uncommented ENDPROC is found.  When this procedure is */
+  /* called we are never within a comment.                            */
+
+  DEF keywordENDPROCfound,  /* Indicates we found the whole proc. */
+      bytesRead,            /* used only in Turbo mode. */
+      pos : PTR TO CHAR
+
+  /* Comments to EPP code. */
+  IF argIncludeComments
+    Write (procsFileHandle, &#x27;\n/*** Procedure included from &#x27;, 30)
+    Write (procsFileHandle, moduleName, StrLen (moduleName))
+    Write (procsFileHandle, &#x27; ***/\n&#x27;, 6)
+  ENDIF
+
+  IF (argTurboMode) OR
+     (rData.turboMode)
+    /* Status indication to stdout. */
+    IF argProgressIsVerbose
+      WriteF (&#x27;\n     Turbo module:  \a\s\a&#x27;, moduleName)
+    ENDIF
+    IF argIncludeComments
+      Write (procsFileHandle, &#x27;/*** Turbo dump of module &#x27;, 26)
+      Write (procsFileHandle, moduleName, StrLen (moduleName))
+      Write (procsFileHandle, &#x27; ***/\n&#x27;, 6)
+    ENDIF
+    Write (procsFileHandle, sourceLine, ^length)
+    /* Empty the inputBuffer before trying to read again. */
+    IF (rData.pos &lt; rData.length)
+      bytesRead := rData.length - rData.pos
+      IF Write (procsFileHandle,
+                (rData.inputBuffer + rData.pos),
+                bytesRead) &lt; bytesRead THEN Raise (ER_WRITING_FILE)
+    ENDIF
+    WHILE (bytesRead := Read (inFileHandle, rData.inputBuffer, argBufSize)) &gt; 0
+      IF Write (procsFileHandle, rData.inputBuffer,
+                bytesRead) &lt; bytesRead THEN Raise (ER_WRITING_FILE)
+    ENDWHILE
+    StrCopy (sourceLine, &#x27;&#x27;, ALL)
+    ^length := 0
+    ^currentPos := sourceLine
+    rData.length := 0
+    rData.pos := 0
+    RETURN
+  ENDIF
+
+  /* Omit PROC main () in all but main module. */
+  ^currentPos := getToken (tempStr, ^currentPos)
+
+  IF StrCmp (tempStr, &#x27;main&#x27;, ALL)
+    IF StrCmp (moduleName, argMainModuleName, ALL) = FALSE
+      IF argIncludeComments THEN Write (procsFileHandle,
+                                        &#x27;/*** Superfluous PROC main () &#x27;+
+                                        &#x27;omitted ***/\n\n&#x27;, 44)
+      WHILE Read (inFileHandle, rData.inputBuffer, argBufSize) &gt; 0 DO NOP
+      SetStr (sourceLine, 0)
+      ^currentPos := sourceLine
+      ^length := 0
+      rData.pos := 0
+      rData.length := 0
+      RETURN
+    ENDIF
+  ENDIF
+
+  /* Status indication to stdout. */
+  IF argProgressIsVerbose THEN WriteF (&#x27;\n     Copying proc:  \a\s\a&#x27;, tempStr)
+
+  pos := ^currentPos
+
+  LOOP  /* Only ways out of this loop are:               */
+        /*  1. RETURN when uncommented ENDPROC is found, */
+        /*  2. Encounter another PROC statement,         */
+        /*  3. Encounter end of file.                    */
+
+    keywordENDPROCfound := FALSE
+
+    WHILE pos []
+
+      /* Quick skip to valid character, instead of parsing each char */
+      pos := skipToValidToken (pos, TRUE)
+
+      IF (pos [] = &quot;E&quot;)
+        /* Could be we found ENDPROC. */
+        pos := getToken (tempStr, pos)
+        IF StrCmp (tempStr, &#x27;ENDPROC&#x27;, ALL) THEN keywordENDPROCfound := TRUE
+      ELSEIF (pos [] = &quot;P&quot;)
+        /* Could be we found another PROC (this was a one-liner). */
+        pos := getToken (tempStr, pos)
+        IF StrCmp (tempStr, &#x27;PROC&#x27;, ALL)
+          copyProc (rData, sourceLine, inFileHandle, moduleName,
+                    tempStr, {pos}, length, lineCount)
+          StrCopy (sourceLine, &#x27;&#x27;, ALL)  /* sourceLine comes back with &#x27;ENDPROC&#x27;  */
+          ^length := 0                   /* in it.  Don&#x27;t want to write it again. */
+          pos := sourceLine
+          keywordENDPROCfound := TRUE
+        ENDIF
+      ENDIF
+
+      IF pos [] THEN INC pos
+    ENDWHILE
+
+    IF Write (procsFileHandle, sourceLine, ^length) &lt; 0 THEN Raise (ER_WRITING_FILE)
+
+    IF keywordENDPROCfound
+      ^currentPos := pos
+      RETURN
+    ENDIF
+
+    ^length := read (inFileHandle, rData, sourceLine)
+    IF ^length &lt; 1
+      /* If EOF and ENDPROC not found, we have to assume one-line PROC */
+      /* transcending more than one line.  There is no way to enforce  */
+      /* ENDPROC without doing full-blown syntax checking.             */
+      ^currentPos := pos
+      RETURN
+    ENDIF
+
+    /*^length := StrLen (sourceLine)*/
+    pos := sourceLine
+    ^lineCount := ^lineCount + 1
+  ENDLOOP
+
+ENDPROC
+  /* copyProc */
+
+
+
+PROC copyDefs (rData : PTR TO readDataType,  /* Input file buffer info. */
+               sourceLine,         /* The current source line being considered. */
+               inFileHandle,       /* Which file to continue reading from. */
+               moduleName,         /* The name of the module for inclusion in comments. */
+               tempStr,            /* Why allocate another work variable? */
+               currentPos,         /* Where sourceLine examination is to continue. */
+               length,             /* Length of current sourceLine. */
+               lineCount,          /* Keep track in case an error occurs. */
+               lastFileWrittenTo)  /* Must change if we need to make a call to copyProcs. */
+
+  /* Copy until a PROC keyword or eof is encountered. */
+
+  DEF pos : PTR TO CHAR
+
+  /* Status indication to stdout. */
+  IF argProgressIsVerbose THEN WriteF (&#x27;\n     Copying defs:  \a\s\a&#x27;, moduleName)
+
+  /* Comment EPP code. */
+  IF argIncludeComments
+    Write (defsFileHandle, &#x27;/*** Declarations included from &#x27;, 32)
+    Write (defsFileHandle, moduleName, StrLen (moduleName))
+    Write (defsFileHandle, &#x27; ***/\n&#x27;, 6)
+  ENDIF
+
+  pos := ^currentPos
+
+  LOOP  /* Only two ways out of this loop:             */
+        /*  1.  RETURN when uncommented PROC is found, */
+        /*  2.  End of file is encountered.            */
+
+    WHILE pos []
+
+      /* Quick skip to valid character, instead of parsing each one */
+      pos := skipToValidToken (pos, TRUE)
+
+      IF (pos [] = &quot;P&quot;)
+        /* See if we found beginning of PROC section. */
+        pos := getToken (tempStr, pos)
+        IF StrCmp (tempStr, &#x27;PROC&#x27;, ALL)
+          ^lastFileWrittenTo := procsFileHandle
+          copyProc (rData, sourceLine, inFileHandle, moduleName,
+                    tempStr, {pos}, length, lineCount)
+          ^currentPos := pos
+          RETURN
+        ELSEIF StrCmp (tempStr, &#x27;PMODULE&#x27;, ALL)
+          getModuleName (tempStr, {pos})
+          getModule (tempStr)
+          /* Shorten sourceLine to get rid of the PMODULE statement. */
+          MidStr (sourceLine, (pos + 1), 0, ALL)
+          ^length := StrLen (sourceLine)
+          pos := sourceLine
+          IF ^length = 2
+            IF StrCmp (sourceLine, &#x27;;\n&#x27;, ALL) THEN SetStr (sourceLine, 0)
+            ^length := 0
+          ENDIF
+        ENDIF
+      ELSEIF (pos [] = &quot;O&quot;)
+        /* See if we found OPT TURBO option. */
+        pos := getToken (tempStr, pos)
+        IF StrCmp (tempStr, &#x27;OPT&#x27;, ALL)
+          pos := getToken (tempStr, pos)
+          IF StrCmp (tempStr, &#x27;TURBO&#x27;, ALL)
+            rData.turboMode := TRUE
+            StrCopy (sourceLine, pos, ALL)
+            length := StrLen (sourceLine)
+            pos := sourceLine
+          ENDIF
+        ENDIF
+      ENDIF
+
+      IF pos [] THEN INC pos
+    ENDWHILE
+
+    IF Write (defsFileHandle, sourceLine, ^length) &lt; 0 THEN Raise (ER_WRITING_FILE)
+
+    ^length := read (inFileHandle, rData, sourceLine)
+    IF ^length &lt; 1
+      ^currentPos := pos
+      RETURN
+    ENDIF
+
+    /*^length := StrLen (sourceLine)*/
+    pos := sourceLine
+    ^lineCount := ^lineCount + 1
+
+  ENDLOOP
+
+ENDPROC
+  /* copyDefs */
+
+
+
+PROC getModule (theModuleName) HANDLE
+  DEF rData : PTR TO readDataType,  /* File buffer info used for theModuleName. */
+      sourceLine,            /* The line of source; output buffer. */
+      fileHandle = NIL,      /* File handle used for theModuleName. */
+      lastFileWrittenTo,     /* Where to put a line that doesn&#x27;t need to be handled specifically. */
+      length,                /* StrLen (sourceLine) for speed in repetitious access. */
+      pos : PTR TO CHAR,     /* Current character index. */
+      lineCount = 0,         /* Count line number for use in error message. */
+      tempStr,               /* Holds a string value for comparison, etc. */
+      lineRecognized,        /* Flag indicates if the line has been handled       */
+                             /*  specifically or if it still needs to be written. */
+      doCopyDefs             /* Controls logic based on OPT keyword. */
+
+  IF isInList (theModuleName, theModuleList)
+    IF argProgressIsVerbose THEN WriteF (&#x27;\n ··· Duplicate definition omitted:  \a\s\a&#x27;, theModuleName)
+    RETURN
+  ELSE
+    IF argProgressIsVerbose
+      WriteF (&#x27;\n »»» \s   \a\s\a&#x27;,
+              IF StrCmp (theModuleName,
+                         argMainModuleName, ALL) THEN &#x27;Main module:&#x27; ELSE &#x27;New module: &#x27;,
+              theModuleName)
+    ENDIF
+    tempStr := String (StrLen (theModuleName))
+    StrCopy (tempStr, theModuleName, ALL)
+    theModuleList := Link (tempStr, theModuleList)
+  ENDIF
+
+  fileHandle := Open (theModuleName, OLDFILE)
+  IF fileHandle = NIL THEN Raise (ER_OPENING_INFILE)
+
+  rData := New (SIZEOF readDataType)
+  rData.inputBuffer := String (argBufSize)
+  rData.pos := 0
+  rData.length := 0
+  rData.turboMode := FALSE
+  sourceLine := String (argLineLength)
+  tempStr := String (LARGEST_TOKEN_SUPPORTED)
+  lastFileWrittenTo := defsFileHandle  /* Where to put a line that doesn&#x27;t */
+                                       /* need to be handled specifically. */
+
+  /* Keep reading until module keyword not found or eof. */
+  WHILE (length := read (fileHandle, rData, sourceLine)) &gt; 0 AND
+        (userBreak = FALSE)
+
+    /* Initialize substring search. */
+    /*length := StrLen (sourceLine)*/
+    pos := sourceLine
+    INC lineCount
+    lineRecognized := FALSE
+
+    WHILE pos []  /* Until end of line. */
+
+      /* Quick skip to valid character, instead of parsing each one */
+      pos := skipToValidToken (pos, FALSE)
+
+      IF pos [] = &quot;P&quot;
+        pos := getToken (tempStr, pos)
+        IF StrCmp (tempStr, &#x27;PMODULE&#x27;, ALL)
+          getModuleName (tempStr, {pos})
+          getModule (tempStr)
+          /* Shorten sourceLine to get rid of the PMODULE statement. */
+          MidStr (sourceLine, (pos + 1), 0, ALL)
+          length := StrLen (sourceLine)
+          pos := sourceLine
+          IF length = 2
+            IF StrCmp (sourceLine, &#x27;;\n&#x27;, ALL) THEN SetStr (sourceLine, 0)
+            length := 0
+          ENDIF
+        ELSEIF StrCmp (tempStr, &#x27;PROC&#x27;, ALL)
+          lastFileWrittenTo := procsFileHandle
+          copyProc (rData, sourceLine, fileHandle, theModuleName,
+                    tempStr, {pos}, {length}, {lineCount})
+          lineRecognized := TRUE
+        ENDIF
+      ELSEIF ((pos [] = &quot;O&quot;) OR
+              (pos [] = &quot;D&quot;) OR
+              (pos [] = &quot;C&quot;) OR
+              (pos [] = &quot;E&quot;) OR
+              (pos [] = &quot;R&quot;))
+        pos := getToken (tempStr, pos)
+        IF InStr (&#x27;OPT OBJECT DEF CONST ENUM RAISE&#x27;, tempStr, NIL) &gt; -1
+          doCopyDefs := TRUE  /* Controls the following IF block. */
+          IF StrCmp (tempStr, &#x27;OPT&#x27;, ALL)
+            doCopyDefs := FALSE
+            /* See if we found OPT TURBO option. */
+            pos := getToken (tempStr, pos)
+            IF StrCmp (tempStr, &#x27;TURBO&#x27;, ALL)
+              rData.turboMode := TRUE
+              StrCopy (sourceLine, pos, ALL)  /* Remove OPT TURBO statement. */
+              length := StrLen (sourceLine)
+              pos := sourceLine
+              SetStr (tempStr, 0)
+              doCopyDefs := FALSE
+            ENDIF
+          ENDIF
+          /* Was it a def, or was it OPT TURBO? */
+          IF (doCopyDefs)
+            lastFileWrittenTo := defsFileHandle
+            copyDefs (rData, sourceLine, fileHandle, theModuleName,
+                      tempStr, {pos}, {length}, {lineCount},
+                      {lastFileWrittenTo})
+            Write (defsFileHandle, &#x27;\n&#x27;, 1)
+            lineRecognized := TRUE
+          ENDIF
+        ENDIF
+      ENDIF
+
+      IF pos [] THEN INC pos
+    ENDWHILE  /* EOLN */
+
+    IF lineRecognized = FALSE THEN IF Write (lastFileWrittenTo,
+                                             sourceLine,
+                                             length) &lt; 0 THEN Raise (ER_WRITING_FILE)
+
+    IF CtrlC () THEN userBreak := TRUE
+
+  ENDWHILE  /* EOF */
+
+  IF fileHandle THEN Close (fileHandle)
+  Dispose (rData.inputBuffer)
+  Dispose (rData)
+  Dispose (sourceLine)
+  Dispose (tempStr)
+
+EXCEPT
+
+  IF fileHandle THEN Close (fileHandle)
+
+  SELECT exception
+    CASE ER_SYNTAX
+      WriteF (&#x27;\n *** Syntax error: module \a\s\a, line \d, pos \d.\n\n&#x27;,
+              theModuleName, lineCount, (pos - sourceLine))
+      Raise (ER_NONE)  /* Avoid more messages upon return from recursion. */
+    CASE ER_WRITING_FILE
+      WriteF (&#x27;\n *** Error occurred while writing to &#x27;)
+      IF lastFileWrittenTo = procsFileHandle
+        WriteF (&#x27;Procs File, \s.\n&#x27;, procsFileName)
+      ELSE
+        WriteF (&#x27;Defs File, \s.\n&#x27;, argMainModuleName)
+      ENDIF
+      Raise (ER_NONE)  /* Avoid more messages upon return from recursion. */
+  ENDSELECT
+
+  Raise (exception)
+
+ENDPROC
+  /* getModule */
+
+
+
+PROC appendProcsToDefs ()
+  DEF sourceLine,
+      bytesRead = 0
+
+  IF argProgressIsVerbose THEN WriteF (&#x27;\n »»» Writing procs-file&#x27; +
+                                       &#x27; to end of defs-file.&#x27;)
+
+  sourceLine := New (argBufSize)
+
+  Close (procsFileHandle)
+  procsFileHandle := Open (procsFileName, OLDFILE)
+  IF procsFileHandle = NIL THEN Raise (ER_OPENING_INFILE)
+
+  WHILE (bytesRead := Read (procsFileHandle, sourceLine, argBufSize)) &gt; 0
+    IF Write (defsFileHandle, sourceLine, bytesRead) &lt;&gt; bytesRead
+      WriteF (&#x27;\n *** Error writing output file.\n\n&#x27;)
+/*    Dispose (sourceLine) --&gt; Calling CleanUp() anyway. */
+      Raise (ER_WRITING_FILE)
+    ENDIF
+  ENDWHILE
+
+/*Dispose (sourceLine) --&gt; Calling CleanUp() anyway. */
+
+ENDPROC
+  /* appendProcsToDefs */
+
+
+
+PROC main () HANDLE
+  DEF saveDefsFileHandle = NIL,
+      saveProcsFileHandle = NIL
+  WbenchToFront()
+
+  WriteF (&#x27;\n  EPP V1.1 - E Preprocessor.&#x27;)
+  WriteF (&#x27;\n  Copyright ©1993 Barry Wills.  All rights reserved.\n&#x27;)
+
+  /* Get command-line arguments. */
+  getArgs ()
+
+  /* Build names for E source files. */
+  buildEProgramName (argMainModuleName)  /* main input file  */
+  buildEProgramName (argOutFileName)     /* main output file */
+
+  /* Open output files. */
+  procsFileName := String (13)
+  StrCopy (procsFileName, &#x27;T:procsfile.e&#x27;, ALL)
+  defsFileHandle := Open (argOutFileName, NEWFILE)
+  IF defsFileHandle = NIL
+    WriteF (&#x27;\n *** \s&#x27;, argOutFileName)
+    Raise (ER_OPENING_OUTFILE)
+  ENDIF
+  saveDefsFileHandle := defsFileHandle
+  procsFileHandle := Open (procsFileName, NEWFILE)
+  IF procsFileHandle = NIL
+    WriteF (&#x27;\n *** \s&#x27;, procsFileName)
+    Raise (ER_OPENING_OUTFILE)
+  ENDIF
+  saveProcsFileHandle := procsFileHandle
+
+  /* Start recursive process. */
+  getModule (argMainModuleName)
+
+  /* Copy tempfile containing procs onto the end of the main output file. */
+  IF userBreak = FALSE THEN appendProcsToDefs ()
+
+  Close (defsFileHandle)
+  Close (procsFileHandle)
+
+  IF DeleteFile (procsFileName) = FALSE
+    WriteF (&#x27; *** Unable to remove temporary file \s\n&#x27;, procsFileName)
+  ENDIF
+
+  IF userBreak
+    WriteF (&#x27;\n\n *** User break.\n\n&#x27;)
+  ELSE
+    WriteF (&#x27;\s&#x27;, IF argProgressIsVerbose THEN &#x27;\n »»» Done.\n\n&#x27; ELSE &#x27;\n&#x27;)
+  ENDIF
+
+  CleanUp (0)
+
+EXCEPT
+
+  SELECT exception
+    CASE ER_USAGE;
+      WriteF (&#x27;\n *** Usage:  EPP [switches] infile[.e] outfile[.e]&#x27; +
+              &#x27;\n      switches: -b### = file buffer size (20+; default 128)&#x27; +
+              &#x27;\n                -l### = source line length (20+; default 128)&#x27; +
+              &#x27;\n                -s    = silence progress messages&#x27; +
+              &#x27;\n                -c    = insert EPP comments in final output source&#x27; +
+              &#x27;\n                -t    = Turbo mode\n\n&#x27;)
+    CASE ER_MEM;
+      WriteF (&#x27;\n *** Insufficient memory.  &#x27; +
+              &#x27;Try shorter line length if possible.\n\n&#x27;)
+    CASE ER_OPENING_INFILE;  WriteF (&#x27;\n     Error opening input file.\n\n&#x27;)
+    CASE ER_OPENING_OUTFILE; WriteF (&#x27;\n     Error opening output file.\n\n&#x27;)
+  ENDSELECT
+
+  IF defsFileHandle THEN Close (defsFileHandle)
+  IF procsFileHandle THEN Close (procsFileHandle)
+
+  CleanUp (5)
+
+ENDPROC
+  /* main */
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

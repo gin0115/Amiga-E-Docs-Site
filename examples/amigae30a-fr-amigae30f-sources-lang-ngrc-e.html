@@ -1,0 +1,575 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>NGRC.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-amigae30a-fr.html">amigae30a_fr</a> &rsaquo; NGRC.e</div><h1>File: <code>NGRC.e</code></h1><p class="meta">549 lines · project <a href="../examples/pkg-amigae30a-fr.html"><code>amigae30a_fr</code></a></p><p class="pathctx">amigae30a_fr/AmigaE30f/Sources/Lang/NGRC.e</p><p class="prose">Noise Compiler v1.0</p><h2>Source</h2><pre class="code">/* Noise Compiler v1.0       */
+/* Compilateur de NoiseTracker v1.0 */
+/* TraductionOlivier ANH (BUGSS) */
+
+OBJECT sym              /* structure primaire de symboles de réécriture */
+  next,type,name,rptr
+ENDOBJECT
+
+OBJECT rlist            /* structure de liste liée pour la grammaire */
+
+  next,type,index,info
+ENDOBJECT
+
+OBJECT optset           /* structure pour stocker { | | } */
+  next,rptr,weight
+ENDOBJECT
+
+OBJECT sample           /* toutes les données à propos d&#x27;un sample */
+  path,len,adr,vol
+ENDOBJECT
+
+OBJECT i                /* indexation des arbres réécrit */
+  start,len,isym
+ENDOBJECT
+
+ENUM SYM,OPTSET,OPTION,NOTE,SAMPLE,SFX          /* rlist.type   */
+ENUM NOTYPE,REWRITE                             /* sym.type     */
+ENUM NOMEM,NOFILE,NOFORM,NOGRAM,STACKFLOW,      /* erreurs      */
+     BADSTRUCTURE,BREAK,WRITEMOD,READSAMPLE
+
+CONST MAXINDEX=1000,MAXROWS=64*4*64,MAXDURATION=100
+CONST MAXDATA=MAXROWS*4,MAXSAMPLE=31,MAXNOTE=23,MINNOTE=-12
+CONST PARSE_ER=100,GEN_ER=200,MASK=$0FFF0FFF
+
+RAISE NOMEM IF New()=NIL,                       /* définie les exceptions */
+      NOMEM IF String()=NIL,
+      STACKFLOW IF FreeStack()&lt;1000,
+      BREAK IF CtrlC()=TRUE
+
+DEF buf,flen,p,tokeninfo,symlist=NIL:PTR TO sym,ltoken=-1,numsample=0,
+    notes,np:PTR TO LONG,maxrows=0,cursample=0,cursfx=0,curglob=0,end,
+    timings:PTR TO INT,fh=NIL,notevals:PTR TO LONG
+
+DEF sdata[32]:ARRAY OF sample,
+    itab[MAXINDEX]:ARRAY OF i,
+    channel[4]:ARRAY OF i,
+    infile[100]:STRING,outfile[100]:STRING
+
+PROC main() HANDLE
+  WriteF(&#x27;Noise Compiler v1.0\n&#x27;)
+  WriteF(&#x27;Traduit les fichiers compatible Noise en module ProTracker !\n&#x27;)
+  readgrammar()
+  WriteF(&#x27;Grammaire &quot;\s&quot; chargée. Analyse...\n&#x27;,infile)
+  parsegrammar()
+  WriteF(&#x27;Grammaire analysée avec succès. Génération...\n&#x27;)
+  generate()
+  WriteF(&#x27;Noise généré. Chargement des samples...\n&#x27;)
+  loadsamples()
+  WriteF(&#x27;Sauvegarde du fichier &quot;\s&quot;.\n&#x27;,outfile)
+  writemodule()
+  WriteF(&#x27;done.\n&#x27;)
+EXCEPT
+  IF fh THEN Close(fh)           /* Handlers des exceptions les plus basses */
+  WriteF(&#x27;Programme terminé: &#x27;)  /* report des grosses erreurs*/
+  SELECT exception
+    CASE NOFILE;       WriteF(&#x27;Ne peut charger le fichier grammaire &quot;\s&quot; !\n&#x27;,infile)
+    CASE NOMEM;        WriteF(&#x27;Pas assez de mémoire !\n&#x27;)
+    CASE NOFORM;       WriteF(&#x27;Érreur du format grammaticale !\n&#x27;)
+    CASE STACKFLOW;    WriteF(&#x27;Dépacement de la pile ! (récursion trop profonde ?)\n&#x27;)
+    CASE BADSTRUCTURE; WriteF(&#x27;Problème à la génération.\n&#x27;)
+    CASE NOGRAM;       WriteF(&#x27;Pas de rêgle réécrite!\n&#x27;)
+    CASE BREAK;        WriteF(&#x27;Stoppé par l&#x27;&#x27;utilisateur\n&#x27;)
+    CASE WRITEMOD;     WriteF(&#x27;Impossible d&#x27;&#x27;écrire le module PT &quot;\s&quot; !\n&#x27;,outfile)
+    CASE READSAMPLE;   WriteF(&#x27;Impossible de lire les sample(s) !\n&#x27;)
+  ENDSELECT
+ENDPROC
+
+PROC readgrammar()
+  StrCopy(infile,arg,ALL)
+  StrAdd(infile,&#x27;.ngr&#x27;,ALL)     /* &#x27;#?.ngr&#x27; = NoizGRammar */
+  StrCopy(outfile,arg,ALL)      /* &#x27;#?.mod&#x27; = format ProTracker */
+  StrAdd(outfile,&#x27;.mod&#x27;,ALL)
+  IF (flen:=FileLength(infile))&lt;1 THEN Raise(NOFILE)
+  IF (fh:=Open(infile,OLDFILE))=NIL THEN Raise(NOFILE)
+  IF Read(fh,buf:=New(flen+1),flen)&lt;&gt;flen THEN Raise(NOFILE)
+  Close(fh)
+  fh:=NIL
+  buf[flen]:=&quot;;&quot;        /* pour analyser */
+ENDPROC
+
+/* c&#x27;est la partie analyse. on utilise une simple mais puissante analyse de
+   haut en bas et construit notre arbre syntaxique ici.  */
+
+ENUM ER_UNTOKEN=PARSE_ER,ER_UNEXPECTED,ER_QUOTE,ER_SYMEXP,ER_DOUBLE,
+     ER_ARROWEXP,ER_RPARENTHEXP,ER_RBRACEEXP,ER_EMPTY,ER_EOLEXP,ER_RANGE,
+     ER_COMMENT,ER_UNDEF,ER_RBRACKETEXP,ER_MAXSAMPLE,ER_NOSAMPLE,
+     ER_INTEGEREXP,ER_COMMAEXP,ER_NOTEEXP
+
+ENUM EOF,EOL,ARROW,BAR,COMMA,           /* ; -&gt; | ,     */
+     RSYM,INTEGER,HEXINTEGER,           /* sym 100 $E01 */
+     ISTRING,NOTEVAL,                   /* &quot;&quot; C#+       */
+     LBRACE,RBRACE,LPARENTH,            /* { } (        */
+     RPARENTH,LBRACKET,RBRACKET         /* ) [ ]        */
+
+PROC parsegrammar() HANDLE
+  DEF end,spot,sl:PTR TO sym,s,i
+  notevals:=[9,11,0,2,4,5,7]
+  p:=buf
+  WHILE parserule() DO NOP
+  p:=NIL
+  IF (sl:=symlist)=NIL THEN Raise(NOGRAM)
+  IF numsample=0 THEN Raise(ER_NOSAMPLE)
+  REPEAT
+    IF sl.type=NOTYPE            /* vérifie si symboles indéfinis */
+      s:=sl.name
+      Raise(ER_UNDEF)
+    ENDIF
+  UNTIL (sl:=sl.next)=NIL
+EXCEPT                         /* re-saute si exception inconnue*/
+  IF exception&gt;=PARSE_ER THEN WriteF(&#x27;ERROR: &#x27;) ELSE Raise(exception)
+  WriteF(ListItem([&#x27;Contenu léxical en faute\n&#x27;,
+    &#x27;Mauvais caractères en ligne !\n&#x27;,
+    &#x27;Nombre impaire d&#x27;&#x27;apostrophes&quot;\n&#x27;,
+    &#x27;Manque un symbole\n&#x27;,
+    &#x27;Double définition d&#x27;&#x27;un symbole\n&#x27;,           /* érreurs langage */
+    &#x27;Manque &quot;-&gt;&quot;\n&#x27;,
+    &#x27;Manque &quot;)&quot;\n&#x27;,
+    &#x27;Manque &quot;}&quot;\n&#x27;,
+    &#x27;Liste de réécriture vide\n&#x27;,
+    &#x27;Manque la fin des règles (End of rule)\n&#x27;,
+    &#x27;Valeur Entière/Note hors norme\n&#x27;,
+    &#x27;Commentaire(s) incorrect(s)\n&#x27;,
+    &#x27;Pas de règle définie pour le symbole &quot;\s&quot;\n&#x27;,
+    &#x27;Manque &quot;]&quot;\n&#x27;,
+    &#x27;Plus de 32 samples\n&#x27;,
+    &#x27;Grammaire a besoin d&#x27;au moins un sample\n&#x27;,
+    &#x27;Manque un entier\n&#x27;,
+    &#x27;Manque &quot;,&quot;\n&#x27;,
+    &#x27;Manque une note&#x27;],exception-PARSE_ER),s)
+  IF p                /* affiche une indication utile des érreurs*/
+    IF p[-1]=&quot;;&quot; THEN DEC p
+    spot:=p
+    WHILE (p[]--&lt;&gt;&quot;;&quot;) AND (p[]&lt;&gt;10) AND (p&lt;&gt;buf) DO NOP
+    INC p
+    spot:=spot-p+5
+    end:=p
+    WHILE (end[]&lt;&gt;&quot;;&quot;) AND (end[]++&lt;&gt;10) DO NOP
+    end[]--:=0
+    WriteF(&#x27;LINE: \s\n&#x27;,p)
+    FOR i:=1 TO spot DO WriteF(&#x27; &#x27;)
+    WriteF(&#x27;^\n&#x27;)
+  ENDIF
+  Raise(NOFORM)
+ENDPROC
+
+PROC parserule()
+  DEF token,csym:PTR TO sym
+  IF (token:=gettoken())=EOF
+    RETURN FALSE
+  ELSEIF token=RSYM
+    csym:=tokeninfo
+    IF csym.type&lt;&gt;NOTYPE THEN Raise(ER_DOUBLE)
+    IF gettoken()&lt;&gt;ARROW THEN Raise(ER_ARROWEXP)
+    csym.rptr:=parseitemlist()
+    csym.type:=REWRITE
+    IF gettoken()&lt;&gt;EOL THEN Raise(ER_EOLEXP)
+  ELSE
+    Raise(ER_SYMEXP)
+  ENDIF
+ENDPROC TRUE
+
+PROC parseitemlist()
+  DEF item:PTR TO rlist,prev:PTR TO rlist,ilist=NIL
+  prev:={ilist}
+  WHILE (item:=parseitem())&lt;&gt;NIL
+    prev.next:=item
+    prev:=item
+  ENDWHILE
+  IF ilist=NIL THEN Raise(ER_EMPTY)
+ENDPROC ilist
+
+PROC parseitem()
+  DEF token,item:PTR TO rlist,t2,prev:PTR TO optset,
+      curr:PTR TO optset,olist,totalw=0
+  token:=gettoken()
+  IF token=RSYM
+    item:=New(SIZEOF rlist)
+    item.type:=SYM
+    item.info:=tokeninfo
+    IF (t2:=gettoken())=INTEGER
+      item.index:=checkinfo(1,MAXINDEX-1)
+    ELSE
+      putback(t2)
+      item.index=0
+    ENDIF
+  ELSEIF token=ISTRING
+    item:=New(SIZEOF rlist)
+    item.type:=SAMPLE
+    sdata[numsample].path:=tokeninfo
+    IF (t2:=gettoken())=INTEGER
+      sdata[numsample].vol:=checkinfo(0,64)
+    ELSE
+      putback(t2)
+      sdata[numsample].vol:=64
+    ENDIF
+    item.info:=numsample++
+    IF numsample=MAXSAMPLE THEN Raise(ER_MAXSAMPLE)
+  ELSEIF token=LBRACE          /* analyse { | | ... } */
+    item:=New(SIZEOF rlist)
+    item.type:=OPTSET
+    prev:={olist}
+    REPEAT
+      curr:=New(SIZEOF optset)
+      IF (token:=gettoken())=INTEGER        /* vérifie la largeur */
+        curr.weight:=checkinfo(0,1000)
+      ELSE
+        curr.weight:=1
+        putback(token)
+      ENDIF
+      totalw:=totalw+curr.weight
+      curr.rptr:=parseitemlist()
+      prev.next:=curr
+      prev:=curr
+    UNTIL (token:=gettoken())&lt;&gt;BAR
+    IF token&lt;&gt;RBRACE THEN Raise(ER_RBRACEEXP)
+    item.info:=olist
+    item.index:=totalw     /* on stocke la largeur ici */
+  ELSEIF token=LPARENTH
+    item:=New(SIZEOF rlist)             /* analyse ( ) */
+    item.type:=OPTION
+    IF (token:=gettoken())=INTEGER        /* vérifie la largeur */
+      item.index:=checkinfo(0,1000)
+    ELSE
+      item.index:=500
+      putback(token)
+    ENDIF
+    item.info:=parseitemlist()
+    IF gettoken()&lt;&gt;RPARENTH THEN Raise(ER_RPARENTHEXP)
+  ELSEIF token=LBRACKET
+    item:=New(SIZEOF rlist)             /* analyse [note,durée] */
+    item.type:=NOTE
+    token:=gettoken()
+    IF (token&lt;&gt;INTEGER) AND (token&lt;&gt;NOTEVAL) THEN Raise(ER_NOTEEXP)
+    item.info:=checkinfo(MINNOTE,MAXNOTE)
+    IF gettoken()&lt;&gt;COMMA THEN Raise(ER_COMMAEXP)
+    IF gettoken()&lt;&gt;INTEGER THEN Raise(ER_INTEGEREXP)
+    item.index:=checkinfo(1,MAXDURATION)
+    IF gettoken()&lt;&gt;RBRACKET THEN Raise(ER_RBRACKETEXP)
+  ELSEIF token=HEXINTEGER
+    item:=New(SIZEOF rlist)             /* analyse $SFX */
+    item.type:=SFX
+    item.info:=checkinfo(0,$FFF)
+  ELSEIF (token=EOL) OR (token=RBRACE) OR (token=RPARENTH) OR (token=BAR)
+    putback(token)
+    RETURN NIL
+  ELSE
+    Raise(ER_UNTOKEN)
+  ENDIF
+ENDPROC item
+
+/* l&#x27;analyseur léxical : appelé par l&#x27;analyseur chaque fois qu&#x27;il a besoin
+   d&#x27;un token. Les valeurs attribue sont dans &quot;tokeninfos&quot;.
+   allows for one symbol lookahead, with putback() function */
+
+PROC gettoken()
+  DEF c,x,start,len,syml:PTR TO sym,s,depth
+  FreeStack(); CtrlC()
+  IF ltoken&lt;&gt;-1
+    x:=ltoken
+    ltoken:=-1
+    RETURN x
+  ENDIF
+  tokeninfo:=0
+  parse:
+  c:=p[]++
+  SELECT c
+    CASE &quot;;&quot;; RETURN IF buf+flen&lt;p THEN p-- BUT EOF ELSE EOL
+    CASE &quot;|&quot;; RETURN BAR
+    CASE &quot;,&quot;; RETURN COMMA
+    CASE &quot;(&quot;; RETURN LPARENTH
+    CASE &quot;)&quot;; RETURN RPARENTH
+    CASE &quot;{&quot;; RETURN LBRACE
+    CASE &quot;}&quot;; RETURN RBRACE
+    CASE &quot;[&quot;; RETURN LBRACKET
+    CASE &quot;]&quot;; RETURN RBRACKET
+    CASE &quot;-&quot;; IF p[]=&quot;&gt;&quot; THEN RETURN p++ BUT ARROW
+    CASE &quot;/&quot;
+      IF p[]=&quot;*&quot;
+        x:=p
+        depth:=1
+        WHILE buf+flen&gt;p++
+          IF (p[0]=&quot;/&quot;) AND (p[1]=&quot;*&quot;)
+            INC depth
+            INC p
+          ENDIF
+          IF (p[0]=&quot;*&quot;) AND (p[1]=&quot;/&quot;)
+            DEC depth
+            INC p
+          ENDIF
+          IF depth=0
+            INC p
+            BRA parse
+          ENDIF
+        ENDWHILE
+        p:=x
+        Raise(ER_COMMENT)
+      ENDIF
+      Raise(ER_UNEXPECTED)
+    CASE 34
+      start:=p
+      WHILE (p[]&lt;&gt;&quot;;&quot;) AND (p[]&lt;&gt;10) AND (p[]++&lt;&gt;34) DO NOP
+      IF p[-1]=&quot;;&quot; THEN p-- BUT Raise(ER_QUOTE)
+      len:=p-start-1
+      tokeninfo:=String(len)
+      StrCopy(tokeninfo,start,len)
+      RETURN ISTRING
+    DEFAULT
+      IF (c&gt;=&quot;a&quot;) AND (c&lt;=&quot;z&quot;)
+        start:=p--
+        WHILE (p[]&gt;=&quot;a&quot;) AND (p[]++&lt;=&quot;z&quot;) DO NOP
+        len:=p---start
+        s:=String(len)
+        StrCopy(s,start,len)
+        syml:=symlist
+        WHILE syml
+          IF StrCmp(s,syml.name,ALL) THEN BRA found
+          syml:=syml.next
+        ENDWHILE
+        syml:=New(SIZEOF sym)
+        syml.next:=symlist
+        syml.name:=s
+        syml.type:=NOTYPE
+        symlist:=tokeninfo:=syml
+        RETURN RSYM
+        found:
+        tokeninfo:=syml
+        RETURN RSYM
+      ELSEIF (c&gt;=&quot;A&quot;) AND (c&lt;=&quot;G&quot;)
+        tokeninfo:=notevals[c-&quot;A&quot;]
+        LOOP
+          x:=p[]++
+          SELECT x
+            CASE &quot;+&quot;; tokeninfo:=tokeninfo+12           /* octave sup   */
+            CASE &quot;-&quot;; tokeninfo:=tokeninfo-12           /* octave inf   */
+            CASE &quot;#&quot;; tokeninfo:=tokeninfo+1            /* piqué        */
+            CASE &quot;b&quot;; tokeninfo:=tokeninfo-1            /* plat         */
+            DEFAULT
+              DEC p
+              RETURN NOTEVAL
+          ENDSELECT
+        ENDLOOP
+      ELSEIF ((c&gt;=&quot;0&quot;) AND (c&lt;=&quot;9&quot;)) OR (c=&quot;-&quot;) OR (c=&quot;$&quot;)
+        tokeninfo:=Val(p--,{x})
+        p:=p+x
+        RETURN IF c=&quot;$&quot; THEN HEXINTEGER ELSE INTEGER
+      ENDIF
+      IF c&gt;32 THEN Raise(ER_UNEXPECTED) ELSE BRA parse
+  ENDSELECT
+ENDPROC
+
+PROC putback(token)
+  ltoken:=token
+ENDPROC
+
+PROC checkinfo(min,max) RETURN IF (tokeninfo&lt;min) OR (tokeninfo&gt;max) THEN
+  Raise(ER_RANGE) ELSE tokeninfo
+
+ENUM NOCHANNEL=GEN_ER,LARGESONG,CROSSINDEX
+
+PROC generate() HANDLE
+  DEF x,ci:PTR TO i,syms:PTR TO LONG,numc=0
+  Rnd(-Shl(VbeamPos(),14))        /* initialise seed */
+  ci:=itab
+  FOR x:=0 TO MAXINDEX-1 DO ci[].start++:=NIL
+  ci:=channel
+  timings:=[856,808,762,720,678,640,604,570,538,508,480,453,
+            428,404,381,360,339,320,302,285,269,254,240,226,
+            214,202,190,180,170,160,151,143,135,127,120,113]:INT
+  /*        C-  C#- D-  D#- E-  F-  F#- G-  G#- A-  A#- B-
+            C   C#  D   D#  E   F   F#  G   G#  A   A#  B
+            C+  C#+ D+  D#+ E+  F+  F#+ G+  G#+ A+  A#+ B+     */
+  np:=notes:=New(MAXDURATION*4+100+MAXDATA)
+  end:=np+MAXDATA
+  syms:=[&#x27;one&#x27;,&#x27;two&#x27;,&#x27;three&#x27;,&#x27;four&#x27;]
+  FOR x:=0 TO 3
+    ci[x].start:=np
+    IF findsym(syms[x])
+      ci[x].len:=np-ci[x].start
+      IF ci[x].len&gt;maxrows THEN maxrows:=ci[x].len
+      INC numc
+    ELSE
+      ci[x].start:=NIL
+    ENDIF
+  ENDFOR
+  IF numc=0 THEN Raise(NOCHANNEL)
+  IF maxrows=0 THEN Raise(NOGRAM)
+  IF maxrows&gt;MAXROWS THEN Raise(LARGESONG)
+EXCEPT
+  IF exception&gt;=GEN_ER THEN WriteF(&#x27;ERROR: &#x27;)
+  SELECT exception
+    CASE NOCHANNEL;  WriteF(&#x27;Un canal doit être au moins défini\n&#x27;)
+    CASE LARGESONG;  WriteF(&#x27;Song trop grand !\n&#x27;)
+    CASE CROSSINDEX; WriteF(&#x27;Pas d&#x27;indéxation permise cross-symbol\n&#x27;)
+    DEFAULT;         Raise(exception)         /* re-saute si inconnu */
+  ENDSELECT
+  Raise(BADSTRUCTURE)        /* termine */
+ENDPROC
+
+PROC findsym(name)
+  DEF s:PTR TO sym
+  s:=symlist
+  WHILE s
+    IF StrCmp(s.name,name,ALL) THEN BRA.S continue
+    s:=s.next
+  ENDWHILE
+  RETURN FALSE
+  continue:
+  rewritelist(s.rptr)
+ENDPROC TRUE
+
+PROC rewritelist(list:PTR TO rlist)
+  WHILE list
+    rewritesym(list)
+    list:=list.next
+  ENDWHILE
+ENDPROC
+
+PROC rewritesym(rsym:PTR TO rlist)
+  DEF t,sl:PTR TO sym,rnd,c1,c2,ol:PTR TO optset,x,i,st:PTR TO LONG,l,n
+  FreeStack(); CtrlC()
+  t:=rsym.type
+  SELECT t
+    CASE SYM
+      sl:=rsym.info
+      IF i:=rsym.index
+        st:=itab[i].start
+        l:=itab[i].len
+        IF st
+          IF np+l&gt;=end THEN Raise(LARGESONG)
+          IF sl&lt;&gt;itab[i].isym THEN Raise(CROSSINDEX)
+          l:=Shr(l,2)
+          IF l THEN FOR x:=1 TO l DO np[]++:=IF n:=st[]++ THEN
+            n AND MASK OR curglob ELSE 0
+        ELSE
+          st:=np
+          rewritelist(sl.rptr)
+          itab[i].len:=np-st
+          itab[i].start:=st
+          itab[i].isym:=sl
+        ENDIF
+      ELSE
+        rewritelist(sl.rptr)
+      ENDIF
+    CASE OPTION
+      IF Rnd(1001)&lt;rsym.index THEN rewritelist(rsym.info)
+    CASE OPTSET
+      rnd:=Rnd(rsym.index)
+      c1:=c2:=0
+      ol:=rsym.info
+      WHILE ol
+        c2:=c1+ol.weight
+        IF (rnd&gt;=c1) AND (rnd&lt;c2) THEN rewritelist(ol.rptr)
+        c1:=c2
+        ol:=ol.next
+      ENDWHILE
+    CASE NOTE
+      np[]++:=cursfx OR curglob OR Shl(timings[rsym.info+-MINNOTE],16)
+      IF rsym.index&gt;1 THEN FOR x:=2 TO rsym.index DO np[]++:=0
+      IF np&gt;=end THEN Raise(LARGESONG)
+      cursfx:=0
+    CASE SAMPLE
+      cursample:=rsym.info
+      curglob:=Shl(cursample+1 AND $F,12) OR Shl(cursample+1 AND $F0,24)
+    CASE SFX
+      cursfx:=rsym.info
+  ENDSELECT
+ENDPROC
+
+PROC loadsamples() HANDLE
+  DEF s:PTR TO sample,i,l,r,f:PTR TO LONG
+  s:=sdata
+  FOR i:=1 TO numsample
+    IF (l:=FileLength(s.path))&lt;10 THEN Raise(0)
+    s.len:=l
+    s.adr:=New(l)
+    IF (fh:=Open(s.path,OLDFILE))=NIL THEN Raise(0)
+    r:=Read(fh,s.adr,l)
+    Close(fh)
+    fh:=NIL
+    IF r&lt;10 THEN Raise(0)
+    f:=s.adr
+    IF f[]=&quot;FORM&quot;
+      WHILE f[]++&lt;&gt;&quot;BODY&quot; DO IF s.adr+l&lt;f THEN Raise(0)
+      s.len:=l+s.adr-f
+      s.adr:=f
+    ENDIF
+    s++
+  ENDFOR
+EXCEPT
+  WriteF(&#x27;En travaillant le sample &quot;\s&quot;:\n&#x27;,s.path)
+  Raise(READSAMPLE)
+ENDPROC
+
+PROC writemodule()
+  DEF s,x,pnum,dat[4]:ARRAY OF LONG,nument,n,ch:PTR TO LONG,len,wl
+  IF (fh:=Open(outfile,NEWFILE))=NIL THEN Raise(WRITEMOD)
+  Write(fh,StringF(s:=String(19),&#x27;\l\s[20]&#x27;,arg) BUT s,20)
+  FOR x:=0 TO MAXSAMPLE-1
+    wl:=Shr(sdata[x].len,1)
+    IF x&gt;=numsample
+      Write(fh,[0,0,0,0,0,0,0,0],30)
+    ELSE
+      Write(fh,sdata[x].path,21)
+      Out(fh,0)
+      Write(fh,[wl,sdata[x].vol,0,1]:INT,8)  /* or [,,wl,] */
+    ENDIF
+  ENDFOR
+  IF (pnum:=maxrows/256)*256&lt;&gt;maxrows THEN INC pnum
+  Out(fh,pnum)
+  Out(fh,120)  /* 127 */
+  FOR x:=0 TO pnum-1 DO Out(fh,x)
+  FOR x:=pnum TO 127 DO Out(fh,0)
+  Write(fh,[&quot;M.K.&quot;],4)
+  nument:=pnum*64-1
+  FOR x:=0 TO nument
+    FOR n:=0 TO 3
+      ch:=channel[n].start
+      IF ch
+        len:=channel[n].len
+        IF len
+          dat[n]:=ch[]++
+          channel[n].start:=ch
+          channel[n].len:=len-4
+        ELSE
+          dat[n]:=0
+        ENDIF
+      ELSE
+        dat[n]:=0
+      ENDIF
+    ENDFOR
+    Write(fh,dat,16)
+  ENDFOR
+  FOR x:=0 TO numsample-1
+    Write(fh,sdata[x].adr,sdata[x].len)
+  ENDFOR
+  Close(fh)
+  fh:=NIL
+ENDPROC
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

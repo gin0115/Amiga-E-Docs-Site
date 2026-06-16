@@ -1,0 +1,1242 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>srcgen.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-srcgen-0-5.html">srcgen_0.5</a> &rsaquo; srcgen.e</div><h1>File: <code>srcgen.e</code></h1><p class="meta">1216 lines · project <a href="../examples/pkg-srcgen-0-5.html"><code>srcgen_0.5</code></a></p><p class="pathctx">srcgen_0.5/srcgen.e</p><p class="prose">SrcGen: GadToolBox source generator for E SrcGen v0.5 updated by Jason R. Hulance (jason@fsel.com) from the excellent work by Wouter van Oortmerssen (with some extensions by Martin Kuchinka). See SrcGen.doc for more details. Changes in v0.5: - Can now open <a href="../modules/custom.html">custom</a> and public <a href="../modules/screens.html">screens</a>, not just Workben</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/gtx.html">gtx</a></li></ul></div><h2>Source</h2><pre class="code">/* SrcGen: GadToolBox source generator for E
+
+   SrcGen v0.5 updated by Jason R. Hulance (jason@fsel.com) from the
+   excellent work by Wouter van Oortmerssen (with some extensions by
+   Martin Kuchinka).
+
+See SrcGen.doc for more details.
+
+Changes in v0.5:
+   - Can now open custom and public screens, not just Workbench
+   - Can now generate code to use selected font
+   - Added template function generation for common actions
+   - Added (very efficient) multi-window processing
+   - Added (rudimentary) support for GetFile button
+   - Added SA_DISPLAYID decoding into constants
+   - Can now handle &#x27; and \ in strings
+   - Can now handle illegal characters in project names
+   - Tidied constant production code
+   - Fixed AUTO_ADJUST bug!
+   - Fixed decoding of WA_XXX constants
+   - Fixed disabled menus/menuitems
+   - Fixed IDCMP flags to use correct bits
+   - Fixed window flags to use correct bits
+   - Fixed production of SMART refresh flag
+   - Fixed menu selection handling
+*/
+
+OPT OSVERSION=37
+
+ENUM NONE,NOMEM,BADARGS,NOGTXLIB,LOADGUI,NOGUI,NOWINDOWS,NOFILEOUT
+
+SET HASGADGETS,HASMENUS
+
+MODULE &#x27;gtx&#x27;, 
+       &#x27;gadtoolsbox/forms&#x27;, 
+       &#x27;gadtoolsbox/gui&#x27;, 
+       &#x27;gadtoolsbox/gtxbase&#x27;,
+       &#x27;graphics/text&#x27;,
+       &#x27;graphics/modeid&#x27;,
+       &#x27;nofrag&#x27;, 
+       &#x27;libraries/gadtools&#x27;, 
+       &#x27;utility&#x27;, 
+       &#x27;intuition/gadgetclass&#x27;,
+       &#x27;intuition/intuition&#x27;,
+       &#x27;intuition/iobsolete&#x27;,
+       &#x27;intuition/screens&#x27;,
+       &#x27;tools/ctype&#x27;
+
+DEF guiptr:guidata,
+    wlist:windowlist,
+    kinds:PTR TO LONG,
+    gttags1:PTR TO LONG,gttags2:PTR TO LONG,gatags:PTR TO LONG,
+    pgatags:PTR TO LONG,latags:PTR TO LONG,strtags:PTR TO LONG,
+    watags:PTR TO LONG,done_or=FALSE,has_getfile=FALSE,
+    win[100]:LIST,
+    infile[100]:STRING,outfile[100]:STRING,
+    mainf=TRUE,erf=TRUE,mesf=TRUE,layoutf=TRUE,processf=TRUE,quietf=FALSE,
+    lastkind,wname,templatef=TRUE,multif=TRUE,fontf=TRUE
+
+PROC main() HANDLE
+  DEF myargs:PTR TO LONG,rdargs=NIL,chain=NIL,gbase:PTR TO gtxbase,valid=NIL
+  myargs:=[0,0,0,0,0,0,0,0,0,0]
+  IF (rdargs:=ReadArgs(&#x27;GUIFILE/A,NOMAIN/S,NOERR/S,NOMES/S,NOLAYOUT/S,NOPROCESS/S,QUIET/S,NOTEMPLATE/S,NOMULTI/S,NOFONT/S&#x27;,myargs,NIL))=NIL THEN Raise(BADARGS)
+  IF (gtxbase:=OpenLibrary(&#x27;gadtoolsbox.library&#x27;,0))=NIL THEN Raise(NOGTXLIB)
+  IF myargs[1] THEN mainf:=FALSE    /* generate no PROC main() */
+  IF myargs[2] THEN erf:=FALSE      /* no error report function */
+  IF myargs[3] THEN mesf:=FALSE     /* no wait4message() */
+  IF myargs[4] THEN layoutf:=FALSE  /* no layout: all tags on one line */
+  IF myargs[5] THEN processf:=FALSE /* no process(): function */
+  IF myargs[6] THEN quietf:=TRUE    /* no messages */
+  IF myargs[7] THEN templatef:=FALSE /* no templates */
+  IF myargs[8] THEN multif:=FALSE   /* no multi-window handling */
+  IF myargs[9] THEN fontf:=FALSE    /* no font (use default) */
+  IF quietf=FALSE THEN WriteF(&#x27;GadToolsBox Amiga E Src Gen v0.5 (c) 1993-7, Wouter &amp; Martin Kuchinka &amp; Jason\n&#x27;)
+  StrCopy(infile,myargs[0])
+  StrCopy(outfile,infile)
+  StrAdd(infile,&#x27;.gui&#x27;)
+  StrAdd(outfile,&#x27;.e&#x27;)
+  gbase:=gtxbase
+  nofragbase:=gbase.nofragbase
+  utilitybase:=gbase.utilitybase
+  IF (chain:=GetMemoryChain(4096))=NIL THEN Raise(NOMEM)
+  IF GtX_LoadGUIA(chain,infile,[RG_GUI,guiptr,RG_WINDOWLIST,wlist,RG_VALID,{valid},NIL]) THEN Raise(LOADGUI)
+  IF (valid AND VLF_GUI)=0 THEN Raise(NOGUI)
+  IF (valid AND VLF_WINDOWLIST)=0 THEN Raise(NOWINDOWS)
+  IF quietf=FALSE THEN WriteF(&#x27;Generating source...\n\n&#x27;)
+  generate()
+  Raise(NONE)
+EXCEPT
+  IF valid AND VLF_WINDOWLIST THEN GtX_FreeWindows(chain,wlist)
+  IF chain THEN FreeMemoryChain(chain,TRUE)
+  IF gtxbase THEN CloseLibrary(gtxbase)
+  IF rdargs THEN FreeArgs(rdargs)
+  IF quietf=FALSE
+    WriteF(&#x27;\s!\n&#x27;,ListItem([&#x27;Done&#x27;,
+    &#x27;Out of Memory&#x27;,
+    &#x27;Bad args&#x27;,
+    &#x27;Could not open gadtoolsbox library&#x27;,
+    &#x27;Problems reading GUI file&#x27;,
+    &#x27;missing GUI definition&#x27;,
+    &#x27;missing window definitions&#x27;,
+    &#x27;problems while writing E source&#x27;],exception))
+  ENDIF
+ENDPROC
+
+PROC generate()
+  DEF fh
+  IF ( fh:=Open(outfile,NEWFILE) )=NIL THEN Raise(NOFILEOUT)
+  fh:=SetStdOut(fh)
+  initlists()
+  WriteF(&#x27;/* GadToolsBox GUI: E source generated by SrcGen v0.5    */\n&#x27;+
+         &#x27;/*                 (by Wouter &amp; Martin Kuchinka &amp; Jason) */\n\n&#x27;+
+         &#x27;OPT OSVERSION=37,PREPROCESS\n\n&#x27; +
+         &#x27;MODULE &#x27;&#x27;gadtools&#x27;&#x27;,\n&#x27;+
+         &#x27;       &#x27;&#x27;libraries/gadtools&#x27;&#x27;,\n&#x27;+
+         &#x27;       &#x27;&#x27;exec/memory&#x27;&#x27;,\n&#x27;+
+         &#x27;       &#x27;&#x27;exec/ports&#x27;&#x27;,\n&#x27;+
+         &#x27;       &#x27;&#x27;exec/lists&#x27;&#x27;,\n&#x27;+
+         &#x27;       &#x27;&#x27;exec/nodes&#x27;&#x27;,\n&#x27;+
+         &#x27;       &#x27;&#x27;graphics/modeid&#x27;&#x27;,\n&#x27;+
+         &#x27;       &#x27;&#x27;graphics/rastport&#x27;&#x27;,\n&#x27;+
+         &#x27;       &#x27;&#x27;intuition/intuition&#x27;&#x27;,\n&#x27;+
+         &#x27;       &#x27;&#x27;intuition/screens&#x27;&#x27;,\n&#x27;+
+         &#x27;       &#x27;&#x27;intuition/gadgetclass&#x27;&#x27;,\n&#x27;+
+         &#x27;       &#x27;&#x27;intuition/iobsolete&#x27;&#x27;,\n&#x27;+
+         &#x27;       &#x27;&#x27;utility/tagitem&#x27;&#x27;,\n&#x27;+
+         &#x27;       &#x27;&#x27;devices/inputevent&#x27;&#x27;,\n&#x27;+
+         &#x27;       &#x27;&#x27;graphics/text&#x27;&#x27;\n\n&#x27;)
+  IF fontf
+    WriteF(&#x27;MODULE &#x27;&#x27;diskfont&#x27;&#x27;\n\n&#x27;)
+  ENDIF
+  WriteF(
+         &#x27;ENUM ERROR_NONE,\n&#x27;+
+         &#x27;     ERROR_CONTEXT,\n&#x27;+
+         &#x27;     ERROR_GADGET,\n&#x27;+
+         &#x27;     ERROR_SCRN,\n&#x27;+
+         &#x27;     ERROR_VISUAL,\n&#x27;+
+         &#x27;     ERROR_GT,\n&#x27;+
+         &#x27;     ERROR_WINDOW,\n&#x27;+
+         &#x27;     ERROR_MENUS,\n&#x27;+
+         &#x27;     ERROR_PORT,\n&#x27;+
+         &#x27;     ERROR_DF,\n&#x27;+
+         &#x27;     ERROR_FONT\n\n&#x27;)
+  WriteF(&#x27;DEF&#x27;)
+  IF mesf THEN WriteF(&#x27; infos:PTR TO gadget,\n&#x27;)
+  checkwindows()
+  IF fontf THEN WriteF(&#x27;    font=NIL,\n&#x27;)
+  WriteF(&#x27;    scr=NIL:PTR TO screen,\n&#x27;+
+         &#x27;    visual=NIL,\n&#x27;+
+         &#x27;    offx,offy,\n&#x27;+
+         &#x27;    tattr:PTR TO textattr,\n&#x27;+
+         &#x27;    type,id,key,qual,item:PTR TO menuitem\n\n&#x27;)
+  IF templatef THEN gentemplates()
+  genscreenstuff()
+  genwindows()
+  genprocess()
+  genmain()
+  Close(SetStdOut(fh))
+ENDPROC
+
+PROC genprocess()
+  IF processf
+    IF multif
+      WriteF(
+       &#x27;PROC multiprocess(sig)\n&#x27;+
+       &#x27;  DEF win:PTR TO window\n&#x27;)
+    ELSE
+      WriteF(
+       &#x27;PROC process(win:PTR TO window)\n&#x27;)
+    ENDIF
+    WriteF(
+       &#x27;  DEF running=TRUE, func:PTR TO LONG\n&#x27;+
+       &#x27;  WHILE running\n&#x27;)
+    IF multif
+      WriteF(
+       &#x27;    win:=multiwait4message(sig)\n&#x27;)
+    ELSE
+      WriteF(
+       &#x27;    wait4message(win)\n&#x27;)
+    ENDIF
+    WriteF(
+       &#x27;    SELECT type\n&#x27;+
+       &#x27;    CASE IDCMP_CLOSEWINDOW\n&#x27;)
+    IF templatef
+      WriteF(
+       &#x27;      func:=win.userdata\n&#x27;+
+       &#x27;      IF func THEN func:=func[]\n&#x27;+
+       &#x27;      IF func THEN running:=func()\n&#x27;+
+       &#x27;    CASE IDCMP_GADGETUP\n&#x27;+
+       &#x27;      func:=infos.userdata\n&#x27;+
+       &#x27;      IF func THEN running:=func()\n&#x27;+
+       &#x27;    CASE IDCMP_MENUPICK\n&#x27;+
+       &#x27;      WHILE infos&lt;&gt;MENUNULL\n&#x27;+
+       &#x27;        item:=ItemAddress(win.menustrip,infos)\n&#x27;+
+       &#x27;        func:=GTMENUITEM_USERDATA(item)\n&#x27;+
+       &#x27;        IF func THEN running:=func()\n&#x27;+
+       &#x27;      EXIT running=FALSE\n&#x27;+
+       &#x27;        infos:=item.nextselect AND $FFFF\n&#x27;+
+       &#x27;      ENDWHILE\n&#x27;)
+      WriteF(
+       &#x27;    CASE IDCMP_IDCMPUPDATE\n&#x27;+
+       &#x27;      func:=win.userdata\n&#x27;+
+       &#x27;      IF func THEN func:=func[1]\n&#x27;+
+       &#x27;      IF func THEN running:=func()\n&#x27;+
+       &#x27;    CASE IDCMP_INTUITICKS\n&#x27;+
+       &#x27;      func:=win.userdata\n&#x27;+
+       &#x27;      IF func THEN func:=func[2]\n&#x27;+
+       &#x27;      IF func THEN running:=func()\n&#x27;+
+       &#x27;    CASE IDCMP_MOUSEBUTTONS\n&#x27;+
+       &#x27;      func:=win.userdata\n&#x27;+
+       &#x27;      IF func THEN func:=func[3]\n&#x27;+
+       &#x27;      IF func THEN running:=func()\n&#x27;)
+    ELSE
+      WriteF(
+       &#x27;      running:=FALSE\n&#x27;+
+       &#x27;    CASE IDCMP_GADGETUP\n&#x27;+
+       &#x27;      SELECT id\n&#x27;+
+       &#x27;      CASE NIL -&gt; your gadget id\n&#x27;+
+       &#x27;      ENDSELECT\n&#x27;+
+       &#x27;    CASE IDCMP_MENUPICK\n&#x27;+
+       &#x27;      infos:=mes.code AND $FFFF\n&#x27;+
+       &#x27;      WHILE infos&lt;&gt;MENUNULL\n&#x27;+
+       &#x27;        item:=ItemAddress(win.menustrip,infos)\n&#x27;+
+       &#x27;        id:=GTMENUITEM_USERDATA(item)\n&#x27;+
+       &#x27;        SELECT id\n&#x27;+
+       &#x27;        CASE NIL -&gt; your menu id...\n&#x27;+
+       &#x27;        ENDSELECT\n&#x27;+
+       &#x27;        infos:=item.nextselect AND $FFFF\n&#x27;+
+       &#x27;      ENDWHILE\n&#x27;)
+    ENDIF
+    IF templatef        
+      WriteF(
+       &#x27;    CASE IDCMP_VANILLAKEY\n&#x27;+
+       &#x27;      func:=win.userdata\n&#x27;+
+       &#x27;      IF func THEN func:=func[4]\n&#x27;+
+       &#x27;      IF func THEN running:=func()\n&#x27;)
+    ELSE
+      WriteF(
+       &#x27;    CASE IDCMP_VANILLAKEY\n&#x27;+
+       &#x27;      SELECT key\n&#x27;+
+       &#x27;      CASE NIL -&gt; eg.: &quot;a&quot;\n&#x27;+
+       &#x27;      ENDSELECT\n&#x27;)
+    ENDIF
+    WriteF(
+       &#x27;    ENDSELECT\n&#x27;+
+       &#x27;  ENDWHILE\n&#x27;+
+       &#x27;ENDPROC\n\n&#x27;)
+  ENDIF
+ENDPROC
+
+PROC genwindows()
+  DEF w:PTR TO projectwindow,wnum=0
+  w:=wlist.first
+  WHILE w.next
+    wname:=w.name
+    lastkind:=-1
+    WriteF(&#x27;PROC open\swindow(\s)\n&#x27;,wname,IF multif THEN &#x27;port&#x27; ELSE &#x27;&#x27;)
+    WriteF(&#x27;  DEF g:PTR TO gadget\n&#x27;)
+    WriteF(&#x27;  IF (g:=CreateContext({\sglist}))=NIL THEN RETURN ERROR_CONTEXT\n&#x27;,wname)
+    gengadgets(w)
+    IF win[wnum] AND HASMENUS
+      WriteF(&#x27;  IF (\smenus:=CreateMenusA(\n&#x27;+
+             &#x27;    [&#x27;,wname)
+      genmenus(w.menus)
+      WriteF(&#x27;0,0,0,0,0,0,0]:newmenu,NIL))=NIL THEN RETURN ERROR_MENUS\n&#x27;)
+      WriteF(&#x27;  IF LayoutMenusA(\smenus,visual,NIL)=FALSE THEN RETURN ERROR_MENUS\n&#x27;,wname)
+    ENDIF
+    WriteF(&#x27;  IF (\swnd:=OpenWindowTagList(NIL,&#x27;,wname)
+    WriteF(IF layoutf THEN &#x27;\n    [&#x27; ELSE &#x27;[&#x27;)
+    createtags(w.tags,w)
+    IF win[wnum] AND HASGADGETS
+      WriteF(&#x27;WA_GADGETS,\sglist,&#x27;,wname)
+      IF layoutf THEN WriteF(&#x27;\n     &#x27;)
+    ENDIF
+    WriteF(&#x27;TAG_END]))=NIL THEN RETURN ERROR_WINDOW\n&#x27;)
+    IF multif
+      WriteF(&#x27;  \swnd.userport:=port\n&#x27;+
+             &#x27;  ModifyIDCMP(\swnd,&#x27;,wname,wname)
+      writeIDCMP(w.idcmp)
+      WriteF(&#x27;)\n&#x27;)
+    ENDIF
+    IF templatef
+      WriteF(&#x27;  \swnd.userdata:=[&#x27;,wname)
+      WriteF(IF w.idcmp AND IDCMP_CLOSEWINDOW THEN &#x27;{\s_CloseWindow}&#x27; ELSE &#x27;0&#x27;,wname)
+      WriteF(IF w.idcmp AND IDCMP_IDCMPUPDATE THEN &#x27;,{\s_IDCMPUpdate}&#x27; ELSE &#x27;,0&#x27;,wname)
+      WriteF(IF w.idcmp AND IDCMP_INTUITICKS THEN &#x27;,{\s_IntuiTicks}&#x27; ELSE &#x27;,0&#x27;,wname)
+      WriteF(IF w.idcmp AND IDCMP_MOUSEBUTTONS THEN &#x27;,{\s_MouseButtons}&#x27; ELSE &#x27;,0&#x27;,wname)
+      WriteF(IF w.idcmp AND IDCMP_VANILLAKEY THEN &#x27;,{\s_Keys}]\n&#x27; ELSE &#x27;,0]\n&#x27;,wname)
+    ENDIF
+    IF w.windowtext THEN gentexts(w)
+    genboxes(w)
+    IF win[wnum] AND HASMENUS
+      WriteF(&#x27;  IF SetMenuStrip(\swnd,\smenus)=FALSE THEN RETURN ERROR_MENUS\n&#x27;,wname,wname)
+    ENDIF
+    WriteF(&#x27;  Gt_RefreshWindow(\swnd,NIL)\n&#x27;+
+           &#x27;ENDPROC\n\n&#x27;+
+           &#x27;PROC close\swindow()\n&#x27;+
+           &#x27;  IF \swnd\n&#x27;,wname,wname,wname)
+    IF multif
+      WriteF(&#x27;    clearwinport(\swnd)\n&#x27;,wname)
+    ENDIF
+    IF win[wnum] AND HASMENUS
+      WriteF(&#x27;    ClearMenuStrip(\swnd)\n&#x27;+
+             &#x27;    IF \smenus THEN FreeMenus(\smenus)\n&#x27;,wname,wname,wname)
+    ENDIF
+    IF templatef
+      WriteF(&#x27;    IF \swnd.userdata THEN Dispose(\swnd.userdata)\n&#x27;,wname,wname)
+    ENDIF
+    WriteF(&#x27;    CloseWindow(\swnd)\n&#x27;+
+           &#x27;  ENDIF\n&#x27;+
+           &#x27;  IF \sglist THEN FreeGadgets(\sglist)\n&#x27;+
+           &#x27;ENDPROC\n\n&#x27;,wname,wname,wname)
+    w:=w.next
+    INC wnum
+  ENDWHILE
+  IF multif
+    WriteF(
+    &#x27;PROC clearwinport(win:PTR TO window)\n&#x27;+
+    &#x27;  DEF msg:PTR TO intuimessage, succ\n&#x27;+
+    &#x27;  IF win.userport\n&#x27;+
+    &#x27;    Forbid()\n&#x27;+
+    &#x27;    msg:=win.userport.msglist.head\n&#x27;+
+    &#x27;    WHILE succ:=msg.execmessage.ln.succ\n&#x27;+
+    &#x27;      IF msg.idcmpwindow=win\n&#x27;+
+    &#x27;        Remove(msg)\n&#x27;+
+    &#x27;        ReplyMsg(msg)\n&#x27;+
+    &#x27;      ENDIF\n&#x27;+
+    &#x27;      msg:=succ\n&#x27;+
+    &#x27;    ENDWHILE\n&#x27;+
+    &#x27;    win.userport:=NIL\n&#x27;+
+    &#x27;    ModifyIDCMP(win,0)\n&#x27;+
+    &#x27;    Permit()\n&#x27;+
+    &#x27;  ENDIF\n&#x27;+
+    &#x27;ENDPROC\n\n&#x27;)
+  ENDIF
+ENDPROC
+
+PROC gengadgets(w:PTR TO projectwindow)
+  DEF egl:PTR TO extgadgetlist,eng:PTR TO extnewgadget,ng:PTR TO newgadget,kind
+  egl:=w.gadgets; eng:=egl.first
+  IF eng=NIL THEN RETURN
+  WHILE eng.next
+    ng:=eng.newgadget                     /* offx,offy */
+    kind:=eng.kind
+    WriteF(&#x27;  IF (g:=CreateGadgetA(\s,g,&#x27;,kinds[kind])
+    IF layoutf THEN WriteF(&#x27;\n    &#x27;)
+    WriteF(&#x27;[offx+\d,offy+\d,\d,\d,&#x27;,
+           ng.leftedge-w.leftborder,ng.topedge-w.topborder,ng.width,ng.height)
+    writeString(ng.gadgettext)
+    WriteF(&#x27;,tattr,\d,&#x27;,ng.gadgetid)
+    done_or:=FALSE
+    IF ng.flags AND PLACETEXT_LEFT THEN   orConst(&#x27;PLACETEXT_LEFT&#x27;)
+    IF ng.flags AND PLACETEXT_RIGHT THEN  orConst(&#x27;PLACETEXT_RIGHT&#x27;)
+    IF ng.flags AND PLACETEXT_ABOVE THEN  orConst(&#x27;PLACETEXT_ABOVE&#x27;)
+    IF ng.flags AND PLACETEXT_BELOW THEN  orConst(&#x27;PLACETEXT_BELOW&#x27;)
+    IF ng.flags AND PLACETEXT_IN THEN     orConst(&#x27;PLACETEXT_IN&#x27;)
+    IF ng.flags AND NG_HIGHLABEL THEN     orConst(&#x27;NG_HIGHLABEL&#x27;)
+    IF done_or=FALSE THEN WriteF(&#x27;0&#x27;)
+    WriteF(&#x27;,visual,&#x27;)
+    WriteF(IF templatef AND w.idcmp AND IDCMP_GADGETUP THEN &#x27;{\s_Clicked}&#x27; ELSE &#x27;0&#x27;, eng.gadgetlabel)
+    WriteF(&#x27;]:newgadget,&#x27;)
+    WriteF(IF layoutf THEN &#x27;\n    [&#x27; ELSE &#x27;[&#x27;)
+    createtags(eng.tags)
+    WriteF(&#x27;TAG_END]))=NIL THEN RETURN ERROR_GADGET\n&#x27;)
+    IF kind=0 -&gt; GENERIC (i.e., GetFile)
+      has_getfile:=TRUE
+      WriteF(
+        &#x27;  g.flags:=g.flags OR GFLG_GADGIMAGE OR GFLG_GADGHCOMP\n&#x27;+
+        &#x27;  g.activation:=g.activation OR GACT_RELVERIFY\n&#x27;+
+        &#x27;  g.gadgetrender:=[0,0,20,14,2,getFileImage(),3,0,NIL]:image\n&#x27;)
+    ENDIF
+    lastkind:=kind
+    eng:=eng.next
+  ENDWHILE
+ENDPROC
+
+PROC genmenus(eml:PTR TO extmenulist)
+  DEF enm:PTR TO extnewmenu,nm:PTR TO newmenu
+  enm:=eml.first
+  IF enm=NIL THEN RETURN
+  WHILE enm.next
+    nm:=enm.newmenu
+    IF nm.type=NM_TITLE;    WriteF(&#x27;NM_TITLE&#x27;)
+    ELSEIF nm.type=NM_ITEM; WriteF(&#x27; NM_ITEM&#x27;)
+    ELSEIF nm.type=NM_SUB;  WriteF(&#x27;  NM_SUB&#x27;)
+    ELSE;                   WriteF(&#x27;$\h&#x27;,nm.type)
+    ENDIF
+    WriteF(&#x27;,0,&#x27;)
+    IF StrCmp(enm.menutitle,&#x27;NM_BARLABEL&#x27;)
+      WriteF(&#x27;NM_BARLABEL&#x27;)
+    ELSE
+      writeString(enm.menutitle)
+    ENDIF
+    WriteF(&#x27;,&#x27;)
+    IF nm.commkey THEN writeString(nm.commkey) ELSE WriteF(&#x27;0&#x27;)
+    WriteF(&#x27;,&#x27;)
+    done_or:=FALSE
+    IF nm.flags AND CHECKIT THEN            orConst(&#x27;CHECKIT&#x27;)
+    IF nm.flags AND MENUTOGGLE THEN         orConst(&#x27;MENUTOGGLE&#x27;)
+    IF nm.type=NM_TITLE
+      IF nm.flags AND NM_MENUDISABLED THEN  orConst(&#x27;NM_MENUDISABLED&#x27;)
+    ELSE
+      IF nm.flags AND NM_ITEMDISABLED THEN  orConst(&#x27;NM_ITEMDISABLED&#x27;)
+    ENDIF
+    IF nm.flags AND CHECKED THEN            orConst(&#x27;CHECKED&#x27;)
+    IF done_or=FALSE THEN WriteF(&#x27;0&#x27;)
+    WriteF(&#x27;,\d,&#x27;,nm.mutualexclude)
+    WriteF(IF templatef AND (enm.menulabel[]) THEN &#x27;{\s_\s},&#x27; ELSE &#x27;0,&#x27;,
+           wname, enm.menulabel)
+    IF layoutf THEN WriteF(&#x27;\n     &#x27;)
+    IF enm.items THEN genmenus(enm.items)
+    enm:=enm.next
+  ENDWHILE
+ENDPROC
+
+PROC gentexts(w:PTR TO projectwindow)
+  DEF i:PTR TO intuitext
+  i:=w.windowtext
+  WHILE i
+    WriteF(&#x27;  PrintIText(\swnd.rport,&#x27;,wname)
+    IF layoutf THEN WriteF(&#x27;\n    &#x27;)
+    WriteF(&#x27;[\d,\d,\d,\d,\d,tattr,&#x27;,
+           i.frontpen,i.backpen,i.drawmode,i.leftedge-w.leftborder,i.topedge-w.topborder)
+    writeString(i.itext)
+    WriteF(&#x27;,NIL]:intuitext,offx,offy)\n&#x27;)
+    i:=i.nexttext
+  ENDWHILE
+ENDPROC
+
+PROC genboxes(w:PTR TO projectwindow)
+  DEF bl:PTR TO bevellist,bb:PTR TO bevelbox
+  bl:=w.boxes; bb:=bl.first
+  IF bb=NIL THEN RETURN
+  WHILE bb.next
+    WriteF(&#x27;  DrawBevelBoxA(\swnd.rport,offx+\d,offy+\d,\d,\d,&#x27;,wname,bb.left-w.leftborder,bb.top-w.topborder,bb.width,bb.height)
+    IF layoutf THEN WriteF(&#x27;\n    &#x27;)
+    WriteF(&#x27;[GT_VISUALINFO,visual,&#x27;)
+    IF bb.flags AND BBF_RECESSED THEN WriteF(&#x27;GTBB_RECESSED,TRUE,&#x27;)
+    IF bb.flags AND BBFT_BUTTON
+      WriteF(&#x27;GTBB_FRAMETYPE,BBFT_BUTTON,&#x27;)
+    ELSEIF bb.flags AND BBFT_RIDGE
+      WriteF(&#x27;GTBB_FRAMETYPE,BBFT_RIDGE,&#x27;)
+    ELSEIF bb.flags AND BBFT_ICONDROPBOX
+      WriteF(&#x27;GTBB_FRAMETYPE,BBFT_ICONDROPBOX,&#x27;)
+    ENDIF
+    WriteF(&#x27;TAG_END])\n&#x27;)
+    bb:=bb.next
+  ENDWHILE
+ENDPROC
+
+PROC createtags(taglist,w=NIL:PTR TO projectwindow)
+  DEF tag:PTR TO LONG,item,str1,v:PTR TO LONG,type
+  WHILE tag:=NextTagItem({taglist})
+    item:=tag[0]
+    str1:=NIL;  type:=0
+    IF (item&gt;GT_TAGBASE) AND (GT_TAGBASE+65&gt;item)
+      item:=item-GT_TAGBASE
+      IF (item&gt;=4) AND (item&lt;=24)
+        item:=item-4*2
+        str1:=gttags1[item];  type:=gttags1[item+1]
+      ELSEIF (item&gt;=38) AND (item&lt;=64)
+        item:=item-38*2
+        str1:=gttags2[item];  type:=gttags2[item+1]
+      ENDIF
+    ELSEIF (item&gt;GA_DUMMY) AND (GA_DUMMY+25&gt;item)
+      item:=item-GA_DUMMY-1*2
+      str1:=gatags[item];  type:=gatags[item+1]
+    ELSEIF (item&gt;PGA_DUMMY) AND (PGA_DUMMY+11&gt;item)
+      item:=item-PGA_DUMMY-1*2
+      str1:=pgatags[item];  type:=pgatags[item+1]
+    ELSEIF (item&gt;STRINGA_DUMMY) AND (STRINGA_DUMMY+$13&gt;item)
+      item:=item-STRINGA_DUMMY-1*2
+      str1:=strtags[item];  type:=strtags[item+1]
+    ELSEIF (item&gt;LAYOUTA_DUMMY) AND (LAYOUTA_DUMMY+25&gt;item)
+      item:=item-LAYOUTA_DUMMY-1*2
+      str1:=latags[item];  type:=latags[item+1]
+    ELSEIF (item&gt;=WA_LEFT) AND (item&lt;=WA_NEWLOOKMENUS)
+      item:=item-WA_LEFT*2
+      str1:=watags[item];  type:=watags[item+1]
+    ENDIF
+    WriteF(IF str1 THEN str1 ELSE &#x27;$\h&#x27;,tag[0])
+    WriteF(&#x27;,&#x27;)
+    item:=tag[0]
+    v:=tag[1]
+    /* 0=num, 1=(list), 2=array of text, 3=text, 4=&quot;NIL&quot;, 5=&quot;tattr&quot;, 6=&quot;visual&quot;
+       7=&quot;g/NIL&quot;, 8=(ptr to menu), 9=&quot;scr&quot;, 10=&quot;_&quot;, 11=&quot;+offx&quot;, 12=&quot;+offy&quot; */
+    SELECT type
+    CASE 0
+      SELECT item
+      CASE GTCB_CHECKED
+        writeBool(v)
+      CASE GA_DISABLED
+        writeBool(v)
+      CASE WA_AUTOADJUST
+        writeBool(v)
+      CASE WA_NEWLOOKMENUS
+        writeBool(v)
+      CASE WA_FLAGS
+        -&gt; Use proper window flag bits
+        IF w THEN v:=w.windowflags
+        done_or:=FALSE
+        IF v AND WFLG_SIZEGADGET THEN     orConst(&#x27;WFLG_SIZEGADGET&#x27;)
+        IF v AND WFLG_DRAGBAR THEN        orConst(&#x27;WFLG_DRAGBAR&#x27;)
+        IF v AND WFLG_DEPTHGADGET THEN    orConst(&#x27;WFLG_DEPTHGADGET&#x27;)
+        IF v AND WFLG_CLOSEGADGET THEN    orConst(&#x27;WFLG_CLOSEGADGET&#x27;)
+        IF v AND WFLG_SIZEBRIGHT THEN     orConst(&#x27;WFLG_SIZEBRIGHT&#x27;)
+        IF v AND WFLG_SIZEBBOTTOM THEN    orConst(&#x27;WFLG_SIZEBBOTTOM&#x27;)
+        IF v AND WFLG_REFRESHBITS=0 THEN  orConst(&#x27;WFLG_SMART_REFRESH&#x27;)
+        IF v AND WFLG_SIMPLE_REFRESH THEN orConst(&#x27;WFLG_SIMPLE_REFRESH&#x27;)
+        IF v AND WFLG_SUPER_BITMAP THEN   orConst(&#x27;WFLG_SUPER_BITMAP&#x27;)
+        IF v AND WFLG_BACKDROP THEN       orConst(&#x27;WFLG_BACKDROP&#x27;)
+        IF v AND WFLG_REPORTMOUSE THEN    orConst(&#x27;WFLG_REPORTMOUSE&#x27;)
+        IF v AND WFLG_GIMMEZEROZERO THEN  orConst(&#x27;WFLG_GIMMEZEROZERO&#x27;)
+        IF v AND WFLG_BORDERLESS THEN     orConst(&#x27;WFLG_BORDERLESS&#x27;)
+        IF v AND WFLG_ACTIVATE THEN       orConst(&#x27;WFLG_ACTIVATE&#x27;)
+        IF v AND WFLG_RMBTRAP THEN        orConst(&#x27;WFLG_RMBTRAP&#x27;)
+        IF v AND WFLG_NEWLOOKMENUS THEN   orConst(&#x27;WFLG_NEWLOOKMENUS&#x27;)
+        IF done_or=FALSE THEN WriteF(&#x27;0&#x27;)
+      CASE WA_IDCMP
+        IF multif
+          WriteF(&#x27;0&#x27;)
+        ELSE
+          -&gt; Use proper IDCMP bits
+          writeIDCMP(IF w THEN w.idcmp ELSE v)
+        ENDIF
+      CASE PGA_FREEDOM
+        SELECT v
+        CASE LORIENT_NONE;  WriteF(&#x27;LORIENT_NONE&#x27;)
+        CASE LORIENT_HORIZ; WriteF(&#x27;LORIENT_HORIZ&#x27;)
+        CASE LORIENT_VERT;  WriteF(&#x27;LORIENT_VERT&#x27;)
+        DEFAULT;            writeConst(v)
+        ENDSELECT
+      CASE STRINGA_JUSTIFICATION
+        SELECT v
+        CASE STRINGLEFT;    WriteF(&#x27;STRINGLEFT&#x27;)
+        CASE STRINGRIGHT;   WriteF(&#x27;STRINGRIGHT&#x27;)
+        CASE STRINGCENTER;  WriteF(&#x27;STRINGCENTER&#x27;)
+        DEFAULT;            writeConst(v)
+        ENDSELECT
+      CASE GTTX_JUSTIFICATION
+        SELECT v
+        CASE GTJ_LEFT;    WriteF(&#x27;GTJ_LEFT&#x27;)
+        CASE GTJ_RIGHT;   WriteF(&#x27;GTJ_RIGHT&#x27;)
+        CASE GTJ_CENTER;  WriteF(&#x27;GTJ_CENTER&#x27;)
+        DEFAULT;          writeConst(v)
+        ENDSELECT
+      DEFAULT
+        writeConst(v)
+      ENDSELECT
+    CASE 2
+      WriteF(&#x27;[&#x27;)
+      WHILE v[]
+        writeString(v[]++)
+        WriteF(&#x27;,&#x27;)
+      ENDWHILE
+      WriteF(&#x27;NIL]&#x27;)
+    CASE 3;  writeString(v)
+    CASE 5;  WriteF(&#x27;tattr&#x27;)
+    CASE 6;  WriteF(&#x27;visual&#x27;)
+    CASE 7;  WriteF(IF lastkind=STRING_KIND THEN &#x27;g&#x27; ELSE &#x27;NIL&#x27;)
+    CASE 9;  WriteF(&#x27;scr&#x27;)
+    CASE 10; WriteF(&#x27;&quot;_&quot;&#x27;)
+    CASE 11; WriteF(&#x27;offx+\d&#x27;,v-w.leftborder)
+    CASE 12; WriteF(&#x27;offy+\d&#x27;,v-w.topborder)
+    DEFAULT; WriteF(&#x27;NIL&#x27;)
+    ENDSELECT
+    WriteF(&#x27;,&#x27;)
+    IF layoutf THEN WriteF(&#x27;\n     &#x27;)
+  ENDWHILE
+ENDPROC
+
+PROC writeIDCMP(v)
+  done_or:=FALSE
+  IF v AND IDCMP_SIZEVERIFY THEN      orConst(&#x27;IDCMP_SIZEVERIFY&#x27;)
+  IF v AND IDCMP_NEWSIZE THEN         orConst(&#x27;IDCMP_NEWSIZE&#x27;)
+  IF v AND IDCMP_REFRESHWINDOW THEN   orConst(&#x27;IDCMP_REFRESHWINDOW&#x27;)
+  IF v AND IDCMP_MOUSEBUTTONS THEN    orConst(&#x27;IDCMP_MOUSEBUTTONS&#x27;)
+  IF v AND IDCMP_MOUSEMOVE THEN       orConst(&#x27;IDCMP_MOUSEMOVE&#x27;)
+  IF v AND IDCMP_GADGETDOWN THEN      orConst(&#x27;IDCMP_GADGETDOWN&#x27;)
+  IF v AND IDCMP_GADGETUP THEN        orConst(&#x27;IDCMP_GADGETUP&#x27;)
+  IF v AND IDCMP_REQSET THEN          orConst(&#x27;IDCMP_REQSET&#x27;)
+  IF v AND IDCMP_MENUPICK THEN        orConst(&#x27;IDCMP_MENUPICK&#x27;)
+  IF v AND IDCMP_CLOSEWINDOW THEN     orConst(&#x27;IDCMP_CLOSEWINDOW&#x27;)
+  IF v AND IDCMP_RAWKEY THEN          orConst(&#x27;IDCMP_RAWKEY&#x27;)
+  IF v AND IDCMP_REQVERIFY THEN       orConst(&#x27;IDCMP_REQVERIFY&#x27;)
+  IF v AND IDCMP_REQCLEAR THEN        orConst(&#x27;IDCMP_REQCLEAR&#x27;)
+  IF v AND IDCMP_MENUVERIFY THEN      orConst(&#x27;IDCMP_MENUVERIFY&#x27;)
+  IF v AND IDCMP_NEWPREFS THEN        orConst(&#x27;IDCMP_NEWPREFS&#x27;)
+  IF v AND IDCMP_DISKINSERTED THEN    orConst(&#x27;IDCMP_DISKINSERTED&#x27;)
+  IF v AND IDCMP_DISKREMOVED THEN     orConst(&#x27;IDCMP_DISKREMOVED&#x27;)
+  IF v AND IDCMP_ACTIVEWINDOW THEN    orConst(&#x27;IDCMP_ACTIVEWINDOW&#x27;)
+  IF v AND IDCMP_INACTIVEWINDOW THEN  orConst(&#x27;IDCMP_INACTIVEWINDOW&#x27;)
+  IF v AND IDCMP_DELTAMOVE THEN       orConst(&#x27;IDCMP_DELTAMOVE&#x27;)
+  IF v AND IDCMP_VANILLAKEY THEN      orConst(&#x27;IDCMP_VANILLAKEY&#x27;)
+  IF v AND IDCMP_INTUITICKS THEN      orConst(&#x27;IDCMP_INTUITICKS&#x27;)
+  IF v AND IDCMP_IDCMPUPDATE THEN     orConst(&#x27;IDCMP_IDCMPUPDATE&#x27;)
+  IF v AND IDCMP_MENUHELP THEN        orConst(&#x27;IDCMP_MENUHELP&#x27;)
+  IF v AND IDCMP_CHANGEWINDOW THEN    orConst(&#x27;IDCMP_CHANGEWINDOW&#x27;)
+  IF done_or=FALSE THEN WriteF(&#x27;0&#x27;)
+ENDPROC
+
+PROC checkwindows()
+  DEF w:PTR TO projectwindow,wname,fl,x
+  DEF egl:PTR TO extgadgetlist,eng:PTR TO extnewgadget
+  w:=wlist.first
+  WHILE w.next
+    wname:=w.name
+    -&gt; Important! Convert name to something sensible...
+    fixString(wname)
+    fl:=0
+    WriteF(&#x27;    \swnd:PTR TO window,\n&#x27;,wname)
+    x:=Long(w.menus)
+    IF ^x
+      fl:=HASMENUS
+      WriteF(&#x27;    \smenus,\n&#x27;,wname)
+    ENDIF
+    egl:=w.gadgets; eng:=egl.first
+    IF eng
+      WHILE eng.next
+        fl:=fl OR HASGADGETS
+        -&gt; Important! Turn label into something sensible...
+        fixString(eng.gadgetlabel)
+        eng:=eng.next
+      ENDWHILE
+    ENDIF
+    WriteF(&#x27;    \sglist,\n&#x27;,wname)
+    ListAdd(win,[fl])
+    w:=w.next
+  ENDWHILE
+ENDPROC
+
+PROC genscreenstuff()
+  DEF i
+  WriteF(
+    &#x27;PROC setupscreen()\n&#x27;+
+    &#x27;  IF (gadtoolsbase:=OpenLibrary(&#x27;&#x27;gadtools.library&#x27;&#x27;,37))=NIL THEN RETURN ERROR_GT\n&#x27;)
+  IF fontf
+    -&gt; Must lock font in memory while used by screen and gadgets
+    WriteF(
+    &#x27;  IF (diskfontbase:=OpenLibrary(&#x27;&#x27;diskfont.library&#x27;&#x27;,0))=NIL THEN RETURN ERROR_DF\n&#x27;+
+    &#x27;  font:=OpenDiskFont(tattr:=[&#x27;&#x27;\s&#x27;&#x27;,\d,\d,$\h]:textattr)\n&#x27;+
+    &#x27;  CloseLibrary(diskfontbase)\n&#x27;+
+    &#x27;  IF font=NIL THEN RETURN ERROR_FONT\n&#x27;,
+    guiptr.fontname,guiptr.font.ysize,guiptr.font.style,guiptr.font.flags)
+  ENDIF
+  IF guiptr.flags0 AND GU0_CUSTOM
+    WriteF(&#x27;  IF (scr:=OpenScreenTagList(NIL,&#x27;)
+    IF layoutf THEN WriteF(&#x27;\n    &#x27;)
+    WriteF(&#x27;[SA_LEFT,\d,&#x27;, guiptr.left)
+    IF layoutf THEN WriteF(&#x27;\n     &#x27;)
+    WriteF(&#x27;SA_TOP,\d,&#x27;, guiptr.top)
+    IF layoutf THEN WriteF(&#x27;\n     &#x27;)
+    WriteF(&#x27;SA_WIDTH,\d,&#x27;, IF guiptr.width&lt;&gt;-1 THEN guiptr.width ELSE guiptr.stdscreenwidth)
+    IF layoutf THEN WriteF(&#x27;\n     &#x27;)
+    WriteF(&#x27;SA_HEIGHT,\d,&#x27;, IF guiptr.height&lt;&gt;-1 THEN guiptr.height ELSE guiptr.stdscreenheight)
+    IF layoutf THEN WriteF(&#x27;\n     &#x27;)
+    WriteF(&#x27;SA_DEPTH,\d,&#x27;,guiptr.depth)
+    IF layoutf THEN WriteF(&#x27;\n     &#x27;)
+    IF guiptr.colors[].colorindex&lt;&gt;-1
+      WriteF(&#x27;SA_COLORS,[&#x27;)
+      FOR i:=0 TO MAXCOLORSPEC-1
+      EXIT guiptr.colors[i].colorindex=-1
+        WriteF(&#x27;\d,$\z\h[2],$\z\h[2],$\z\h[2],&#x27;,
+               guiptr.colors[i].colorindex, guiptr.colors[i].red,
+               guiptr.colors[i].green, guiptr.colors[i].blue)
+        IF layoutf THEN WriteF(&#x27;\n                &#x27;)
+      ENDFOR
+      WriteF(&#x27;-1,0,0,0]:colorspec,&#x27;)
+      IF layoutf THEN WriteF(&#x27;\n     &#x27;)
+    ENDIF
+    IF fontf
+      WriteF(&#x27;SA_FONT,tattr,&#x27;)
+      IF layoutf THEN WriteF(&#x27;\n     &#x27;)
+    ENDIF
+    WriteF(&#x27;SA_TYPE,CUSTOMSCREEN,&#x27;)
+    WriteF(&#x27;\n     -&gt; If the DisplayID data constant doesn&#x27;&#x27;t compile, use $\h\n     &#x27;,guiptr.displayid)
+    WriteF(&#x27;SA_DISPLAYID,&#x27;)
+    writeDispID(guiptr.displayid)
+    WriteF(&#x27;,&#x27;)
+    IF layoutf THEN WriteF(&#x27;\n     &#x27;)
+    WriteF(&#x27;SA_AUTOSCROLL,&#x27;)
+    writeBool(guiptr.flags0 AND GU0_AUTOSCROLL)
+    WriteF(&#x27;,&#x27;)
+    IF layoutf THEN WriteF(&#x27;\n     &#x27;)
+    WriteF(&#x27;SA_OVERSCAN,&#x27;)
+    i:=guiptr.overscan
+    SELECT i
+    CASE OSCAN_TEXT;      WriteF(&#x27;OSCAN_TEXT&#x27;)
+    CASE OSCAN_STANDARD;  WriteF(&#x27;OSCAN_STANDARD&#x27;)
+    CASE OSCAN_MAX;       WriteF(&#x27;OSCAN_TEXT&#x27;)
+    CASE OSCAN_VIDEO;     WriteF(&#x27;OSCAN_VIDEO&#x27;)
+    DEFAULT;              WriteF(&#x27;$\h&#x27;, i)
+    ENDSELECT
+    WriteF(&#x27;,&#x27;)
+    IF layoutf THEN WriteF(&#x27;\n     &#x27;)
+    WriteF(&#x27;SA_PENS,[&#x27;)
+    FOR i:=0 TO MAXDRIPENS-1
+    EXIT guiptr.dripens[i]=-1
+      WriteF(&#x27;\d,&#x27;,guiptr.dripens[i])
+    ENDFOR
+    IF i&lt;&gt;0
+      FOR i:=0 TO MAXMOREDRIPENS-1
+      EXIT guiptr.moredripens[i]=-1
+        WriteF(&#x27;\d,&#x27;,guiptr.moredripens[i])
+      ENDFOR
+    ENDIF
+    WriteF(&#x27;-1]:INT,&#x27;)
+    IF layoutf THEN WriteF(&#x27;\n     &#x27;)
+    WriteF(&#x27;SA_TITLE,&#x27;)
+    writeString(guiptr.screentitle)
+    WriteF(&#x27;,&#x27;)
+    IF layoutf THEN WriteF(&#x27;\n     &#x27;)
+    WriteF(&#x27;NIL]))=NIL THEN RETURN ERROR_SCRN\n&#x27;)
+  ELSE
+    WriteF(&#x27;  IF (scr:=LockPubScreen(\s))=NIL THEN RETURN ERROR_SCRN\n&#x27;,
+           IF guiptr.flags0 AND GU0_WORKBENCH THEN &#x27;&#x27;&#x27;Workbench&#x27;&#x27;&#x27; ELSE &#x27;NIL&#x27;)
+  ENDIF
+  IF fontf=FALSE
+    WriteF(&#x27;  tattr:=scr.font\n&#x27;)
+  ENDIF
+  WriteF(
+    &#x27;  IF (visual:=GetVisualInfoA(scr,NIL))=NIL THEN RETURN ERROR_VISUAL\n&#x27;+
+    &#x27;  offx:=scr.wborleft\n&#x27;+
+    &#x27;  offy:=scr.wbortop+scr.rastport.txheight+1\n&#x27;+
+    &#x27;ENDPROC\n\n&#x27;+
+    &#x27;PROC closedownscreen()\n&#x27;+
+    &#x27;  IF visual THEN FreeVisualInfo(visual)\n&#x27;)
+  IF guiptr.flags0 AND GU0_CUSTOM
+    WriteF(&#x27;  IF scr THEN CloseScreen(scr)\n&#x27;)
+  ELSE
+    WriteF(&#x27;  IF scr THEN UnlockPubScreen(NIL,scr)\n&#x27;)
+  ENDIF
+  IF fontf
+    WriteF(&#x27;  IF font THEN CloseFont(font)\n&#x27;)
+  ENDIF
+  WriteF(
+    &#x27;  IF gadtoolsbase THEN CloseLibrary(gadtoolsbase)\n&#x27;+
+    &#x27;ENDPROC\n\n&#x27;)
+ENDPROC
+
+PROC genmain()
+  DEF w:PTR TO projectwindow,wname
+  IF mesf
+    IF multif
+      WriteF(
+        &#x27;PROC multiwait4message(port)\n&#x27;+
+        &#x27;  DEF win:PTR TO window,mes:PTR TO intuimessage\n&#x27;)
+    ELSE
+      WriteF(
+        &#x27;PROC wait4message(win:PTR TO window)\n&#x27;+
+        &#x27;  DEF mes:PTR TO intuimessage,port\n&#x27;+
+        &#x27;  port:=win.userport\n&#x27;)
+    ENDIF
+    WriteF(
+      &#x27;  REPEAT\n&#x27;+
+      &#x27;    type:=0\n&#x27;+
+      &#x27;    IF mes:=Gt_GetIMsg(port)\n&#x27;)
+    IF multif
+      WriteF(
+      &#x27;      win:=mes.idcmpwindow\n&#x27;)
+    ENDIF
+    WriteF(
+      &#x27;      type:=mes.class\n&#x27;+
+      &#x27;      SELECT type\n&#x27;+
+      &#x27;      CASE IDCMP_MENUPICK\n&#x27;+
+      &#x27;        infos:=mes.code\n&#x27;+
+      &#x27;      CASE IDCMP_GADGETUP\n&#x27;+
+      &#x27;        infos:=mes.iaddress\n&#x27;+
+      &#x27;        id:=infos.gadgetid\n&#x27;+
+      &#x27;      CASE IDCMP_VANILLAKEY\n&#x27;+
+      &#x27;        key:=mes.code\n&#x27;+
+      &#x27;        qual:=mes.qualifier AND $FFFF\n&#x27;)
+    WriteF(
+      &#x27;      CASE IDCMP_MOUSEBUTTONS\n&#x27;+
+      &#x27;        qual:=mes.qualifier AND $FFFF\n&#x27;+
+      &#x27;      CASE IDCMP_REFRESHWINDOW\n&#x27;+
+      &#x27;        Gt_BeginRefresh(win)\n&#x27; +
+      &#x27;        Gt_EndRefresh(win,TRUE)\n&#x27; +
+      &#x27;        type:=0\n&#x27; +
+      &#x27;      ENDSELECT\n&#x27; +
+      &#x27;      Gt_ReplyIMsg(mes)\n&#x27; +
+      &#x27;    ELSE\n&#x27; +
+      &#x27;      WaitPort(port)\n&#x27;+
+      &#x27;    ENDIF\n&#x27; +
+      &#x27;  UNTIL type\n&#x27; +
+      &#x27;ENDPROC win\n\n&#x27;)
+  ENDIF
+  IF erf
+    WriteF(
+      &#x27;PROC reporterr(er)\n&#x27;+
+      &#x27;  DEF erlist:PTR TO LONG\n&#x27;+
+      &#x27;  IF er\n&#x27;+
+      &#x27;    erlist:=[&#x27;&#x27;get context&#x27;&#x27;,\n&#x27;+
+      &#x27;             &#x27;&#x27;create gadget&#x27;&#x27;,\n&#x27;+
+      &#x27;             &#x27;&#x27;lock/open screen&#x27;&#x27;,\n&#x27;+
+      &#x27;             &#x27;&#x27;get visual infos&#x27;&#x27;,\n&#x27;+
+      &#x27;             &#x27;&#x27;open &quot;gadtools.library&quot; v37+&#x27;&#x27;,\n&#x27;+
+      &#x27;             &#x27;&#x27;open window&#x27;&#x27;,\n&#x27;+
+      &#x27;             &#x27;&#x27;create menus&#x27;&#x27;,\n&#x27;+
+      &#x27;             &#x27;&#x27;create port&#x27;&#x27;,\n&#x27;+
+      &#x27;             &#x27;&#x27;open &quot;diskfont.library&quot;&#x27;&#x27;,\n&#x27;+
+      &#x27;             &#x27;&#x27;open font&#x27;&#x27;]\n&#x27;+
+      &#x27;    EasyRequestArgs(0,[20,0,0,&#x27;&#x27;Could not \\s!&#x27;&#x27;,&#x27;&#x27;OK&#x27;&#x27;],0,[erlist[er-1]])\n&#x27;+
+      &#x27;  ENDIF\n&#x27;+
+      &#x27;ENDPROC er\n\n&#x27;)
+  ENDIF
+  IF mainf
+    WriteF(&#x27;PROC main() HANDLE\n&#x27;)
+    IF multif
+      WriteF(&#x27;  DEF err=ERROR_NONE,port=NIL\n&#x27;+
+             &#x27;  IF (port:=CreateMsgPort())=NIL THEN Raise(ERROR_PORT)\n&#x27;)
+    ELSE
+      WriteF(&#x27;  DEF err=ERROR_NONE\n&#x27;)
+    ENDIF
+    WriteF(&#x27;  IF (err:=setupscreen())&lt;&gt;ERROR_NONE THEN Raise(err)\n&#x27;)
+    w:=wlist.first
+    WHILE w.next
+      wname:=w.name
+      WriteF(IF erf THEN &#x27;  reporterr(open\swindow(\s))\n&#x27; ELSE &#x27;  open\swindow(\s)\n&#x27;,wname,IF multif THEN &#x27;port&#x27; ELSE &#x27;&#x27;)
+      IF multif=FALSE
+        IF mesf
+          WriteF(IF processf THEN &#x27;  process(\swnd)\n&#x27; ELSE &#x27;  wait4message(\swnd)\n&#x27;, wname)
+        ELSE
+          WriteF(&#x27;  Delay(500)\n&#x27;)
+        ENDIF
+        WriteF(&#x27;  close\swindow()\n&#x27;,wname)
+        WriteF(&#x27;  IF CtrlC() THEN Raise(ERROR_NONE)\n&#x27;)
+      ENDIF
+      w:=w.next
+    ENDWHILE
+    IF multif
+      IF mesf
+        WriteF(IF processf THEN &#x27;  multiprocess(port)\n&#x27; ELSE &#x27;  multiwait4message(port)\n&#x27;)
+      ELSE
+        WriteF(&#x27;  Delay(500)\n&#x27;)
+      ENDIF
+      w:=wlist.last
+      WHILE w.prev
+        wname:=w.name
+        WriteF(&#x27;  close\swindow()\n&#x27;,wname)
+        w:=w.prev
+      ENDWHILE
+    ENDIF
+    WriteF(&#x27;EXCEPT DO\n&#x27;)
+    IF multif THEN WriteF(&#x27;  IF port THEN DeleteMsgPort(port)\n&#x27;)
+    WriteF(&#x27;  closedownscreen()\n&#x27;)
+    IF erf THEN    WriteF(&#x27;  reporterr(err)\n&#x27;)
+    WriteF(&#x27;ENDPROC\n\n&#x27;)
+  ENDIF
+  IF has_getfile
+    WriteF(
+      &#x27;PROC getFileImage()\n&#x27;+
+      &#x27;  DEF data:PTR TO LONG\n&#x27;+
+      &#x27;  data:=[NIL]\n&#x27;+
+      &#x27;  IF data[]=NIL THEN data[]:=copyListToChip(\n&#x27;+
+      &#x27;    [$00000000,$00001000,$003C1000,$00421000,\n&#x27;+
+      &#x27;     $0F811000,$0FC11000,$0C3F1000,$0C011000,\n&#x27;+
+      &#x27;     $0C011000,$0C011000,$0FFF1000,$00001000,\n&#x27;+
+      &#x27;     $00001000,$7FFFF000,\n&#x27;+
+      &#x27;     $FFFFE000,$80000000,$80000000,$80000000,\n&#x27;+
+      &#x27;     $80000000,$80000000,$80000000,$80000000,\n&#x27;+
+      &#x27;     $80000000,$80000000,$80000000,$80000000,\n&#x27;+
+      &#x27;     $80000000,$00000000])\n&#x27;+
+      &#x27;ENDPROC data[]\n\n&#x27;)
+    WriteF(
+      &#x27;PROC copyListToChip(list) HANDLE\n&#x27;+
+      &#x27;  DEF size, mem=NIL\n&#x27;+
+      &#x27;  size:=ListLen(list)*SIZEOF LONG\n&#x27;+
+      &#x27;  mem:=NewM(size,MEMF_CHIP)\n&#x27;+
+      &#x27;  CopyMemQuick(list, mem, size)\n&#x27;+
+      &#x27;EXCEPT\n&#x27;+
+      &#x27;ENDPROC mem\n\n&#x27;)
+  ENDIF
+ENDPROC
+
+PROC gentemplates()
+  DEF w:PTR TO projectwindow,key
+  DEF egl:PTR TO extgadgetlist,eng:PTR TO extnewgadget
+  WriteF(&#x27;\n&#x27; +
+    &#x27;-&gt; ***************************\n&#x27; +
+    &#x27;-&gt; Start of templates section.\n&#x27; +
+    &#x27;-&gt; (Return FALSE to quit the GUI.)\n\n\n&#x27;)
+  w:=wlist.first
+  WHILE w.next
+    wname:=w.name
+    WriteF(
+      &#x27;-&gt; Templates for window &quot;\s&quot;:\n\n&#x27;,wname)
+    IF w.idcmp AND IDCMP_CLOSEWINDOW
+      WriteF(
+      &#x27;PROC \s_CloseWindow()\n&#x27; +
+      &#x27;  -&gt; Routine for &quot;IDCMP_CLOSEWINDOW&quot;.\n&#x27; +
+      &#x27;ENDPROC FALSE\n\n&#x27;, wname, wname)
+    ENDIF
+    IF w.idcmp AND IDCMP_IDCMPUPDATE
+      WriteF(
+        &#x27;PROC \s_IDCMPUpdate()\n&#x27; +
+        &#x27;  -&gt; Routine for &quot;IDCMP_IDCMPUPDATE&quot;.\n&#x27; +
+        &#x27;ENDPROC TRUE\n\n&#x27;, wname)
+    ENDIF
+    IF w.idcmp AND IDCMP_INTUITICKS
+      WriteF(
+        &#x27;PROC \s_IntuiTicks()\n&#x27; +
+        &#x27;  -&gt; Routine for &quot;IDCMP_INTUITICKS&quot;.\n&#x27; +
+        &#x27;ENDPROC TRUE\n\n&#x27;, wname)
+    ENDIF
+    IF w.idcmp AND IDCMP_MOUSEBUTTONS
+      WriteF(
+        &#x27;PROC \s_MouseButtons()\n&#x27; +
+        &#x27;  -&gt; Routine for &quot;IDCMP_MOUSEBUTTONS&quot;.\n&#x27; +
+        &#x27;ENDPROC TRUE\n\n&#x27;, wname)
+    ENDIF
+    IF w.idcmp AND IDCMP_VANILLAKEY
+      WriteF(
+        &#x27;PROC \s_Keys()\n&#x27; +
+        &#x27;  -&gt; Routine for &quot;IDCMP_VANILLAKEY&quot;.\n&#x27; +
+        &#x27;  SELECT key\n&#x27;,wname)
+      egl:=w.gadgets; eng:=egl.first
+      IF eng
+        WHILE eng.next
+          IF key:=findKey(eng.gadgettext)
+            WriteF(
+              &#x27;  CASE &quot;\c&quot;\n&#x27;+
+              &#x27;    -&gt; Key for &quot;\s&quot; pressed\n&#x27;,
+              key,eng.gadgettext)
+            IF key&lt;&gt;toupper(key)
+              WriteF(
+              &#x27;  CASE &quot;\c&quot;\n&#x27;+
+              &#x27;    -&gt; Key for &quot;\s&quot; pressed (shifted)\n&#x27;,
+              toupper(key),eng.gadgettext)
+            ENDIF
+          ENDIF
+          eng:=eng.next
+        ENDWHILE
+      ENDIF
+      WriteF(
+        &#x27;  ENDSELECT\n&#x27; +
+        &#x27;ENDPROC TRUE\n\n&#x27;)
+    ENDIF
+    IF w.idcmp AND IDCMP_GADGETUP
+      egl:=w.gadgets; eng:=egl.first
+      IF eng
+        WHILE eng.next
+          WriteF(
+            &#x27;PROC \s_Clicked()\n&#x27; +
+            &#x27;  -&gt; Routine when gadget &quot;\s&quot; is clicked.\n&#x27; +
+            &#x27;ENDPROC TRUE\n\n&#x27;, eng.gadgetlabel, eng.gadgettext)
+          eng:=eng.next
+        ENDWHILE
+      ENDIF
+    ENDIF
+    IF w.idcmp AND IDCMP_MENUPICK THEN genmenutemplates(w.menus)
+    WriteF(&#x27;\n&#x27;)
+    w:=w.next
+  ENDWHILE
+  WriteF(
+    &#x27;-&gt; End of templates section.\n&#x27; +
+    &#x27;-&gt; *************************\n\n\n&#x27;)
+ENDPROC
+
+PROC genmenutemplates(eml:PTR TO extmenulist)
+  DEF enm:PTR TO extnewmenu
+  enm:=eml.first
+  IF enm=NIL THEN RETURN
+  WHILE enm.next
+    -&gt; Important! Turn label into something sensible...
+    IF enm.menulabel[]
+      fixString(enm.menulabel,FALSE)
+      WriteF(&#x27;PROC \s_\s&#x27;, wname, enm.menulabel)
+      WriteF(&#x27;()\n&#x27; +
+        &#x27;  -&gt; Routine when menu item &quot;\s&quot; is selected.\n&#x27; +
+        &#x27;ENDPROC TRUE\n\n&#x27;, enm.menutitle)
+    ENDIF
+    IF enm.items THEN genmenutemplates(enm.items)
+    enm:=enm.next
+  ENDWHILE
+ENDPROC
+
+PROC initlists()
+  kinds:=[&#x27;GENERIC_KIND&#x27;,&#x27;BUTTON_KIND&#x27;,&#x27;CHECKBOX_KIND&#x27;,&#x27;INTEGER_KIND&#x27;,
+          &#x27;LISTVIEW_KIND&#x27;,&#x27;MX_KIND&#x27;,&#x27;NUMBER_KIND&#x27;,&#x27;CYCLE_KIND&#x27;,&#x27;PALETTE_KIND&#x27;,
+          &#x27;SCROLLER_KIND&#x27;,&#x27;RESERVED_KIND&#x27;,&#x27;SLIDER_KIND&#x27;,&#x27;STRING_KIND&#x27;,&#x27;TEXT_KIND&#x27;]
+
+  /* GT_TAGBASE ($80080000) 4-23 */
+
+  gttags1:=[&#x27;GTCB_CHECKED&#x27;,0,&#x27;GTLV_TOP&#x27;,0,&#x27;GTLV_LABELS&#x27;,1,&#x27;GTLV_READONLY&#x27;,0,
+            &#x27;GTLV_SCROLLWIDTH&#x27;,0,&#x27;GTMX_LABELS&#x27;,2,&#x27;GTMX_ACTIVE&#x27;,0,&#x27;GTTX_TEXT&#x27;,3,
+            &#x27;GTTX_COPYTEXT&#x27;,0,&#x27;GTNM_NUMBER&#x27;,0,&#x27;GTCY_LABELS&#x27;,2,&#x27;GTCY_ACTIVE&#x27;,0,
+            &#x27;GTPA_DEPTH&#x27;,0,&#x27;GTPA_COLOR&#x27;,0,&#x27;GTPA_COLOROFFSET&#x27;,0,
+            &#x27;GTPA_INDICATORWIDTH&#x27;,0,&#x27;GTPA_INDICATORHEIGHT&#x27;,0,&#x27;GTSC_TOP&#x27;,0,
+            &#x27;GTSC_TOTAL&#x27;,0,&#x27;GTSC_VISIBLE&#x27;,0]
+
+  /* GT_TAGBASE ($80080000) 38-64 */
+
+  gttags2:=[&#x27;GTSL_MIN&#x27;,0,&#x27;GTSL_MAX&#x27;,0,&#x27;GTSL_LEVEL&#x27;,0,&#x27;GTSL_MAXLEVELLEN&#x27;,0,
+            &#x27;GTSL_LEVELFORMAT&#x27;,3,&#x27;GTSL_LEVELPLACE&#x27;,0,&#x27;GTSL_DISPFUNC&#x27;,4,
+            &#x27;GTST_STRING&#x27;,3,&#x27;GTST_MAXCHARS&#x27;,0,&#x27;GTIN_NUMBER&#x27;,0,
+            &#x27;GTIN_MAXCHARS&#x27;,0,&#x27;GTMN_TEXTATTR&#x27;,5,&#x27;GTMN_FRONTPEN&#x27;,0,
+            &#x27;GTBB_RECESSED&#x27;,0,&#x27;GT_VISUALINFO&#x27;,6,&#x27;GTLV_SHOWSELECTED&#x27;,7,
+            &#x27;GTLV_SELECTED&#x27;,0,&#x27;GT_RESERVED0&#x27;,0,&#x27;GT_RESERVED1&#x27;,0,
+            &#x27;GTTX_BORDER&#x27;,0,&#x27;GTNM_BORDER&#x27;,0,&#x27;GTSC_ARROWS&#x27;,0,&#x27;GTMN_MENU&#x27;,8,
+            &#x27;GTMX_SPACING&#x27;,0,&#x27;GTMN_FULLMENU&#x27;,0,&#x27;GTMN_SECONDARYERROR&#x27;,4,
+            &#x27;GT_UNDERSCORE&#x27;,10]
+
+  /* GA_DUMMY ($80030000), 1-$24 */
+
+  gatags:=[&#x27;GA_LEFT&#x27;,0,&#x27;GA_RELRIGHT&#x27;,0,&#x27;GA_TOP&#x27;,0,&#x27;GA_RELBOTTOM&#x27;,0,
+           &#x27;GA_WIDTH&#x27;,0,&#x27;GA_RELWIDTH&#x27;,0,&#x27;GA_HEIGHT&#x27;,0,&#x27;GA_RELHEIGHT&#x27;,0,
+           &#x27;GA_TEXT&#x27;,0,&#x27;GA_IMAGE&#x27;,0,&#x27;GA_BORDER&#x27;,0,&#x27;GA_SELECTRENDER&#x27;,0,
+           &#x27;GA_HIGHLIGHT&#x27;,0,&#x27;GA_DISABLED&#x27;,0,&#x27;GA_GZZGADGET&#x27;,0,&#x27;GA_ID&#x27;,0,
+           &#x27;GA_USERDATA&#x27;,0,&#x27;GA_SPECIALINFO&#x27;,0,&#x27;GA_SELECTED&#x27;,0,
+           &#x27;GA_ENDGADGET&#x27;,0,&#x27;GA_IMMEDIATE&#x27;,0,&#x27;GA_RELVERIFY&#x27;,0,
+           &#x27;GA_FOLLOWMOUSE&#x27;,0,&#x27;GA_RIGHTBORDER&#x27;,0,&#x27;GA_LEFTBORDER&#x27;,0,
+           &#x27;GA_TOPBORDER&#x27;,0,&#x27;GA_BOTTOMBORDER&#x27;,0,&#x27;GA_TOGGLESELECT&#x27;,0,
+           &#x27;GA_SYSGADGET&#x27;,0,&#x27;GA_SYSGTYPE&#x27;,0,&#x27;GA_PREVIOUS&#x27;,0,&#x27;GA_NEXT&#x27;,0,
+           &#x27;GA_DRAWINFO&#x27;,0,&#x27;GA_INTUITEXT&#x27;,0,&#x27;GA_LABELIMAGE&#x27;,0,&#x27;GA_TABCYCLE&#x27;,0]
+
+  /* PGADUMMY ($80031000), 1-$A */
+
+  pgatags:=[&#x27;PGA_FREEDOM&#x27;,0,&#x27;PGA_BORDERLESS&#x27;,0,&#x27;PGA_HORIZPOT&#x27;,0,
+            &#x27;PGA_HORIZBODY&#x27;,0,&#x27;PGA_VERTPOT&#x27;,0,&#x27;PGA_VERTBODY&#x27;,0,&#x27;PGA_TOTAL&#x27;,0,
+            &#x27;PGA_VISIBLE&#x27;,0,&#x27;PGA_TOP&#x27;,0,&#x27;PGA_NEWLOOK&#x27;,0]
+
+  /* STRINGA_DUMMY ($80032000), 1-$13 */
+
+  strtags:=[&#x27;STRINGA_MAXCHARS&#x27;,0,&#x27;STRINGA_BUFFER&#x27;,0,&#x27;STRINGA_UNDOBUFFER&#x27;,0,
+            &#x27;STRINGA_WORKBUFFER&#x27;,0,&#x27;STRINGA_BUFFERPOS&#x27;,0,&#x27;STRINGA_DISPPOS&#x27;,0,
+            &#x27;STRINGA_ALTKEYMAP&#x27;,0,&#x27;STRINGA_FONT&#x27;,0,&#x27;STRINGA_PENS&#x27;,0,
+            &#x27;STRINGA_ACTIVEPENS&#x27;,0,&#x27;STRINGA_EDITHOOK&#x27;,0,&#x27;STRINGA_EDITMODES&#x27;,0,
+            &#x27;STRINGA_REPLACEMODE&#x27;,0,&#x27;STRINGA_FIXEDFIELDMODE&#x27;,0,
+            &#x27;STRINGA_NOFILTERMODE&#x27;,0,&#x27;STRINGA_JUSTIFICATION&#x27;,0,
+            &#x27;STRINGA_LONGVAL&#x27;,0,&#x27;STRINGA_TEXTVAL&#x27;,0,&#x27;STRINGA_EXITHELP&#x27;,0]
+
+  /* LAYOUTA_DUMMY ($80038000), 1-3 */
+
+  latags:=[&#x27;LAYOUTA_LAYOUTOBJ&#x27;,0,&#x27;LAYOUTA_SPACING&#x27;,0,&#x27;LAYOUTA_ORIENTATION&#x27;,0]
+
+  /* $8000000, $64-$93 */
+
+  watags:=[&#x27;WA_LEFT&#x27;,0,&#x27;WA_TOP&#x27;,12,&#x27;WA_WIDTH&#x27;,11,&#x27;WA_HEIGHT&#x27;,12,&#x27;WA_DETAILPEN&#x27;,0,
+           &#x27;WA_BLOCKPEN&#x27;,0,&#x27;WA_IDCMP&#x27;,0,&#x27;WA_FLAGS&#x27;,0,&#x27;WA_GADGETS&#x27;,0,
+           &#x27;WA_CHECKMARK&#x27;,0,&#x27;WA_TITLE&#x27;,3,&#x27;WA_SCREENTITLE&#x27;,0,
+           &#x27;WA_CUSTOMSCREEN&#x27;,9,&#x27;WA_SUPERBITMAP&#x27;,0,&#x27;WA_MINWIDTH&#x27;,0,
+           &#x27;WA_MINHEIGHT&#x27;,0,&#x27;WA_MAXWIDTH&#x27;,0,&#x27;WA_MAXHEIGHT&#x27;,0,&#x27;WA_INNERWIDTH&#x27;,0,
+           &#x27;WA_INNERHEIGHT&#x27;,0,&#x27;WA_PUBSCREENNAME&#x27;,0,&#x27;WA_PUBSCREEN&#x27;,0,
+           &#x27;WA_PUBSCREENFALLBACK&#x27;,0,&#x27;WA_WINDOWNAME&#x27;,0,&#x27;WA_COLORS&#x27;,0,
+           &#x27;WA_ZOOM&#x27;,0,&#x27;WA_MOUSEQUEUE&#x27;,0,&#x27;WA_BACKFILL&#x27;,0,&#x27;WA_RPTQUEUE&#x27;,0,
+           &#x27;WA_SIZEGADGET&#x27;,0,&#x27;WA_DRAGBAR&#x27;,0,&#x27;WA_DEPTHGADGET&#x27;,0,
+           &#x27;WA_CLOSEGADGET&#x27;,0,&#x27;WA_BACKDROP&#x27;,0,&#x27;WA_REPORTMOUSE&#x27;,0,
+           &#x27;WA_NOCAREREFRESH&#x27;,0,&#x27;WA_BORDERLESS&#x27;,0,&#x27;WA_ACTIVATE&#x27;,0,
+           &#x27;WA_RMBTRAP&#x27;,0,&#x27;WA_WBENCHWINDOW&#x27;,0,&#x27;WA_SIMPLEREFRESH&#x27;,0,
+           &#x27;WA_SMARTREFRESH&#x27;,0,&#x27;WA_SIZEBRIGHT&#x27;,0,&#x27;WA_SIZEBBOTTOM&#x27;,0,
+           &#x27;WA_AUTOADJUST&#x27;,0,&#x27;WA_GIMMEZEROZERO&#x27;,0,&#x27;WA_MENUHELP&#x27;,0,
+           &#x27;WA_NEWLOOKMENUS&#x27;,0]
+
+ENDPROC
+
+PROC writeDispID(id)
+  DEF mon,flav
+  mon:=id AND MONITOR_ID_MASK
+  flav:=id AND Not(MONITOR_ID_MASK)
+  SELECT mon
+  CASE DEFAULT_MONITOR_ID
+    WriteF(&#x27;DEFAULT_MONITOR_ID&#x27;)
+    writeDispFlav1(flav)
+  CASE NTSC_MONITOR_ID
+    WriteF(&#x27;NTSC_MONITOR_ID&#x27;)
+    writeDispFlav1(flav)
+  CASE PAL_MONITOR_ID
+    WriteF(&#x27;PAL_MONITOR_ID&#x27;)
+    writeDispFlav1(flav)
+  CASE VGA_MONITOR_ID
+    WriteF(&#x27;VGA_MONITOR_ID&#x27;)
+    writeDispFlav2(flav,&#x27;VGA&#x27;)
+  CASE A2024_MONITOR_ID
+    WriteF(&#x27;A2024_MONITOR_ID OR &#x27;)
+    WriteF(IF flav AND A2024FIFTEENHERTZ_KEY THEN &#x27;A2024FIFTEENHERTZ_KEY&#x27; ELSE &#x27;A2024TENHERTZ_KEY&#x27;)
+  CASE EURO72_MONITOR_ID
+    WriteF(&#x27;EURO72_MONITOR_ID&#x27;)
+    writeDispFlav2(flav,&#x27;EURO72&#x27;)
+  CASE EURO36_MONITOR_ID
+    WriteF(&#x27;EURO36_MONITOR_ID&#x27;)
+    writeDispFlav1(flav)
+  CASE SUPER72_MONITOR_ID
+    WriteF(&#x27;SUPER72_MONITOR_ID&#x27;)
+    writeDispFlav1(flav,&#x27;SUPER72&#x27;)
+  CASE DBLNTSC_MONITOR_ID
+    WriteF(&#x27;DBLNTSC_MONITOR_ID&#x27;)
+    writeDispFlav3(flav,&#x27;DBLNTSC&#x27;)
+  CASE DBLPAL_MONITOR_ID
+    WriteF(&#x27;DBLPAL_MONITOR_ID&#x27;)
+    writeDispFlav3(flav,&#x27;DBLPAL&#x27;)
+  DEFAULT
+    writeConst(id)
+  ENDSELECT
+ENDPROC
+
+-&gt; DEFAULT/PAL/NTSC/EURO36/SUPER72
+PROC writeDispFlav1(flav,type=NIL)
+  DEF lores=FALSE
+  WriteF(&#x27; OR &#x27;)
+  IF flav AND LORESSDBL_KEY
+    IF (flav AND HIRES_KEY)=0 THEN lores:=TRUE
+    IF type THEN WriteF(type)
+  ENDIF
+  IF (flav AND SUPER_KEY)=SUPER_KEY;  WriteF(&#x27;SUPER&#x27;)
+  ELSEIF flav AND HIRES_KEY;          WriteF(&#x27;HIRES&#x27;)
+  ELSEIF (flav AND (SUPER_KEY OR HAM_KEY OR EXTRAHALFBRITE_KEY))=0; lores:=TRUE
+  ENDIF
+  IF lores THEN WriteF(&#x27;LORES&#x27;)
+  IF flav AND HAM_KEY THEN WriteF(&#x27;HAM&#x27;)
+  IF flav AND EXTRAHALFBRITE_KEY
+    WriteF(IF flav AND Not(EXTRAHALFBRITELACE_KEY) THEN &#x27;EHB&#x27; ELSE &#x27;EXTRAHALFBRITE&#x27;)
+  ENDIF
+  IF flav AND LORESLACE_KEY THEN WriteF(&#x27;LACE&#x27;)
+  IF (flav AND LORESDPF2_KEY)=LORESDPF2_KEY;  WriteF(&#x27;DPF2&#x27;)
+  ELSEIF flav AND LORESDPF_KEY;               WriteF(&#x27;DPF&#x27;)
+  ENDIF
+  IF flav AND LORESSDBL_KEY
+    WriteF(IF type THEN &#x27;DBL&#x27; ELSE &#x27;SDBL&#x27;)
+  ENDIF
+  WriteF(&#x27;_KEY&#x27;)
+ENDPROC
+
+-&gt; VGA/EURO72
+PROC writeDispFlav2(flav,type)
+  DEF i,v
+  v:=flav OR VGA_MONITOR_ID
+  WriteF(&#x27; OR &#x27;)
+  WriteF(type)
+  i:=v AND VGAPRODUCTDBL_KEY
+  SELECT i
+  CASE VGAPRODUCTDBL_KEY;
+    IF (v AND VGAEHB_KEY)&lt;&gt;VGAEHB_KEY THEN WriteF(&#x27;PRODUCT&#x27;)
+  CASE VGALORESDBL_KEY;      WriteF(&#x27;LORES&#x27;)
+  CASE VGAEXTRALORESDBL_KEY; WriteF(&#x27;EXTRALORES&#x27;)
+  ENDSELECT
+  IF flav AND VGAEXTRALORESHAMDBL_KEY THEN WriteF(&#x27;HAM&#x27;)
+  IF flav AND VGAEXTRALORESEHBDBL_KEY THEN WriteF(&#x27;EHB&#x27;)
+  IF (flav AND Not(VGAEXTRALORES_KEY)) AND VGAEXTRALORESLACE_KEY THEN WriteF(&#x27;LACE&#x27;)
+  i:=v AND VGAEXTRALORESDPF2_KEY
+  SELECT i
+  CASE VGAEXTRALORESDPF2_KEY; WriteF(&#x27;DPF2&#x27;)
+  CASE VGAEXTRALORESDPF_KEY;  WriteF(&#x27;DPF&#x27;)
+  ENDSELECT
+  IF (v AND VGAEXTRALORES_KEY)&lt;&gt;VGAEXTRALORES_KEY THEN WriteF(&#x27;DBL&#x27;)
+  WriteF(&#x27;_KEY&#x27;)
+ENDPROC
+
+-&gt; DBLNTSC/DBLPAL
+PROC writeDispFlav3(flav,type)
+  DEF i,v
+  v:=flav OR DBLPAL_MONITOR_ID
+  WriteF(&#x27; OR &#x27;)
+  WriteF(type)
+  i:=v AND (DBLPALHIRES_KEY OR DBLPALEXTRALORES_KEY)
+  SELECT i
+  CASE DBLPALHIRES_KEY;       WriteF(&#x27;HIRES&#x27;)
+  CASE DBLPALEXTRALORES_KEY;  WriteF(&#x27;EXTRALORES&#x27;)
+  DEFAULT;                    WriteF(&#x27;LORES&#x27;)
+  ENDSELECT
+  IF flav AND DBLPALLORESHAM_KEY THEN WriteF(&#x27;HAM&#x27;)
+  IF flav AND DBLPALLORESEHB_KEY THEN WriteF(&#x27;EHB&#x27;)
+  i:=v AND DBLPALLORESDPF2_KEY
+  SELECT i
+  CASE DBLPALLORESDPF2_KEY; WriteF(&#x27;DPF2&#x27;)
+  CASE DBLPALLORESDPF_KEY;  WriteF(&#x27;DPF&#x27;)
+  ENDSELECT
+  i:=v AND DBLPALLORESLACE_KEY
+  SELECT i
+  CASE DBLPALLORESLACE_KEY; WriteF(&#x27;LACE&#x27;)
+  CASE DBLPALLORESFF_KEY;   WriteF(&#x27;FF&#x27;)
+  ENDSELECT
+  WriteF(&#x27;_KEY&#x27;)
+ENDPROC
+
+PROC findKey(s)
+  DEF key=0, c
+  IF s
+    WHILE c:=s[]++
+      IF c=&quot;_&quot; THEN key:=s[]
+    ENDWHILE
+  ENDIF
+ENDPROC tolower(key)
+
+PROC fixString(s,initlower=TRUE)
+  DEF c
+  IF initlower THEN IF c:=s[] THEN s[]++:=tolower(c)
+  WHILE c:=s[] DO IF isalnum(c) THEN s++ ELSE s[]++:=&quot;_&quot;
+ENDPROC
+
+PROC writeString(s)
+  DEF c
+  IF s
+    WriteF(&#x27;&#x27;&#x27;&#x27;)
+    WHILE c:=s[]++
+      IF c=&quot;&#x27;&quot;;       WriteF(&#x27;&#x27;&#x27;&#x27;&#x27;&#x27;)
+      ELSEIF c=&quot;\\&quot;;  WriteF(&#x27;\\\\&#x27;)
+      ELSE;           Out(stdout,c)
+      ENDIF
+    ENDWHILE
+    WriteF(&#x27;&#x27;&#x27;&#x27;)
+  ELSE
+    WriteF(&#x27;NIL&#x27;)
+  ENDIF
+ENDPROC
+
+PROC writeConst(v) IS WriteF(IF (v&gt;=-256) AND (v&lt;=256) THEN &#x27;\d&#x27; ELSE &#x27;$\h&#x27;,v)
+
+PROC writeBool(v) IS WriteF(IF v THEN &#x27;TRUE&#x27; ELSE &#x27;FALSE&#x27;)
+
+PROC orConst(const)
+  IF done_or THEN WriteF(&#x27; OR &#x27;) ELSE done_or:=TRUE
+  WriteF(const)
+ENDPROC
+
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

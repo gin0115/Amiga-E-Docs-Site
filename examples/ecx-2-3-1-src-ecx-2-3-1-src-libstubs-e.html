@@ -1,0 +1,269 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>libstubs.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-ecx-2-3-1-src.html">ECX_2.3.1-src</a> &rsaquo; libstubs.e</div><h1>File: <code>libstubs.e</code></h1><p class="meta">243 lines · project <a href="../examples/pkg-ecx-2-3-1-src.html"><code>ECX_2.3.1-src</code></a></p><p class="pathctx">ECX_2.3.1-src/ecx-2.3.1-src/libstubs.e</p><p class="prose">ECX/libstubs.e</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/lists.html">exec/lists</a></li></ul></div><h2>Source</h2><pre class="code">-&gt; ECX/libstubs.e
+
+/* ECX by Leif Salomonsson [ecx tele2 se] is Copyright (c) 2002-2008 */
+/* Released under the ECX COMPILER LICENSE, See ECXCOMPILERLICENSE.TXT */
+
+OPT MODULE, PREPROCESS
+
+-&gt; libstubs.e extracted 2009 from initcode.e
+-&gt; initcode.e. created module May 2008. code extracted from codegen.e and ecxmain.e
+
+-&gt; 1.10.0 : removed library specific initcode.
+
+-&gt;#define DBG_LIBSTUBS
+
+MODULE &#x27;*binary&#x27;
+MODULE &#x27;*opcodes68&#x27;
+MODULE &#x27;*opcodesppc&#x27;
+MODULE &#x27;*runtime&#x27;
+MODULE &#x27;*compiler&#x27;
+MODULE &#x27;*common&#x27;
+MODULE &#x27;*assembler&#x27;
+
+MODULE &#x27;exec/lists&#x27;
+
+EXPORT DEF g_nrofentries, g_entrytable:PTR TO LONG
+EXPORT DEF g_codeptr:PTR TO LONG, g_codebuf, link_codesize
+EXPORT DEF g_gvarlist:PTR TO gvar
+EXPORT DEF link_globaldatasize
+EXPORT DEF g_databuf:PTR TO LONG, g_databufsize
+EXPORT DEF g_modulelist:PTR TO mlh
+EXPORT DEF g_objectlist:PTR TO object
+
+#define Put32(v) g_codeptr[]++ := v
+
+EXPORT PROC putEntries68K()
+   DEF a, e:PTR TO entry, b, proc:PTR TO proc
+   DEF stub:PTR TO genlab, par:PTR TO var
+     /* make actual entries */
+   IF Odd(g_codeptr) THEN g_codeptr := g_codeptr + 1
+   FOR a := 0 TO g_nrofentries-1
+      e := g_entrytable[a]
+      IF e.prochln
+         proc := e.prochln.ident
+         IF proc = NIL THEN reportErr(&#x27;unknown identifier&#x27;, e.prochln.name)
+         IF proc.identID &lt;&gt; IDENT_LABEL THEN reportErr(&#x27;not suitable for entry&#x27;, e.prochln.name)
+         IF proc.ltype &lt;&gt; LTYPE_PROC THEN reportErr(&#x27;not suitable for entry&#x27;, e.prochln.name)
+         proc.referenced := 1
+         putLabel(e.label)
+         e.nrofargs := proc.nrofargs
+         IF proc.cpu = 0
+            libstub68k_68k(e, proc)
+         ELSE
+            libstub68k_ppc(e, proc)
+         ENDIF
+      ELSE -&gt; EMPTY
+         putLabel(e.label)
+         moveqdx(0,0)
+         rts_()
+      ENDIF
+   ENDFOR
+
+ENDPROC
+
+EXPORT PROC putEntriesPPC()
+   DEF a, e:PTR TO entry, proc:PTR TO proc
+   /* make actual entries */
+   FOR a := 0 TO g_nrofentries-1
+      e := g_entrytable[a]
+      putAlign(4)
+      IF e.prochln
+         proc := e.prochln.ident
+         IF proc = NIL THEN reportErr(&#x27;unknown identifier&#x27;, e.prochln.name)
+         IF proc.identID &lt;&gt; IDENT_LABEL THEN reportErr(&#x27;not suitable for entry&#x27;, e.prochln.name)
+         IF proc.ltype &lt;&gt; LTYPE_PROC THEN reportErr(&#x27;not suitable for entry&#x27;, e.prochln.name)
+         proc.referenced := 1
+         putLabel(e.label)
+         e.nrofargs := proc.nrofargs
+         IF e.type = 0 -&gt; 68k abi in ppc mode ?
+            IF proc.cpu = 0 -&gt; 68k-&gt;68k ?
+               libstub68k_68k(e, proc)
+            ELSE -&gt; 68k-&gt;ppc
+               libstub68k_ppc(e, proc)
+            ENDIF
+         ELSE
+            IF proc.cpu = 1
+               libstubppc_ppc(e, proc)
+            ELSE
+               libstubppc_68k(e, proc)
+            ENDIF
+         ENDIF
+      ELSE -&gt; EMPTY
+         IF e.type = 1 -&gt; ppc abi
+            putLabel(e.label)
+            ppcaddi(3,0,0)
+            ppcbclr(20,0,0)
+         ELSE  -&gt; 68k abi
+            putLabel(e.label)
+            moveqdx(0,0)
+            rts_()
+         ENDIF
+      ENDIF
+   ENDFOR
+
+ENDPROC
+
+PROC libstubppc_ppc(e:PTR TO entry, proc:PTR TO proc)
+   DEF a, endstub:PTR TO genlab, t, par:PTR TO var
+
+   FOR t := 0 TO proc.nrofargs-1  -&gt; v48
+      par := proc.argarray[t]
+      e.regs[t].rtype := par.rtype
+      e.regs[t].rnum := par.rnum
+   ENDFOR
+   SELECT 20 OF proc.mret.ros[0] -&gt; 2.0
+   CASE RX  ; e.return := 0
+   CASE FPX ; e.return := 1
+   CASE VX  ; e.return := 2
+   CASE X2R ; e.return := 3
+   ENDSELECT
+   ppcstwu(1,1,-64)
+   ppcmfspr(0,8)
+   ppcstw(0,1,68)
+   ppcstw(13,1,60)
+   ppclwz(13,e.basernum,PRIVBASE_ENV)    -&gt; changed 1.10.0
+   FOR t := 0 TO proc.nrofargs-1  -&gt; v48
+      par := proc.argarray[t]
+      IF par.rtype = PPCARGRTYPE_STACKRX
+         ppclwz(0,1,par.rnum+64)
+         ppcstw(0,1,par.rnum)
+      ELSEIF par.rtype = PPCARGRTYPE_STACKRX2  -&gt; 2.0
+         ppclfd(0,1,par.rnum+64)
+         ppcstfd(0,1,par.rnum)
+      ENDIF
+   ENDFOR
+   ppcblab(proc,0,1)
+   ppclwz(0,1,68)
+   ppclwz(13,1,60)
+   ppcmtspr(0,8)
+   ppcaddi(1,1,64)
+   ppcbclr(20,0,0)
+
+ENDPROC
+
+PROC libstubppc_68k(e:PTR TO entry, proc:PTR TO proc)
+   DEF a, endstub:PTR TO genlab
+      ppcstwu(1, 1, -16)
+      ppcmfspr(0,8)
+      ppcstw(0,1,20)
+      FOR a := 0 TO proc.nrofargs-1
+         ppcstw(e.regs[a].rnum, 2, a*4)
+      ENDFOR
+      ppclwz(0, e.basernum, PRIVBASE_ENV)
+      ppcstw(0, 2, 48) -&gt; a4
+      -&gt; do the twist
+      endstub := newLabel()
+      ppcblab(endstub,0,1) -&gt; skip 68k stubcode
+      -&gt; stub: from regs to stack as params for procedure
+      FOR a := 0 TO proc.nrofargs-1 DO movedxaxpd(SIZE_L,a,7)
+      bsrlab(proc)
+      leaaxpofsax(7,proc.nrofargs*4,7)
+      rts_()
+      putAlign(4) -&gt; align 4
+      putLabel(endstub)
+      ppcmfspr(3,8) -&gt; to r3
+      ppclwz(0,2,104) -&gt; emulcalldirect68k to r0
+      ppcmtspr(0,9) -&gt; ctr
+      ppcbcctr(20,0,1) -&gt; bctrl
+      ppclwz(0,1,20)
+      ppcmtspr(0,8)
+      ppcaddi(1,1,16)
+      ppcbclr(20,0,0)
+
+ENDPROC
+
+PROC libstub68k_68k(e:PTR TO entry, proc:PTR TO proc)
+   DEF b
+
+   -&gt; save regs..
+   movemregsaxpd(SIZE_L, %0011111100111110, 7)
+   -&gt; get a4 from libbase pointed to by A6
+   moveaxpofsax(SIZE_L,6,PRIVBASE_ENV,4)   -&gt; changed 1.10.0
+   -&gt; push regs as proc-params
+   FOR b := 0 TO proc.nrofargs-1
+      IF e.regs[b].rtype = 1
+         moveaxaxpd(SIZE_L,e.regs[b].rnum,7)
+      ELSEIF e.regs[b].rtype = 0
+         movedxaxpd(SIZE_L,e.regs[b].rnum,7)
+      ENDIF
+   ENDFOR
+   -&gt; call proc
+   bsrlab(proc)
+   -&gt; cleanup stack
+   IF proc.nrofargs THEN leaaxpofsax(7,proc.nrofargs*4,7)
+   -&gt; restore regs
+   movemaxpiregs(SIZE_L,7, %0111110011111100)
+   -&gt; return
+   rts_()
+
+ENDPROC
+
+PROC libstub68k_ppc(e:PTR TO entry, proc:PTR TO proc)
+   DEF b, stub:PTR TO genlab, par:PTR TO var
+
+   stub := newLabel()
+   Put32($FF000000) -&gt; TRAP_LIB
+   putReloc(stub)
+   putAlign(4)
+   putLabel(stub)
+   ppcstwu(1,1,-64)
+   ppcmfspr(0,8)
+   ppclwz(12,2,56) -&gt; bas
+   ppcstw(13,1,60)
+   ppcstw(0,1,68)
+   ppclwz(13,12,PRIVBASE_ENV)      -&gt; changed 1.10.0
+   FOR b := 0 TO proc.nrofargs-1
+      par := proc.argarray[b]
+      IF par.rtype = 0
+         IF e.regs[b].rtype = 0
+            ppclwz(par.rnum, 2, e.regs[b].rnum*4)
+         ELSE
+            ppclwz(par.rnum, 2, e.regs[b].rnum*4+32)
+         ENDIF
+      ELSEIF par.rtype = 1
+         IF e.regs[b].rtype = 0
+            ppclwz(0, 2, e.regs[b].rnum*4)
+            ppcstw(0, 1, par.rnum)
+         ELSE
+            ppclwz(0, 2, e.regs[b].rnum*4+32)
+            ppcstw(0, 1, par.rnum)
+         ENDIF
+      ELSE
+         reportErr(&#x27;procedure is not suitable as entry&#x27;, proc.name)
+      ENDIF
+   ENDFOR
+   ppcblab(proc,0,1)
+   ppclwz(0,1,68)
+   ppclwz(13,1,60)
+   ppcmtspr(0,8)
+   ppcaddi(1,1,64)
+   ppcbclr(20,0,0)
+
+ENDPROC
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

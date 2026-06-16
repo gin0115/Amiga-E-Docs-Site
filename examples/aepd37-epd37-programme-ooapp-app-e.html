@@ -1,0 +1,233 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>app.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-aepd37.html">AEPD37</a> &rsaquo; app.e</div><h1>File: <code>app.e</code></h1><p class="meta">207 lines · project <a href="../examples/pkg-aepd37.html"><code>AEPD37</code></a></p><p class="pathctx">AEPD37/EPD37/Programme/ooapp/app.e</p><p class="prose">application Class $VER: 00.13 (16.11.1995) ** © Aris Basic ** Constructor: ** application() ** Destructor: ** end() ** Methods: ** sigBitsA() ** handleInput() ** ** For Arguments And Formats of methods look ** ** Explanation of Constants: ** APP_ -&gt; Errors Ex. <a href="../modules/app.html#const-app-double">APP_DOUBLE</a> ** APPT_ -&gt; Tags (Value) Ex.</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/commodities.html">commodities</a></li></ul></div><h2>Source</h2><pre class="code">/* application Class $VER: 00.13 (16.11.1995)
+**            © Aris Basic
+** Constructor:
+**       application()
+** Destructor:
+**       end()
+** Methods:
+**       sigBitsA()
+**       handleInput()
+**
+** For Arguments And Formats of methods look
+**
+** Explanation of Constants:
+**       APP_          -&gt; Errors                 Ex. APP_DOUBLE
+**       APPT_         -&gt; Tags (Value)           Ex. APPT_CXTAGS,[...]
+**
+**
+** History:
+**       00.10 : 13.11.1995    first release
+**       00.11 : 14.11.1995    added method hadleInput()
+**       00.12 : 15.11.1995    added Tag List Parsing
+**       00.13 : 16.11.1995    changed TagList Pasing to other objects
+**
+*/
+OPT MODULE
+OPT EXPORT
+OPT PREPROCESS
+
+MODULE &#x27;commodities&#x27;,&#x27;libraries/commodities&#x27;,
+       &#x27;exec/memory&#x27;,&#x27;exec/ports&#x27;,&#x27;exec/nodes&#x27;,&#x27;exec/lists&#x27;,
+       &#x27;amigalib/cx&#x27;,&#x27;amigalib/ports&#x27;,&#x27;amigalib/lists&#x27;,
+       &#x27;utility&#x27;,&#x27;utility/tagitem&#x27;,
+       &#x27;*cx&#x27;
+
+-&gt; Some Macro ShortCuts
+#define CXSIGBIT cx.sigA()
+#define CXERROR cx.error
+#define CXBROKER cx.broker
+
+-&gt; Application Errors
+ENUM APP_NOERROR = 0,
+     APP_NOCX,
+     APP_NOUTIL,
+     APP_DOUBLE
+
+-&gt; Application Input Types
+ENUM APPI_CX = 1,
+     APPI_REXX,
+     APPI_GUI
+
+-&gt; Application Tags
+CONST APPT_CX=TAG_USER+$100        -&gt; BOOL This Application Will Be Commodity
+                                   -&gt; Example APPT_CX,FALSE
+                                   -&gt; Default TRUE
+ENUM APPT_COMMODITY=APPT_CX,       -&gt; Alias for APPT_CX
+     APPT_CXTAGS,                  -&gt; LIST Commodity Tag List
+     APPT_REXX,                    -&gt; BOOL This Application will have ARexx Port
+                                   -&gt; Example APPT_REXX,TRUE
+                                   -&gt; Default FALSE (!! Not yet available !!)
+     APPT_REXXTAGS,                -&gt; LIST ARexx Tag List
+     APPT_MSGPORT,                 -&gt; BOOL This Application has own MSG Port
+                                   -&gt; Example APPT_MSGPORT,TRUE
+                                   -&gt; Default FALSE (!! Not yet available !!)
+     APPT_MSGPORTNAME,             -&gt; STRING Application MSG Port Name
+                                   -&gt; Example: APPT_MSGPORTNAME,&#x27;Test&#x27;
+                                   -&gt; Default argument name (!! Not yet available !!)
+     APPT_SEMAPHORE,               -&gt;
+     APPT_SEMAPHORENAME,
+     APPT_MORENAME
+
+-&gt; Main Object
+OBJECT application
+    name
+    cx:PTR TO commodity
+    error
+    addSigs
+    ENDOBJECT
+-&gt;FOLDER application()
+-&gt; application method application(name,tags)
+-&gt; ** application Class Constructor **
+-&gt; Input:
+-&gt;       name          -&gt; Name of Application
+-&gt;       tags = NIL    -&gt; TagList with Attributes For Application
+-&gt; OutPut:
+-&gt;       None
+-&gt; Example:
+-&gt;
+-&gt; Bugs:
+-&gt;       None known
+-&gt; Notes:
+-&gt;       Class opens and closes utility and commodity library for you
+-&gt;       Look in application.error to see was there some errors
+-&gt;       commodity class errors will be passed as application error !!
+-&gt; History:
+-&gt;       00.10 : 13.11.95      first release
+-&gt;       00.11 : 15.11.95      added Application Tags Parsing
+-&gt;       00.12 : 16.11.95      changed pasing tags to objects
+-&gt; CopyRight © Aris Basic 1995
+-&gt; $VER: 00.12 16.11.1995
+-&gt;
+PROC application(name,tags=NIL:PTR TO tagitem) OF application
+    DEF cx,cxtags:PTR TO tagitem,rexxtags
+ 
+    self.error:=0
+    IF cx
+        IF cxbase=NIL
+            cxbase:=OpenLibrary(&#x27;commodities.library&#x27;,0)
+            IF cxbase=NIL
+                self.error:=APP_NOCX
+                RETURN
+                ENDIF
+            ENDIF
+        ENDIF
+    IF utilitybase=NIL
+        utilitybase:=OpenLibrary(&#x27;utility.library&#x27;,0)
+        IF utilitybase=NIL
+            self.error:=APP_NOUTIL
+            RETURN
+            ENDIF
+        ENDIF
+    self.name:=String(255)
+    StrCopy(self.name,name)
+    cx:=GetTagData(APPT_CX,TRUE,tags)
+    cx:=GetTagData(APPT_COMMODITY,TRUE,tags)
+    cxtags:=GetTagData(APPT_CXTAGS,NIL,tags)
+    IF cx THEN NEW self.cx.commodity(name,cxtags)
+    self.error:=self.cx.error
+    IF self.error=CX_ERRDUP THEN self.error:=APP_DOUBLE
+    ENDPROC
+-&gt;END
+-&gt;FOLDER sigBitsA()
+-&gt; application method sigBitsA()
+-&gt; ** Gets SignalBits of Application **
+-&gt; Input:
+-&gt;       None
+-&gt; Output:
+-&gt;       LONG Shl(1,signalsbits)=sigBitsA()
+-&gt; Example:
+-&gt;       DEF app:PTR TO application
+-&gt;       Wait(app.sigBitsA())
+-&gt; Note:
+-&gt;       Signal Bits Are only from elements of Application Class
+-&gt;       (commodity port , ?arexx port? , ?GUI? , ...)
+-&gt; Bugs:
+-&gt;       None known
+-&gt; History:
+-&gt;       00.10 : 13.11.95      first release
+-&gt; CopyRight © Aris Basic 1995
+-&gt; $VER: 00.10 13.11.1995
+PROC sigBitsA() OF application
+    DEF sigs
+    IF self.cx THEN sigs:=self.cx.sigA()
+    IF self.addSigs THEN sigs:=sigs OR self.addSigs
+    ENDPROC sigs
+-&gt;END
+-&gt;FOLDER end()
+-&gt; application method end()
+-&gt; ** application Class Destructor **
+-&gt; Input:
+-&gt;       None
+-&gt; Output:
+-&gt;       None
+-&gt; Example:
+-&gt;       DEF app:PTR TO application
+-&gt;       END app -&gt; app.end()
+-&gt; Note:
+-&gt;       None
+-&gt; Bugs:
+-&gt;       None known
+-&gt; History:
+-&gt;       00.10 : 13.11.95      first release
+-&gt; CopyRight © Aris Basic 1995
+-&gt; $VER: 00.10 13.11.1995
+-&gt;
+PROC end() OF application
+    END self.cx
+    IF cxbase THEN CloseLibrary(cxbase)
+    IF utilitybase THEN CloseLibrary(utilitybase)
+    ENDPROC
+-&gt;END
+-&gt;FOLDER handleInput()
+-&gt; application method handleInput()
+-&gt; ** Handles Input Msgs on Application Ports **
+-&gt; Input:
+-&gt;       None
+-&gt; Output:
+-&gt;       type       -&gt; Type Of Port
+-&gt;       id         -&gt; Id (like HotKey ID or Somthing other)
+-&gt;       ...
+-&gt; Example:
+-&gt;       DEF app:PTR TO application
+-&gt;       type,id:=app.handleInput()
+-&gt; Note:
+-&gt;       None
+-&gt; Bugs:
+-&gt;       None known
+-&gt; Histroy:
+-&gt;       00.10 : 14.11.95      first release
+-&gt; CopyRight © Aris Basic 1995
+-&gt; $VER: 00.10 14.11.1995
+PROC handleInput() OF application
+    DEF signal
+    signal:=Wait(self.sigBitsA())
+    IF signal AND self.CXSIGBIT THEN RETURN APPI_CX,self.cx.handlemsg()
+    ENDPROC
+-&gt;END
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

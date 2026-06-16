@@ -1,0 +1,263 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Area.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-bgui-ev41-8.html">BGUI_Ev41_8</a> &rsaquo; Area.e</div><h1>File: <code>Area.e</code></h1><p class="meta">237 lines · project <a href="../examples/pkg-bgui-ev41-8.html"><code>BGUI_Ev41_8</code></a></p><p class="pathctx">BGUI_Ev41_8/bgui_ev41_8/sources/examples/Area.e</p><p class="prose">-- --------------------------------------------------------------- -- * * -- Programname.........: Area.e -- * * -- Description.........: Translation from &quot;Area.c&quot; written by -- * * -- Jan van den Baard. -- * * -- Author..............: Daniel Kasmeroglu (alias Deekah) -- * * -- Version.............:</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/bgui.html">bgui</a></li><li><a href="../modules/intuition.html">intuition/intuition</a></li></ul></div><h2>Source</h2><pre class="code">/* -- --------------------------------------------------------------- -- *
+ * -- Programname.........: Area.e                                    -- *
+ * -- Description.........: Translation from &quot;Area.c&quot; written by      -- *
+ * --                       Jan van den Baard.                        -- *
+ * -- Author..............: Daniel Kasmeroglu (alias Deekah)          -- *
+ * -- Version.............: 0.1     (07.03.1997)                      -- *
+ * -- --------------------------------------------------------------- -- */
+
+
+     /* -- ------------------------------------------------- -- *
+      * --                  Compiler-Option&#x27;s                -- *
+      * -- ------------------------------------------------- -- */
+
+OPT REG = 5              -&gt; activate register-optimisation
+OPT PREPROCESS           -&gt; enable preprocessor
+
+
+     /* -- ------------------------------------------------- -- *
+      * --                      E-Module                     -- *
+      * -- ------------------------------------------------- -- */
+
+MODULE &#x27;intuition/intuition&#x27;,
+       &#x27;intuition/screens&#x27;,
+       &#x27;intuition/classusr&#x27;,
+       &#x27;intuition/classes&#x27;,
+       &#x27;intuition/gadgetclass&#x27;,
+       &#x27;libraries/bguim&#x27;,
+       &#x27;libraries/bgui&#x27;,
+       &#x27;utility/tagitem&#x27;,
+       &#x27;graphics/gfx&#x27;,
+       &#x27;tools/boopsi&#x27;
+
+MODULE &#x27;bgui&#x27;
+
+
+     /* -- ------------------------------------------------- -- *
+      * --                     Constant&#x27;s                    -- *
+      * -- ------------------------------------------------- -- */
+
+ENUM GID_AREA = 1,
+     GID_QUIT
+
+
+     /* -- ------------------------------------------------- -- *
+      * --                    Structure&#x27;s                    -- *
+      * -- ------------------------------------------------- -- */
+
+OBJECT demogui
+  owindow      : PTR TO object
+  window       : PTR TO window
+  gadgets[ 2 ] : ARRAY OF LONG
+ENDOBJECT
+
+
+     /* -- ------------------------------------------------- -- *
+      * --                      Method&#x27;s                     -- *
+      * -- ------------------------------------------------- -- */
+
+PROC dem_Constructor() OF demogui
+
+  self.gadgets[ GID_AREA - 1 ] := AreaObject,
+                                    ButtonFrame,
+                                    AREA_MinWidth,      40,
+                                    AREA_MinHeight,     10,
+                                    GA_ID,              GID_AREA,
+                                  EndObject
+
+
+  self.gadgets[ GID_QUIT - 1 ] := PrefButton( &#x27;_Quit&#x27;, GID_QUIT )
+
+  self.owindow := WindowObject,
+                    WINDOW_Title,           &#x27;Areaclass demo.&#x27;,
+                    WINDOW_AutoAspect,      TRUE,
+                    WINDOW_SmartRefresh,    TRUE,
+                    WINDOW_AutoKeyLabel,    TRUE,
+                    WINDOW_CloseOnEsc,      TRUE,
+                    WINDOW_ScaleWidth,      40,
+                    WINDOW_ScaleHeight,     50,
+                    WINDOW_MasterGroup,
+                      VGroupObject,
+                        NormalOffset,
+                        NormalSpacing,
+                        ShineRaster,
+                        StartMember,
+                          self.gadgets[ GID_AREA - 1 ],
+                        EndMember,
+                        StartMember,
+                          self.gadgets[ GID_QUIT - 1 ],
+                          FixMinHeight,
+                        EndMember,
+                      EndObject,
+                  EndObject
+
+ENDPROC
+
+
+PROC dem_StartInterface() OF demogui
+DEF sta_area : PTR TO ibox
+DEF sta_rc,sta_running,sta_signal
+
+  IF self.owindow &lt;&gt; NIL
+
+    self.window := WindowOpen( self.owindow )
+    IF self.window &lt;&gt; NIL
+
+      GetAttr( WINDOW_SigMask, self.owindow, {sta_signal} )
+
+      sta_running := TRUE
+      WHILE sta_running = TRUE
+
+        Wait( sta_signal )
+
+        WHILE (sta_rc := HandleEvent( self.owindow )) &lt;&gt; WMHI_NOMORE
+
+handleMsg:
+          SELECT sta_rc
+          CASE WMHI_CLOSEWINDOW ; sta_running := FALSE
+          CASE GID_QUIT         ; sta_running := FALSE
+          CASE GID_AREA
+
+            GetAttr( AREA_AreaBox, self.gadgets[ GID_AREA - 1 ], {sta_area} )
+            sta_rc := glo_RenderMandel( self.window, sta_area, self.owindow )
+            IF sta_rc &lt;&gt; 0 THEN JUMP handleMsg
+
+          ENDSELECT
+
+        ENDWHILE
+ 
+      ENDWHILE
+
+      WindowClose( self.owindow )
+
+    ENDIF
+
+  ENDIF
+
+ENDPROC
+
+
+PROC end() OF demogui
+  IF self.owindow &lt;&gt; NIL THEN DisposeObject( self.owindow )
+ENDPROC
+
+
+     /* -- ------------------------------------------------- -- *
+      * --                    Procedure&#x27;s                    -- *
+      * -- ------------------------------------------------- -- */
+
+-&gt; // This routine is equivalent to the program &quot;IntMandel.e&quot; but
+-&gt; // all time I use this routine I&#x27;m getting shit if the area
+-&gt; // is too small. If the area is big enough (see my scale-values)
+-&gt; // I&#x27;m getting the correct example.
+
+PROC glo_RenderMandel( ren_win : PTR TO window, ren_ibox : PTR TO ibox, ren_owindow )
+DEF ren_zr,ren_zi,ren_ar,ren_ai
+DEF ren_dr,ren_di,ren_sr,ren_si
+DEF ren_st,ren_x,ren_y,ren_i,ren_rc
+DEF ren_xsize,ren_ysize,ren_cols
+
+  ren_cols  := Shl( 1, ren_win.wscreen.bitmap.depth ) - 1
+  ren_xsize := ren_ibox.width
+  ren_ysize := ren_ibox.height
+
+  ren_sr    := $400000 / ren_xsize
+  ren_si    := $300000 / ren_ysize
+  ren_st    := $140000 * -2
+  ren_zi    := $160000
+
+  FOR ren_y := ren_ysize - 1 TO 0 STEP -1
+
+    ren_zi := ren_zi - ren_si
+    ren_zr := ren_st
+
+    FOR ren_x := 0 TO ren_xsize - 1
+
+      ren_i  := 0
+      ren_ar := ren_zr
+      ren_ai := ren_zi
+
+      REPEAT
+
+        ren_dr := Shr( ren_ar, 10 )
+        ren_di := Shr( ren_ai, 10 )
+        ren_ai := ren_dr * 2 * ren_di + ren_zi
+        ren_dr := ren_dr * ren_dr
+        ren_di := ren_di * ren_di
+        ren_ar := ren_dr -ren_di + ren_zr
+        ren_i++
+
+      UNTIL (ren_i &gt; 25) OR (ren_dr + ren_di &gt; $400000)
+
+      SetAPen( ren_win.rport, ren_i AND ren_cols )
+      WritePixel( ren_win.rport, ren_x + ren_ibox.left, ren_y + ren_ibox.top )
+
+      WHILE (ren_rc := HandleEvent( ren_owindow )) &lt;&gt; WMHI_NOMORE
+ 
+        SELECT ren_rc
+        CASE WMHI_CLOSEWINDOW ; RETURN ren_rc
+        CASE GID_AREA         ; RETURN ren_rc
+        CASE GID_QUIT         ; RETURN ren_rc
+        ENDSELECT
+
+      ENDWHILE
+
+      ren_zr   := ren_zr + ren_sr
+
+    ENDFOR
+
+  ENDFOR
+  
+ENDPROC 0
+
+
+     /* -- ------------------------------------------------- -- *
+      * --                     Hauptprogramm                 -- *
+      * -- ------------------------------------------------- -- */
+
+PROC main() HANDLE
+DEF ma_object : PTR TO demogui
+
+  ma_object := NIL
+
+  bguibase  := OpenLibrary( &#x27;bgui.library&#x27;, 41 )
+  IF bguibase &lt;&gt; NIL
+
+    NEW ma_object.dem_Constructor()
+    ma_object.dem_StartInterface()
+
+  ENDIF
+
+EXCEPT DO
+
+  IF ma_object &lt;&gt; NIL THEN END ma_object
+  IF bguibase  &lt;&gt; NIL THEN CloseLibrary( bguibase )
+
+ENDPROC
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

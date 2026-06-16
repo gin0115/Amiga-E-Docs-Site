@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>nsmport.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-nsm074-e.html">NSM074_E</a> &rsaquo; nsmport.e</div><h1>File: <code>nsmport.e</code></h1><p class="meta">56 lines · project <a href="../examples/pkg-nsm074-e.html"><code>NSM074_E</code></a></p><p class="pathctx">NSM074_E/nsm/nsmport/nsmport.e</p><p class="prose">nsmport.e</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/ports.html">exec/ports</a></li></ul></div><h2>Source</h2><pre class="code">-&gt; nsmport.e
+
+/*
+nsmport.c by Kjetil S. Matheussen
+nsmport.e by Claude Heiland-Allen 1999.05.16
+
+This doesn&#x27;t fix the bug though (getoctabase() returns
+non-NIL if nsmport is started but OSS hasn&#x27;t been, so
+the bug is probably in getoctabase()).
+
+*/
+
+MODULE &#x27;exec/ports&#x27;, &#x27;amigalib/ports&#x27;, &#x27;dos/dos&#x27;
+
+OBJECT nsmmessage
+	msg      : mn
+	octaaddr : LONG
+ENDOBJECT
+
+PROC main()
+
+	DEF nsmport : PTR TO mp,
+	    nsmmsg  : PTR TO nsmmessage,
+	    portsig, usersig, signal, abort = FALSE,
+	    localoctaaddr = NIL
+
+	IF nsmport := createPort(&#x27;nsmport&#x27;, 0)
+		portsig := Shl(1, nsmport.sigbit)
+		usersig := SIGBREAKF_CTRL_C
+		WriteF(&#x27;nsmport started\n&#x27;)
+		REPEAT
+			signal := Wait(portsig OR usersig)
+			IF signal AND portsig
+				WHILE nsmmsg := GetMsg(nsmport)
+					IF nsmmsg.octaaddr = 0
+						nsmmsg.octaaddr := localoctaaddr
+        			ELSE
+        				localoctaaddr := nsmmsg.octaaddr
+        			ENDIF
+        			ReplyMsg(nsmmsg)
+        		ENDWHILE
+			ENDIF
+			IF signal AND usersig
+				WHILE nsmmsg := GetMsg(nsmport) DO ReplyMsg(nsmmsg)
+				abort := TRUE
+			ENDIF
+		UNTIL abort
+		deletePort(nsmport)
+	ELSE
+		WriteF(&#x27;couldn&#x27;&#x27;t create &quot;nsmport&quot;\n&#x27;)
+	ENDIF
+
+ENDPROC
+
+version: CHAR &#x27;$VER: nsmport 1.1 (1999.05.16) Claude Heiland-Allen&#x27;
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

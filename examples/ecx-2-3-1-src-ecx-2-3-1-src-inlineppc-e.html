@@ -1,0 +1,805 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>inlineppc.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-ecx-2-3-1-src.html">ECX_2.3.1-src</a> &rsaquo; inlineppc.e</div><h1>File: <code>inlineppc.e</code></h1><p class="meta">779 lines · project <a href="../examples/pkg-ecx-2-3-1-src.html"><code>ECX_2.3.1-src</code></a></p><p class="pathctx">ECX_2.3.1-src/ecx-2.3.1-src/inlineppc.e</p><p class="prose">ECX/inline.e</p><h2>Source</h2><pre class="code">-&gt; ECX/inline.e
+
+/* ECX by Leif Salomonsson [ecx tele2 se] is Copyright (c) 2002-2008 */
+/* Released under the ECX COMPILER LICENSE, See ECXCOMPILERLICENSE.TXT */
+
+OPT MODULE
+OPT PREPROCESS
+OPT LARGE
+
+-&gt; ECX/inline.e, created May 2008, extracted from codegen.e
+
+MODULE &#x27;*common&#x27;
+MODULE &#x27;*compiler&#x27;
+MODULE &#x27;*opcodesppc&#x27;
+MODULE &#x27;*assembler&#x27;
+
+#define PPC_PATCH_EXEC
+
+#define A_ g_od[0]
+#define B_ g_od[1]
+#define C_ g_od[2]
+#define D_ g_od[3]
+#define E_ g_od[4]
+#define F_ g_od[5]
+#define P_ g_punct
+
+#define GLOBREG g_globreg
+
+EXPORT OBJECT instppc
+   operands:PTR TO LONG
+   numops
+   punct
+   qcode
+ENDOBJECT
+
+EXPORT ENUM
+      PO, -&gt; punctation optional
+      PN, -&gt; punctation none
+      PR  -&gt; punctation required
+
+EXPORT DEF g_od:PTR TO LONG, g_punct -&gt; shared with codegen.e
+EXPORT DEF g_globreg -&gt; shared with codegen.e
+
+
+EXPORT PROC addPPCInlines()
+   DEF hln:PTR TO hln, code
+
+      hln := getLabelHLN(&#x27;Char&#x27;)
+      code := [$88630000] -&gt; lbz  r3, 0(r3)
+      hln.ident := IFUNCDEF2(hln.name, code, 4, [0], [], [0], 1)
+
+      hln := getLabelHLN(&#x27;Byte&#x27;)  -&gt; v50 back again
+      code := [$88630000,  -&gt; lbz  r3, 0(r3)
+      $7C630774] -&gt; extsb  r3, r3
+      hln.ident := IFUNCDEF2(hln.name, code, 8, [0], [], [0], 1)
+
+      hln := getLabelHLN(&#x27;Int&#x27;)  -&gt; v50, now really DOES sign extend !
+      code := [$A8630000] -&gt; lha  r3, 0(r3)
+      hln.ident := IFUNCDEF2(hln.name, code, 4, [0], [], [0], 1)
+
+      hln := getLabelHLN(&#x27;Word&#x27;)
+      code := [$A0630000] -&gt; lhz  r3, 0(r3)
+      hln.ident := IFUNCDEF2(hln.name, code, 4, [0], [], [0], 1)
+
+      hln := getLabelHLN(&#x27;Long&#x27;)
+      code := [$80630000] -&gt; lwz  r3, 0(r3)
+      hln.ident := IFUNCDEF2(hln.name, code, 4, [0], [], [0], 1)
+
+      hln := getLabelHLN(&#x27;PutLong&#x27;)
+      code := [$90830000] -&gt; stw  r4, 0(r3)
+      hln.ident := IFUNCDEF2(hln.name, code, 4, [0,0], [], [0], 1)
+
+      hln := getLabelHLN(&#x27;PutInt&#x27;)
+      code := [$B0830000] -&gt; sth  r4, 0(r3)
+      hln.ident := IFUNCDEF2(hln.name, code, 4, [0,0], [], [0], 1)
+
+      hln := getLabelHLN(&#x27;PutChar&#x27;)
+      code := [$98830000] -&gt; stb  r4, 0(r3)
+      hln.ident := IFUNCDEF2(hln.name, code, 4, [0,0], [], [0], 1)
+
+      hln := getLabelHLN(&#x27;ListItem&#x27;)
+      code := [$5484103A,  -&gt; rlwinm r4,r4,2,0,31-2
+      $7C63202E] -&gt; lwzx  r3, r3, r4
+      hln.ident := IFUNCDEF2(hln.name, code, 8, [0,0], [], [0], 1)
+
+      hln := getLabelHLN(&#x27;ListLen&#x27;)
+      code := [$A063FFFE] -&gt; lhz  r3, -2(r3)
+      hln.ident := IFUNCDEF2(hln.name, code, 4, [0], [], [0], 1)
+
+      hln := getLabelHLN(&#x27;EstrLen&#x27;)
+      code := [$A063FFFE] -&gt; lhz  r3, -2(r3)
+      hln.ident := IFUNCDEF2(hln.name, code, 4, [0], [], [0], 1)
+
+      hln := getLabelHLN(&#x27;StrMax&#x27;)
+      code := [$A063FFFC] -&gt; lhz  r3, -4(r3)
+      hln.ident := IFUNCDEF2(hln.name, code, 4, [0], [], [0], 1)
+
+      hln := getLabelHLN(&#x27;ListMax&#x27;)
+      code := [$A063FFFC] -&gt; lhz  r3, -4(r3)
+      hln.ident := IFUNCDEF2(hln.name, code, 4, [0], [], [0], 1)
+
+      hln := getLabelHLN(&#x27;SetStr&#x27;)
+      code := [$B083FFFE,  -&gt; sth  r4, -2(r3)
+      $38000000,  -&gt; addi r0,0,0
+      $7C0321AE]  -&gt; stbx r0, r3, r4
+      hln.ident := IFUNCDEF2(hln.name, code, 12, [0,0], [], [0], 1)
+
+      hln := getLabelHLN(&#x27;SetList&#x27;)
+      code := [$B083FFFE] -&gt; sth  r4, -2(r3)
+      hln.ident := IFUNCDEF2(hln.name, code, 4, [0,0], [], [0], 1)
+
+      hln := getLabelHLN(&#x27;ObjSize&#x27;)
+      code := [$8063FFFC,  -&gt; lwz  r3, -4(r3)
+      $8063FFFC] -&gt; lwz  r3, -4(r3)
+      hln.ident := IFUNCDEF2(hln.name, code, 8, [0], [], [0], 1)
+
+      hln := getLabelHLN(&#x27;ObjName&#x27;)
+      code := [$8063FFFC,  -&gt; lwz  r3, -4(r3)
+      $8063FFF8] -&gt; lwz  r3, -8(r3)
+      hln.ident := IFUNCDEF2(hln.name, code, 8, [0], [], [0], 1)
+
+      hln := getLabelHLN(&#x27;Shr&#x27;)
+      code := [$7C632630] -&gt; sraw r3, r3, r4
+      hln.ident := IFUNCDEF2(hln.name, code, 4, [0,0], [], [0], 1)
+
+      hln := getLabelHLN(&#x27;Shl&#x27;)
+      code := [$7C632030] -&gt; slw r3, r3, r4
+      hln.ident := IFUNCDEF2(hln.name, code, 4, [0,0], [], [0], 1)
+
+      -&gt; 2.2 now operator instead!
+      -&gt;hln := getLabelHLN(&#x27;Not&#x27;)
+      -&gt;code := [$7C6318F8] -&gt; nor r3, r3, r3
+      -&gt;hln.ident := IFUNCDEF2(hln.name, code, 4, [0], [], [0], 1)
+
+      hln := getLabelHLN(&#x27;Or&#x27;)
+      code := [$7C632378] -&gt; or r3, r3, r4
+      hln.ident := IFUNCDEF2(hln.name, code, 4, [0,0], [], [0], 1)
+
+      hln := getLabelHLN(&#x27;Eor&#x27;)
+      code := [$7C632278] -&gt; xor r3, r3, r4
+      hln.ident := IFUNCDEF2(hln.name, code, 4, [0,0], [], [0], 1)
+
+      hln := getLabelHLN(&#x27;And&#x27;)
+      code := [$7C632038] -&gt; and r3, r3, r4
+      hln.ident := IFUNCDEF2(hln.name, code, 4, [0,0], [], [0], 1)
+
+      hln := getLabelHLN(&#x27;Odd&#x27;)
+      code := [$70630001,  -&gt; andi. r3, r3, 1
+      $7C6300D0] -&gt; neg r3, r3
+      hln.ident := IFUNCDEF2(hln.name, code, 8, [0], [], [0], 1)
+
+      hln := getLabelHLN(&#x27;Even&#x27;)
+      code := [$70630001,  -&gt; andi. r3, r3, 1
+      $3863FFFF] -&gt; addi r3, r3, -1
+      hln.ident := IFUNCDEF2(hln.name, code, 8, [0], [], [0], 1)
+
+      hln := getLabelHLN(&#x27;Link&#x27;)
+      code := [$9083FFF8] -&gt; stw r4, -8(r3)
+      hln.ident := IFUNCDEF2(hln.name, code, 4, [0,0], [], [0], 1)
+
+      hln := getLabelHLN(&#x27;Next&#x27;)
+      code := [$7C631B79,  -&gt; or. r3, r3, r3
+      $41820008,  -&gt; beq $ + 8
+      $8063FFF8] -&gt; lwz r3, -8(r3)
+      hln.ident := IFUNCDEF2(hln.name, code, 12, [0], [], [0], 1)
+
+      hln := getLabelHLN(&#x27;Eval&#x27;)
+      code := [$7C6903A6,  -&gt; mtctr r3
+      $4E800421] -&gt; bctrl
+      hln.ident := IFUNCDEF2(hln.name, code, 8, [0], [], [0], 1)
+
+      hln := getLabelHLN(&#x27;Mul&#x27;)
+      code := [$7C6321D6] -&gt; mullw r3, r3, r4
+      hln.ident := IFUNCDEF2(hln.name, code, 4, [0,0], [], [0], 1)
+
+      hln := getLabelHLN(&#x27;Div&#x27;)
+      code := [$7C6323D6] -&gt; divw r3, r3, r4
+      hln.ident := IFUNCDEF2(hln.name, code, 4, [0,0], [], [0], 1)
+
+      hln := getLabelHLN(&#x27;MouseX&#x27;)
+      code := [$A063000E] -&gt; lhz  r3, 14(r3)
+      hln.ident := IFUNCDEF2(hln.name, code, 4, [0], [], [0], 1)
+
+      hln := getLabelHLN(&#x27;MouseY&#x27;)
+      code := [$A063000C] -&gt; lhz  r3, 12(r3)
+      hln.ident := IFUNCDEF2(hln.name, code, 4, [0], [], [0], 1)
+
+      hln := getLabelHLN(&#x27;MsgCode&#x27;)
+      code := [$A06DFFBC] -&gt; lhz  r3, -68(r13)
+      hln.ident := IFUNCDEF2(hln.name, code, 4, [], [], [0], 1)
+
+      hln := getLabelHLN(&#x27;MsgQual&#x27;)
+      code := [$A06DFFBA] -&gt; lhz  r3, -70(r13)
+      hln.ident := IFUNCDEF2(hln.name, code, 4, [], [], [0], 1)
+
+      hln := getLabelHLN(&#x27;MsgIaddr&#x27;)
+      code := [$806DFFB8] -&gt; lwz  r3, -72(r13)
+      hln.ident := IFUNCDEF2(hln.name, code, 4, [], [], [0], 1)
+
+      hln := getLabelHLN(&#x27;Double&#x27;) -&gt; v45
+      code := [$C8230000] -&gt; lfd  f1, 0(r3)
+      hln.ident := IFUNCDEF2(hln.name, code, 4, [0], [], [1], 1)
+
+      hln := getLabelHLN(&#x27;PutDouble&#x27;) -&gt; v45
+      code := [$D8430000] -&gt; stfd  f2, 0(r3)
+      hln.ident := IFUNCDEF2(hln.name, code, 4, [0,1], [], [0], 1)
+
+      hln := getLabelHLN(&#x27;Ptr&#x27;) -&gt; v49, same as Long()
+      code := [$80630000] -&gt; lwz  r3, 0(r3)
+      hln.ident := IFUNCDEF2(hln.name, code, 4, [0], [], [0], 1)
+
+      hln := getLabelHLN(&#x27;PutPtr&#x27;) -&gt; v49, same as PutLong()
+      code := [$90830000] -&gt; stw  r4, 0(r3)
+      hln.ident := IFUNCDEF2(hln.name, code, 4, [0,0], [], [0], 1)
+
+      hln := getLabelHLN(&#x27;Float&#x27;) -&gt; v50
+      code := [$C8230000] -&gt; lfd  f1, 0(r3)
+      hln.ident := IFUNCDEF2(hln.name, code, 4, [0], [], [1], 1)
+
+      hln := getLabelHLN(&#x27;PutFloat&#x27;) -&gt; v50
+      code := [$D0230000] -&gt; stfs  f1, 0(r3)
+      hln.ident := IFUNCDEF2(hln.name, code, 4, [0,1], [], [0], 1)
+
+      hln := getLabelHLN(&#x27;Real&#x27;) -&gt; v50 same as Double
+      code := [$C8230000] -&gt; lfd  f1, 0(r3)
+      hln.ident := IFUNCDEF2(hln.name, code, 4, [0], [], [1], 1)
+
+      hln := getLabelHLN(&#x27;PutReal&#x27;) -&gt; v50 same as PutDouble
+      code := [$D8430000] -&gt; stfd  f2, 0(r3)
+      hln.ident := IFUNCDEF2(hln.name, code, 4, [0,1], [], [0], 1)
+
+      hln := getLabelHLN(&#x27;Fabs&#x27;) -&gt; v 1.5.4: now inlined.
+      code := [$FC200A10] -&gt; fabs f1, f1
+      hln.ident := IFUNCDEF2(hln.name, code, 4, [1], [], [1], 1)
+
+      -&gt; 2.2: is operator now
+      -&gt;hln := getLabelHLN(&#x27;Abs&#x27;) -&gt; v55
+      -&gt;code := [$7C64FE70,  -&gt; srawi, r4, r3, 31
+      -&gt;$7CA41A14,  -&gt; add r5, r4, r3
+      -&gt;$7CA32278] -&gt; xor,r3, r5, r4
+      -&gt;hln.ident := IFUNCDEF2(hln.name, code, 12, [0], [], [0], 1)
+
+      hln := getLabelHLN(&#x27;Sign&#x27;) -&gt; v55
+      code := [$6C648000,  -&gt; xoris r4, r3, -32768
+      $7C85FE70,  -&gt; srawi, r5, r4, 31
+      $7C650190] -&gt; subfze r3, r5
+      hln.ident := IFUNCDEF2(hln.name, code, 12, [0], [], [0], 1)
+
+      hln := getLabelHLN(&#x27;Bounds&#x27;) -&gt; v55
+      code := [$7CC41850,  -&gt; subf r6, r4, r3
+      $7CC7FE70,  -&gt; srawi r7, r6, 31
+      $7CC600D0,  -&gt; neg r6, r6
+      $7CC83838,  -&gt; and r8, r6, r7
+      $7C634214,  -&gt; add r3, r3, r8
+      $7CC32850,  -&gt; dubf r6, r3, r5
+      $7CC7FE70,  -&gt; srawi r7, r6, 31
+      $7CC83878,  -&gt; andc r8, r6, r7
+      $7C682850] -&gt; subf r3, r8, r5
+      hln.ident := IFUNCDEF2(hln.name, code, 36, [0,0,0], [], [0], 1)
+
+      hln := getLabelHLN(&#x27;Min&#x27;) -&gt; v55
+      code := [$6C858000,  -&gt; xoris r5, r4, -32768
+      $6C668000,  -&gt; xorsi r5, r3, -32768
+      $7CC62810,  -&gt; subfc r6, r6, r5
+      $7CA52910,  -&gt; subfe r5, r5, r5
+      $7CC62838,  -&gt; and r6, r6, r5
+      $7C661A14] -&gt; add r3, r6, r3
+      hln.ident := IFUNCDEF2(hln.name, code, 24, [0,0], [], [0], 1)
+
+      hln := getLabelHLN(&#x27;Max&#x27;) -&gt; v55
+      code := [$6C858000,  -&gt; xoris r5, r4, -32768
+      $6C668000,  -&gt; xoris r6, r3, -32768
+      $7CC62810,  -&gt; subfc r6, r6, r5
+      $7CA52910,  -&gt; subfe r5, r5, r5
+      $7CC62878,  -&gt; andc r6, r6, r5
+      $7C661A14] -&gt; add r3, r6, r3
+      hln.ident := IFUNCDEF2(hln.name, code, 24, [0,0], [], [0], 1)
+
+#ifdef PPC_PATCH_EXEC
+      
+      hln := getLabelHLN(&#x27;AddHead&#x27;) -&gt; v56
+      code := [$80A30000,  -&gt; lwz r5, 0(r3) # prev := list.head
+      $90830000,  -&gt; stw r4, 0(r3) # list.head := node
+      $90A40000,  -&gt; stw r5, 0(r4) # node.succ := prev
+      $90640004,  -&gt; stw r3, 4(r4) # node.pred := list
+      $90850004] -&gt; stw r4, 4(r5) # list.head.succ.pred := list.head
+      hln.ident := IFUNCDEF2(hln.name, code, 20, [0,0], [], [0], 1)
+
+      hln := getLabelHLN(&#x27;AddTail&#x27;) -&gt; v56
+      code := [$80A30008,  -&gt; lwz r5, 8(r3) # prev := list.tailpred
+      $90830008,  -&gt; stw r4, 8(r3) # list.tailpred := node
+      $90A40004,  -&gt; stw r5, 4(r4) # node.pred := prev
+      $38630004,  -&gt; addi r3, r3,4 # list+4
+      $90640000,  -&gt; stw r3, 0(r4) # node.succ := list+4
+      $90850000] -&gt; stw r4, 0(r5) # list.tailpred.pred.succ := list.tailpred
+      hln.ident := IFUNCDEF2(hln.name, code, 24, [0,0], [], [0], 1)
+
+      hln := getLabelHLN(&#x27;Remove&#x27;) -&gt; v56
+      code := [$80830000,  -&gt; lwz r4, 0(r3) # node.succ
+      $80630004,  -&gt; lwz r3, 4(r3) # node.pred
+      $90830000,  -&gt; stw r4, 0(r3) # node.pred.succ := node.succ
+      $90640004] -&gt; stw r3, 4(r4) # node.succ.pred := node.pred
+      hln.ident := IFUNCDEF2(hln.name, code, 16, [0], [], [0], 1)
+
+#endif
+
+      hln := getLabelHLN(&#x27;NewList&#x27;) -&gt; v56
+      code := [$38830004,  -&gt; addi r4, r3, 4
+      $38000000,  -&gt; addi r0, 0, 0
+      $90830000,  -&gt; stw r4, 0(r3) # head
+      $90030004,  -&gt; stw r0, 4(r3)
+      $90630008] -&gt; stw r3, 8(r3)
+      hln.ident := IFUNCDEF2(hln.name, code, 20, [0], [], [0], 1)
+
+      hln := getLabelHLN(&#x27;PutWide&#x27;) -&gt; v56
+      code := [$90830000,  -&gt; stw r4,0(r3)
+      $90A30004] -&gt; stw r5,4(r3)
+      hln.ident := IFUNCDEF2(hln.name, code, 8, [0,2], [], [0], 1)
+
+      hln := getLabelHLN(&#x27;Wide&#x27;) -&gt; v56
+      code := [$7C651B78,  -&gt; or r5,r3,r3
+      $80650000,  -&gt; lwz r3,0(r5)
+      $80850004] -&gt; lwz r4,4(r5)
+      hln.ident := IFUNCDEF2(hln.name, code, 12, [0], [], [2], 1)
+
+      hln := getLabelHLN(&#x27;UlongToWide&#x27;) -&gt; 2.1
+      code := [$7C641B78, -&gt; or r4,r3,r3
+      $38600000]          -&gt; addi r3,r0,0
+      hln.ident := IFUNCDEF2(hln.name, code, 8, [0], [], [2], 1)
+
+ENDPROC
+
+
+EXPORT PROC addPPCRegs()
+   DEF hln:PTR TO hln, r:PTR TO reg
+
+r:=[IDENT_REG,RX,0,0,&#x27;R0&#x27;,
+    IDENT_REG,RX,1,0,&#x27;R1&#x27;,
+    IDENT_REG,RX,2,0,&#x27;R2&#x27;,
+    IDENT_REG,RX,3,0,&#x27;R3&#x27;,
+    IDENT_REG,RX,4,0,&#x27;R4&#x27;,
+    IDENT_REG,RX,5,0,&#x27;R5&#x27;,
+    IDENT_REG,RX,6,0,&#x27;R6&#x27;,
+    IDENT_REG,RX,7,0,&#x27;R7&#x27;,
+    IDENT_REG,RX,8,0,&#x27;R8&#x27;,
+    IDENT_REG,RX,9,0,&#x27;R9&#x27;,
+    IDENT_REG,RX,10,0,&#x27;R10&#x27;,
+    IDENT_REG,RX,11,0,&#x27;R11&#x27;,
+    IDENT_REG,RX,12,0,&#x27;R12&#x27;,
+    IDENT_REG,RX,13,0,&#x27;R13&#x27;,
+    IDENT_REG,RX,14,0,&#x27;R14&#x27;,
+    IDENT_REG,RX,15,0,&#x27;R15&#x27;,
+    IDENT_REG,RX,16,0,&#x27;R16&#x27;,
+    IDENT_REG,RX,17,0,&#x27;R17&#x27;,
+    IDENT_REG,RX,18,0,&#x27;R18&#x27;,
+    IDENT_REG,RX,19,0,&#x27;R19&#x27;,
+    IDENT_REG,RX,20,0,&#x27;R20&#x27;,
+    IDENT_REG,RX,21,0,&#x27;R21&#x27;,
+    IDENT_REG,RX,22,0,&#x27;R22&#x27;,
+    IDENT_REG,RX,23,0,&#x27;R23&#x27;,
+    IDENT_REG,RX,24,0,&#x27;R24&#x27;,
+    IDENT_REG,RX,25,0,&#x27;R25&#x27;,
+    IDENT_REG,RX,26,0,&#x27;R26&#x27;,
+    IDENT_REG,RX,27,0,&#x27;R27&#x27;,
+    IDENT_REG,RX,28,0,&#x27;R28&#x27;,
+    IDENT_REG,RX,29,0,&#x27;R29&#x27;,
+    IDENT_REG,RX,30,0,&#x27;R30&#x27;,
+    IDENT_REG,RX,31,0,&#x27;R31&#x27;,
+
+    IDENT_REG,FPX,0,0,&#x27;F0&#x27;,
+    IDENT_REG,FPX,1,0,&#x27;F1&#x27;,
+    IDENT_REG,FPX,2,0,&#x27;F2&#x27;,
+    IDENT_REG,FPX,3,0,&#x27;F3&#x27;,
+    IDENT_REG,FPX,4,0,&#x27;F4&#x27;,
+    IDENT_REG,FPX,5,0,&#x27;F5&#x27;,
+    IDENT_REG,FPX,6,0,&#x27;F6&#x27;,
+    IDENT_REG,FPX,7,0,&#x27;F7&#x27;,
+    IDENT_REG,FPX,8,0,&#x27;F8&#x27;,
+    IDENT_REG,FPX,9,0,&#x27;F9&#x27;,
+    IDENT_REG,FPX,10,0,&#x27;F10&#x27;,
+    IDENT_REG,FPX,11,0,&#x27;F11&#x27;,
+    IDENT_REG,FPX,12,0,&#x27;F12&#x27;,
+    IDENT_REG,FPX,13,0,&#x27;F13&#x27;,
+    IDENT_REG,FPX,14,0,&#x27;F14&#x27;,
+    IDENT_REG,FPX,15,0,&#x27;F15&#x27;,
+    IDENT_REG,FPX,16,0,&#x27;F16&#x27;,
+    IDENT_REG,FPX,17,0,&#x27;F17&#x27;,
+    IDENT_REG,FPX,18,0,&#x27;F18&#x27;,
+    IDENT_REG,FPX,19,0,&#x27;F19&#x27;,
+    IDENT_REG,FPX,20,0,&#x27;F20&#x27;,
+    IDENT_REG,FPX,21,0,&#x27;F21&#x27;,
+    IDENT_REG,FPX,22,0,&#x27;F22&#x27;,
+    IDENT_REG,FPX,23,0,&#x27;F23&#x27;,
+    IDENT_REG,FPX,24,0,&#x27;F24&#x27;,
+    IDENT_REG,FPX,25,0,&#x27;F25&#x27;,
+    IDENT_REG,FPX,26,0,&#x27;F26&#x27;,
+    IDENT_REG,FPX,27,0,&#x27;F27&#x27;,
+    IDENT_REG,FPX,28,0,&#x27;F28&#x27;,
+    IDENT_REG,FPX,29,0,&#x27;F29&#x27;,
+    IDENT_REG,FPX,30,0,&#x27;F30&#x27;,
+    IDENT_REG,FPX,31,0,&#x27;F31&#x27;,
+
+    IDENT_REG,VX,0,0,&#x27;V0&#x27;,
+    IDENT_REG,VX,1,0,&#x27;V1&#x27;,
+    IDENT_REG,VX,2,0,&#x27;V2&#x27;,
+    IDENT_REG,VX,3,0,&#x27;V3&#x27;,
+    IDENT_REG,VX,4,0,&#x27;V4&#x27;,
+    IDENT_REG,VX,5,0,&#x27;V5&#x27;,
+    IDENT_REG,VX,6,0,&#x27;V6&#x27;,
+    IDENT_REG,VX,7,0,&#x27;V7&#x27;,
+    IDENT_REG,VX,8,0,&#x27;V8&#x27;,
+    IDENT_REG,VX,9,0,&#x27;V9&#x27;,
+    IDENT_REG,VX,10,0,&#x27;V10&#x27;,
+    IDENT_REG,VX,11,0,&#x27;V11&#x27;,
+    IDENT_REG,VX,12,0,&#x27;V12&#x27;,
+    IDENT_REG,VX,13,0,&#x27;V13&#x27;,
+    IDENT_REG,VX,14,0,&#x27;V14&#x27;,
+    IDENT_REG,VX,15,0,&#x27;V15&#x27;,
+    IDENT_REG,VX,16,0,&#x27;V16&#x27;,
+    IDENT_REG,VX,17,0,&#x27;V17&#x27;,
+    IDENT_REG,VX,18,0,&#x27;V18&#x27;,
+    IDENT_REG,VX,19,0,&#x27;V19&#x27;,
+    IDENT_REG,VX,20,0,&#x27;V20&#x27;,
+    IDENT_REG,VX,21,0,&#x27;V21&#x27;,
+    IDENT_REG,VX,22,0,&#x27;V22&#x27;,
+    IDENT_REG,VX,23,0,&#x27;V23&#x27;,
+    IDENT_REG,VX,24,0,&#x27;V24&#x27;,
+    IDENT_REG,VX,25,0,&#x27;V25&#x27;,
+    IDENT_REG,VX,26,0,&#x27;V26&#x27;,
+    IDENT_REG,VX,27,0,&#x27;V27&#x27;,
+    IDENT_REG,VX,28,0,&#x27;V28&#x27;,
+    IDENT_REG,VX,29,0,&#x27;V29&#x27;,
+    IDENT_REG,VX,30,0,&#x27;V30&#x27;,
+    IDENT_REG,VX,31,0,&#x27;V31&#x27;,
+    NIL]:reg
+
+   WHILE r.identID
+      hln := getLabelHLN(r.name)
+      hln.ident := r
+      r++
+   ENDWHILE
+
+ENDPROC
+
+
+
+
+EXPORT PROC addPPCInstructions()
+   aZZZ()
+   bZZZ()
+   cZZZ()
+   dZZZ()
+   eZZZ()
+   fZZZ()
+   iZZZ()
+   lZZZ()
+   mZZZ()
+   nZZZ()
+   oZZZ()
+   rZZZ()
+   sZZZ()
+   tZZZ()
+   xZZZ()
+   customZZZ()
+ENDPROC
+
+#define addZZZ(name,ops,punct,qcode) addBPPCInst([IDENT2_ASM,name,\
+                                     [ops,ListLen(ops),punct,qcode]:instppc]:asm)
+
+
+PROC addBPPCInst(a:PTR TO asm)
+   DEF hln:PTR TO hln
+   hln := getLabelHLN(a.name)
+   hln.ident2 := a
+ENDPROC
+
+
+
+/*         name        ops     P  create-code */
+
+/*
+** name: name
+**
+** ops:  0=Rx
+**       1=imm
+**       2=Fx
+**       3=label(pc)
+** P: 0=punctation optional
+**    1=no punctation allowed
+**    2=punctation required
+**
+*/
+
+PROC aZZZ()
+   addZZZ(&#x27;ADD&#x27;,      [RX,RX,RX],   PO, `ppcadd(A_,B_,C_,0,P_))
+   addZZZ(&#x27;ADDO&#x27;,     [RX,RX,RX],   PO, `ppcadd(A_,B_,C_,1,P_))
+   addZZZ(&#x27;ADDC&#x27;,     [RX,RX,RX],   PO, `ppcaddc(A_,B_,C_,0,P_))
+   addZZZ(&#x27;ADDCO&#x27;,    [RX,RX,RX],   PO, `ppcaddc(A_,B_,C_,1,P_))
+   addZZZ(&#x27;ADDE&#x27;,     [RX,RX,RX],   PO, `ppcadde(A_,B_,C_,0,P_))
+   addZZZ(&#x27;ADDEO&#x27;,    [RX,RX,RX],   PO, `ppcadde(A_,B_,C_,1,P_))
+   addZZZ(&#x27;ADDI&#x27;,     [RX,RX,DV],   PN, `IF B_ &lt;&gt; -1 THEN ppcaddi(A_,B_,C_) ELSE ppcaddilab(A_,GLOBREG,C_))
+   addZZZ(&#x27;ADDIC&#x27;,    [RX,RX,DV],   PN, `ppcaddic(A_,B_,C_))
+   addZZZ(&#x27;ADDIC&#x27;,    [RX,RX,DV],   PR, `ppcaddic(A_,B_,C_))
+   addZZZ(&#x27;ADDIS&#x27;,    [RX,RX,DV],   PN, `ppcaddis(A_,B_,C_))
+   addZZZ(&#x27;ADDME&#x27;,    [RX,RX],      PO, `ppcaddme(A_,B_,0,P_))
+   addZZZ(&#x27;ADDMEO&#x27;,   [RX,RX],      PO, `ppcaddme(A_,B_,1,P_))
+   addZZZ(&#x27;ADDZE&#x27;,    [RX,RX],      PO, `ppcaddze(A_,B_,0,P_))
+   addZZZ(&#x27;ADDZEO&#x27;,   [RX,RX],      PO, `ppcaddze(A_,B_,1,P_))
+   addZZZ(&#x27;AND&#x27;,      [RX,RX,RX],   PO, `ppcand(A_,B_,C_,P_))
+   addZZZ(&#x27;ANDC&#x27;,     [RX,RX,RX],   PO, `ppcandc(A_,B_,C_,P_))
+   addZZZ(&#x27;ANDI&#x27;,     [RX,RX,DV],   PR, `ppcandi_(A_,B_,C_))
+   addZZZ(&#x27;ANDIS&#x27;,    [RX,RX,DV],   PR, `ppcandis_(A_,B_,C_))
+ENDPROC
+PROC bZZZ()
+   addZZZ(&#x27;B&#x27;,        [LAB],        PN, `ppcblab(A_,0,0))
+ /*addZZZ(&#x27;BA&#x27;,       [LAB],        PN, `ppcb(A,1,0]) NOT SUPPORTED */
+   addZZZ(&#x27;BL&#x27;,       [LAB],        PN, `ppcblab(A_,0,1))
+ /*addZZZ(&#x27;BLA&#x27;,      [LAB],        PN, `ppcb(A,1,1]) NOT SUPPORTED */
+   addZZZ(&#x27;BC&#x27;,       [DV,DV,LAB],  PN, `ppcbclab(A_,B_,C_,0,0))
+ /*addZZZ(&#x27;BCA&#x27;,      [DV,DV,DV],   PN, `ppcbc(A_,B_,C_,1,0]) NOT SUPPORTED */
+   addZZZ(&#x27;BCL&#x27;,      [DV,DV,LAB],  PN, `ppcbclab(A_,B_,C_,0,1))
+ /*addZZZ(&#x27;BCLA&#x27;,     [DV,DV,DV],   PN, `ppcbc(A_,B_,C_,1,1]) NOT SUPPORTED */
+   addZZZ(&#x27;BCCTR&#x27;,    [DV,DV],      PN, `ppcbcctr(A_,B_,0))
+   addZZZ(&#x27;BCCTRL&#x27;,   [DV,DV],      PN, `ppcbcctr(A_,B_,1))
+   addZZZ(&#x27;BCLR&#x27;,     [DV,DV],      PN, `ppcbclr(A_,B_,0))
+   addZZZ(&#x27;BCLRL&#x27;,    [DV,DV],      PN, `ppcbclr(A_,B_,1))
+ENDPROC
+PROC cZZZ()
+   addZZZ(&#x27;CMP&#x27;,  [DV,DV,RX,RX],    PN, `ppccmp(A_,B_,C_,D_))
+   addZZZ(&#x27;CMPI&#x27;, [DV,DV,RX,DV],    PN, `ppccmpi(A_,B_,C_,D_))
+   addZZZ(&#x27;CMPL&#x27;, [DV,DV,RX,RX],    PN, `ppccmpl(A_,B_,C_,D_))
+   addZZZ(&#x27;CMPLI&#x27;, [DV,DV,RX,DV],   PN, `ppccmpli(A_,B_,C_,D_))
+   addZZZ(&#x27;CNTLZD&#x27;,   [RX,RX],      PO, `ppccntlzd(A_,B_,P_)) -&gt; 64
+   addZZZ(&#x27;CNTLZW&#x27;,   [RX,RX],      PO, `ppccntlzw(A_,B_,P_))
+   addZZZ(&#x27;CRAND&#x27;,    [DV,DV,DV],   PN, `ppccrand(A_,B_,C_))
+   addZZZ(&#x27;CRANDC&#x27;,   [DV,DV,DV],   PN, `ppccrandc(A_,B_,C_))
+   addZZZ(&#x27;CREQV&#x27;,    [DV,DV,DV],   PN, `ppccreqv(A_,B_,C_))
+   addZZZ(&#x27;CRNAND&#x27;,   [DV,DV,DV],   PN, `ppccrnand(A_,B_,C_))
+   addZZZ(&#x27;CRNOR&#x27;,    [DV,DV,DV],   PN, `ppccrnor(A_,B_,C_))
+   addZZZ(&#x27;CROR&#x27;,     [DV,DV,DV],   PN, `ppccror(A_,B_,C_))
+   addZZZ(&#x27;CRORC&#x27;,    [DV,DV,DV],   PN, `ppccrorc(A_,B_,C_))
+   addZZZ(&#x27;CRXOR&#x27;,    [DV,DV,DV],   PN, `ppccrxor(A_,B_,C_))
+ENDPROC
+PROC dZZZ()
+   addZZZ(&#x27;DCBA&#x27;,     [RX,RX],      PN, `ppcdcba(A_,B_))
+   addZZZ(&#x27;DCBF&#x27;,     [RX,RX],      PN, `ppcdcbf(A_,B_))
+   addZZZ(&#x27;DCBI&#x27;,     [RX,RX],      PN, `ppcdcbi(A_,B_))
+   addZZZ(&#x27;DCBST&#x27;,    [RX,RX],      PN, `ppcdcbst(A_,B_))
+   addZZZ(&#x27;DCBT&#x27;,     [RX,RX],      PN, `ppcdcbt(A_,B_))
+   addZZZ(&#x27;DCBTST&#x27;,   [RX,RX],      PN, `ppcdcbtst(A_,B_))
+   addZZZ(&#x27;DCBZ&#x27;,     [RX,RX],      PN, `ppcdcbz(A_,B_))
+   addZZZ(&#x27;DIVD&#x27;,   [RX,RX,RX],     PO, `ppcdivd(A_,B_,C_,0,P_)) -&gt; 64
+   addZZZ(&#x27;DIVDO&#x27;,  [RX,RX,RX],     PO, `ppcdivd(A_,B_,C_,1,P_)) -&gt; 64
+   addZZZ(&#x27;DIVDU&#x27;,  [RX,RX,RX],     PO, `ppcdivdu(A_,B_,C_,0,P_)) -&gt; 64
+   addZZZ(&#x27;DIVDOU&#x27;, [RX,RX,RX],     PO, `ppcdivdu(A_,B_,C_,1,P_)) -&gt; 64
+   addZZZ(&#x27;DIVW&#x27;,   [RX,RX,RX],     PO, `ppcdivw(A_,B_,C_,0,P_))
+   addZZZ(&#x27;DIVWO&#x27;,  [RX,RX,RX],     PO, `ppcdivw(A_,B_,C_,1,P_))
+   addZZZ(&#x27;DIVWU&#x27;,  [RX,RX,RX],     PO, `ppcdivwu(A_,B_,C_,0,P_))
+   addZZZ(&#x27;DIVWUO&#x27;, [RX,RX,RX],     PO, `ppcdivwu(A_,B_,C_,1,P_))
+ENDPROC
+PROC eZZZ()
+   addZZZ(&#x27;ECIWX&#x27;,  [RX,RX,RX],     PN, `ppceciwx(A_,B_,C_))
+   addZZZ(&#x27;ECOWX&#x27;,  [RX,RX,RX],     PN, `ppcecowx(A_,B_,C_))
+   addZZZ(&#x27;EIEIO&#x27;,  [],             PN, `ppceieio())
+   addZZZ(&#x27;EQV&#x27;,    [RX,RX,RX],     PO, `ppceqv(A_,B_,C_,P_))
+   addZZZ(&#x27;EXTSB&#x27;,  [RX,RX],        PO, `ppcextsb(A_,B_,P_))
+   addZZZ(&#x27;EXTSH&#x27;,  [RX,RX],        PO, `ppcextsh(A_,B_,P_))
+   addZZZ(&#x27;EXTSW&#x27;,  [RX,RX],        PO, `ppcextsw(A_,B_,P_)) -&gt; 64
+ENDPROC
+PROC fZZZ()
+   addZZZ(&#x27;FABS&#x27;,   [FPX,FPX],      PO, `ppcfabs(A_,B_,P_))
+   addZZZ(&#x27;FADD&#x27;,   [FPX,FPX,FPX],  PO, `ppcfadd(A_,B_,C_,P_))
+   addZZZ(&#x27;FADDS&#x27;,  [FPX,FPX,FPX],  PO, `ppcfadds(A_,B_,C_,P_))
+   addZZZ(&#x27;FCFID&#x27;,  [FPX,FPX],      PO, `ppcfcfid(A_,B_,P_))
+   addZZZ(&#x27;FCMPO&#x27;,  [DV,FPX,FPX],   PN, `ppcfcmpo(A_,B_,C_))
+   addZZZ(&#x27;FCMPU&#x27;,  [DV,FPX,FPX],   PN, `ppcfcmpu(A_,B_,C_))
+   addZZZ(&#x27;FCTID&#x27;,  [FPX,FPX],      PO, `ppcfctid(A_,B_,P_)) -&gt; 64
+   addZZZ(&#x27;FCTIDZ&#x27;, [FPX,FPX],      PO, `ppcfctidz(A_,B_,P_)) -&gt; 64
+   addZZZ(&#x27;FCTIW&#x27;,  [FPX,FPX],      PO, `ppcfctiw(A_,B_,P_))
+   addZZZ(&#x27;FCTIWZ&#x27;, [FPX,FPX],      PO, `ppcfctiwz(A_,B_,P_))
+   addZZZ(&#x27;FDIV&#x27;,   [FPX,FPX,FPX],  PO, `ppcfdiv(A_,B_,C_,P_))
+   addZZZ(&#x27;FDIVS&#x27;,  [FPX,FPX,FPX],  PO, `ppcfdivs(A_,B_,C_,P_))
+   addZZZ(&#x27;FMADD&#x27;,  [FPX,FPX,FPX,FPX], PO, `ppcfmadd(A_,B_,C_,D_,P_))
+   addZZZ(&#x27;FMADDS&#x27;, [FPX,FPX,FPX,FPX], PO, `ppcfmadds(A_,B_,C_,D_,P_))
+   addZZZ(&#x27;FMR&#x27;,    [FPX,FPX],      PO, `ppcfmr(A_,B_,P_))
+   addZZZ(&#x27;FMSUB&#x27;,  [FPX,FPX,FPX,FPX], PO, `ppcfmsub(A_,B_,C_,D_,P_))
+   addZZZ(&#x27;FMSUBS&#x27;, [FPX,FPX,FPX,FPX], PO, `ppcfmsubs(A_,B_,C_,D_,P_))
+   addZZZ(&#x27;FMUL&#x27;,   [FPX,FPX,FPX],  PO, `ppcfmul(A_,B_,C_,P_))
+   addZZZ(&#x27;FMULS&#x27;,  [FPX,FPX,FPX],  PO, `ppcfmuls(A_,B_,C_,P_))
+   addZZZ(&#x27;FNABS&#x27;,  [FPX,FPX],      PO, `ppcfnabs(A_,B_,P_))
+   addZZZ(&#x27;FNEG&#x27;,   [FPX,FPX],      PO, `ppcfneg(A_,B_,P_))
+   addZZZ(&#x27;FNMADD&#x27;, [FPX,FPX,FPX,FPX], PO, `ppcfnmadd(A_,B_,C_,D_,P_))
+   addZZZ(&#x27;FNMADDS&#x27;,[FPX,FPX,FPX,FPX], PO, `ppcfnmadds(A_,B_,C_,D_,P_))
+   addZZZ(&#x27;FNMSUB&#x27;, [FPX,FPX,FPX,FPX], PO, `ppcfnmsub(A_,B_,C_,D_,P_))
+   addZZZ(&#x27;FNMSUBS&#x27;,[FPX,FPX,FPX,FPX], PO, `ppcfnmsubs(A_,B_,C_,D_,P_))
+   addZZZ(&#x27;FRES&#x27;,   [FPX,FPX],      PO, `ppcfres(A_,B_,P_))
+   addZZZ(&#x27;FRSP&#x27;,   [FPX,FPX],      PO, `ppcfrsp(A_,B_,P_))
+   addZZZ(&#x27;FRSQRTE&#x27;, [FPX,FPX],     PO, `ppcfrsqrte(A_,B_,P_))
+   addZZZ(&#x27;FSEL&#x27;,   [FPX,FPX,FPX,FPX], PO, `ppcfsel(A_,B_,C_,D_,P_))
+   addZZZ(&#x27;FSQRT&#x27;,  [FPX,FPX],      PO, `ppcfsqrt(A_,B_,P_))
+   addZZZ(&#x27;FSQRTS&#x27;, [FPX,FPX],      PO, `ppcfsqrts(A_,B_,P_))
+   addZZZ(&#x27;FSUB&#x27;,   [FPX,FPX,FPX],  PO, `ppcfsub(A_,B_,C_,P_))
+   addZZZ(&#x27;FSUBS&#x27;,  [FPX,FPX,FPX],  PO, `ppcfsubs(A_,B_,C_,P_))
+ENDPROC
+PROC iZZZ()
+   addZZZ(&#x27;ICBI&#x27;,   [RX,RX],        PN, `ppcicbi(A_,B_))
+   addZZZ(&#x27;ISYNC&#x27;,  [],             PN, `ppcisync())
+ENDPROC
+PROC lZZZ()
+   addZZZ(&#x27;LBZ&#x27;,    [RX,RX,DV],   PN, `ppclbz(A_,B_,C_))
+   addZZZ(&#x27;LBZU&#x27;,   [RX,RX,DV],   PN, `ppclbzu(A_,B_,C_))
+   addZZZ(&#x27;LBZUX&#x27;,  [RX,RX,RX],   PN, `ppclbzux(A_,B_,C_))
+   addZZZ(&#x27;LBZX&#x27;,   [RX,RX,RX],   PN, `ppclbzx(A_,B_,C_))
+   addZZZ(&#x27;LD&#x27;,     [RX,RX,DV],   PN, `ppcld(A_,B_,C_)) -&gt; 64
+   addZZZ(&#x27;LDARX&#x27;,  [RX,RX,RX],   PN, `ppcldarx(A_,B_,C_)) -&gt; 64
+   addZZZ(&#x27;LDU&#x27;,    [RX,RX,DV],   PN, `ppcldu(A_,B_,C_)) -&gt; 64
+   addZZZ(&#x27;LDUX&#x27;,   [RX,RX,RX],   PN, `ppcldux(A_,B_,C_)) -&gt; 64
+   addZZZ(&#x27;LDX&#x27;,    [RX,RX,RX],   PN, `ppcldx(A_,B_,C_)) -&gt; 64
+   addZZZ(&#x27;LFD&#x27;,    [FPX,RX,DV],   PN, `ppclfd(A_,B_,C_))
+   addZZZ(&#x27;LFDU&#x27;,   [FPX,RX,DV],   PN, `ppclfdu(A_,B_,C_))
+   addZZZ(&#x27;LFDUX&#x27;,  [FPX,RX,RX],   PN, `ppclfdux(A_,B_,C_))
+   addZZZ(&#x27;LFDX&#x27;,   [FPX,RX,RX],   PN, `ppclfdx(A_,B_,C_))
+   addZZZ(&#x27;LFS&#x27;,    [FPX,RX,DV],   PN, `ppclfs(A_,B_,C_))
+   addZZZ(&#x27;LFSU&#x27;,   [FPX,RX,DV],   PN, `ppclfsu(A_,B_,C_))
+   addZZZ(&#x27;LFSUX&#x27;,  [FPX,RX,RX],   PN, `ppclfsux(A_,B_,C_))
+   addZZZ(&#x27;LFSX&#x27;,   [FPX,RX,RX],   PN, `ppclfsx(A_,B_,C_))
+   addZZZ(&#x27;LHA&#x27;,    [RX,RX,DV],   PN, `ppclha(A_,B_,C_))
+   addZZZ(&#x27;LHAU&#x27;,   [RX,RX,DV],   PN, `ppclhau(A_,B_,C_))
+   addZZZ(&#x27;LHAUX&#x27;,  [RX,RX,RX],   PN, `ppclhaux(A_,B_,C_))
+   addZZZ(&#x27;LHAX&#x27;,   [RX,RX,RX],   PN, `ppclhax(A_,B_,C_))
+   addZZZ(&#x27;LHBRX&#x27;,  [RX,RX,RX],   PN, `ppclhbrx(A_,B_,C_))
+   addZZZ(&#x27;LHZ&#x27;,    [RX,RX,DV],   PN, `ppclhz(A_,B_,C_))
+   addZZZ(&#x27;LHZU&#x27;,   [RX,RX,DV],   PN, `ppclhzu(A_,B_,C_))
+   addZZZ(&#x27;LHZUX&#x27;,  [RX,RX,RX],   PN, `ppclhzux(A_,B_,C_))
+   addZZZ(&#x27;LHZX&#x27;,   [RX,RX,RX],   PN, `ppclhzx(A_,B_,C_))
+   addZZZ(&#x27;LMW&#x27;,    [RX,RX,DV],   PN, `ppclmw(A_,B_,C_))
+   addZZZ(&#x27;LSWI&#x27;,   [RX,RX,DV],   PN, `ppclswi(A_,B_,C_))
+   addZZZ(&#x27;LSWX&#x27;,   [RX,RX,RX],   PN, `ppclswx(A_,B_,C_))
+   addZZZ(&#x27;LWA&#x27;,    [RX,RX,DV],   PN, `ppclwa(A_,B_,C_)) -&gt; 64
+   addZZZ(&#x27;LWARX&#x27;,  [RX,RX,RX],   PN, `ppclwarx(A_,B_,C_)) -&gt; 64
+   addZZZ(&#x27;LWAUX&#x27;,  [RX,RX,RX],   PN, `ppclwaux(A_,B_,C_)) -&gt; 64
+   addZZZ(&#x27;LWAX&#x27;,   [RX,RX,RX],   PN, `ppclwax(A_,B_,C_)) -&gt; 64
+   addZZZ(&#x27;LWBRX&#x27;,  [RX,RX,RX],   PN, `ppclwbrx(A_,B_,C_))
+   addZZZ(&#x27;LWZ&#x27;,    [RX,RX,DV],   PN, `IF B_ &lt;&gt; -1 THEN ppclwz(A_,B_,C_) ELSE ppclwzlab(A_,GLOBREG,C_)) -&gt; support for glob too.
+   addZZZ(&#x27;LWZU&#x27;,   [RX,RX,DV],   PN, `ppclwzu(A_,B_,C_))
+   addZZZ(&#x27;LWZUX&#x27;,  [RX,RX,RX],   PN, `ppclwzux(A_,B_,C_))
+   addZZZ(&#x27;LWZX&#x27;,   [RX,RX,RX],   PN, `ppclwzx(A_,B_,C_))
+ENDPROC
+PROC mZZZ()
+   addZZZ(&#x27;MCRF&#x27;,   [DV,DV],     PN, `ppcmcrf(A_,B_))
+   addZZZ(&#x27;MCRFS&#x27;,   [DV,DV],    PN, `ppcmcrfs(A_,B_))
+   addZZZ(&#x27;MCRXR&#x27;,   [DV],       PN, `ppcmcrxr(A_))
+   addZZZ(&#x27;MFCR&#x27;,    [DV],       PN, `ppcmfcr(A_))
+   addZZZ(&#x27;MFFS&#x27;,    [DV],       PO, `ppcmffs(A_,P_))
+   addZZZ(&#x27;MFMSR&#x27;,   [RX],       PN, `ppcmfmsr(A_))
+   addZZZ(&#x27;MFSPR&#x27;,   [RX,DV],    PN, `ppcmfspr(A_,B_))
+   addZZZ(&#x27;MFSR&#x27;,    [RX,DV],    PN, `ppcmfsr(A_,B_))
+   addZZZ(&#x27;MFSRIN&#x27;,  [RX,RX],    PN, `ppcmfsrin(A_,B_))
+   addZZZ(&#x27;MFTB&#x27;,    [RX,DV],    PN, `ppcmftb(A_,B_))
+   addZZZ(&#x27;MTCRF&#x27;,   [DV,RX],    PN, `ppcmtcrf(B_,A_))
+   addZZZ(&#x27;MTFSB0&#x27;,  [DV],       PO, `ppcmtfsb0(A_,P_))
+   addZZZ(&#x27;MTFSB1&#x27;,  [DV],       PO, `ppcmtfsb1(A_,P_))
+   addZZZ(&#x27;MTFSF&#x27;,   [DV,FPX],   PO, `ppcmtfsf(A_,B_,P_))
+   addZZZ(&#x27;MTFSFI&#x27;,  [DV,DV],    PO, `ppcmtfsfi(A_,B_,P_))
+   addZZZ(&#x27;MTMSR&#x27;,   [RX],       PN, `ppcmtmsr(A_))
+   addZZZ(&#x27;MTSPR&#x27;,   [DV,RX],    PN, `ppcmtspr(B_,A_))
+   addZZZ(&#x27;MTSR&#x27;,    [DV,RX],    PN, `ppcmtsr(B_,A_))
+   addZZZ(&#x27;MTSRIN&#x27;,  [RX,RX],    PN, `ppcmtsrin(A_,B_))
+   addZZZ(&#x27;MULHD&#x27;,   [RX,RX,RX],  PO, `ppcmulhd(A_,B_,C_,P_)) -&gt; 64
+   addZZZ(&#x27;MULHDU&#x27;,  [RX,RX,RX],  PO, `ppcmulhdu(A_,B_,C_,P_)) -&gt; 64
+   addZZZ(&#x27;MULHW&#x27;,   [RX,RX,RX],  PO, `ppcmulhw(A_,B_,C_,P_))
+   addZZZ(&#x27;MULHWU&#x27;,  [RX,RX,RX],  PO, `ppcmulhwu(A_,B_,C_,P_))
+   addZZZ(&#x27;MULLD&#x27;,   [RX,RX,RX],  PO, `ppcmulld(A_,B_,C_,0,P_)) -&gt; 64
+   addZZZ(&#x27;MULLDO&#x27;,  [RX,RX,RX],  PO, `ppcmulld(A_,B_,C_,1,P_)) -&gt; 64
+   addZZZ(&#x27;MULLI&#x27;,   [RX,RX,DV],  PN, `ppcmulli(A_,B_,C_))
+   addZZZ(&#x27;MULLW&#x27;,   [RX,RX,RX],  PO, `ppcmullw(A_,B_,C_,0,P_))
+   addZZZ(&#x27;MULLWO&#x27;,  [RX,RX,RX],  PO, `ppcmullw(A_,B_,C_,1,P_))
+ENDPROC
+PROC nZZZ()
+   addZZZ(&#x27;NAND&#x27;,    [RX,RX,RX],    PO, `ppcnand(B_,A_,C_,P_))
+   addZZZ(&#x27;NEG&#x27;,     [RX,RX],       PO, `ppcneg(A_,B_,0,P_))
+   addZZZ(&#x27;NEGO&#x27;,    [RX,RX],       PO, `ppcneg(A_,B_,1,P_))
+   addZZZ(&#x27;NOR&#x27;,     [RX,RX,RX],    PO, `ppcnor(B_,A_,C_,P_))
+ENDPROC
+PROC oZZZ()
+   addZZZ(&#x27;OR&#x27;,      [RX,RX,RX],  PO, `ppcor(B_,A_,C_,P_))
+   addZZZ(&#x27;ORC&#x27;,     [RX,RX,RX],  PO, `ppcorc(B_,A_,C_,P_))
+   addZZZ(&#x27;ORI&#x27;,     [RX,RX,DV],  PN, `ppcori(B_,A_,C_))
+   addZZZ(&#x27;ORIS&#x27;,    [RX,RX,DV],  PN, `ppcoris(B_,A_,C_))
+ENDPROC
+PROC rZZZ()
+   addZZZ(&#x27;RFI&#x27;,     [],            PN, `ppcrfi())
+   addZZZ(&#x27;RLDCL&#x27;, [RX,RX,DV,DV],   PO, `ppcrldcl(A_,B_,C_,D_,P_)) -&gt; 64 -&gt; ??
+   addZZZ(&#x27;RLDCR&#x27;, [RX,RX,RX,DV],   PO, `ppcrldcr(A_,B_,C_,D_,P_)) -&gt; 64 -&gt; ??
+   addZZZ(&#x27;RLDIC&#x27;, [RX,RX,DV,DV],   PO, `ppcrldic(A_,B_,C_,D_,P_)) -&gt; 64 -&gt; ??
+   addZZZ(&#x27;RLDICL&#x27;,[RX,RX,DV,DV],   PO, `ppcrldicl(A_,B_,C_,D_,P_)) -&gt; 64 -&gt; ??
+   addZZZ(&#x27;RLDICR&#x27;,[RX,RX,DV,DV],   PO, `ppcrldicr(A_,B_,C_,D_,P_)) -&gt; 64 -&gt; ??
+   addZZZ(&#x27;RLDIMI&#x27;,[RX,RX,DV,DV],   PO, `ppcrldimi(A_,B_,C_,D_,P_)) -&gt; 64 -&gt; ??
+   addZZZ(&#x27;RLWIMI&#x27;,[RX,RX,DV,DV,DV],PO, `ppcrlwimi(B_,A_,C_,D_,E_,P_))
+   addZZZ(&#x27;RLWINM&#x27;,[RX,RX,DV,DV,DV],PO, `ppcrlwinm(B_,A_,C_,D_,E_,P_))
+   addZZZ(&#x27;RLWNM&#x27;, [RX,RX,DV,DV,DV],PO, `ppcrlwnm(B_,A_,C_,D_,E_,P_))
+ENDPROC
+PROC sZZZ()
+   addZZZ(&#x27;SC&#x27;,       [],        PO, `ppcsc())
+   addZZZ(&#x27;SLBIA&#x27;,    [],        PO, `ppcslbia()) -&gt; 64
+   addZZZ(&#x27;SLBIE&#x27;,    [RX],      PO, `ppcslbie(A_)) -&gt; 64
+   addZZZ(&#x27;SLD&#x27;,      [RX,RX,DV], PO, `ppcsld(B_,A_,C_,P_)) -&gt; 64
+   addZZZ(&#x27;SLW&#x27;,      [RX,RX,RX], PO, `ppcslw(B_,A_,C_,P_))
+   addZZZ(&#x27;SRAD&#x27;,     [RX,RX,RX], PO, `ppcsrad(B_,A_,C_,P_)) -&gt; 64
+   addZZZ(&#x27;SRADI&#x27;,    [RX,RX,DV], PO, `ppcsradi(B_,A_,C_,P_)) -&gt; 64
+   addZZZ(&#x27;SRAW&#x27;,     [RX,RX,RX], PO, `ppcsraw(B_,A_,C_,P_))
+   addZZZ(&#x27;SRAWI&#x27;,    [RX,RX,DV], PO, `ppcsrawi(B_,A_,C_,P_))
+   addZZZ(&#x27;SRD&#x27;,      [RX,RX,RX], PO, `ppcsrd(B_,A_,C_,P_)) -&gt; 64
+   addZZZ(&#x27;SRW&#x27;,      [RX,RX,RX], PO, `ppcsrw(B_,A_,C_,P_))
+   addZZZ(&#x27;STB&#x27;,      [RX,RX,DV], PN, `ppcstb(A_,B_,C_))
+   addZZZ(&#x27;STBU&#x27;,     [RX,RX,DV], PN, `ppcstbu(A_,B_,C_))
+   addZZZ(&#x27;STBUX&#x27;,    [RX,RX,RX], PN, `ppcstbux(A_,B_,C_))
+   addZZZ(&#x27;STBX&#x27;,     [RX,RX,RX], PN, `ppcstbx(A_,B_,C_))
+   addZZZ(&#x27;STD&#x27;,      [RX,RX,DV], PN, `ppcstd(A_,B_,C_)) -&gt; 64
+   addZZZ(&#x27;STDCX&#x27;,    [RX,RX,RX], PR, `ppcstdcx_(A_,B_,C_)) -&gt; 64
+   addZZZ(&#x27;STDU&#x27;,     [RX,RX,DV], PN, `ppcstdu(A_,B_,C_)) -&gt; 64
+   addZZZ(&#x27;STDUX&#x27;,    [RX,RX,RX], PN, `ppcstdux(A_,B_,C_)) -&gt; 64
+   addZZZ(&#x27;STDX&#x27;,     [RX,RX,RX], PN, `ppcstdx(A_,B_,C_)) -&gt; 64
+   addZZZ(&#x27;STFD&#x27;,     [FPX,RX,DV], PN, `ppcstfd(A_,B_,C_))
+   addZZZ(&#x27;STFDU&#x27;,    [FPX,RX,DV], PN, `ppcstfdu(A_,B_,C_))
+   addZZZ(&#x27;STFDUX&#x27;,   [FPX,RX,RX], PN, `ppcstfdux(A_,B_,C_))
+   addZZZ(&#x27;STFDX&#x27;,    [FPX,RX,RX], PN, `ppcstfdx(A_,B_,C_))
+   addZZZ(&#x27;STFIWX&#x27;,   [FPX,RX,RX], PN, `ppcstfiwx(A_,B_,C_))
+   addZZZ(&#x27;STFS&#x27;,     [FPX,RX,DV], PN, `ppcstfs(A_,B_,C_))
+   addZZZ(&#x27;STFSU&#x27;,    [FPX,RX,DV], PN, `ppcstfsu(A_,B_,C_))
+   addZZZ(&#x27;STFSUX&#x27;,   [FPX,RX,RX], PN, `ppcstfsux(A_,B_,C_))
+   addZZZ(&#x27;STFSX&#x27;,    [FPX,RX,RX], PN, `ppcstfsx(A_,B_,C_))
+   addZZZ(&#x27;STH&#x27;,      [RX,RX,DV], PN, `ppcsth(A_,B_,C_))
+   addZZZ(&#x27;STHBRX&#x27;,   [RX,RX,RX], PN, `ppcsthbrx(A_,B_,C_))
+   addZZZ(&#x27;STHU&#x27;,     [RX,RX,DV], PN, `ppcsthu(A_,B_,C_))
+   addZZZ(&#x27;STHUX&#x27;,    [RX,RX,RX], PN, `ppcsthux(A_,B_,C_))
+   addZZZ(&#x27;STHX&#x27;,     [RX,RX,RX], PN, `ppcsthx(A_,B_,C_))
+   addZZZ(&#x27;STMW&#x27;,     [RX,RX,DV], PN, `ppcstmw(A_,B_,C_))
+   addZZZ(&#x27;STSWI&#x27;,    [RX,RX,DV], PN, `ppcstswi(A_,B_,C_))
+   addZZZ(&#x27;STSWX&#x27;,    [RX,RX,RX], PN, `ppcstswx(A_,B_,C_))
+   addZZZ(&#x27;STW&#x27;,      [RX,RX,DV], PN, `IF B_ &lt;&gt; -1 THEN ppcstw(A_,B_,C_) ELSE ppcstwlab(A_,GLOBREG,C_)) -&gt; supports globals too
+   addZZZ(&#x27;STWBRX&#x27;,   [RX,RX,RX], PN, `ppcstwbrx(A_,B_,C_))
+   addZZZ(&#x27;STWCX&#x27;,    [RX,RX,RX], PR, `ppcstwcx_(A_,B_,C_))
+   addZZZ(&#x27;STWU&#x27;,     [RX,RX,DV], PN, `ppcstwu(A_,B_,C_))
+   addZZZ(&#x27;STWUX&#x27;,    [RX,RX,RX], PN, `ppcstwux(A_,B_,C_))
+   addZZZ(&#x27;STWX&#x27;,     [RX,RX,RX], PN, `ppcstwx(A_,B_,C_))
+   addZZZ(&#x27;SUBF&#x27;,     [RX,RX,RX], PO, `ppcsubf(A_,B_,C_,0,P_))
+   addZZZ(&#x27;SUBFO&#x27;,    [RX,RX,RX], PO, `ppcsubf(A_,B_,C_,1,P_))
+   addZZZ(&#x27;SUBFC&#x27;,    [RX,RX,RX], PO, `ppcsubfc(A_,B_,C_,0,P_))
+   addZZZ(&#x27;SUBFCO&#x27;,   [RX,RX,RX], PO, `ppcsubfc(A_,B_,C_,1,P_))
+   addZZZ(&#x27;SUBFE&#x27;,    [RX,RX,RX], PO, `ppcsubfe(A_,B_,C_,0,P_))
+   addZZZ(&#x27;SUBFEO&#x27;,   [RX,RX,RX], PO, `ppcsubfe(A_,B_,C_,1,P_))
+   addZZZ(&#x27;SUBFIC&#x27;,   [RX,RX,DV], PN, `ppcsubfic(A_,B_,C_))
+   addZZZ(&#x27;SUBFME&#x27;,   [RX,RX],   PO, `ppcsubfme(A_,B_,0,P_))
+   addZZZ(&#x27;SUBFMEO&#x27;,  [RX,RX],   PO, `ppcsubfme(A_,B_,1,P_))
+   addZZZ(&#x27;SUBFZE&#x27;,   [RX,RX],   PO, `ppcsubfze(A_,B_,0,P_))
+   addZZZ(&#x27;SUBFZEO&#x27;,  [RX,RX],   PO, `ppcsubfze(A_,B_,1,P_))
+   addZZZ(&#x27;SYNC&#x27;,     [],        PN, `ppcsync())
+ENDPROC
+PROC tZZZ()
+   addZZZ(&#x27;TD&#x27;,       [DV,RX,RX],PN, `ppctd(A_,B_,C_)) -&gt; 64
+   addZZZ(&#x27;TDI&#x27;,      [DV,RX,DV],PN, `ppctdi(A_,B_,C_)) -&gt; 64
+   addZZZ(&#x27;TLBIA&#x27;,    [],        PN, `ppctlbia())
+   addZZZ(&#x27;TLBIE&#x27;,    [DV],      PN, `ppctlbie(A_))
+   addZZZ(&#x27;TLBSYNC&#x27;,  [],        PN, `ppctlbsync())
+   addZZZ(&#x27;TW&#x27;,       [DV,RX,RX], PN, `ppctw(A_,B_,C_))
+   addZZZ(&#x27;TWI&#x27;,      [DV,RX,DV], PN, `ppctwi(A_,B_,C_))
+ENDPROC
+PROC xZZZ()
+   addZZZ(&#x27;XOR&#x27;,      [RX,RX,RX], PO, `ppcxor(B_,A_,C_,P_))
+   addZZZ(&#x27;XORI&#x27;,     [RX,RX,DV], PN, `ppcxori(B_,A_,C_))
+   addZZZ(&#x27;XORIS&#x27;,    [RX,RX,DV], PN, `ppcxoris(B_,A_,C_))
+ENDPROC
+PROC customZZZ()
+   addZZZ(&#x27;LA&#x27;,     [RX,LAB],     PN, `ppclacode(A_,B_))
+   addZZZ(&#x27;LIW&#x27;,    [RX,DV],      PN, `ppcliw(A_,B_))    -&gt; v48
+   addZZZ(&#x27;NOP&#x27;,    [],           PN, `ppcor(0,0,0,0))   -&gt; v48
+ENDPROC
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

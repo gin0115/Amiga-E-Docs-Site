@@ -1,0 +1,129 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>multiGUI_Demo3.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-aepd42.html">AEPD42</a> &rsaquo; multiGUI_Demo3.e</div><h1>File: <code>multiGUI_Demo3.e</code></h1><p class="meta">103 lines · project <a href="../examples/pkg-aepd42.html"><code>AEPD42</code></a></p><p class="pathctx">AEPD42/EPD42/Programme/multiGUI/Demos/multiGUI_Demo3.e</p><p class="prose">This example show how to use the module &#x27;multiGUI&#x27; Note: multiGUI is an module which enable you to use several easyGUIs at the same time (user could use every <a href="../modules/window.html">window</a> at any time). Shows how to use dynamic-created GUIs and adds CtrlC() handling. This only demonstrates how to overwrite some methods. O</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/dos.html">dos/dos</a></li><li><a href="../modules/easygui.html">tools/easygui</a></li></ul></div><h2>Source</h2><pre class="code">-&gt; This example show how to use the module &#x27;multiGUI&#x27;
+-&gt; Note: multiGUI is an module which enable you to use several easyGUIs
+-&gt;       at the same time (user could use every window at any time).
+-&gt;       Shows how to use dynamic-created GUIs and adds CtrlC() handling.
+-&gt;       This only demonstrates how to overwrite some methods. Of course
+-&gt;       the CtrlC()-check can also be done in the mainloop.
+
+OPT OSVERSION=37
+MODULE &#x27;dos/dos&#x27;
+MODULE &#x27;tools/EasyGUI&#x27;,
+       &#x27;tools/exceptions&#x27;,
+       &#x27;tools/multiGUI&#x27;
+
+ENUM RID_CloseAll=1,
+     RID_Cancel,
+     RID_Save,
+     RID_CtrlC
+
+
+OBJECT multiGUI_CC OF multiGUI
+ENDOBJECT
+
+PROC waitSignal(sigs) OF multiGUI_CC IS Wait(sigs OR SIGBREAKF_CTRL_C)
+
+PROC unknownSignal(sig) OF multiGUI_CC
+  IF (sig=SIGBREAKF_CTRL_C) THEN self.removeAll(RID_CtrlC)
+ENDPROC -1
+
+
+PROC main() HANDLE
+RAISE &quot;SCR&quot; IF LockPubScreen()=NIL,
+      &quot;MEM&quot; IF String()=NIL
+
+DEF mg:PTR TO multiGUI_CC,
+    i,
+    gl,gh:PTR TO guihandle,
+    pubscreen=NIL
+
+  NEW mg.multiGUI()
+  mg.setStdScreen(pubscreen:=LockPubScreen(NIL))
+  ScreenToFront(pubscreen)
+
+  PrintF(&#x27;5 easyGUI-GUIs with multiGUI!\n&#x27;+
+         &#x27;This time dynamical created.\n\n&#x27;+
+         &#x27;Also try CtrlC here\n\n&#x27;)
+
+  -&gt; Open 5 GUIs with remove-functions &#x27;winclose&#x27; and &#x27;std_disposegui&#x27;
+  -&gt; and winnumber as GUI-info
+  FOR i:=1 TO 5
+    gl:=mg.addGUI(StringF(String(30),&#x27;Win #\d&#x27;,i),
+      NEW [ROWS,
+         -&gt;NEW [TEXT,&#x27;Also Try Ctrl-C&#x27;,NIL,TRUE,RESIZEX],
+         NEW [SBUTTON,RID_CloseAll,&#x27;Close GUIs&#x27;],
+         NEW [EQCOLS,
+            NEW [SBUTTON,RID_Save,&#x27;Save&#x27;],
+            NEW [SBUTTON,RID_Cancel,&#x27;Cancel&#x27;]
+         ]
+      ],i)
+
+    -&gt; Install Procs for this gui. winclose() is called before the
+    -&gt; gui is closed (easygui/cleangui()) and std_disposegui() after
+    -&gt; this.
+    mg.setGUIProcs(gl,{winclose},{std_disposegui})
+
+    -&gt; Displace windows
+      gh:=mg.getGUIHandle(gl)
+      MoveWindow(gh.wnd,Rnd(200)-100,Rnd(100)-50)
+  ENDFOR
+
+  -&gt; Wait for user-action. Stop when all gui&#x27;s are closed.
+  WHILE mg.getCounter()&gt;0 DO mg.wait()
+
+EXCEPT DO
+
+  END mg
+  IF pubscreen THEN UnlockPubScreen(NIL,pubscreen)
+
+  report_exception()
+
+ENDPROC
+
+-&gt; Print out some Informations about the closed gui.
+-&gt; If a special button is pressed, all gui&#x27;s are removed.
+PROC winclose(mg:PTR TO multiGUI,gl,res)
+
+  PrintF(&#x27;window \d closed; reason : &#x27;,mg.getGUIInfo(gl))
+  SELECT res
+    CASE RID_CloseAll
+      PrintF(&#x27;Someone hit the &gt;Close GUIs&lt;-Button\n&#x27;)
+      mg.removeAll(RID_CloseAll)
+    CASE RID_Save   ; PrintF(&#x27;&gt;Save&lt; pressed\n&#x27;)
+    CASE RID_Cancel ; PrintF(&#x27;&gt;Cancel&lt; pressed\n&#x27;)
+    CASE RID_CtrlC  ; PrintF(&#x27;CtrlC pressed\n&#x27;)
+    DEFAULT         ; PrintF(&#x27;Unknown\n&#x27;)
+  ENDSELECT
+
+ENDPROC
+
+-&gt; Disposes a dynamical created gui.
+PROC std_disposegui(mg:PTR TO multiGUI,gl,res) IS
+  disposegui(mg.getGUIDescription(gl))
+
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

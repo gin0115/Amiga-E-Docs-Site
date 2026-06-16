@@ -1,0 +1,454 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>AmigaAttributes.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-portable.html">PortablE</a> &rsaquo; AmigaAttributes.e</div><h1>File: <code>AmigaAttributes.e</code></h1><p class="meta">428 lines · project <a href="../examples/pkg-portable.html"><code>PortablE</code></a></p><p class="pathctx">PortablE/PortablE/Examples/std/Shell/AmigaAttributes.e</p><p class="prose">AmigaAttributes.e 03-09-2012 by Christopher Steven Handley.</p><h2>Source</h2><pre class="code">/* AmigaAttributes.e 03-09-2012 by Christopher Steven Handley.
+*/
+/*
+	This program can backup &amp; restore Amiga protection flags, comments &amp; hard/soft links.
+*/
+
+/* TO DO:
+ - Maybe a Scan mode?
+*/
+
+OPT POINTER
+MODULE &#x27;std/pShellParameters&#x27;, &#x27;std/pShell&#x27;, &#x27;std/cPath&#x27;
+MODULE &#x27;CSH/pAmigaDos&#x27;, &#x27;dos&#x27;, &#x27;dos/dos&#x27;
+
+/* Executable&#x27;s AmigaOS-standard version string */
+STATIC version_string = &#x27;\0$VER: AmigaAttributes 18-02-2012 - By Chris S Handley&#x27;
+
+/* Shell arguments definition */
+STATIC shellArgs = &#x27;Folder/A, Backup/S, Restore/S, List/S, OnlyLinks/S, DeleteLinks/S, Quiet/S&#x27;
+-&gt;index:            0         1         2          3       4            5              6
+
+STATIC AmigaAttributesStoreName = &#x27;AmigaAttributesBackup&#x27;
+
+CONST DEBUG = FALSE
+
+PROC main() RETURNS ret
+	DEF hostFolder:ARRAY OF CHAR, folder:OWNS STRING, optBackup:BOOL, optRestore:BOOL, optList:BOOL, optDeleteLinks:BOOL
+	DEF streamPath:OWNS STRING
+	
+	-&gt;parse parameters
+	IF ParseParams(shellArgs) = FALSE THEN Raise(&quot;ARGS&quot;)
+	hostFolder  := GetParam(0)
+	optBackup      := GetParam(1) &lt;&gt; NILA
+	optRestore     := GetParam(2) &lt;&gt; NILA
+	optList        := GetParam(3) &lt;&gt; NILA
+	optOnlyLinks   := GetParam(4) &lt;&gt; NILA
+	optDeleteLinks := GetParam(5) &lt;&gt; NILA
+	optQuiet       := GetParam(6) &lt;&gt; NILA
+	
+	-&gt;sanity check parameters
+	-&gt;IF StrLen(hostFolder) = 0  THEN Throw(&quot;ARGS&quot;, &#x27;Folder parameter is empty&#x27;)
+	IF      optBackup AND optRestore THEN Throw(&quot;ARGS&quot;, &#x27;Cannot Backup &amp; Restore at the same time!&#x27;)
+	IF optDeleteLinks AND optRestore THEN Throw(&quot;ARGS&quot;, &#x27;Cannot DeleteLinks &amp; Restore at the same time!&#x27;)
+	IF optBackup OR optRestore OR optList OR optDeleteLinks = FALSE THEN Throw(&quot;ARGS&quot;, &#x27;Did not specify Backup or Restore or List or DeleteLinks&#x27;)
+	
+	-&gt;perform request
+	NEW stream.new(), file.new(), dir.new()
+	
+	folder := ImportDirPath(hostFolder)
+	streamPath := StrJoin(folder, AmigaAttributesStoreName)
+	IF optBackup
+		DeletePath(streamPath)
+		IF stream.open(streamPath, FALSE) = FALSE THEN errorPath(stream, streamPath, &#x27;open&#x27;)	-&gt;readOnly=FALSE
+		stream.setSize(0)
+		writeStreamVALUE(2)	-&gt;streamVersion
+		
+		baseFolder := folder
+		RecurseDir(folder, funcStoreFileAttr, funcStoreDirAttr)
+		
+		stream.close()
+		Print(&#x27;Finished backing-up Amiga \s for folder &quot;\s&quot;.\n&#x27;, IF optOnlyLinks THEN &#x27;links&#x27; ELSE &#x27;attributes/links&#x27;, hostFolder)
+	ENDIF
+	IF optList
+		IF stream.open(streamPath, TRUE) = FALSE THEN errorPath(stream, streamPath, &#x27;open&#x27;)		-&gt;readOnly=TRUE
+		
+		baseFolder := folder
+		list()
+		
+		stream.close()
+		Print(&#x27;Finished listing the backup for folder &quot;\s&quot;.\n&#x27;, hostFolder)
+	ENDIF
+	IF optDeleteLinks
+		IF stream.open(streamPath, TRUE) = FALSE THEN errorPath(stream, streamPath, &#x27;open&#x27;)		-&gt;readOnly=TRUE
+		
+		baseFolder := folder
+		deleteLinks()
+		
+		stream.close()
+		Print(&#x27;Finished deleting links for folder &quot;\s&quot;.\n&#x27;, hostFolder)
+	ENDIF
+	IF optRestore
+		IF stream.open(streamPath, TRUE) = FALSE THEN errorPath(stream, streamPath, &#x27;open&#x27;)		-&gt;readOnly=TRUE
+		
+		baseFolder := folder
+		restoreFileAttrs()
+		
+		stream.close()
+		Print(&#x27;Finished restoring Amiga \s for folder &quot;\s&quot;.\n&#x27;, IF optOnlyLinks THEN &#x27;links&#x27; ELSE &#x27;attributes/links&#x27;, hostFolder)
+	ENDIF
+FINALLY
+	SELECT exception
+	CASE 0
+		ret := SHELL_RET_OK
+	CASE &quot;ARGS&quot;
+		-&gt;(error already reported) so finish gracefully
+		IF exceptionInfo THEN Print(&#x27;ERROR:  \s\n&#x27;, exceptionInfo)
+		ret := SHELL_RET_ERROR
+	CASE &quot;BRK&quot;
+		Print(&#x27;User break\n&#x27;)
+		ret := SHELL_RET_ERROR
+	CASE &quot;MEM&quot;
+		Print(&#x27;ERROR:  Ran out of memory\n&#x27;)
+		ret := SHELL_RET_FAIL
+	CASE &quot;FILE&quot;
+		Print(&#x27;ERROR:  Fatal file/dir error \s\n&#x27;, IF exceptionInfo THEN exceptionInfo ELSE &#x27;&#x27;)
+		ret := SHELL_RET_FAIL
+	DEFAULT
+		PrintException()
+		ret := SHELL_RET_FAIL
+	ENDSELECT
+	
+	END stream, file, dir
+	
+	END folder
+	END streamPath
+ENDPROC
+
+PROC errorPath(file:PTR TO cPath, path:ARRAY OF CHAR, action:ARRAY OF CHAR)
+	DEF hostPath:OWNS STRING
+	
+	hostPath := ExportPath(path)
+	Print(&#x27;ERROR:  Failed to \s the \s &quot;\s&quot; because of \s in \s.\n&#x27;, action, IF IsFile(path) THEN &#x27;file&#x27; ELSE &#x27;dir&#x27;, hostPath, file.infoFailureReason(), file.infoFailureOrigin())
+	Raise(&quot;FILE&quot;)
+FINALLY
+	END hostPath
+ENDPROC
+
+PROC warnPath(file:PTR TO cPath, path:ARRAY OF CHAR, action:ARRAY OF CHAR)
+	DEF hostPath:OWNS STRING
+	
+	hostPath := ExportPath(path)
+	Print(&#x27;WARNING:  Failed to \s the \s &quot;\s&quot; because of \s in \s.\n&#x27;, action, IF IsFile(path) THEN &#x27;file&#x27; ELSE &#x27;dir&#x27;, hostPath, file.infoFailureReason(), file.infoFailureOrigin())
+FINALLY
+	END hostPath
+ENDPROC
+
+/*****************************/
+
+DEF stream:OWNS PTR TO cFile, file:OWNS PTR TO cHostFile, dir:OWNS PTR TO cHostDir	-&gt;Host classes used to reduce overhead
+
+PROC writeStream(buffer:ARRAY, lengthInBytes) IS stream.setPosition(stream.write(buffer, lengthInBytes))
+PROC  readStream(buffer:ARRAY, lengthInBytes) IS stream.setPosition(stream. read(buffer, lengthInBytes))
+
+PROC writeStreamVALUE(value)
+	DEF buffer[1]:ARRAY OF LONG
+	
+	buffer[0] := EndianSwapLONG(value!!LONG)
+	writeStream(buffer, SIZEOF LONG)
+ENDPROC
+
+PROC readStreamVALUE() RETURNS value
+	DEF buffer[1]:ARRAY OF LONG
+	
+	readStream(buffer, SIZEOF LONG)
+	value := EndianSwapLONG(buffer[0])
+ENDPROC
+
+PROC writeStreamString(string:ARRAY OF CHAR)
+	DEF len
+	
+	writeStreamVALUE(len := StrLen(string))
+	writeStream(string, len * SIZEOF CHAR)
+ENDPROC
+
+PROC readStreamString() RETURNS string:OWNS STRING
+	DEF len
+	
+	NEW string[len := readStreamVALUE()]
+	readStream(string, len * SIZEOF CHAR)
+	SetStr(string, len)
+ENDPROC
+
+/*****************************/
+
+FUNC funcStoreFileAttr(filePath:STRING) OF funcRecurseFile
+	storeFileAttr(filePath, file)
+ENDFUNC
+
+FUNC funcStoreDirAttr(dirPath:STRING) OF funcRecurseDir RETURNS scanDir:BOOL
+	scanDir := NOT storeFileAttr(dirPath, dir)
+ENDFUNC
+
+/*****************************/
+
+DEF baseFolder:STRING, optQuiet:BOOL, optOnlyLinks:BOOL
+
+PROC storeFileAttr(path:STRING, fileDir:PTR TO cPath) RETURNS isLink:BOOL
+	DEF attr, prot, comment:ARRAY OF CHAR, link:STRING, linkIsSoft:BOOL, save:BOOL
+	DEF relPath:OWNS STRING, temp:OWNS STRING
+	
+	isLink := FALSE
+	
+	NEW relPath[EstrLen(path) - EstrLen(baseFolder)]
+	StrCopy(relPath, path, ALL, EstrLen(baseFolder))
+	
+	IF StrCmpNoCase(relPath, AmigaAttributesStoreName) THEN RETURN
+	
+	IF fileDir.open(path, TRUE) = FALSE		-&gt;readOnly=TRUE
+		warnPath(fileDir, path, &#x27;open&#x27;)
+		RETURN TRUE
+	ENDIF
+	
+	attr    := fileDir.getAttributes()
+	prot    := fileDir.queryExtra(&quot;ATTR&quot;)
+	comment := fileDir.queryExtra(&quot;COMM&quot;) !!ARRAY OF CHAR ; IF comment = NILA THEN comment := &#x27;&#x27;
+	IF link := fileDir.queryExtra(&quot;SLNK&quot;) !!STRING
+		linkIsSoft := TRUE
+	ELSE IF link := fileDir.queryExtra(&quot;HLNK&quot;) !!STRING
+		linkIsSoft := FALSE
+	ENDIF
+	
+	IF link
+		save := TRUE
+		IF DEBUG THEN Print(&#x27;DEBUG: File &quot;\s&quot; has \s link to &quot;\s&quot;.\n&#x27;, relPath, IF linkIsSoft THEN &#x27;soft&#x27; ELSE &#x27;hard&#x27;, link)
+		
+	ELSE IF attr AND CPA_HIDE
+		save := TRUE
+		
+	ELSE IF prot AND (FIBF_SCRIPT OR FIBF_PURE OR FIBF_ARCHIVE)
+		save := TRUE
+		
+	ELSE IF (prot AND FIBF_EXECUTE = 0) = FastIsFile(relPath)	-&gt;checks if Execute flag is set for files or cleared for dirs
+		save := TRUE
+		
+	ELSE IF StrLen(comment) &gt; 0
+		save := TRUE
+	ELSE
+		save := FALSE
+	ENDIF
+	
+	IF save
+		IF (link &lt;&gt; NILS) OR NOT optOnlyLinks
+			writeStreamString(relPath)
+			writeStreamVALUE(link &lt;&gt; NILS)
+			IF link
+				IF optQuiet = FALSE THEN Print(&#x27;Backed-up link for &quot;\s&quot;\n&#x27;, temp := ExportPath(relPath)) ; END temp
+				writeStreamString(link)
+				writeStreamVALUE( linkIsSoft)
+			ELSE
+				IF optQuiet = FALSE THEN Print(&#x27;Backed-up attributes of &quot;\s&quot;\n&#x27;, temp := ExportPath(relPath)) ; END temp
+				writeStreamVALUE(attr)
+				writeStreamVALUE(prot)
+				writeStreamString(comment)
+			ENDIF
+		ENDIF
+	ENDIF
+	
+	fileDir.close()
+	isLink := (link &lt;&gt; NILS)
+FINALLY
+	END relPath, temp
+ENDPROC
+
+PROC restoreFileAttrs()
+	DEF streamSize:BIGVALUE, streamVersion
+	DEF relPath:OWNS STRING, attr, prot, comment:OWNS STRING, link:OWNS STRING, linkIsSoft:BOOL, hostLink:OWNS STRING
+	DEF path:OWNS STRING, fileDir:PTR TO cPath
+	DEF hostPath:OWNS STRING, lock:BPTR, success:BOOL
+	DEF cdLock:BPTR, temp:OWNS STRING
+	
+	cdLock := NIL
+	
+	streamVersion := readStreamVALUE()
+	streamSize := stream.getSize()
+	WHILE stream.getPosition() &lt; streamSize
+		relPath := readStreamString()
+		IF readStreamVALUE()	-&gt;is link
+			link       := readStreamString()
+			linkIsSoft := readStreamVALUE() &lt;&gt; FALSE
+linkIsSoft := TRUE	-&gt;###
+		ELSE
+			attr    := readStreamVALUE()
+			prot    := readStreamVALUE()
+			comment := readStreamString()
+		ENDIF
+		
+		END hostLink
+		IF link
+			IF streamVersion &gt;= 2
+				hostLink := ExportPath(link)
+			ELSE
+				hostLink := PASS link
+				link := ImportFilePath(hostLink)	-&gt;assumes the link is a file, which doesn&#x27;t matter with the current cPath implementation
+			ENDIF
+		ENDIF
+		
+		NEW path[EstrLen(baseFolder) + EstrLen(relPath)]
+		StrCopy(path, baseFolder)
+		StrAdd( path, relPath)
+		
+		IF link
+			IF DEBUG THEN Print(&#x27;DEBUG: File &quot;\s&quot; has \s link to &quot;\s&quot;.\n&#x27;, temp := ExportPath(relPath), IF linkIsSoft THEN &#x27;soft&#x27; ELSE &#x27;hard&#x27;, hostLink) ; END temp
+			
+			temp := ExtractSubPath(path)
+			hostPath := ExportPath(temp) ; END temp
+			IF lock := Lock(hostPath, SHARED_LOCK) ; END hostPath
+				cdLock := CurrentDir(lock)
+				
+				IF ExistsPath(path, /*fileOrDir*/ TRUE) THEN DeletePath(path, FALSE, /*fileOrDir*/ TRUE)
+				
+				success := CreateLink(FindName(path), link, IF linkIsSoft THEN &quot;SLNK&quot; ELSE &quot;HLNK&quot;)
+				
+				UnLock(CurrentDir(cdLock)) ; cdLock := NIL
+			ELSE
+				success := FALSE
+			ENDIF
+			IF success
+				IF optQuiet = FALSE THEN Print(&#x27;Restored link for &quot;\s&quot;\n&#x27;, temp := ExportPath(relPath)) ; END temp
+			ELSE
+				Print(&#x27;WARNING:  Failed to create \s link from \s &quot;\s&quot; to &quot;\s&quot;.\n&#x27;, IF linkIsSoft THEN &#x27;soft&#x27; ELSE &#x27;hard&#x27;, IF IsFile(path) THEN &#x27;file&#x27; ELSE &#x27;dir&#x27;, temp := ExportPath(relPath), hostLink) ; END temp
+			ENDIF
+			
+		ELSE IF optOnlyLinks = FALSE
+			fileDir := IF IsFile(relPath) THEN file ELSE dir
+			IF ExistsPath(path) = FALSE
+				Print(&#x27;WARNING:  Missing \s &quot;\s&quot;.\n&#x27;, IF IsFile(path) THEN &#x27;file&#x27; ELSE &#x27;dir&#x27;, temp := ExportPath(relPath)) ; END temp
+				
+			ELSE IF fileDir.open(path) = FALSE
+				warnPath(fileDir, path, &#x27;open&#x27;)
+			ELSE
+				IF fileDir.setAttributes(attr)          = FALSE THEN warnPath(fileDir, path, &#x27;set attribute flags of&#x27;)
+				IF fileDir.changeExtra(&quot;ATTR&quot;, prot)    = FALSE THEN warnPath(fileDir, path, &#x27;set protection flags of&#x27;)
+				IF fileDir.changeExtra(&quot;COMM&quot;, comment) = FALSE THEN warnPath(fileDir, path, &#x27;set comment of&#x27;)
+				fileDir.close()
+			ENDIF
+		ENDIF
+		
+		END relPath, comment, link, path, hostPath
+	ENDWHILE
+FINALLY
+	IF cdLock THEN UnLock(CurrentDir(cdLock))
+	
+	END relPath, comment, link, hostLink
+	END path
+	END hostPath
+	END temp
+ENDPROC
+
+PROC deleteLinks()
+	DEF streamSize:BIGVALUE, streamVersion
+	DEF relPath:OWNS STRING, link:OWNS STRING, linkIsSoft:BOOL
+	DEF path:OWNS STRING, temp:OWNS STRING
+	
+	streamVersion := readStreamVALUE()
+	streamSize := stream.getSize()
+	WHILE stream.getPosition() &lt; streamSize
+		relPath := readStreamString()
+		IF readStreamVALUE()
+			link       := readStreamString()
+			linkIsSoft := readStreamVALUE() &lt;&gt; FALSE
+		ELSE
+			readStreamVALUE()
+			readStreamVALUE()
+			temp := readStreamString() ; END temp
+		ENDIF
+		
+		NEW path[EstrLen(baseFolder) + EstrLen(relPath)]
+		StrCopy(path, baseFolder)
+		StrAdd( path, relPath)
+		
+		IF link
+			IF ExistsPath(path, /*fileOrDir*/ TRUE)
+				IF DeletePath(path, FALSE, /*fileOrDir*/ TRUE) = FALSE THEN Print(&#x27;WARNING:  Failed to delete &quot;\s&quot;.\n&#x27;, temp := ExportPath(relPath)) ; END temp
+			ENDIF
+		ENDIF
+		
+		END relPath, link, path
+	ENDWHILE
+FINALLY
+	END relPath, link
+	END path, temp
+ENDPROC
+
+PROC list()
+	DEF streamSize:BIGVALUE, streamVersion
+	DEF relPath:OWNS STRING, attr, prot, comment:OWNS STRING, link:OWNS STRING, linkIsSoft:BOOL, hostLink:OWNS STRING
+	DEF path:OWNS STRING, temp:OWNS STRING
+	
+-&gt;Print(&#x27;#1\n&#x27;)-&gt;###
+	streamVersion := readStreamVALUE()
+	streamSize := stream.getSize()
+	WHILE stream.getPosition() &lt; streamSize
+-&gt;Print(&#x27;#2\n&#x27;)
+		relPath := readStreamString()
+-&gt;Print(&#x27;#3\n&#x27;)
+		IF readStreamVALUE()
+			link       := readStreamString()
+			linkIsSoft := readStreamVALUE() &lt;&gt; FALSE
+		ELSE
+			attr    := readStreamVALUE()
+			prot    := readStreamVALUE()
+			comment := readStreamString()
+		ENDIF
+		
+		END hostLink
+		IF link
+			IF streamVersion &gt;= 2
+				hostLink := ExportPath(link)
+			ELSE
+				hostLink := PASS link
+				link := ImportFilePath(hostLink)	-&gt;assumes the link is a file, which doesn&#x27;t matter with the current cPath implementation
+			ENDIF
+		ENDIF
+		
+-&gt;Print(&#x27;#4\n&#x27;)
+		NEW path[EstrLen(baseFolder) + EstrLen(relPath)]
+		StrCopy(path, baseFolder)
+		StrAdd( path, relPath)
+		
+-&gt;Print(&#x27;#5\n&#x27;)
+		IF link
+-&gt;Print(&#x27;#6\n&#x27;)
+			Print(&#x27;\s &quot;\s&quot; had \s link to &quot;\s&quot;.\n&#x27;, IF FastIsFile(relPath) THEN &#x27;File&#x27; ELSE &#x27;Dir &#x27;, temp := ExportPath(relPath), IF linkIsSoft THEN &#x27;soft&#x27; ELSE &#x27;hard&#x27;, hostLink) ; END temp
+			
+		ELSE IF optOnlyLinks = FALSE
+-&gt;Print(&#x27;#7\n&#x27;)
+			Print(&#x27;\s &quot;\s&quot; had backed-up flags/comment stored.\n&#x27;, IF FastIsFile(relPath) THEN &#x27;File&#x27; ELSE &#x27;Dir &#x27;, temp := ExportPath(relPath)) ; END temp
+		ENDIF
+		
+-&gt;Print(&#x27;#8\n&#x27;)
+		END relPath, comment, link, path
+-&gt;Print(&#x27;#9\n&#x27;)
+	ENDWHILE
+FINALLY
+	END relPath, comment, link, hostLink
+	END path, temp
+ENDPROC
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

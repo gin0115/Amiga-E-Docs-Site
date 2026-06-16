@@ -1,0 +1,160 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Forth.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-amigae30a-fr.html">amigae30a_fr</a> &rsaquo; Forth.e</div><h1>File: <code>Forth.e</code></h1><p class="meta">134 lines · project <a href="../examples/pkg-amigae30a-fr.html"><code>amigae30a_fr</code></a></p><p class="pathctx">amigae30a_fr/AmigaE30f/Sources/Lang/Forth.e</p><p class="prose">TinyForth, un petit intepréteur Forth pas de fonction *encore*, peut être utilisé comme une calculatrice avec pile pour le plaisir. Se termine avec <a href="../modules/muse.html#const-quit">QUIT</a>&lt;cr&gt; ou &lt;ctrl-c&gt;&lt;cr&gt; Traduction : Olivier ANH (BUGSS)</p><h2>Source</h2><pre class="code">/* TinyForth, un petit intepréteur Forth
+   pas de fonction *encore*, peut être utilisé comme une calculatrice
+   avec pile pour le plaisir.
+   Se termine avec QUIT&lt;cr&gt; ou &lt;ctrl-c&gt;&lt;cr&gt;
+   Traduction : Olivier ANH (BUGSS)                                    */
+
+CONST MAXSTACK=1000,MAXRSTACK=200
+ENUM NO_MES,OK,ER_UNDERFLOW,ER_OVERFLOW,ER_SYM
+
+DEF con,stop=FALSE,error=OK,crflag=TRUE,
+    inp[100]:STRING,
+    item[50]:STRING, item2[50]:STRING,
+    stack[MAXSTACK]:ARRAY OF LONG, rstack[MAXRSTACK]:ARRAY OF LONG,
+    sp:PTR TO LONG, rsp:PTR TO LONG
+
+PROC main()
+  con:=Open(&#x27;CON:0/11/640/100/TinyForth&#x27;,1005)
+  IF con
+    stdout:=con
+    WriteF(&#x27;Interpréteur TinyForth v0.1 (c) 1992 by $#%!\n&#x27;)
+    sp:=stack; rsp:=rstack
+    REPEAT
+      puterror()
+      WriteF(&#x27;&gt;&#x27;)
+      ReadStr(con,inp)
+      IF CtrlC() THEN stopnow()
+      error:=OK; crflag:=TRUE
+      eval(inp)
+    UNTIL stop
+    Close(con)
+  ENDIF
+ENDPROC
+
+PROC eval(c)
+  DEF pos,end,symlong,p,i,j,k
+  pos:=c; end:=c+EstrLen(c)
+  WHILE (pos&lt;end) AND (error&lt;=OK)
+    IF CtrlC() THEN stopnow()
+    pos:=getsym(pos)
+    StrCopy(item2,item,ALL)
+    UpperStr(item2)
+    StrAdd(item2,&#x27;   &#x27;,3)
+    symlong:=Long(item2)
+    SELECT symlong
+      CASE &quot;DUP &quot;; i:=pop(); push(i); push(i)
+      CASE &quot;DROP&quot;; pop()
+      CASE &quot;SWAP&quot;; i:=pop(); j:=pop(); push(i); push(j)
+      CASE &quot;OVER&quot;; i:=pop(); j:=pop(); push(j); push(i); push(j)
+      CASE &quot;ROT &quot;; i:=pop(); j:=pop(); k:=pop(); push(j); push(i); push(k)
+      CASE &quot;PICK&quot;; i:=pop(); IF sp-(i*4)&lt;stack THEN error:=ER_UNDERFLOW ELSE push(sp[-i])
+      CASE &quot;ROLL&quot;; i:=pop(); j:=sp[-i]; IF sp-(i*4)&lt;stack THEN error:=ER_UNDERFLOW ELSE FOR k:=-i TO -2 DO sp[k]:=sp[k+1]; pop(); push(j)
+      CASE &quot;?DUP&quot;; i:=pop(); push(i); IF i THEN push(i)
+      CASE &quot;DEPT&quot;; push(sp-stack/4)
+      CASE &quot;&gt;R  &quot;; rpush(pop())
+      CASE &quot;R&gt;  &quot;; push(rpop())
+      CASE &quot;R@  &quot;; i:=rpop(); push(i); rpush(i)
+
+      CASE &quot;&lt;   &quot;; push(Not(pop()&lt;=pop()))
+      CASE &quot;=   &quot;; push(pop()=pop())
+      CASE &quot;&gt;   &quot;; push(Not(pop()&gt;=pop()))
+      CASE &quot;0&lt;  &quot;; push(pop()&lt;0)
+      CASE &quot;0=  &quot;; push(0=pop())
+      CASE &quot;0&gt;  &quot;; push(pop()&gt;0)
+      CASE &quot;D&lt;  &quot;; push(Not(pop()&lt;=pop()))
+      CASE &quot;U&lt;  &quot;; push(Not(pop()&lt;=pop()))
+      CASE &quot;NOT &quot;; push(Not(pop()))
+
+      CASE &quot;.   &quot;; WriteF(&#x27;\d &#x27;,pop()); crflag:=FALSE
+      CASE &quot;CR  &quot;; WriteF(&#x27;\n&#x27;); crflag:=TRUE
+      CASE &quot;EMIT&quot;; WriteF(&#x27;\c&#x27;,pop()); crflag:=FALSE
+      CASE &quot;TYPE&quot;; i:=pop(); j:=pop(); FOR k:=1 TO i DO WriteF(&#x27;\c&#x27;,j[]++)
+      CASE &quot;SPAC&quot;; IF Long(item2+4)=&quot;E   &quot; THEN i:=1 ELSE i:=pop(); FOR j:=1 TO i DO WriteF(&#x27; &#x27;); crflag:=FALSE
+
+      CASE &quot;+   &quot;; push(pop()+pop())
+      CASE &quot;-   &quot;; i:=pop(); push(pop()-i)
+      CASE &quot;*   &quot;; push(Mul(pop(),pop()))
+      CASE &quot;/   &quot;; i:=pop(); push(Div(pop(),i))
+
+      CASE &quot;ABOR&quot;; sp:=stack
+      CASE &quot;QUIT&quot;; stop:=TRUE
+      DEFAULT
+        IF Int(item)=$2E22      /* .&quot; construction */
+          crflag:=FALSE
+          Write(stdout,item+2,EstrLen(item)-3)
+        ELSE
+          IF item[0]=&quot;-&quot; THEN p:=item+1 ELSE p:=item
+          i:=Val(p,{j})
+          IF (j=0) THEN error:=ER_SYM
+          IF p&lt;&gt;item THEN i:=Mul(i,-1)
+          push(i)
+       ENDIF
+    ENDSELECT
+  ENDWHILE
+ENDPROC
+
+PROC pop() RETURN IF sp&lt;=stack THEN error:=ER_UNDERFLOW ELSE sp[]--
+PROC rpop() RETURN IF rsp&lt;=rstack THEN error:=ER_UNDERFLOW ELSE rsp[]--
+PROC push(val); IF MAXSTACK*4+stack&lt;=sp THEN error:=ER_OVERFLOW ELSE sp[]++:=val; ENDPROC
+PROC rpush(val); IF MAXRSTACK*4+rstack&lt;=rsp THEN error:=ER_OVERFLOW ELSE rsp[]++:=val; ENDPROC
+
+PROC getsym(p)
+  DEF p2
+  p:=TrimStr(p)
+  IF p[0]=&quot;(&quot;
+    p2:=InStr(p,&#x27;)&#x27;,0)
+    IF p2=-1 THEN p2:=1000
+    p:=TrimStr(p+p2+1)
+  ENDIF
+  IF p[0]=&quot;.&quot; AND p[1]=34
+    p2:=InStr(p,&#x27;&quot;&#x27;,2)
+    IF p2=-1 THEN p2:=1000 ELSE INC p2
+    StrCopy(item,p,p2)
+  ELSE
+    p2:=InStr(p,&#x27; &#x27;,0)
+    IF p2=-1 THEN p2:=1000
+    StrCopy(item,p,p2)
+  ENDIF
+ENDPROC p+p2+1
+
+PROC puterror()
+  IF crflag=FALSE THEN WriteF(&#x27;\n&#x27;)
+  SELECT error
+    CASE OK;           WriteF(&#x27;Ok.\n&#x27;)
+    CASE ER_UNDERFLOW; WriteF(&#x27;PILE UNDERFLOW.\n&#x27;)
+    CASE ER_OVERFLOW;  WriteF(&#x27;DEPACEMENT DE LA PILE.\n&#x27;)
+    CASE ER_SYM;       WriteF(&#x27;\s?\n&#x27;,item)
+  ENDSELECT
+ENDPROC
+
+PROC stopnow()
+  Close(con)
+  CleanUp(0)
+ENDPROC
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

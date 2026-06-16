@@ -1,0 +1,355 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>3DViewerSaveObject.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-capus2.html">capus2</a> &rsaquo; 3DViewerSaveObject.e</div><h1>File: <code>3DViewerSaveObject.e</code></h1><p class="meta">329 lines · project <a href="../examples/pkg-capus2.html"><code>capus2</code></a></p><p class="pathctx">capus2/capus2/3DView/Sources/3DViewerSaveObject.e</p><p class="prose">&quot;p_SaveGeoFile(mode)&quot;</p><h2>Source</h2><pre class="code">/*&quot;p_SaveGeoFile(mode)&quot;*/
+PROC p_SaveGeoFile(mode)
+/********************************************************************************
+ * Para         : NONE
+ * Return       : TRUE if ok,else FALSE (Cancel).
+ * Description  : Save selected objects in Geo (Amiga) format.
+ *******************************************************************************/
+    DEF req:PTR TO rtfilerequester,req_string[108]:STRING
+    DEF save_dir[256]:STRING
+    DEF b_pts,b_faces
+    DEF n_pts,n_faces
+    DEF mobj:PTR TO object3d
+    DEF p_pts,p_faces
+    DEF s_handle,fichier_out[256]:STRING,w_save
+    DEF mylist:PTR TO lh,mynode:PTR TO ln,saveit=FALSE
+    IF req:=RtAllocRequestA(RT_FILEREQ,NIL)
+        /*RtChangeReqAttrA(req,[RTFI_FLAGS,FREQF_NOFILES])*/
+        IF RtFileRequestA(req,req_string,title_req,[RTFI_FLAGS,FREQF_NOFILES,RT_WINDOW,view_window,RT_LOCKWINDOW,TRUE,RTFI_OKTEXT,get_3DView_string(GAD_SAVEGEO),TAG_DONE])
+            StrCopy(save_dir,req.dir,ALL)
+            AddPart(save_dir,&#x27;&#x27;,256)
+            RtFreeRequest(req)
+        ELSE
+            RETURN FALSE
+        ENDIF
+    ELSE
+        RETURN FALSE
+    ENDIF
+    mylist:=mybase.objlist
+    mynode:=mylist.head
+    WHILE mynode
+        IF mynode.succ&lt;&gt;0
+            mobj:=mynode
+            IF (mode=MENU_SAVE_OBJALL) 
+                saveit:=TRUE
+            ELSEIF ((mobj.selected=TRUE) AND (mode=MENU_SAVE_OBJSELECT)) 
+                saveit:=TRUE
+            ELSEIF ((mobj.selected=FALSE) AND (mode=MENU_SAVE_OBJDESELECT)) 
+                saveit:=TRUE
+            ENDIF
+            IF saveit=TRUE
+                StringF(fichier_out,&#x27;\s\s.geo&#x27;,save_dir,mynode.name)
+                w_save:=p_InitReq(fichier_out)
+                s_handle:=Open(fichier_out,1006)
+                Write(s_handle,&#x27;3DG1\n&#x27;,5)
+                n_pts:=mobj.nbrspts
+                StringF(fichier_out,&#x27;\d\n&#x27;,n_pts)
+                Write(s_handle,fichier_out,StrLen(fichier_out))
+                p_pts:=mobj.datapts
+                FOR b_pts:=0 TO n_pts-1
+                    StringF(fichier_out,&#x27;\d \d \d\n&#x27;,Long(p_pts),Long(p_pts+4),Long(p_pts+8))
+                    Write(s_handle,fichier_out,StrLen(fichier_out))
+                    p_pts:=p_pts+12
+                ENDFOR
+                n_faces:=mobj.nbrsfcs
+                p_faces:=mobj.datafcs
+                FOR b_faces:=0 TO n_faces-1
+                    StringF(fichier_out,&#x27;3 \d \d \d 141\n&#x27;,Long(p_faces),Long(p_faces+4),Long(p_faces+8))
+                    Write(s_handle,fichier_out,StrLen(fichier_out))
+                    p_faces:=p_faces+12
+                ENDFOR
+                IF s_handle THEN Close(s_handle)
+                IF w_save THEN CloseW(w_save)
+                saveit:=FALSE
+            ENDIF
+        ENDIF
+        mynode:=mynode.succ
+    ENDWHILE
+ENDPROC
+/**/
+/*&quot;p_SaveDxfFile(mode)&quot;*/
+PROC p_SaveDxfFile(mode)
+/********************************************************************************
+ * Para         : NONE
+ * Return       : TRUE if ok,else FALSE (Cancel).
+ * Description  : Save selected objects in Dxf (PC) format.
+ *******************************************************************************/
+    DEF req:PTR TO rtfilerequester,req_string[108]:STRING
+    DEF save_dir[256]:STRING
+    DEF b_faces
+    DEF n_faces
+    DEF mobj:PTR TO object3d
+    DEF p_pts,p_faces
+    DEF s_handle=NIL,fichier_out[256]:STRING,w_save=NIL
+    /*DEF x1,y1,z1,x2,y2,z2,x3,y3,z3*/
+    DEF str_x1[20]:STRING,str_y1[20]:STRING,str_z1[20]:STRING
+    DEF str_x2[20]:STRING,str_y2[20]:STRING,str_z2[20]:STRING
+    DEF str_x3[20]:STRING,str_y3[20]:STRING,str_z3[20]:STRING
+    DEF mylist:PTR TO lh,mynode:PTR TO ln,saveit=FALSE
+    IF req:=RtAllocRequestA(RT_FILEREQ,NIL)
+        /*RtChangeReqAttrA(req,[RTFI_FLAGS,FREQF_NOFILES])*/
+        IF RtFileRequestA(req,req_string,title_req,[RTFI_FLAGS,FREQF_NOFILES,RT_WINDOW,view_window,RT_LOCKWINDOW,TRUE,RTFI_OKTEXT,get_3DView_string(GAD_SAVEDXF),TAG_DONE])
+            StrCopy(save_dir,req.dir,ALL)
+            AddPart(save_dir,&#x27;&#x27;,256)
+            RtFreeRequest(req)
+        ELSE
+            RETURN FALSE
+        ENDIF
+    ELSE
+        RETURN FALSE
+    ENDIF
+    mylist:=mybase.objlist
+    mynode:=mylist.head
+    WHILE mynode
+        IF mynode.succ&lt;&gt;0
+            mobj:=mynode
+            IF (mode=MENU_SAVE_OBJALL) 
+                saveit:=TRUE
+            ELSEIF ((mobj.selected=TRUE) AND (mode=MENU_SAVE_OBJSELECT)) 
+                saveit:=TRUE
+            ELSEIF ((mobj.selected=FALSE) AND (mode=MENU_SAVE_OBJDESELECT)) 
+                saveit:=TRUE
+            ENDIF
+            IF saveit=TRUE
+                StringF(fichier_out,&#x27;\s\s.dxf&#x27;,save_dir,mynode.name)
+                s_handle:=Open(fichier_out,1006)
+                w_save:=p_InitReq(fichier_out)
+                Write(s_handle,&#x27;0\nSECTION\n2\nENTITIES\n0\n&#x27;,23)
+                p_pts:=mobj.datapts
+                n_faces:=mobj.nbrsfcs
+                p_faces:=mobj.datafcs
+                FOR b_faces:=0 TO n_faces-1
+                    Write(s_handle,&#x27;3DFACE\n&#x27;,7)
+                    Write(s_handle,&#x27;8\n&#x27;,2)
+                    Write(s_handle,mynode.name,StrLen(mynode.name))
+                    Write(s_handle,&#x27;\n&#x27;,1)
+                    StringF(str_x1,&#x27;\d\n&#x27;,Long(p_pts+(Long(p_faces)*12)))
+                    StringF(str_y1,&#x27;\d\n&#x27;,Long(p_pts+(Long(p_faces)*12)+4))
+                    StringF(str_z1,&#x27;\d\n&#x27;,Long(p_pts+(Long(p_faces)*12)+8))
+                    StringF(str_x2,&#x27;\d\n&#x27;,Long(p_pts+(Long(p_faces+4)*12)))
+                    StringF(str_y2,&#x27;\d\n&#x27;,Long(p_pts+(Long(p_faces+4)*12)+4))
+                    StringF(str_z2,&#x27;\d\n&#x27;,Long(p_pts+(Long(p_faces+4)*12)+8))
+                    StringF(str_x3,&#x27;\d\n&#x27;,Long(p_pts+(Long(p_faces+8)*12)))
+                    StringF(str_y3,&#x27;\d\n&#x27;,Long(p_pts+(Long(p_faces+8)*12)+4))
+                    StringF(str_z3,&#x27;\d\n&#x27;,Long(p_pts+(Long(p_faces+8)*12)+8))
+                    Write(s_handle,&#x27;10\n&#x27;,3)
+                    Write(s_handle,str_x1,StrLen(str_x1))
+                    Write(s_handle,&#x27;20\n&#x27;,3)
+                    Write(s_handle,str_y1,StrLen(str_y1))
+                    Write(s_handle,&#x27;30\n&#x27;,3)
+                    Write(s_handle,str_z1,StrLen(str_z1))
+                    /**/
+                    Write(s_handle,&#x27;11\n&#x27;,3)
+                    Write(s_handle,str_x2,StrLen(str_x2))
+                    Write(s_handle,&#x27;21\n&#x27;,3)
+                    Write(s_handle,str_y2,StrLen(str_y2))
+                    Write(s_handle,&#x27;31\n&#x27;,3)
+                    Write(s_handle,str_z2,StrLen(str_z2))
+                    /**/
+                    Write(s_handle,&#x27;12\n&#x27;,3)
+                    Write(s_handle,str_x3,StrLen(str_x3))
+                    Write(s_handle,&#x27;22\n&#x27;,3)
+                    Write(s_handle,str_y3,StrLen(str_y3))
+                    Write(s_handle,&#x27;32\n&#x27;,3)
+                    Write(s_handle,str_z3,StrLen(str_z3))
+                    /**/
+                    Write(s_handle,&#x27;13\n&#x27;,3)
+                    Write(s_handle,str_x3,StrLen(str_x3))
+                    Write(s_handle,&#x27;23\n&#x27;,3)
+                    Write(s_handle,str_y3,StrLen(str_y3))
+                    Write(s_handle,&#x27;33\n&#x27;,3)
+                    Write(s_handle,str_z3,StrLen(str_z3))
+                    Write(s_handle,&#x27;0\n&#x27;,2)
+                    p_faces:=p_faces+12
+                ENDFOR
+                Write(s_handle,&#x27;ENDSEC\n0\nEOF\n&#x27;,13)
+                IF s_handle THEN Close(s_handle)
+                IF w_save THEN CloseW(w_save)
+            ENDIF
+            saveit:=FALSE
+        ENDIF
+        mynode:=mynode.succ
+    ENDWHILE
+    RETURN TRUE
+ENDPROC
+/**/
+/*&quot;p_SaveRayFile(mode)&quot;*/
+PROC p_SaveRayFile(mode)
+/********************************************************************************
+ * Para         : NONE
+ * Return       : TRUE if ok,else FALSE (Cancel).
+ * Description  : Save selected objects in Ray (amiga) format.
+ *******************************************************************************/
+    DEF req:PTR TO rtfilerequester,req_string[108]:STRING
+    DEF save_dir[256]:STRING
+    DEF b_faces
+    DEF n_faces
+    DEF mobj:PTR TO object3d
+    DEF p_pts,p_faces
+    DEF s_handle,fichier_out[256]:STRING,w_save
+    DEF str_1[20]:STRING
+    DEF str_2[20]:STRING
+    DEF str_3[20]:STRING
+    DEF mylist:PTR TO lh,mynode:PTR TO ln,saveit
+    IF req:=RtAllocRequestA(RT_FILEREQ,NIL)
+        IF RtFileRequestA(req,req_string,title_req,[RTFI_FLAGS,FREQF_NOFILES,RT_WINDOW,view_window,RT_LOCKWINDOW,TRUE,RTFI_OKTEXT,get_3DView_string(GAD_SAVERAY),TAG_DONE])
+            StrCopy(save_dir,req.dir,ALL)
+            AddPart(save_dir,&#x27;&#x27;,256)
+            RtFreeRequest(req)
+        ELSE
+            RETURN FALSE
+        ENDIF
+    ELSE
+        RETURN FALSE
+    ENDIF
+    mylist:=mybase.objlist
+    mynode:=mylist.head
+    WHILE mynode
+        IF mynode.succ&lt;&gt;0
+            mobj:=mynode
+            IF (mode=MENU_SAVE_OBJALL) 
+                saveit:=TRUE
+            ELSEIF ((mobj.selected=TRUE) AND (mode=MENU_SAVE_OBJSELECT)) 
+                saveit:=TRUE
+            ELSEIF ((mobj.selected=FALSE) AND (mode=MENU_SAVE_OBJDESELECT)) 
+                saveit:=TRUE
+            ENDIF
+            IF saveit=TRUE
+                StringF(fichier_out,&#x27;\s\s.ray&#x27;,save_dir,mynode.name)
+                w_save:=p_InitReq(fichier_out)
+                s_handle:=Open(fichier_out,1006)
+                p_pts:=mobj.datapts
+                n_faces:=mobj.nbrsfcs
+                p_faces:=mobj.datafcs
+                FOR b_faces:=0 TO n_faces-1
+                    StringF(str_1,&#x27;\d \d \d\n&#x27;,Long(p_pts+(Long(p_faces)*12)),Long(p_pts+(Long(p_faces)*12)+4),Long(p_pts+(Long(p_faces)*12)+8))
+                    StringF(str_2,&#x27;\d \d \d\n&#x27;,Long(p_pts+(Long(p_faces+4)*12)),Long(p_pts+(Long(p_faces+4)*12)+4),Long(p_pts+(Long(p_faces+4)*12)+8))
+                    StringF(str_3,&#x27;\d \d \d\n&#x27;,Long(p_pts+(Long(p_faces+8)*12)),Long(p_pts+(Long(p_faces+8)*12)+4),Long(p_pts+(Long(p_faces+8)*12)+8))
+                    Write(s_handle,&#x27;triangle\n&#x27;,9)
+                    Write(s_handle,str_1,StrLen(str_1))
+                    Write(s_handle,str_2,StrLen(str_2))
+                    Write(s_handle,str_3,StrLen(str_3))
+                    /**********************************/
+                    p_faces:=p_faces+12
+                ENDFOR
+                IF s_handle THEN Close(s_handle)
+                IF w_save THEN CloseW(w_save)
+            ENDIF
+        ENDIF
+        mynode:=mynode.succ
+    ENDWHILE
+    RETURN TRUE
+ENDPROC
+/**/
+/*&quot;p_SaveBinFile(mode)&quot;*/
+PROC p_SaveBinFile(mode)
+/********************************************************************************
+ * Para         : NONE
+ * Return       : TRUE if ok,else FALSE (Cancel).
+ * Description  : Save selected objects in Geo (Amiga) format.
+ *******************************************************************************/
+    DEF req:PTR TO rtfilerequester,req_string[108]:STRING
+    DEF save_dir[256]:STRING
+    DEF b_pts,b_faces
+    DEF n_pts,n_faces
+    DEF mobj:PTR TO object3d
+    DEF p_pts,p_faces
+    DEF s_handle,fichier_out[256]:STRING,w_save
+    DEF mylist:PTR TO lh,mynode:PTR TO ln,saveit=FALSE
+    DEF facteur3d,r,strfct[20]:STRING
+    DEF fx,fy,fz
+    IF req:=RtAllocRequestA(RT_FILEREQ,NIL)
+        /*RtChangeReqAttrA(req,[RTFI_FLAGS,FREQF_NOFILES])*/
+        IF RtFileRequestA(req,req_string,title_req,[RTFI_FLAGS,FREQF_NOFILES,RT_WINDOW,view_window,RT_LOCKWINDOW,TRUE,RTFI_OKTEXT,get_3DView_string(GAD_SAVEBIN),TAG_DONE])
+            StrCopy(save_dir,req.dir,ALL)
+            AddPart(save_dir,&#x27;&#x27;,256)
+            RtFreeRequest(req)
+        ELSE
+            RETURN FALSE
+        ENDIF
+    ELSE
+        RETURN FALSE
+    ENDIF
+    StrCopy(strfct,&#x27;1.0&#x27;,ALL)
+    r:=RtGetStringA(strfct,8,get_3DView_string(GAD_FCT3DSAVEBIN),NIL,[RT_WINDOW,view_window,RT_LOCKWINDOW,TRUE,RT_UNDERSCORE,&quot;_&quot;,0])
+    IF r
+        facteur3d:=p_StringToFloat(strfct)
+    ELSE
+        facteur3d:=1.0
+    ENDIF
+    mylist:=mybase.objlist
+    mynode:=mylist.head
+    WHILE mynode
+        IF mynode.succ&lt;&gt;0
+            mobj:=mynode
+            IF (mode=MENU_SAVE_OBJALL) 
+                saveit:=TRUE
+            ELSEIF ((mobj.selected=TRUE) AND (mode=MENU_SAVE_OBJSELECT)) 
+                saveit:=TRUE
+            ELSEIF ((mobj.selected=FALSE) AND (mode=MENU_SAVE_OBJDESELECT)) 
+                saveit:=TRUE
+            ENDIF
+            IF saveit=TRUE
+                StringF(fichier_out,&#x27;\s\s_pts.bin&#x27;,save_dir,mynode.name)
+                w_save:=p_InitReq(fichier_out)
+                s_handle:=Open(fichier_out,1006)
+                n_pts:=mobj.nbrspts
+                Write(s_handle,[n_pts]:INT,2)
+                StringF(fichier_out,&#x27;\d\n&#x27;,n_pts)
+                p_pts:=mobj.datapts
+                FOR b_pts:=0 TO n_pts-1
+                    fx:=SpFix(SpMul(SpFlt(Long(p_pts)),facteur3d))
+                    fy:=SpFix(SpMul(SpFlt(Long(p_pts+4)),facteur3d))
+                    fz:=SpFix(SpMul(SpFlt(Long(p_pts+8)),facteur3d))
+                    Write(s_handle,[fx,fy,fz,0]:INT,8)
+                    p_pts:=p_pts+12
+                ENDFOR
+                IF s_handle THEN Close(s_handle)
+                IF w_save THEN CloseW(w_save)
+                StringF(fichier_out,&#x27;\s\s_fcs.bin&#x27;,save_dir,mynode.name)
+                s_handle:=Open(fichier_out,1006)
+                w_save:=p_InitReq(fichier_out)
+                n_faces:=mobj.nbrsfcs
+                p_faces:=mobj.datafcs
+                Write(s_handle,[n_faces]:INT,2)
+                FOR b_faces:=0 TO n_faces-1
+                    Write(s_handle,[3,5,Long(p_faces)*4,Long(p_faces+4)*4,Long(p_faces+8)*4,Long(p_faces)*4,0,0,0,0,0]:INT,22)
+                    p_faces:=p_faces+12
+                ENDFOR
+                IF s_handle THEN Close(s_handle)
+                IF w_save THEN CloseW(w_save)
+                saveit:=FALSE
+            ENDIF
+        ENDIF
+        mynode:=mynode.succ
+    ENDWHILE
+ENDPROC
+/**/
+
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

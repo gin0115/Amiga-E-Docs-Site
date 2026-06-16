@@ -1,0 +1,936 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ecmodtrans.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-ecx-2-3-1-src.html">ECX_2.3.1-src</a> &rsaquo; ecmodtrans.e</div><h1>File: <code>ecmodtrans.e</code></h1><p class="meta">910 lines · project <a href="../examples/pkg-ecx-2-3-1-src.html"><code>ECX_2.3.1-src</code></a></p><p class="pathctx">ECX_2.3.1-src/ecx-2.3.1-src/ecmodtrans.e</p><p class="prose">ECX/ecmodtrans.e</p><h2>Source</h2><pre class="code">-&gt; ECX/ecmodtrans.e
+
+/* ECX by Leif Salomonsson [ecx tele2 se] is Copyright (c) 2002-2008 */
+/* Released under the ECX COMPILER LICENSE, See ECXCOMPILERLICENSE.TXT */
+
+OPT MODULE
+OPT PREPROCESS
+
+-&gt; ecmodtrans.e, created May 2008, extracted from ecxmain.e
+
+-&gt;#define DBG_TRANS
+
+MODULE &#x27;*binary&#x27;
+MODULE &#x27;*common&#x27;
+MODULE &#x27;*compiler&#x27;
+
+EXPORT DEF g_modulecache:PTR TO modulecache
+
+-&gt; 1.5.4: for uncommenting define bodies in ec-modules.
+PROC uncommentBody(source:PTR TO CHAR)
+   DEF incomment=FALSE:REG
+   DEF dest:REG PTR TO CHAR
+   DEF c:REG, pos
+
+   dest := source
+
+   WHILE c := source[]
+
+      IF incomment
+         SELECT c
+         CASE &quot;/&quot;
+            IF source[1] = &quot;*&quot;
+               source := source + 2
+               incomment++
+            ELSE
+               source++
+            ENDIF
+         CASE &quot;*&quot;
+            IF source[1] = &quot;/&quot;
+               source := source + 2
+               incomment--
+            ELSE
+               source++
+            ENDIF
+         DEFAULT
+            source++
+         ENDSELECT
+      ELSEIF c = &quot;/&quot;
+         IF source[1] = &quot;*&quot;
+            source := source + 2
+            incomment := 1
+         ELSE
+            dest[]++ := source[]++
+         ENDIF
+      ELSEIF c = &quot;-&quot;
+         IF source[1] = &quot;&gt;&quot;
+            source := source + StrLen(source)
+         ELSE
+            dest[]++ := source[]++
+         ENDIF
+      ELSE
+         dest[]++ := source[]++
+      ENDIF
+
+   ENDWHILE
+
+   dest[]++ := NIL -&gt; terminate
+
+ENDPROC
+
+/**************************************************************
+***************************************************************
+******************** EC MODULE TRANSLATOR *********************
+***************************************************************
+**************************************************************/
+
+ENUM JOB_DONE,JOB_CONST,JOB_OBJ,JOB_CODE,JOB_PROCS,
+     JOB_SYS,JOB_LIB,JOB_RELOC,JOB_GLOBS,JOB_MODINFO,JOB_DEBUG,JOB_MACROS
+
+CONST MODVERS = 11 -&gt; now suports CreativE mods, but not new ifuncs,ivars !
+CONST MAXIFNUM = 130
+CONST SKIPMARK=$FFFF8000
+CONST BSRLVALUE=$61FF -&gt;, CLEANUPVALUE=$4FEF, DOUBLENOPVALUE=$4E714E71
+
+EXPORT PROC ecmod2ecxmod(ecmod,flen) HANDLE
+   DEF mh=NIL:PTR TO moduleheader, info:PTR TO modinfo
+   DEF jc, o:PTR TO INT, end, wptr:PTR TO LONG
+   DEF strsize=4
+   DEF len, thisvers=0, osvers=NIL
+   DEF l, val, off, priv, c
+   DEF f, num
+   DEF r, c2
+   DEF code=NIL
+   DEF darg, narg, coff, name
+   DEF temp:PTR TO LONG, count, lptr=NIL:PTR TO LONG
+   DEF oinfo=NIL:PTR TO modinfo, cinfo=NIL:PTR TO modinfo, constptr=NIL:PTR TO LONG
+   DEF objectsize=0, constsize=0 -&gt; June 2009, now supports mixed const/object data
+   DEF objectptr=NIL:PTR TO modobject, procptr=NIL:PTR TO modproc
+   DEF macroptr=NIL:PTR TO modmacro, codeptr=NIL:PTR TO LONG, globptr=NIL:PTR TO LONG
+   DEF submodptr=NIL:PTR TO modmodule
+   DEF a
+   DEF libi=NIL:PTR TO modlibi, lfunc=NIL:PTR TO modlfunc
+   DEF param=NIL:PTR TO modarg, t, member=NIL:PTR TO modmember, modref=NIL:PTR TO modref
+   DEF allocsize=12 -&gt; safety extra 12 bytes
+   DEF ifuncrefs=NIL:PTR TO LONG, xrefgrefs=NIL:PTR TO LONG
+   DEF lparam:PTR TO lfuncarg
+   DEF lo:PTR TO LONG -&gt; needed to remove ^ stuff 1.5.4
+   DEF stc:strtabcontext
+
+   o := ecmod + 4
+
+   allocsize := SIZEOF moduleheader + Mul(SIZEOF modinfo,15)
+
+   end := ecmod+flen
+
+   /* first compute sizes */
+
+   WHILE o &lt; end
+      jc := o[]++
+      #ifdef DBG_TRANS
+      DEBUGF(&#x27;ECMODSUPP 1: \s\n&#x27;, ListItem([&#x27;DONE&#x27;, &#x27;CONST&#x27;, &#x27;OBJ&#x27;,
+                                            &#x27;CODE&#x27;, &#x27;PROCS&#x27;, &#x27;SYS&#x27;,
+                                            &#x27;LIB&#x27;, &#x27;RELOC&#x27;, &#x27;GLOBS&#x27;,
+                                            &#x27;MODINFO&#x27;, &#x27;DEBUG&#x27;, &#x27;MACROS&#x27;], jc))
+      #endif
+      SELECT 25 OF jc
+      CASE JOB_CONST
+         IF thisvers&gt;=6 THEN o:=o+4
+         WHILE len := o[]++
+           strsize := strsize + len
+           o := o + 4
+           o:=o+len
+           constsize := constsize + 8
+           allocsize := allocsize + 8
+         ENDWHILE
+      CASE JOB_OBJ
+         allocsize := allocsize + SIZEOF modobject
+         objectsize := objectsize + SIZEOF modobject
+         IF thisvers&gt;=6 THEN o:=o+4
+         priv:=0
+         l:=o[]++;
+         strsize := strsize + l
+         o:=o+4+l
+         WHILE l:=o[]++
+            val:=o[]++
+            off:=o[]++
+            IF l&gt;0
+               allocsize := allocsize + SIZEOF modmember
+               objectsize := objectsize + SIZEOF modmember
+               strsize := strsize + l
+               o:=o+l
+               priv:=0
+            ELSE
+               allocsize := allocsize + SIZEOF modmember
+               objectsize := objectsize + SIZEOF modmember
+               priv++
+            ENDIF
+            IF thisvers&gt;=6
+               IF (c:=o[]++)&gt;=0
+               ELSE
+                  l:=o[]++
+                  strsize := strsize + l -&gt; member object name
+                  o:=o+l
+               ENDIF
+            ENDIF
+         ENDWHILE
+         val:=o[]++
+         IF thisvers&gt;=7
+            IF o[]++
+               o:=o+4
+               l:=o[]++
+               o:=o+l+4
+               WHILE (c:=o[]++)&lt;&gt;-1
+                  o++; l:=o[]++
+                  o:=o+l
+                  l:=o[]++
+                  l:=o[]++; o:=l*4+o
+               ENDWHILE
+               WHILE o[]++&lt;&gt;-1 DO o:=o+4
+            ENDIF
+         ENDIF
+      CASE JOB_SYS
+         #ifdef DBG_TRANS
+         DEBUGF(&#x27;SYS\n&#x27;)
+         #endif
+         o:=o+4
+         f:=FALSE
+         IF c:=o[]++
+            f:=TRUE
+            osvers := c
+         ENDIF
+         o:=o+4
+         IF c:=o[]++
+         ENDIF
+         IF c:=o[]++
+         ENDIF
+         o:=o+2
+         thisvers:=o[]++
+         IF thisvers &gt; MODVERS
+            -&gt;WriteF(&#x27;version=\d\n&#x27;, thisvers)
+            Raise(&quot;FORM&quot;)
+         ENDIF
+         o:=o+4
+         IF thisvers &gt; 10 THEN o := o + 4 -&gt; 1.6.0 (creative 2.12 fix)
+      CASE JOB_MACROS
+         WHILE len:=o[]++
+            strsize := strsize + len + 1
+            #ifdef DBG_TRANS
+            DEBUGF(&#x27;#define \s&#x27;,o)
+            #endif
+            o:=o+len
+            #ifdef DBG_TRANS
+            DEBUGF(&#x27; /\d\n&#x27;,o[])
+            #endif
+            -&gt;strsize := strsize + Mul(o[],2)
+            allocsize := allocsize + Mul(o[]++,4)  -&gt;PrintF(&#x27;/\d\n&#x27;,o[]++)
+            o++ -&gt; flags,dummy
+            len := o[]++
+            allocsize := allocsize + SIZEOF modmacro + len + 3 AND $FFFC
+            #ifdef DBG_TRANS
+            DEBUGF(&#x27;\s\n&#x27;,o)
+            #endif
+            o := len + o
+         ENDWHILE
+      CASE JOB_LIB
+         allocsize := allocsize + SIZEOF modlibi
+         c:=o
+         WHILE c[]++ DO NOP
+         strsize := strsize + StrLen(c) + 1
+         WHILE c[]++ DO NOP
+         off:=-30
+         WHILE (c[]&lt;&gt;$FF) AND (c&lt;end)
+            IF c[] = 16
+               INC c
+            ELSE
+               c2 := c
+               WHILE c[]++ &gt; &quot; &quot; DO NOP ; c--
+               strsize := strsize + c - c2 + 1
+               allocsize := allocsize + SIZEOF modlfunc
+               r := c[]++
+               IF r &lt;&gt; 16
+                  WHILE r &lt; 16
+                     r := c[]++
+                     allocsize := allocsize + SIZEOF lfuncarg
+                  ENDWHILE
+                  c--
+               ENDIF
+            ENDIF
+         ENDWHILE
+         o := end
+      CASE JOB_CODE
+         lo := o
+         l := lo[]++  -&gt;l:=^o++
+         code := lo
+         allocsize := allocsize + Mul(l, 4)
+         o:=(l*4)+lo
+      CASE JOB_PROCS
+         WHILE (l:=o[]++)&gt;0
+            c:=o
+            strsize := strsize + StrLen(c) + 1
+            #ifdef DBG_TRANS
+            DEBUGF(&#x27;PROC \s\n&#x27;, c)
+            #endif
+            o:=o+l+4
+            IF o[]=1
+              o++
+              allocsize := allocsize + SIZEOF modproc
+              narg:=o[]++
+              allocsize := allocsize + Mul(SIZEOF modarg, narg)
+              o++
+              c2:=o[]++
+              darg:=o
+              o:=c2*4+o
+              c:=o[]++
+              o:=o+c
+            ELSEIF o[]=2 -&gt; label v47 fixed
+              o++
+              allocsize := allocsize + 12
+            ENDIF
+         ENDWHILE
+      CASE JOB_RELOC
+         IF code = NIL THEN Raise(&quot;NIL&quot;)
+         -&gt; bit 31 in offset indicates ifunc reloc (jsr abs.l [lea args*4(a7), a7]) -&gt; weird.
+         lo := o
+         len := lo[]++ ; o := lo -&gt;len := ^o++
+         WHILE len
+            len--
+            r := Long(o)
+            #ifdef DBG_TRANS
+            DEBUGF(&#x27;reloc: $\h: $\h &lt;$\h&gt; $\h\n&#x27;, r,
+            Long(r AND $FFFFFF + code - 4),
+            Long(r AND $FFFFFF + code),
+            Long(r AND $FFFFFF + code + 4))
+            #endif
+            IF r AND $80000000 -&gt; ifunc ?
+               r := r AND $FFFFFF
+               PutInt(code+r-2, BSRLVALUE) -&gt; patch jsr.l TO bsr.l
+               c := Char(code+r+3) - 10 -&gt; ifunc num (WriteF=10)
+               IF c &gt; MAXIFNUM
+                  -&gt;WriteF(&#x27;ifnum=\d\n&#x27;, c)
+                  Raise(&quot;FORM&quot;) -&gt; no cec ifuncs
+               ENDIF
+               #ifdef DBG_TRANS
+               DEBUGF(&#x27;-&gt;ifunc: \d\n&#x27;, c)
+               #endif
+               ifuncrefs := NEW [ifuncrefs, c, r]:LONG
+               allocsize := allocsize + 12 -&gt; [num,numrefs=1,offset]:LONG  !!
+               -&gt;strsize := strsize + StrLen(c) + 1
+            ELSE
+               allocsize := allocsize + 4
+            ENDIF
+            o := o + 4
+         ENDWHILE
+      CASE JOB_GLOBS
+         IF o[]=SKIPMARK THEN o:=o+6
+         WHILE (len:=o[]++)&gt;=0
+            IF len -&gt; xrefglob ?
+               allocsize := allocsize + SIZEOF modref
+               strsize := strsize + len
+               name := o
+               lo:=o+len
+               WHILE (coff := lo[]++)
+                  IF thisvers&gt;=10 THEN lo := lo + 2 -&gt; we only support LONG !
+                  allocsize := allocsize + 12
+                  xrefgrefs := NEW [xrefgrefs, name, coff]:LONG
+               ENDWHILE
+               o := lo
+            ELSE
+               lo := o
+               allocsize := allocsize + 4 -&gt; private drel glob
+               WHILE (coff := lo[]++)
+                  IF thisvers&gt;=10 THEN lo := lo + 2 -&gt; we only support LONG !
+                  allocsize := allocsize + 4 -&gt;adddrelg(Mul(nrofglobals,4))
+               ENDWHILE
+               o := lo
+            ENDIF
+         ENDWHILE
+      CASE JOB_DEBUG
+         lo := o
+         WHILE lo[]++=$3F1
+            len:=lo[]++
+            lo++
+            c:=lo[]++
+            lo:=len*4+lo-8
+         ENDWHILE
+         o := lo
+      CASE JOB_MODINFO
+         o:=o+4
+         -&gt;g_esize := g_esize + SIZEOF vardbghunk
+         WHILE len:=o[]++
+            allocsize := allocsize + SIZEOF modmodule
+            strsize := strsize + len
+      #ifdef DBG_TRANS
+      DEBUGF(&#x27;modinfo: \s\n&#x27;, o)
+      #endif
+            o:=o+len
+            WHILE c:=o[]++ -&gt; type
+               allocsize := allocsize + SIZEOF modref
+               len:=o[]++  -&gt; id len
+               strsize := strsize + len
+               c2:=o       -&gt; id
+      #ifdef DBG_TRANS
+      DEBUGF(&#x27;-&gt; \s\n&#x27;, o)
+      #endif
+               o:=o+len
+               IF c=2 -&gt; proc/lab
+                  f:=o[]++ -&gt; narg (-1=lab)
+                  c:=o[]++ -&gt; num accesses
+                  allocsize := allocsize + (4*c)
+                  -&gt;modrefs := NEW [modrefs, c2, c, NIL]:xref
+                  o:=c*4+o -&gt; ARRAY OF LONG
+               ELSE -&gt; class
+                  c:=o[]++ -&gt; num accesses
+                  allocsize := allocsize + (4*c)
+                  o:=c*6+o -&gt; ARRAY OF LONG+INT
+               ENDIF
+            ENDWHILE
+         ENDWHILE
+      CASE JOB_DONE
+         o := end
+      DEFAULT
+         -&gt;WriteF(&#x27;unknown JOB \d\n&#x27;, jc)
+         Raise(&quot;FORM&quot;)
+      ENDSELECT
+   ENDWHILE
+
+   #ifdef DBG_TRANS
+   DEBUGF(&#x27;translation pass 1 done..\n&#x27;)
+   #endif
+
+   strsize := strsize + SIZEOF modinfo + 3 AND $FFFFFC
+
+
+   /* create new module */
+
+   IF g_modulecache
+
+      mh := ALLOCMEM(t := (allocsize + strsize), MEMF_CLEAR OR MEMF_PUBLIC)
+      IF mh = NIL THEN Raise(&quot;MEM&quot;)
+
+   ELSE
+
+      mh := NEWMEMR(t := (allocsize + strsize))
+
+   ENDIF
+
+   mh.osversion := osvers
+   mh.identification := &quot;ECXM&quot;
+
+   mh.modsize := t
+
+   mh.headsize := SIZEOF moduleheader
+   mh.modversion := MODULEVERSION
+
+   mh.strtabinfo := allocsize
+   info := mh + mh.strtabinfo
+   info.misc := NIL
+   info.rsrvd := NIL
+
+   stc.memory := info + SIZEOF modinfo
+   stc.offset := NIL
+   stc.count := 0
+
+   getTableStrOfs(stc, &#x27;---&#x27;)
+
+
+   wptr := mh + SIZEOF moduleheader
+
+   /* make ifuncinfo now */
+
+
+   info := wptr
+   info.misc := 0
+   wptr := info + SIZEOF modinfo
+   WHILE ifuncrefs
+      #ifdef DBG_TRANS
+      DEBUGF(&#x27;trans: ifuncref \d \d\n&#x27;, ifuncrefs[1], ifuncrefs[2])
+      #endif
+      info.count := info.count + 1
+      wptr[]++ := ifuncrefs[1]  -&gt; num
+      wptr[]++ := 1 -&gt; one offset
+      wptr[]++ := ifuncrefs[2]
+      t := ifuncrefs[]
+      END ifuncrefs[3]
+      ifuncrefs := t
+   ENDWHILE
+   IF info.count
+      -&gt;info.size := wptr - info
+      mh.ifuncinfo := info - mh
+   ENDIF
+
+   info := wptr
+   wptr := info + SIZEOF modinfo
+   WHILE xrefgrefs
+      #ifdef DBG_TRANS
+      DEBUGF(&#x27;trans: xrefgref \s \d\n&#x27;, xrefgrefs[1], xrefgrefs[2])
+      #endif
+      info.count := info.count + 1
+      wptr[]++ := getTableStrOfs(stc, xrefgrefs[1], TRUE)  -&gt; name
+      wptr[]++ := 1 -&gt; one offset
+      wptr[]++ := xrefgrefs[2]
+      t := xrefgrefs[]
+      END xrefgrefs[3]
+      xrefgrefs := t
+   ENDWHILE
+   IF info.count
+      -&gt;info.size := wptr - info
+      mh.xrefginfo := info - mh
+   ENDIF
+
+
+
+   o := ecmod + 4
+
+   WHILE o &lt; end
+      jc := o[]++
+      #ifdef DBG_TRANS
+            DEBUGF(&#x27;ECMODSUPP 2: \s\n&#x27;, ListItem([&#x27;DONE&#x27;, &#x27;CONST&#x27;, &#x27;OBJ&#x27;,
+                                            &#x27;CODE&#x27;, &#x27;PROCS&#x27;, &#x27;SYS&#x27;,
+                                            &#x27;LIB&#x27;, &#x27;RELOC&#x27;, &#x27;GLOBS&#x27;,
+                                            &#x27;MODINFO&#x27;, &#x27;DEBUG&#x27;, &#x27;MACROS&#x27;], jc))
+      #endif
+      SELECT 25 OF jc
+      CASE JOB_CONST
+         IF cinfo = NIL
+            cinfo := wptr
+            constptr := cinfo + SIZEOF modinfo
+            wptr := constptr + constsize
+            mh.constinfo := cinfo - mh
+         ENDIF
+         IF thisvers&gt;=6 THEN o:=o+4
+         WHILE len := o[]++
+            lo := o
+            val:=lo[]++
+            constptr[]++ := getTableStrOfs(stc, lo)
+            constptr[]++ := val
+            o:=lo+len
+         ENDWHILE
+         cinfo.count := Div(constsize, 8)
+         -&gt;DEBUGF(&#x27;\d constants created.\n&#x27;, cinfo.count)
+      CASE JOB_OBJ
+         IF oinfo = NIL
+            oinfo := wptr
+            objectptr := oinfo + SIZEOF modinfo
+            mh.objectinfo := oinfo - mh
+            wptr := objectptr + objectsize
+         ENDIF
+         member := objectptr + SIZEOF modobject
+         IF thisvers&gt;=6 THEN o:=o+4
+         priv:=0
+         l:=o[]++;
+         objectptr.name := getTableStrOfs(stc, o+4)
+         #ifdef DBG_TRANS
+         DEBUGF(&#x27;OBJECT \s\n&#x27;, o+4)
+         #endif
+         o:=o+4+l
+         WHILE l:=o[]++
+            member.flags := NIL -&gt; 1.8.0 fix
+            val:=o[]++
+            off:=o[]++
+            IF l&gt;0
+               member.offset := off
+               member.name := getTableStrOfs(stc, o)
+               objectptr.nrofmembers := objectptr.nrofmembers + 1
+               o:=o+l
+               priv:=0
+            ELSE
+               member.offset := off
+               member.name := NIL
+               objectptr.nrofmembers := objectptr.nrofmembers + 1
+               priv++
+            ENDIF
+            IF thisvers&gt;=6
+               IF (c:=o[]++)&gt;=0
+                  IF c=0
+                     member.size := val -&gt; CHAR/INT/LONG
+                     member.esize := 0
+                     member.numes := 0
+                     IF val &gt; 1 THEN member.flags := MEMBF_SIGNED -&gt; v49
+                  ELSE
+                     IF val               -&gt; CPTR/IPTR/LPTR
+                        member.size := 4
+                        member.esize := c
+                        member.numes := 0
+                        IF c &gt; 1 THEN member.flags := MEMBF_SIGNED -&gt; v49
+                     ELSE
+                        member.size := 0  -&gt; CARRAY/IARRAY/LARRAY
+                        member.esize := c
+                        member.numes := Int(o+IF o[] THEN 4 ELSE 2)-off/c
+                        IF c &gt; 1 THEN member.flags := MEMBF_SIGNED -&gt; v49
+                     ENDIF
+                 ENDIF
+               ELSE
+                  member.esize := 255
+                  l:=o[]++
+                  member.size := IF val THEN 4 ELSE 0 -&gt; OPTR/OARRAY
+                  IF val = NIL THEN member.numes := 1
+                  member.object := getTableStrOfs(stc, o)
+                  o:=o+l
+                  member.numes := 0
+               ENDIF
+            ELSE
+               member.size := val -&gt; CHAR/INT/LONG
+               IF val &gt; 1 THEN member.flags := MEMBF_SIGNED -&gt; v49
+               member.esize := 0
+               member.numes := 0
+            ENDIF
+
+            -&gt;IF priv = 0 THEN member++
+            member++
+
+         ENDWHILE
+         val:=o[]++
+         IF thisvers&gt;=7
+            IF o[]++
+               addWarning(&#x27;module translator skipping methods for object&#x27;)
+               o:=o+4
+               l:=o[]++
+               o:=o+l+4
+               WHILE (c:=o[]++)&lt;&gt;-1
+                  o++; l:=o[]++
+                  -&gt;PrintF(&#x27;         \s(&#x27;,o)
+                  o:=o+l
+                  IF l:=o[]++ THEN FOR off:=1 TO l DO NOP -&gt;PrintF(IF off=l THEN &#x27;\c&#x27; ELSE &#x27;\c,&#x27;,off+96)
+                  l:=o[]++; o:=l*4+o
+               ENDWHILE
+               WHILE o[]++&lt;&gt;-1 DO o:=o+4
+            ENDIF
+         ENDIF
+         objectptr.sizeof := val
+         objectptr.alignment := 2 -&gt; v1.5
+         objectptr.nrofmethods := 0
+         objectptr.totalsize := member - objectptr
+         objectptr := member
+         oinfo.count := oinfo.count + 1
+      CASE JOB_SYS
+         o:=o+4
+         o++
+         o:=o+4
+         o++
+         o++
+         o:=o+2
+         o++
+         o:=o+4
+         IF thisvers &gt; 10 THEN o := o + 4 -&gt; 1.6.0 (creative 2.12 fix)
+      CASE JOB_MACROS
+         info := wptr
+         macroptr := info + SIZEOF modinfo
+         WHILE len:=o[]++
+            macroptr.name := getTableStrOfs(stc, o)
+            #ifdef DBG_TRANS
+            DEBUGF(&#x27;#define \s&#x27;,o)
+            #endif
+            o:=o+len
+            c := o[]++ -&gt; nrofparams
+            macroptr.nrofargs := c
+            IF c
+               macroptr.type := 1
+               #ifdef DBG_TRANS
+               DEBUGF(&#x27;(&#x27;)
+               #endif
+            ENDIF
+            lptr := macroptr + SIZEOF modmacro
+            FOR a := 0 TO c-1
+            lptr[]++ := NIL -&gt; we do not read arg names anyway
+            ENDFOR
+            #ifdef DBG_TRANS
+            DEBUGF(IF c THEN &#x27;) &#x27; ELSE &#x27; &#x27;)
+            #endif
+            o++ -&gt; flags,dummy
+            len := o[]++ -&gt; bodysize
+            macroptr.bodysize := len + 3 AND $FFC
+            #ifdef DBG_TRANS
+            DEBUGF(&#x27;\s\n&#x27;, o)
+            #endif
+            CopyMemQuick(o, lptr, macroptr.bodysize)
+            uncommentBody(lptr) -&gt; 1.5.4
+            lptr := lptr + macroptr.bodysize
+            macroptr.totalsize := lptr - macroptr
+            macroptr := lptr
+            o:=len+ o
+            info.count := info.count + 1
+         ENDWHILE
+         IF info.count
+            wptr := lptr
+            mh.macroinfo := info - mh
+         ENDIF
+      CASE JOB_LIB
+         info := wptr
+         libi := info + SIZEOF modinfo
+         lfunc := libi + SIZEOF modlibi
+         c:=o
+         WHILE c[]++ DO NOP
+         libi.basename := getTableStrOfs(stc, c)
+         WHILE c[]++ DO NOP
+         off:=-30
+         WHILE (c[]&lt;&gt;$FF) AND (c&lt;end)
+            IF c[] = 16
+               INC c
+            ELSE
+               c2 := c
+               WHILE c[]++ &gt; &quot; &quot; DO NOP ; c--
+               r := c[]
+               c[]++ := NIL
+               IF StrCmp(c2, &#x27;Dum&#x27;) = FALSE
+                  lfunc.name := getTableStrOfs(stc, c2)
+                  lparam := lfunc + SIZEOF modlfunc
+                  c2 := 0
+                  IF r &lt;&gt; 16
+                     WHILE r &lt; 16
+                        lparam.rtype := IF r &gt; 7 THEN 1 ELSE 0
+                        lparam.rnum := IF r &gt; 7 THEN r - 8 ELSE r
+                        lparam++
+                        c2++
+                        r := c[]++
+                     ENDWHILE
+                     c--
+                  ENDIF
+                  lfunc.baseofs := off
+                  lfunc.nrofargs := c2
+                  lfunc.totalsize := lparam - lfunc
+                  libi.nroflfuncs := libi.nroflfuncs + 1
+                  lfunc := lparam
+               ENDIF
+            ENDIF
+            off:=off-6
+         ENDWHILE
+         libi.totalsize := lfunc - libi
+         libi := lfunc
+         info.count := 1
+         mh.libiinfo := info - mh
+         o := end
+         wptr := lfunc
+      CASE JOB_CODE
+         info := wptr
+         wptr := info + SIZEOF modinfo
+         l:=Mul(Long(o),4) ; o := o + 4
+         CopyMem(o, wptr, l)
+         wptr := wptr + l
+         o:=l+o
+         info.count := Div(l,4)
+         IF info.count
+            mh.codeinfo := info - mh
+         ENDIF
+      CASE JOB_RELOC
+         info := wptr
+         wptr := info + SIZEOF modinfo
+         c:=Long(o) ; o := o + 4
+         WHILE c
+            c--
+            r := Long(o)
+            #ifdef DBG_TRANS
+            DEBUGF(&#x27;reloc $\h\n&#x27;, r)
+            #endif
+            IF (r AND $80000000) = FALSE
+               wptr[]++ := r
+               info.count := info.count + 1
+            ENDIF
+            o := o + 4
+         ENDWHILE
+         IF info.count
+            mh.relocinfo := info - mh
+         ENDIF
+      CASE JOB_PROCS
+         info := wptr
+         wptr := info + SIZEOF modinfo
+         procptr := wptr
+         off := 0 -&gt; counts nr of procedures
+         WHILE (l:=o[]++)&gt;0
+            c:=o
+            o:=o+l+4
+            IF o[]=1
+               o++
+               off++  -&gt; counter
+               procptr.name := getTableStrOfs(stc, c)
+               procptr.offset := Long(o-6)
+               narg:=o[]++
+               procptr.nrofargs := narg
+               #ifdef DBG_TRANS
+               DEBUGF(&#x27;proc \s&#x27;+&#x27;(/\d) @ \d\n&#x27;, c, narg, procptr.offset)
+               #endif
+               o++
+               c2:=o[]++
+               procptr.nrofdefaults := c2
+               darg:=o
+               param := procptr + SIZEOF modproc
+               IF c2
+                  FOR c := 0 TO narg-1
+                     IF c &gt;= (narg-c2)
+                        param.defval := Long(darg+Mul(c-(narg-c2),4))
+                     ENDIF
+                     param++
+                  ENDFOR
+               ELSE
+                  param := param + Mul(SIZEOF modarg,narg)
+               ENDIF
+               o:=c2*4+o
+               c:=o[]++
+               o:=o+c
+               procptr.totalsize := param - procptr
+               procptr := procptr + procptr.totalsize
+            ELSEIF o[] = 2 -&gt; label
+               o++
+               off++
+               procptr.name := getTableStrOfs(stc, c)
+               procptr.offset := Long(o-6)
+               param := procptr + 12
+               procptr.totalsize := param - procptr
+               #ifdef DBG_TRANS
+               DEBUGF(&#x27;label \s\n&#x27;, c)
+               #endif
+               procptr := procptr + procptr.totalsize
+            ENDIF
+         ENDWHILE
+         info.count := off
+         IF info.count
+            mh.procinfo := info - mh
+            wptr := param
+         ENDIF
+      CASE JOB_DEBUG
+         lo := o
+         WHILE lo[]++=$3F1
+            len:=lo[]++
+            lo:=lo+4
+            c:=lo[]++
+            lo:=len*4+lo-8
+         ENDWHILE
+         o := lo
+      CASE JOB_MODINFO
+         num := 0
+         info := wptr
+         wptr := info + SIZEOF modinfo
+         submodptr := wptr
+         o:=o+4
+         WHILE len:=o[]++
+            #ifdef DBG_TRANS
+            DEBUGF(&#x27;modname: \s\n&#x27;, o)
+            #endif
+            submodptr.name := getTableStrOfs(stc, o)
+            modref := submodptr + SIZEOF modmodule
+            num++
+            o:=o+len
+            WHILE c:=o[]++
+               len:=o[]++
+               c2:=o
+               o:=o+len
+               IF c=2 -&gt; proc/lab
+                  submodptr.numsymbs := submodptr.numsymbs + 1
+                  modref.name := getTableStrOfs(stc, c2)
+                  f:=o[]++
+                  c:=o[]++
+                  modref.numrefs := c
+                  lptr := modref + SIZEOF modref
+                  WHILE c
+                     c--
+                     lptr[]++ := Shl(REFADR,24) OR Long(o) -&gt; put xref offset
+                     o := o + 4
+                  ENDWHILE
+                  modref := lptr
+               ELSE
+                  c:=o[]++
+                  o:=c*6+o
+               ENDIF
+            ENDWHILE
+            submodptr.totalsize := modref - submodptr
+            submodptr := modref
+         ENDWHILE
+         info.count := num
+         IF info.count
+            mh.moduleinfo := info - mh
+            wptr := modref
+         ENDIF
+      CASE JOB_DONE
+         o := end
+      CASE JOB_GLOBS
+         info := wptr
+         wptr := info + SIZEOF modinfo
+         IF o[]=SKIPMARK THEN o:=o+6
+         WHILE (len:=o[]++)&gt;=0
+           IF len -&gt; xrefglob ?
+               lo:=o+len
+               WHILE (coff := lo[]++)
+                  IF thisvers&gt;=10 THEN lo := lo + 2
+               ENDWHILE
+               o := lo
+           ELSE
+              #ifdef DBG_TRANS
+              DEBUGF(&#x27;drelglob:\n&#x27;)
+              #endif
+              info.count := info.count + 1
+              lptr := wptr++ -&gt; numdrels
+              lo := o
+              WHILE (coff := lo[]++)
+                 IF thisvers&gt;=10 THEN lo := lo + 2 -&gt; we only support LONG !
+                 wptr[]++ := coff
+                 #ifdef DBG_TRANS
+                 DEBUGF(&#x27;   \d\n&#x27;, coff)
+                 #endif
+                 lptr[] := lptr[] + 1
+              ENDWHILE
+              o := lo
+           ENDIF
+         ENDWHILE
+         IF info.count
+            mh.globinfo := info - mh
+         ENDIF
+      DEFAULT          ; Raise(&quot;FORM&quot;)
+      ENDSELECT
+   ENDWHILE
+
+   info := mh.strtabinfo + mh
+   info.count := stc.count
+
+   IF mh.codeinfo THEN mh.cpu := CPU_M68 -&gt; 2.0 fix
+
+   #ifdef DBG_TRANS
+   DEBUGF(&#x27;allocated modsize=\d\n&#x27;, mh.modsize)
+   #endif
+
+   t := (info + stc.offset + SIZEOF modinfo) - mh
+   IF t &gt; mh.modsize
+      DEBUGF(&#x27;!!module buffer overflow!! \d\n&#x27;, t-mh.modsize)
+      RETURN NIL, &quot;TRNS&quot;
+   ENDIF
+
+   IF wptr &gt; (mh.strtabinfo + mh) -&gt; 1.8.0
+      DEBUGF(&#x27;!!wptr overflowed into strtable!!&#x27;)
+      RETURN NIL, &quot;TRNS&quot;
+   ENDIF
+
+   #ifdef DBG_TRANS
+      DEBUGF(&#x27;actual modsize=\d\n&#x27;, mh.modsize)
+   #endif
+
+
+EXCEPT DO
+
+   IF exception
+      #ifdef DBG_TRANS
+      DEBUGF(&#x27;translation error: $\h\n&#x27;, exception)
+      #endif
+      IF mh
+         IF g_modulecache THEN FREEMEM(mh, mh.modsize) ELSE DISPOSE(mh)
+      ENDIF
+   ENDIF
+
+
+ENDPROC IF exception THEN NIL ELSE mh, exception
+
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

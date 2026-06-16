@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>reportError.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-epp-v1-4d.html">epp-v1_4d</a> &rsaquo; reportError.e</div><h1>File: <code>reportError.e</code></h1><p class="meta">48 lines · project <a href="../examples/pkg-epp-v1-4d.html"><code>epp-v1_4d</code></a></p><p class="pathctx">epp-v1_4d/EPP/Sources/Programmers/reportError.e</p><h2>Source</h2><pre class="code">OPT TURBO
+
+PMODULE &#x27;PMODULES:openFile&#x27;,
+        &#x27;PMODULES:closeFile&#x27;,
+        &#x27;PMODULES:readStr&#x27;
+
+CONST LARGEST_TOKEN_SUPPORTED=255
+
+RAISE &quot;MEM&quot; IF String()=NIL
+
+PROC reportError(mainLineNumber) HANDLE
+/*----------------------------------------------------------*
+  Use map file to correct error line number reported by EC,
+  and find out what the module name is.  Extracted from EPP
+  and modified for reusability (EPP&#x27;s reportError() function
+  relies on global data).  Raises exceptions:  &quot;MEM&quot;=error
+  allocating; &quot;FILO&quot;=open file; &quot;FILR&quot;=read file; &quot;lmax&quot;=line
+  number out of range.
+ *----------------------------------------------------------*/
+  DEF defsMapFileName, defsMapFileHandle=NIL, workStr=NIL
+  DEF index:PTR TO INT, moduleId=1, moduleLineNumber,
+      localLineNumber, globalLineNumber, i=0
+  defsMapFileName:=&#x27;T:epp.map&#x27;
+  index:=[0, 0, 0]:INT
+  defsMapFileHandle:=openFile(defsMapFileName, OLDFILE)
+  workStr:=String(LARGEST_TOKEN_SUPPORTED)
+  REPEAT
+    IF index[1]&lt;=mainLineNumber
+      moduleId:=index[0]
+      globalLineNumber:=index[1]
+      localLineNumber:=index[2]
+    ENDIF
+    IF Read(defsMapFileHandle, index, 6)&lt;6 THEN Raise(&quot;FILR&quot;)
+  UNTIL index[0]=0
+  IF index[1]&lt;mainLineNumber THEN Raise(&quot;lmax&quot;)
+  WHILE i++&lt;moduleId DO readStr(defsMapFileHandle, workStr)
+  moduleLineNumber:=mainLineNumber-globalLineNumber+localLineNumber
+  WriteF(&#x27;***EPP: CORRECTED LINE \d, PMODULE &#x27;&#x27;\s&#x27;&#x27;\n&#x27;, moduleLineNumber, workStr)
+  closeFile(defsMapFileHandle)
+  DisposeLink(workStr)
+EXCEPT
+  closeFile(defsMapFileHandle)
+  IF workStr THEN DisposeLink(workStr)
+  Raise(exception)
+ENDPROC
+  /* reportError */
+
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>
