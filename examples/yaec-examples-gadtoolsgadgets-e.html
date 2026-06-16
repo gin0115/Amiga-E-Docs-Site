@@ -1,0 +1,305 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>gadtoolsgadgets.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-yaec.html">yaec</a> &rsaquo; gadtoolsgadgets.e</div><h1>File: <code>gadtoolsgadgets.e</code></h1><p class="meta">279 lines · project <a href="../examples/pkg-yaec.html"><code>yaec</code></a></p><p class="pathctx">yaec/examples/gadtoolsgadgets.e</p><p class="prose">gadtoolsgadgets.e Simple example of using a <a href="../modules/number.html">number</a> of <a href="../modules/gadtools.html">gadtools</a> <a href="../modules/gadgets.html">gadgets</a>.</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/ports.html">exec/ports</a></li><li><a href="../modules/gadtools.html">gadtools</a></li><li><a href="../modules/text.html">graphics/text</a></li><li><a href="../modules/intuition.html">intuition/intuition</a></li><li><a href="../modules/screens.html">intuition/screens</a></li><li><a href="../modules/gadtools.html">libraries/gadtools</a></li></ul></div><h2>Source</h2><pre class="code">-&gt; gadtoolsgadgets.e
+-&gt; Simple example of using a number of gadtools gadgets.
+
+MODULE &#x27;gadtools&#x27;
+MODULE &#x27;exec/ports&#x27;
+MODULE &#x27;graphics/text&#x27;
+MODULE &#x27;intuition/intuition&#x27;
+MODULE &#x27;intuition/screens&#x27;
+MODULE &#x27;libraries/gadtools&#x27;
+
+ENUM ERR_NONE, ERR_FONT, ERR_GAD, ERR_KICK, ERR_LIB, ERR_PUB, ERR_VIS, ERR_WIN
+
+RAISE ERR_FONT IF OpenFont()=NIL,
+      ERR_GAD  IF CreateGadgetA()=NIL,
+      ERR_KICK IF KickVersion()=FALSE,
+      ERR_LIB  IF OpenLibrary()=NIL,
+      ERR_PUB  IF LockPubScreen()=NIL,
+      ERR_VIS  IF GetVisualInfoA()=NIL,
+      ERR_WIN  IF OpenWindowTagList()=NIL
+
+-&gt; Gadget ENUM to be used as GadgetIDs and also as the indexes into the
+-&gt; gadget array my_gads[].
+ENUM MYGAD_SLIDER, MYGAD_STRING1, MYGAD_STRING2, MYGAD_STRING3, MYGAD_BUTTON
+
+-&gt; Range for the slider:
+CONST SLIDER_MIN=1, SLIDER_MAX=20
+
+DEF gadtoolsbase
+
+DEF topaz80
+
+-&gt; Function to handle a GADGETUP or GADGETDOWN event.  For GadTools gadgets,
+-&gt; it is possible to use this function to handle MOUSEMOVEs as well, with
+-&gt; little or no work.
+-&gt; E-Note: slider_level is not a &#x27;PTR TO INT&#x27;, but &#x27;PTR TO LONG&#x27;
+PROC handleGadgetEvent(win, gad:PTR TO gadget, code,
+                       slider_level:PTR TO LONG, my_gads:PTR TO LONG)
+  DEF id
+  id:=gad.gadgetid
+  SELECT id
+  CASE MYGAD_SLIDER
+    -&gt; Sliders report their level in the IntuiMessage Code field:
+    WriteF(&#x27;Slider at level \d\n&#x27;, code)
+    slider_level[]:=code
+  CASE MYGAD_STRING1
+    -&gt; String gadgets report GADGETUP&#x27;s
+    WriteF(&#x27;String gadget 1: \q\s\q.\n&#x27;, gad.specialinfo::stringinfo.buffer)
+  CASE MYGAD_STRING2
+    -&gt; String gadgets report GADGETUP&#x27;s
+    WriteF(&#x27;String gadget 2: \q\s\q.\n&#x27;, gad.specialinfo::stringinfo.buffer)
+  CASE MYGAD_STRING3
+    -&gt; String gadgets report GADGETUP&#x27;s
+    WriteF(&#x27;String gadget 3: \q\s\q.\n&#x27;, gad.specialinfo::stringinfo.buffer)
+  CASE MYGAD_BUTTON
+    -&gt; Buttons report GADGETUP&#x27;s (button resets slider to 10)
+    WriteF(&#x27;Button was pressed, slider reset to 10.\n&#x27;)
+    slider_level[]:=10
+    GT_SetGadgetAttrsA(my_gads[MYGAD_SLIDER], win, NIL,
+                      [GTSL_LEVEL, slider_level[], NIL])
+  ENDSELECT
+ENDPROC
+
+-&gt; Function to handle vanilla keys.
+-&gt; E-Note: slider_level is not a &#x27;PTR TO INT&#x27;, but &#x27;PTR TO LONG&#x27;
+PROC handleVanillaKey(win, code, slider_level:PTR TO LONG, my_gads:PTR TO LONG)
+  SELECT code
+  CASE &quot;v&quot;
+    -&gt; Increase slider level, but not past maximum
+    slider_level[]:=Min(slider_level[]+1, SLIDER_MAX)
+    GT_SetGadgetAttrsA(my_gads[MYGAD_SLIDER], win, NIL,
+                      [GTSL_LEVEL, slider_level[], NIL])
+  CASE &quot;V&quot;
+    -&gt; Decrease slider level, but not past maximum
+    slider_level[]:=Max(slider_level[]-1, SLIDER_MIN)
+    GT_SetGadgetAttrsA(my_gads[MYGAD_SLIDER], win, NIL,
+                      [GTSL_LEVEL, slider_level[], NIL])
+  CASE &quot;c&quot;, &quot;C&quot;
+    -&gt; Button resets slider to 10
+    slider_level[]:=10
+    GT_SetGadgetAttrsA(my_gads[MYGAD_SLIDER], win, NIL,
+                      [GTSL_LEVEL, slider_level[], NIL])
+  CASE &quot;f&quot;, &quot;F&quot;
+    ActivateGadget(my_gads[MYGAD_STRING1], win, NIL)
+  CASE &quot;s&quot;, &quot;S&quot;
+    ActivateGadget(my_gads[MYGAD_STRING2], win, NIL)
+  CASE &quot;t&quot;, &quot;T&quot;
+    ActivateGadget(my_gads[MYGAD_STRING3], win, NIL)
+  ENDSELECT
+ENDPROC
+
+-&gt; Here is where all the initialisation and creation of GadTools gadgets take
+-&gt; place.  This function requires a pointer to a NIL-initialised gadget list
+-&gt; pointer.  It returns a pointer to the last created gadget.
+-&gt; E-Note: exceptions raised by CreateGadgetA() will be handled by caller
+PROC createAllGadgets(glistptr:PTR TO LONG, vi, topborder,
+                      slider_level, my_gads:PTR TO LONG)
+  DEF gad, ng:PTR TO newgadget
+  -&gt; All the gadget creation calls accept a pointer to the previous gadget, and
+  -&gt; link the new gadget to that gadget&#x27;s NextGadget field.  Also, they exit
+  -&gt; gracefully, returning NIL, if any previous gadget was NIL.  This limits
+  -&gt; the amount of checking for failure that is needed.  You only need to check
+  -&gt; before you tweak any gadget structure or use any of its fields, and
+  -&gt; finally once at the end, before you add the gadgets.
+
+  -&gt; The following operation is required of any program that uses GadTools.
+  -&gt; It gives the toolkit a place to stuff context data.
+  gad:=CreateContext(glistptr)
+
+  -&gt; Since the NewGadget structure is unmodified by any of the CreateGadgetA()
+  -&gt; calls, we need only change those fields which are different.
+  ng:=[140, (20+topborder), 200, 12, &#x27;_Volume:   &#x27;, topaz80,
+       MYGAD_SLIDER, NG_HIGHLABEL, vi, 0]:newgadget
+
+  my_gads[MYGAD_SLIDER]:=(gad:=CreateGadgetA(SLIDER_KIND, gad, ng,
+                                    [GTSL_MIN,         SLIDER_MIN,
+                                     GTSL_MAX,         SLIDER_MAX,
+                                     GTSL_LEVEL,       slider_level,
+                                  /* yaec-note: use format of the function */
+                                     GTSL_LEVELFORMAT, &#x27;%ld&#x27;,
+                                     GTSL_MAXLEVELLEN, 2,
+                                     GT_UNDERSCORE,    &quot;_&quot;,
+                                     NIL]))
+ 
+
+  ng.topedge    := ng.topedge+20
+  ng.height     := 14
+  ng.gadgettext := &#x27;_First:&#x27;
+  ng.gadgetid   := MYGAD_STRING1
+  my_gads[MYGAD_STRING1]:=(gad:=CreateGadgetA(STRING_KIND, gad, ng,
+                                     [GTST_STRING,   &#x27;Try pressing&#x27;,
+                                      GTST_MAXCHARS, 50,
+                                      GT_UNDERSCORE, &quot;_&quot;,
+                                      NIL]))
+
+  ng.topedge    := ng.topedge+20
+  ng.gadgettext := &#x27;_Second:&#x27;
+  ng.gadgetid   := MYGAD_STRING2
+  my_gads[MYGAD_STRING2]:=(gad:=CreateGadgetA(STRING_KIND, gad, ng,
+                                     [GTST_STRING,   &#x27;TAB or Shift-TAB&#x27;,
+                                      GTST_MAXCHARS, 50,
+                                      GT_UNDERSCORE, &quot;_&quot;,
+                                      NIL]))
+
+  ng.topedge    := ng.topedge+20
+  ng.gadgettext := &#x27;_Third:&#x27;
+  ng.gadgetid   := MYGAD_STRING3
+  my_gads[MYGAD_STRING3]:=(gad:=CreateGadgetA(STRING_KIND, gad, ng,
+                                     [GTST_STRING,   &#x27;To see what happens!&#x27;,
+                                      GTST_MAXCHARS, 50,
+                                      GT_UNDERSCORE, &quot;_&quot;,
+                                      NIL]))
+  ng.leftedge   := 50
+  ng.topedge    := 20
+  ng.width      := 100
+  ng.height     := 12
+  ng.gadgettext := &#x27;_Click Here&#x27;
+  ng.gadgetid   := MYGAD_BUTTON
+  ng.flags      := 0
+  gad:=CreateGadgetA(BUTTON_KIND, gad, ng,
+                    [GT_UNDERSCORE, &quot;_&quot;, NIL])
+ENDPROC gad
+
+-&gt; Standard message handling loop with GadTools message handling functions
+-&gt; used (Gt_GetIMsg() and Gt_ReplyIMsg()).
+-&gt; E-Note: slider_level is not a &#x27;PTR TO INT&#x27;, but &#x27;PTR TO LONG&#x27;
+PROC process_window_events(mywin:PTR TO window, slider_level:PTR TO LONG,
+                           my_gads:PTR TO LONG)
+  DEF imsg:PTR TO intuimessage, imsgClass, imsgCode, gad, terminated=FALSE
+  REPEAT
+    Wait(Shl(1, mywin.userport.sigbit))
+
+    -&gt; Gt_GetIMsg() returns an IntuiMessage with more friendly information for
+    -&gt; complex gadget classes.  Use it wherever you get IntuiMessages where
+    -&gt; using GadTools gadgets.
+    WHILE (terminated=FALSE) AND imsg:=GT_GetIMsg(mywin.userport)
+      -&gt; Presuming a gadget, of course, but no harm...  Only dereference this
+      -&gt; value (gad) where the Class specifies that it is a gadget event.
+      gad:=imsg.iaddress
+
+      imsgClass:=imsg.class
+      imsgCode:=imsg.code
+
+      -&gt; Use the toolkit message-replying function here...
+      GT_ReplyIMsg(imsg)
+
+      SELECT imsgClass
+        -&gt;  --- WARNING --- WARNING --- WARNING --- WARNING --- WARNING ---
+        -&gt; GadTools puts the gadget address into IAddress of IDCMP_MOUSEMOVE
+        -&gt; messages.  This is NOT true for standard Intuition messages,
+        -&gt; but is an added feature of GadTools.
+      CASE IDCMP_GADGETDOWN
+        handleGadgetEvent(mywin, gad, imsgCode, slider_level, my_gads)
+      CASE IDCMP_MOUSEMOVE
+        handleGadgetEvent(mywin, gad, imsgCode, slider_level, my_gads)
+      CASE IDCMP_GADGETUP
+        handleGadgetEvent(mywin, gad, imsgCode, slider_level, my_gads)
+
+      CASE IDCMP_VANILLAKEY
+        handleVanillaKey(mywin, imsgCode, slider_level, my_gads)
+      CASE IDCMP_CLOSEWINDOW
+        terminated:=TRUE
+      CASE IDCMP_REFRESHWINDOW
+        -&gt; With GadTools, the application must use Gt_BeginRefresh()
+        -&gt; where it would normally have used BeginRefresh()
+        GT_BeginRefresh(mywin)
+        GT_EndRefresh(mywin, TRUE)
+      ENDSELECT
+    ENDWHILE
+  UNTIL terminated
+ENDPROC
+
+-&gt; Prepare for using GadTools, set up gadgets and open window.
+-&gt; Clean up and when done or on error.
+PROC gadtoolsWindow() HANDLE
+  DEF font=NIL, mysc=NIL:PTR TO screen, mywin=NIL, glist=NIL
+  DEF my_gads[4]:ARRAY OF LONG, vi, slider_level=5, topborder
+  -&gt; Open topaz 8 font, so we can be sure it&#x27;s openable when we later
+  -&gt; set ng.textattr to Topaz80:
+  topaz80:=[&#x27;topaz.font&#x27;, 8, 0, 0]:textattr
+  font:=OpenFont(topaz80)
+  mysc:=LockPubScreen(NIL)
+  vi:=GetVisualInfoA(mysc, [NIL])
+
+  -&gt; Here is how we can figure out ahead of time how tall the window&#x27;s
+  -&gt; title bar will be:
+  topborder:=mysc.wbortop+mysc.font.ysize+1
+
+  createAllGadgets({glist}, vi, topborder, slider_level, my_gads)
+
+  mywin:=OpenWindowTagList(NIL,
+                     [WA_TITLE, &#x27;GadTools Gadget Demo&#x27;,
+                      WA_GADGETS,   glist,  WA_AUTOADJUST,    TRUE,
+                      WA_WIDTH,       400,  WA_MINWIDTH,        50,
+                      WA_INNERHEIGHT, 140,  WA_MINHEIGHT,       50,
+                      WA_DRAGBAR,    TRUE,  WA_DEPTHGADGET,   TRUE,
+                      WA_ACTIVATE,   TRUE,  WA_CLOSEGADGET,   TRUE,
+                      WA_SIZEGADGET, TRUE,  WA_SIMPLEREFRESH, TRUE,
+                      WA_IDCMP, IDCMP_CLOSEWINDOW OR IDCMP_REFRESHWINDOW OR
+                                IDCMP_VANILLAKEY OR SLIDERIDCMP OR
+                                STRINGIDCMP OR BUTTONIDCMP,
+                      WA_PUBSCREEN, mysc,
+                      NIL])
+  -&gt; After window is open, gadgets must be refreshed with a call to the
+  -&gt; GadTools refresh window function.
+  GT_RefreshWindow(mywin, NIL)
+
+  process_window_events(mywin, {slider_level}, my_gads)
+
+EXCEPT DO
+  IF mywin THEN CloseWindow(mywin)
+  -&gt; FreeGadgets() even if createAllGadgets() fails, as some of the gadgets may
+  -&gt; have been created...  If glist is NIL then FreeGadgets() will do nothing.
+  FreeGadgets(glist)
+  IF vi THEN FreeVisualInfo(vi)
+  IF mysc THEN UnlockPubScreen(mysc, NIL)
+  IF font THEN CloseFont(font)
+  ReThrow()  -&gt; E-Note: pass on exception if it was an error
+ENDPROC
+
+-&gt; Open all libraries and run.  Clean up when finished or on error..
+PROC main() HANDLE
+  KickVersion(37)
+  gadtoolsbase:=OpenLibrary(&#x27;gadtools.library&#x27;, 37)
+  gadtoolsWindow()
+EXCEPT DO
+  IF gadtoolsbase THEN CloseLibrary(gadtoolsbase)
+  SELECT exception
+  CASE ERR_FONT; WriteF(&#x27;Error: Failed to open Topaz 80\n&#x27;)
+  CASE ERR_GAD;  WriteF(&#x27;Error: createAllGadgets() failed\n&#x27;)
+  CASE ERR_KICK; WriteF(&#x27;Error: Requires V37\n&#x27;)
+  CASE ERR_LIB;  WriteF(&#x27;Error: Requires V37 gadtools.library\n&#x27;)
+  CASE ERR_PUB;  WriteF(&#x27;Error: Couldn\at lock default public screen\n&#x27;)
+  CASE ERR_VIS;  WriteF(&#x27;Error: GetVisualInfoA() failed\n&#x27;)
+  CASE ERR_WIN;  WriteF(&#x27;Error: OpenWindow() failed\n&#x27;)
+  ENDSELECT
+ENDPROC
+
+
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

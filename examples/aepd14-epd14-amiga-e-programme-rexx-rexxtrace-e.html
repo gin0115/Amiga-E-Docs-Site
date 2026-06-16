@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>RexxTrace.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-aepd14.html">AEPD14</a> &rsaquo; RexxTrace.e</div><h1>File: <code>RexxTrace.e</code></h1><p class="meta">87 lines · project <a href="../examples/pkg-aepd14.html"><code>AEPD14</code></a></p><p class="pathctx">AEPD14/EPD14/Amiga_E-Programme/Rexx/RexxTrace.e</p><p class="prose">******************************************************************************* * &lt;&lt; EUTILS HEADER &gt;&gt; ******************************************************************************** ED &quot;edg&quot; EC &quot;ec -e&quot; PREPRO &quot;epp -t&quot; SOURCE &quot;RexxTrace.e&quot; EPPDEST &quot;R_EPP.e&quot; EXEC &quot;RexxTRace&quot; ISOURCE &quot;&quot; VERSION &quot;0&quot; RE</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/eropenlib.html">eropenlib</a></li><li><a href="../modules/ports.html">exec/ports</a></li><li><a href="../modules/rexxsyslib.html">rexxsyslib</a></li></ul></div><h2>Source</h2><pre class="code">/********************************************************************************
+ * &lt;&lt; EUTILS HEADER &gt;&gt;
+ ********************************************************************************
+ ED         &quot;edg&quot;
+ EC         &quot;ec -e&quot;
+ PREPRO     &quot;epp -t&quot;
+ SOURCE     &quot;RexxTrace.e&quot;
+ EPPDEST    &quot;R_EPP.e&quot;
+ EXEC       &quot;RexxTRace&quot;
+ ISOURCE    &quot;&quot;
+ VERSION    &quot;0&quot;
+ REVISION   &quot;0&quot;
+ NAMEPRG    &quot;RexxTRace&quot;
+ NAMEAUTHOR &quot;NasGûl&quot;
+ ********************************************************************************
+ * HISTORY :
+ *******************************************************************************/
+
+MODULE &#x27;exec/ports&#x27;,&#x27;exec/nodes&#x27;,&#x27;exec/lists&#x27;
+MODULE &#x27;rexxsyslib&#x27;,&#x27;rexx/rxslib&#x27;,&#x27;rexx/storage&#x27;,&#x27;rexx/errors&#x27;
+MODULE &#x27;eropenlib&#x27;,&#x27;verslib&#x27;
+ENUM ER_NONE,ER_BADARGS,ER_PORT
+DEF action
+DEF myport:PTR TO mp
+PROC main() HANDLE /*&quot;main()&quot;*/
+    DEF myargs:PTR TO LONG,rdargs=NIL
+    myargs:=[0,0]
+    IF ReadArgs(&#x27;OPEN/S,CLOSE/S&#x27;,myargs,NIL)
+        IF myargs[0] THEN action:=RXTCOPN
+        IF myargs[1] THEN action:=RXTCCLS
+        FreeArgs(rdargs)
+    ELSE
+        Raise(ER_BADARGS)
+    ENDIF
+    IF (rexxsysbase:=OpenLibrary(&#x27;rexxsyslib.library&#x27;,VERS_REXXSYSLIB))=NIL THEN Raise(ER_REXXSYSLIBLIB)
+    IF (myport:=CreateMsgPort())=NIL THEN Raise(ER_PORT)
+    p_SendRexxMsg()
+    Raise(ER_NONE)
+EXCEPT
+    IF myport THEN DeleteMsgPort(myport)
+    IF rexxsysbase THEN CloseLibrary(rexxsysbase)
+ENDPROC
+PROC p_SendRexxMsg() /*&quot;p_SendRexxMsg()&quot;*/
+    DEF rc=FALSE
+    DEF rxmsg:PTR TO rexxmsg
+    DEF ap:PTR TO mp
+    DEF test:PTR TO LONG
+    DEF execmsg:PTR TO mn
+    DEF node:PTR TO ln
+    IF rxmsg:=CreateRexxMsg(myport,NIL,NIL)
+        execmsg:=rxmsg
+        node:=execmsg
+        node.name:=&#x27;RexxTRace&#x27;
+        node.type:=NT_MESSAGE
+        node.pri:=0
+        execmsg.replyport:=myport
+        IF test:=CreateArgstring(&#x27;&#x27;,EstrLen(&#x27;&#x27;))
+            CopyMem({test},rxmsg.args,4)
+            rxmsg.action:=action
+            rxmsg.passport:=myport
+            rxmsg.stdin:=Input()
+            rxmsg.stdout:=Output()
+            Forbid()
+            ap:=FindPort(&#x27;REXX&#x27;)
+            IF ap
+                PutMsg(ap,rxmsg)
+            ENDIF
+            Permit()
+            IF ap
+                WaitPort(myport)
+                GetMsg(myport)
+                rc:=rxmsg.result1
+                IF rc&lt;&gt;0
+                    WriteF(&#x27;RETURN Code \d \d\n&#x27;,rc,rxmsg.result2)
+                ENDIF
+            ELSE
+                WriteF(&#x27;REXX not Actif.\n&#x27;)
+            ENDIF
+            ClearRexxMsg(rxmsg,16)
+        ENDIF
+        DeleteRexxMsg(rxmsg)
+    ENDIF
+ENDPROC
+
+
+
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

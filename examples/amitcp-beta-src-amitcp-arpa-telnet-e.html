@@ -1,0 +1,162 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>telnet.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-amitcp-beta.html">AmiTCP_beta</a> &rsaquo; telnet.e</div><h1>File: <code>telnet.e</code></h1><p class="meta">136 lines · project <a href="../examples/pkg-amitcp-beta.html"><code>AmiTCP_beta</code></a></p><p class="pathctx">AmiTCP_beta/Src/AmiTCP/arpa/telnet.e</p><h2>Source</h2><pre class="code">OPT MODULE, PREPROCESS
+OPT EXPORT
+
+-&gt; EOR clashes with Assembly mnemonic
+-&gt; NOP clashes with Assembly mnemonic
+-&gt; DO clashes with E keyword
+ENUM XEOF=236, SUSP, ABORT, XEOR, SE, XNOP, DM, BREAK, IP, AO, AYT, EC, EL,
+     GA, SB, WILL, WONT, XDO, DONT, IAC
+
+CONST SYNCH=242
+
+DEF telcmds:PTR TO LONG,
+    telopts:PTR TO LONG,
+    slc_names:PTR TO LONG,
+    authtype_names:PTR TO LONG,
+    encrypt_names:PTR TO LONG,
+    enctype_names:PTR TO LONG
+
+#define _telcmds [&#x27;EOF&#x27;,&#x27;SUSP&#x27;,&#x27;ABORT&#x27;,&#x27;EOR&#x27;,&#x27;SE&#x27;,&#x27;NOP&#x27;,&#x27;DMARK&#x27;,&#x27;BRK&#x27;,&#x27;IP&#x27;, \
+                  &#x27;AO&#x27;,&#x27;AYT&#x27;,&#x27;EC&#x27;,&#x27;EL&#x27;,&#x27;GA&#x27;,&#x27;SB&#x27;,&#x27;WILL&#x27;,&#x27;WONT&#x27;,&#x27;DO&#x27;,&#x27;DONT&#x27;, \
+                  &#x27;IAC&#x27;,NIL]
+
+CONST TELCMD_FIRST=XEOF,
+      TELCMD_LAST=IAC
+
+#define TELCMD_OK(x) (((x)&lt;=TELCMD_LAST) AND ((x)&gt;=TELCMD_FIRST))
+#define TELCMD(x) (telcmds[(x)-TELCMD_FIRST])
+
+ENUM TELOPT_BINARY, TELOPT_ECHO, TELOPT_RCP, TELOPT_SGA, TELOPT_NAMS,
+     TELOPT_STATUS, TELOPT_TM, TELOPT_RCTE, TELOPT_NAOL, TELOPT_NAOP,
+     TELOPT_NAOCRD, TELOPT_NAOHTS, TELOPT_NAOHTD, TELOPT_NAOFFD,
+     TELOPT_NAOVTS, TELOPT_NAOVTD, TELOPT_NAOLFD, TELOPT_XASCII,
+     TELOPT_LOGOUT, TELOPT_BM, TELOPT_DET, TELOPT_SUPDUP,
+     TELOPT_SUPDUPOUTPUT, TELOPT_SNDLOC, TELOPT_TTYPE, TELOPT_EOR,
+     TELOPT_TUID, TELOPT_OUTMRK, TELOPT_TTYLOC, TELOPT_3270REGIME,
+     TELOPT_X3PAD, TELOPT_NAWS, TELOPT_TSPEED, TELOPT_LFLOW,
+     TELOPT_LINEMODE, TELOPT_XDISPLOC, TELOPT_ENVIRON,
+     TELOPT_AUTHENTICATION, TELOPT_ENCRYPT, TELOPT_EXOPL=255
+
+CONST NTELOPTS=1+TELOPT_ENCRYPT
+
+#define _telopts [&#x27;BINARY&#x27;,&#x27;ECHO&#x27;,&#x27;RCP&#x27;,&#x27;SUPPRESS GO AHEAD&#x27;,&#x27;NAME&#x27;,&#x27;STATUS&#x27;, \
+                  &#x27;TIMING MARK&#x27;,&#x27;RCTE&#x27;,&#x27;NAOL&#x27;,&#x27;NAOP&#x27;,&#x27;NAOCRD&#x27;,&#x27;NAOHTS&#x27;, \
+                  &#x27;NAOHTD&#x27;,&#x27;NAOFFD&#x27;,&#x27;NAOVTS&#x27;,&#x27;NAOVTD&#x27;,&#x27;NAOLFD&#x27;,&#x27;EXTEND ASCII&#x27;, \
+                  &#x27;LOGOUT&#x27;,&#x27;BYTE MACRO&#x27;,&#x27;DATA ENTRY TERMINAL&#x27;,&#x27;SUPDUP&#x27;, \
+                  &#x27;SUPDUP OUTPUT&#x27;,&#x27;SEND LOCATION&#x27;,&#x27;TERMINAL TYPE&#x27;, \
+                  &#x27;END OF RECORD&#x27;,&#x27;TACACS UID&#x27;,&#x27;OUTPUT MARKING&#x27;,&#x27;TTYLOC&#x27;, \
+                  &#x27;3270 REGIME&#x27;,&#x27;X.3 PAD&#x27;,&#x27;NAWS&#x27;,&#x27;TSPEED&#x27;,&#x27;LFLOW&#x27;,&#x27;LINEMODE&#x27;, \
+                  &#x27;XDISPLOC&#x27;,&#x27;ENVIRON&#x27;,&#x27;AUTHENTICATION&#x27;,&#x27;ENCRYPT&#x27;,NIL]
+
+CONST TELOPT_FIRST=TELOPT_BINARY,
+      TELOPT_LAST=TELOPT_ENCRYPT
+
+#define TELOPT_OK(x) (((x)&lt;=TELOPT_LAST) AND ((x)&gt;=TELOPT_FIRST))
+#define TELOPT(x) (telopts[(x)-TELOPT_FIRST])
+
+ENUM TEQUAL_IS, TELQUAL_SEND, TELQUAL_INFO, TELQUAL_REPLY=2, TELQUAL_NAME
+
+ENUM LM_MODE=1, LM_FORWARDMASK, LM_SLC
+
+SET MODE_EDIT, MODE_TRAPSIG, MODE_ACK, MODE_SOFT_TAB, MODE_LIT_ECHO
+
+CONST MODE_MASK=$1F
+
+CONST MODE_FLOW=$0100,
+      MODE_ECHO=$0200,
+      MODE_INBIN=$0400,
+      MODE_OUTBIN=$0800,
+      MODE_FORCE=$1000
+
+ENUM SLC_SYNCH=1, SLC_BRK, SLC_IP, SLC_AO, SLC_AYT, SLC_EOR, SLC_ABORT,
+     SLC_EOF, SLC_SUSP, SLC_EC, SLC_EL, SLC_EW, SLC_RP, SLC_LNEXT,
+     SLC_XON, SLC_XOFF, SLC_FORW1, SLC_FORW2
+
+CONST NSLC=18
+
+#define SLC_NAMELIST &#x27;0&#x27;,&#x27;SYNCH&#x27;,&#x27;BRK&#x27;,&#x27;IP&#x27;,&#x27;AO&#x27;,&#x27;AYT&#x27;,&#x27;EOR&#x27;, \
+                     &#x27;ABORT&#x27;,&#x27;EOF&#x27;,&#x27;SUSP&#x27;,&#x27;EC&#x27;,&#x27;EL&#x27;,&#x27;EW&#x27;,&#x27;RP&#x27;, \
+                     &#x27;LNEXT&#x27;,&#x27;XON&#x27;,&#x27;XOFF&#x27;,&#x27;FORW1&#x27;,&#x27;FORW2&#x27;,NIL
+
+#define _slc_names [SLC_NAMELIST]
+#define SLC_NAMES SLC_NAMELIST
+
+#define SLC_NAME_OK(x) (((x)&gt;=0) AND ((x)&lt;NSLC))
+#define SLC_NAME(x) (slc_names[(x)])
+
+ENUM SLC_NOSUPPORT, SLC_CANTCHANGE, SLC_VARIABLE, SLC_DEFAULT, SLC_LEVELBITS=3
+
+ENUM SLC_FUNC, SLC_FLAGS, SLC_VALUE
+
+CONST SLC_ACK=$80, SLC_FLUSHIN=$40, SLC_FLUSHOUT=$20
+
+ENUM ENV_VALUE, ENV_VAR, ENV_ESC
+
+ENUM AUTH_WHO_CLIENT, AUTH_WHO_SERVER, AUTH_WHO_MASK=1
+
+CONST AUTH_HOW_ONE_WAY=0, AUTH_HOW_MUTUAL=2, AUTH_HOW_MASK=2
+
+ENUM AUTHTYPE_NULL, AUTHTYPE_KERBEROS_V4, AUTHTYPE_KERBEROS_V5, AUTHTYPE_SPX,
+     AUTHTYPE_MINK, AUTHTYPE_CNT
+
+CONST AUTHTYPE_TEST=99
+
+#define _authtype_names [&#x27;NULL&#x27;,&#x27;KERBEROS_V4&#x27;,&#x27;KERBEROS_V5&#x27;,&#x27;SPX&#x27;,&#x27;MINK&#x27;,NIL]
+
+#define AUTHTYPE_NAME_OK(x) (((x)&gt;=0) AND ((x)&lt;AUTHTYPE_CNT))
+#define AUTHTYPE_NAME(x) (authtype_names[(x)])
+
+ENUM ENCRYPT_IS, ENCRYPT_SUPPORT, ENCRYPT_REPLY, ENCRYPT_START, ENCRYPT_END,
+     ENCRYPT_REQSTART, ENCRYPT_REQEND, ENCRYPT_ENC_KEYID, ENCRYPT_DEC_KEYID,
+     ENCRYPT_CNT
+
+ENUM ENCTYPE_ANY, ENCTYPE_DES_CFB64, ENCTYPE_DES_OFB64, ENCTYPE_CNT
+
+#define _encrypt_names [&#x27;IS&#x27;,&#x27;SUPPORT&#x27;,&#x27;REPLY&#x27;,&#x27;START&#x27;,&#x27;END&#x27;,&#x27;REQUEST-START&#x27;, \
+                        &#x27;REQUEST-END&#x27;,&#x27;ENC-KEYID&#x27;,&#x27;DEC-KEYID&#x27;,NIL]
+
+#define _enctype_names [&#x27;ANY&#x27;,&#x27;DES_CFB64&#x27;,&#x27;DES_OFB64&#x27;,NIL]
+
+#define ENCRYPT_NAME_OK(x) (((x)&gt;=0) AND ((x)&lt;ENCRYPT_CNT))
+#define ENCRYPT_NAME(x) (encrypt_names[(x)])
+
+#define ENCTYPE_NAME_OK(x) (((x)&gt;=0) AND ((x)&lt;ENCTYPE_CNT))
+#define ENCTYPE_NAME(x) (enctype_names[(x)])
+
+PROC telnet_init_names()
+  IF telcmds=NIL
+    telcmds:=_telcmds
+    telopts:=_telopts
+    slc_names:=_slc_names
+    authtype_names:=_authtype_names
+    encrypt_names:=_encrypt_names
+    enctype_names:=_enctype_names
+  ENDIF
+ENDPROC
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

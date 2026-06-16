@@ -1,0 +1,517 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>all.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-newgui3-1beta.html">newgui3_1beta</a> &rsaquo; all.e</div><h1>File: <code>all.e</code></h1><p class="meta">491 lines · project <a href="../examples/pkg-newgui3-1beta.html"><code>newgui3_1beta</code></a></p><p class="pathctx">newgui3_1beta/NewGUI/Src/Examples/all.e</p><p class="prose">* Angepasstes Beispiel (neues Window-Handling ect...!) * * *</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/gfxmacros.html">graphics/gfxmacros</a></li><li><a href="../modules/rastport.html">graphics/rastport</a></li><li><a href="../modules/intuition.html">intuition/intuition</a></li><li><a href="../modules/gadtools.html">libraries/gadtools</a></li><li><a href="../modules/newgui.html">newgui/newgui</a></li><li><a href="../modules/ng-progress.html">newgui/ng_progress</a></li><li><a href="../modules/ng-showerror.html">newgui/ng_showerror</a></li><li><a href="../modules/pl-scrolltext.html">newgui/pl_scrolltext</a></li><li><a href="../modules/tagitem.html">utility/tagitem</a></li></ul></div><h2>Source</h2><pre class="code">/*
+ *  Angepasstes Beispiel (neues Window-Handling ect...!)
+ *
+ *
+ *
+ */
+
+OPT     LARGE
+OPT     OSVERSION = 37
+OPT     PREPROCESS
+
+MODULE  &#x27;graphics/gfxmacros&#x27;
+MODULE  &#x27;graphics/rastport&#x27;
+MODULE  &#x27;intuition/intuition&#x27;
+MODULE  &#x27;libraries/gadtools&#x27;
+MODULE  &#x27;newgui/pl_scrolltext&#x27;
+MODULE  &#x27;newgui/ng_showerror&#x27;
+MODULE  &#x27;newgui/ng_progress&#x27;
+MODULE  &#x27;newgui/newgui&#x27;
+MODULE  &#x27;utility/tagitem&#x27;
+
+ENUM    GUI_MAIN = 1,
+        GUI_FIRST,
+        GUI_FONT,
+        GUI_SCREENMODE,
+        GUI_MULTI,
+        GUI_GAUGE,
+        GUI_ABOUT
+
+DEF     gui:PTR TO guihandle,                   -&gt; guihandle
+        screen=NIL,
+        menu=0,                                 -&gt; GadTools-Menü
+        tickon=FALSE,                           -&gt; Intuiticks an das Unterprogramm weiterleiten?
+        pw:PTR TO progresswin,                  -&gt; NewGUI-Progress-Window...
+        scroll:PTR TO scrolltext
+
+PROC main()     HANDLE
+ makemenus()
+  opengui()
+
+EXCEPT DO
+   IF scroll THEN END scroll
+  IF exception THEN ng_showerror(exception)     -&gt; Fehlerbehandlung mittels einer Zusatz-Routine (in newgui/ng_showerror.m)
+ CleanUp(exception)                             -&gt; Mit exception als RETURN-Code (normalfall = 0) aufhören
+ENDPROC
+
+PROC makemenus()
+ menu:=[
+        NM_TITLE,       0,      &#x27;Projekt&#x27;,      0,      0,0,0,
+        NM_ITEM,        0,      &#x27;Neu ...&#x27;,     &#x27;n&#x27;,     0,0,{new},
+        NM_ITEM,        0,      &#x27;Laden ...&#x27;,   &#x27;l&#x27;,     NM_ITEMDISABLED,0,{test1},
+        NM_ITEM,        0,      &#x27;Sichern ...&#x27;, &#x27;s&#x27;,     NM_ITEMDISABLED,0,{test1},
+        NM_BARLABEL,    0,      0,              0,      0,0,0,
+        NM_ITEM,        0,      &#x27;Über ...&#x27;,    &#x27;a&#x27;,     0,0,{about},
+        NM_ITEM,        0,      &#x27;Beenden ...&#x27;, &#x27;q&#x27;,     0,0,0,
+        NM_TITLE,       0,      &#x27;Hilfsmittel&#x27;,  0,      0,0,0,
+        NM_ITEM,        0,      &#x27;Main - blockieren&#x27;,&#x27;1&#x27;,0,0,{block},
+        NM_ITEM,        0,      &#x27;Main - schließen&#x27;,&#x27;2&#x27;, 0,0,{hide},
+        NM_ITEM,        0,      &#x27;Main - öffnen&#x27;,&#x27;3&#x27;,    0,0,{appear},
+        0,              0,      0,              0,      0,0,0]:newmenu
+ENDPROC
+
+PROC opengui()
+  newguiA([
+        NG_WINDOWTITLE, &#x27;NewGUI - Demo&#x27;,        -&gt; Titel des Fensters
+        NG_PREFSPROC,   {saveprefs},
+        NG_CLONESCREEN, TRUE,                   -&gt; WB clonen (wenn weitere Angaben (z.B. NG_SCR_xxx) gemacht werden, werden diese bevorzugt behandelt!)
+        NG_SCR_TITLE,   &#x27;NewGUI - ALL&#x27;,
+        NG_SCR_PUBNAME, &#x27;NEWGUI&#x27;,
+        NG_OPENPUBSCREEN,       TRUE,
+        NG_REXXNAME,    &#x27;NEWGUI&#x27;,               -&gt; Name für einen ARexx-Port
+        NG_REXXPROC,    {rexxmsg},              -&gt; PTR der Prozedur die ARexx-Messages verarbeitet
+        NG_FILLHOOK,    {fillrect},             -&gt; Prozedur zum Füllen einer Gruppe/Fensterhintergrund!
+        NG_MENU,        menu,                   -&gt; Menü-Beschreibung
+        NG_ONCLOSE,     {closepw},
+        NG_GUIID,       GUI_MAIN,               -&gt; Gui-ID
+        NG_GUI,                                 -&gt; Oberflächenbeschreibung
+                        NG_DUMMY,
+        NG_NEXTGUI,     
+-&gt; eigendliches Main-Fenster
+       [NG_WINDOWTITLE, &#x27;NewGUI - Demo&#x27;,        -&gt; Titel des Fensters
+        NG_FILLHOOK,    {fillrect},             -&gt; Prozedur zum Füllen einer Gruppe/Fensterhintergrund!
+        NG_MENU,        menu,                   -&gt; Menü-Beschreibung
+        NG_ONCLOSE,     {closeall},
+        NG_AUTOOPEN,    TRUE,                   -&gt; Gleich zu beginn offen!
+        NG_USEMAINSCREEN, TRUE,
+        NG_USEMAINFONT, TRUE,
+        NG_GUIID,       GUI_FIRST,              -&gt; Gui-ID
+        NG_GUI,                                 -&gt; Oberflächenbeschreibung
+
+                [ROWS,                          -&gt; Alles Untereinander
+                [BEVEL,                         -&gt; Einen Bevel um die folgenden Elemente
+                [FILLGROUP1,                  -&gt; Alles im Bevel mit dem Pattern 1 füllen
+                [ROWS,                          -&gt; Im Bevel (und FILLGROUP) alles untereinander
+                        [TEXT,&#x27;Haupt-Fenster&#x27;,&#x27;NewGUI-Beispiel:&#x27;,TRUE,3]        -&gt; Text ausgeben
+                ]]],                            -&gt; Rows, FILLGROUP1 und Bevelr - Schließen!
+                [BEVELR,                        -&gt; Einen Recessed Bevel um die Elemente
+                [FILLGROUP1,                  -&gt; Außerdem mit dem FILLGROUP1 hinterlegen!
+                [ROWS,                          -&gt; Alles untereinander
+                        [SBUTTON,{font},&#x27;Font ...&#x27;],
+                        [SBUTTON,{screenmode},&#x27;Screenmode ...&#x27;],
+                        [SBUTTON,{ticker},&#x27;Ticker on/off&#x27;],
+                        [SBUTTON,{gauge},&#x27;Gauge...&#x27;],
+                        [SBUTTON,{about},&#x27;Über ...&#x27;]
+                ]]],                            -&gt; Rows, FILLGROUP1 und Bevelr schließen
+                [BAR],                          -&gt; Einen Trennstrich erzeugen
+                [BEVELR,                        -&gt; Einen Recessed Bevel um die Elemente
+                [FILLGROUP1,                  -&gt; Außerdem mit dem FILLGROUP1 hinterlegen!
+                [EQCOLS,                        -&gt; Und alle Elemente im Bevel nebeneinander, und ALLE gleich Breit (EQCOLS)
+                        [SBUTTON,{closechilds},&#x27;Fenster schließen&#x27;],    -&gt; Ein Button (SBUTTON = Variable Breite!)
+                        [SBUTTON,{new},&#x27;Neues Fenster&#x27;],                -&gt; Neues GUI öffnen!
+                        [SBUTTON,{prefs},&#x27;Einstellungen&#x27;],              -&gt; Preferences
+                        [SBUTTON,{block},&#x27;Blockieren&#x27;],                 -&gt; Ein Button (SBUTTON = Variable Breite!) -&gt; Fenster blockieren!
+                        [SBUTTON,{hide},&#x27;Verstecken&#x27;]]]]],-&gt; Ein Button mit variabler Breite, außerdem ALLE verbleibenden Attribute schließen
+        NG_NEXTGUI,     
+-&gt; FONT-Window
+       [NG_WINDOWTITLE, &#x27;Font-Demo&#x27;,            -&gt; Titel des Fensters
+        NG_FILLHOOK,    {fillrect},             -&gt; Prozedur zum Füllen einer Gruppe/Fensterhintergrund!
+        NG_MENU,        menu,                   -&gt; Menü-Beschreibung
+        NG_USEMAINFONT, TRUE,
+        NG_USEMAINSCREEN,TRUE,
+        NG_GUIID,       GUI_FONT,               -&gt; Gui-ID
+        NG_GUI,                                 -&gt; Oberflächenbeschreibung
+                [EQROWS,
+                        [TEXT,&#x27;Selected Fonts&#x27;,NIL,FALSE,3],
+                [BEVELR,
+                [EQROWS,
+                        [TEXT,&#x27;xentiny 8&#x27;,&#x27;Workbench Icon Text:&#x27;,FALSE,3],
+                        [TEXT,&#x27;end 10&#x27;,&#x27;System Default Text:&#x27;,FALSE,3],
+                        [TEXT,&#x27;except 12&#x27;,&#x27;Screen text:&#x27;,FALSE,3]
+                ]],
+                        [SBUTTON,0,&#x27;Select Workbench Icon Text...&#x27;],
+                        [SBUTTON,0,&#x27;Select System Default Text...&#x27;],
+                        [SBUTTON,0,&#x27;Select Screen text...&#x27;],
+                [BAR],
+                [COLS,
+                        [BUTTON,0,&#x27;Save&#x27;],
+                [SPACEH],
+                        [BUTTON,0,&#x27;Use&#x27;],
+                [SPACEH],
+                        [BUTTON,0,&#x27;Cancel&#x27;]
+                ]],
+        NG_NEXTGUI,     
+-&gt; Screenmode-Window
+       [NG_WINDOWTITLE, &#x27;Screenmode-Demo&#x27;,            -&gt; Titel des Fensters
+        NG_USEMAINSCREEN,TRUE,
+        NG_USEMAINFONT, TRUE,
+        NG_FILLHOOK,    {fillrect},             -&gt; Prozedur zum Füllen einer Gruppe/Fensterhintergrund!
+        NG_MENU,        menu,                   -&gt; Menü-Beschreibung
+        NG_GUIID,       GUI_SCREENMODE,         -&gt; Gui-ID
+        NG_GUI,                                 -&gt; Oberflächenbeschreibung
+                [EQROWS,
+                [COLS,
+                [EQROWS,
+                        [LISTV,0,&#x27;Display Mode&#x27;,10,4,NIL,TRUE,0,0],
+                [COLS,
+                [EQROWS,
+                        [INTEGER,0,&#x27;Width:&#x27;,640,5],
+                        [INTEGER,0,&#x27;Height:&#x27;,512,5]
+                ],
+                [ROWS,
+                        [CHECK,0,&#x27;Default&#x27;,TRUE,FALSE],
+                        [CHECK,0,&#x27;Default&#x27;,TRUE,FALSE]
+                ]],
+                        [SLIDE,0,&#x27;Colors:&#x27;,FALSE,1,8,3,5,&#x27;&#x27;],
+                        [CHECK,0,&#x27;AutoScroll:&#x27;,TRUE,TRUE]
+                ],
+                [BEVELR,
+                [EQROWS,
+                        [TEXT,&#x27;688x539&#x27;,&#x27;Visible Size:&#x27;,FALSE,3],
+                        [TEXT,&#x27;640x200&#x27;,&#x27;Minimum Size:&#x27;,FALSE,3],
+                        [TEXT,&#x27;16368x16384&#x27;,&#x27;Maximum Size:&#x27;,FALSE,3],
+                        [TEXT,&#x27;256&#x27;,&#x27;Maximum Colors:&#x27;,FALSE,3],
+                [SPACE]
+                ]]],
+                [BAR],
+                [COLS,
+                        [BUTTON,0,&#x27;Save&#x27;],
+                [SPACEH],
+                        [BUTTON,0,&#x27;Use&#x27;],
+                [SPACEH],
+                        [BUTTON,0,&#x27;Cancel&#x27;]
+                ]],
+        NG_NEXTGUI,     
+-&gt;
+       [NG_WINDOWTITLE, &#x27;NewGUI - Demo&#x27;,        -&gt; Titel des Fensters
+        NG_USEMAINSCREEN,TRUE,
+        NG_USEMAINFONT, TRUE,
+        NG_FILLHOOK,    {fillrect},             -&gt; Prozedur zum Füllen einer Gruppe/Fensterhintergrund!
+        NG_MENU,        menu,                   -&gt; Menü-Beschreibung
+        NG_GUIID,       GUI_MULTI,              -&gt; Gui-ID
+        NG_DOUBLEGUI,   TRUE,                   -&gt; GUI kann mehrfach offen sein!
+        NG_GUI,                                 -&gt; Oberflächenbeschreibung
+                [ROWS,                          -&gt; Alles Untereinander
+                [DBEVELR,                       -&gt; Einen Doppelten Recessed (Eingedrückten) Bevel um die folgenden Elemente
+                [FILLGROUP1,                  -&gt; Alles im Bevel mit dem Pattern 1 füllen
+                [ROWS,                          -&gt; Im Bevel (und FILLGROUP) alles untereinander
+                        [TEXT,&#x27;Unter-Fenster&#x27;,&#x27;NewGUI-Beispiel:&#x27;,TRUE,3]        -&gt; Text ausgeben
+                ]]],                            -&gt; Rows, FILLGROUP1 und Bevelr - Schließen!
+                [BAR],                          -&gt; Einen Trennstrich erzeugen
+                [BEVELR,                        -&gt; Einen Recessed Bevel um die Elemente
+                [FILLGROUP1,                  -&gt; Außerdem mit dem FILLGROUP1 hinterlegen!
+                [EQCOLS,                        -&gt; Und alle Elemente im Bevel nebeneinander, und ALLE gleich Breit (EQCOLS)
+                        [SBUTTON,{change},&#x27;Wechseln&#x27;],          -&gt; Ein Button (SBUTTON = Variable Breite!)
+                        [SBUTTON,{block},&#x27;Main - Blockieren&#x27;],  -&gt; Ein Button (SBUTTON = Variable Breite!) -&gt; Fenster blockieren!
+                        [SBUTTON,{hide},&#x27;Main - Verstecken&#x27;]]]]],-&gt; Ein Button mit variabler Breite, außerdem ALLE verbleibenden Attribute schließen
+        NG_NEXTGUI,     
+-&gt;
+       [NG_WINDOWTITLE, &#x27;NewGUI - Demo&#x27;,        -&gt; Titel des Fensters
+        NG_USEMAINSCREEN,TRUE,
+        NG_USEMAINFONT, TRUE,
+        NG_ONCLOSE,     {closepw},
+        NG_FILLHOOK,    {fillrect},             -&gt; Prozedur zum Füllen einer Gruppe/Fensterhintergrund!
+        NG_MENU,        menu,                   -&gt; Menü-Beschreibung
+        NG_GUIID,       GUI_GAUGE,              -&gt; Gui-ID
+        NG_GUI,                                 -&gt; Oberflächenbeschreibung
+                [ROWS,
+                [BEVELR,
+                [FILLGROUP1,
+                [EQROWS,
+                        [TEXT,&#x27;Slider!&#x27;,&#x27;Move the&#x27;,FALSE,3],
+                        [SLIDE,{setgauge},&#x27;     &#x27;,FALSE,0,100,50,2,&#x27;%3ld&#x27;]
+                ]]],
+                [BEVELR,
+                [FILLGROUP1,
+                [EQCOLS,
+                [SPACEH],
+                        [SBUTTON,{hide},&#x27;Main verstecken&#x27;],
+                [SPACEH]
+                ]]]
+                ],
+        NG_NEXTGUI,     
+-&gt;
+       [NG_WINDOWTITLE, &#x27;Über NewGUI&#x27;,        -&gt; Titel des Fensters
+        NG_USEMAINSCREEN,TRUE,
+        NG_FONT_NAME,   &#x27;Webhead.font&#x27;,
+        NG_FONT_SIZE,   21,
+        NG_FILLHOOK,    {fillrect},             -&gt; Prozedur zum Füllen einer Gruppe/Fensterhintergrund!
+        NG_MENU,        menu,                   -&gt; Menü-Beschreibung
+        NG_GUIID,       GUI_ABOUT,              -&gt; Gui-ID
+        NG_GUI,                                 -&gt; Oberflächenbeschreibung
+                [ROWS,                          -&gt; Alles Untereinander
+                [DBEVELR,                       -&gt; Einen Doppelten Recessed (Eingedrückten) Bevel um die folgenden Elemente
+                [FILLGROUP2,                  -&gt; Alles im Bevel mit dem Pattern 1 füllen
+                [EQROWS,                        -&gt; Im Bevel (und FILLGROUP) alles untereinander
+                        [TEXT,&#x27;NewGUI&#x27;,&#x27;Über&#x27;,FALSE,3],  -&gt; Text ausgeben
+                        [TEXT,&#x27; &#x27;,&#x27; &#x27;,FALSE,3]
+                ]]],                            -&gt; Rows, FILLGROUP1 und Bevelr - Schließen!
+                [BEVELR,
+                [FILLGROUP1,
+                [EQROWS,
+                        [SCROLLTEXT,0,NEW scroll.scrolltext([
+        1,SCRTXT_BAR,&#x27; &#x27;,
+        2,SCRTXT_CENTER,&#x27;NewGUI&#x27;,
+        1,SCRTXT_CENTER,&#x27;wurde entwickelt von&#x27;,
+        2,SCRTXT_CENTER,&#x27;THE DARK FRONTIER Softwareentwicklungen&#x27;,
+        1,SCRTXT_CENTER,&#x27;(© 1994-98)&#x27;,
+        1,SCRTXT_BAR,&#x27; &#x27;,
+        1,SCRTXT_LEFT,&#x27;Adresse:&#x27;,
+        1,SCRTXT_CENTER,&#x27;Am Hofgraben 2&#x27;,
+        1,SCRTXT_CENTER,&#x27;67378 Zeiskam&#x27;,
+        1,SCRTXT_LEFT,&#x27;FAX:++49(0)7274-8774&#x27;,
+        2,SCRTXT_LEFT,&#x27;Email: frontier@starbase.inka.de&#x27;,
+        2,SCRTXT_LEFT,&#x27;WWW  : In Vorbereitung...&#x27;,
+        1,SCRTXT_BAR,&#x27; &#x27;,
+        0,NIL],2,100,2)]
+                ]]],
+                [BAR],
+                [BEVELR,
+                [FILLGROUP1,
+                [EQCOLS,
+                        [SBUTTON,0,&#x27;OK&#x27;]]]]],
+        NG_NEXTGUI,     
+-&gt;
+        NIL,NIL],
+-&gt;
+        NIL,NIL],
+-&gt;
+        NIL,NIL],
+-&gt;
+        NIL,NIL],
+-&gt;
+        NIL,NIL],
+-&gt;
+        NIL,NIL],
+-&gt;
+        NIL,NIL],{getdata})                               -&gt; TagListe abschließen (normalerweise mit TAG_END)
+ENDPROC
+
+PROC fillrect(rp,x,y,width,height,type)
+ DEF    oldbpen=0,
+        oldapen=1
+  SELECT        type
+        CASE    NG_FILL_WINDOW                          -&gt; Window-Filling (Back)
+         oldbpen:=SetBPen(rp,0)                         -&gt; Hintergrund = schwarz
+          oldapen:=SetAPen(rp,3)                        -&gt; Vordergrund = blau
+           SetAfPt(rp,[$AAAA,$5555]:INT,1)              -&gt; Füllmuster setzen (ACHTUNG! Makrodefinition in &quot;gfxmacros&quot;, PREPROCESS wird benötigt!)
+            RectFill(rp,x,y,width,height)               -&gt; Füllen ...
+           SetBPen(rp,oldbpen)                          -&gt; Hintergrundfarbe wieder auf alten Stand
+          SetAPen(rp,oldapen)                           -&gt; Vordergrundfarbe wieder auf alten Stand
+        CASE    FILLGROUP1                              -&gt; Füllgruppe 1
+         oldbpen:=SetBPen(rp,0)                         -&gt; Hintergrund = schwarz
+          oldapen:=SetAPen(rp,0)                        -&gt; Vordergrund = blau
+           SetAfPt(rp,[$FFFF,$FFFF]:INT,1)              -&gt; Füllmuster setzen (ACHTUNG! Makrodefinition in &quot;gfxmacros&quot;, PREPROCESS wird benötigt!)
+            RectFill(rp,x,y,width,height)               -&gt; Füllen ...
+           SetBPen(rp,oldbpen)                          -&gt; Hintergrundfarbe wieder auf alten Stand
+          SetAPen(rp,oldapen)                           -&gt; Vordergrundfarbe wieder auf alten Stand
+        CASE    FILLGROUP2                              -&gt; Füllgruppe 2
+         oldbpen:=SetBPen(rp,3)                         -&gt; Hintergrund = schwarz
+          oldapen:=SetAPen(rp,2)                        -&gt; Vordergrund = blau
+           SetAfPt(rp,[$AAAA,$5555]:INT,1)              -&gt; Füllmuster setzen (ACHTUNG! Makrodefinition in &quot;gfxmacros&quot;, PREPROCESS wird benötigt!)
+            RectFill(rp,x,y,width,height)               -&gt; Füllen ...
+           SetBPen(rp,oldbpen)                          -&gt; Hintergrundfarbe wieder auf alten Stand
+          SetAPen(rp,oldapen)                           -&gt; Vordergrundfarbe wieder auf alten Stand
+   ENDSELECT
+ENDPROC
+
+PROC saveprefs(screen,id,x,y,width,height,open)
+ IF open=WIN_OPEN
+  WriteF(&#x27;Guiid = \d -/ x = \d - y = \d - width = \d - height = \d \\- GEÖFFNET\n&#x27;,id,x,y,width,height)
+ ELSEIF open=WIN_BACKDROP
+  WriteF(&#x27;Guiid = \d -/ x = \d - y = \d - width = \d - height = \d \\- BACKDROP\n&#x27;,id,x,y,width,height)
+ ELSE
+  WriteF(&#x27;Guiid = \d -/ x = \d - y = \d - width = \d - height = \d \\- GESCHLOSSEN\n&#x27;,id,x,y,width,height)
+ ENDIF
+ENDPROC
+
+PROC getdata(gh,s)
+ gui:=gh
+ screen:=s
+ENDPROC
+
+PROC prefs()
+ ng_setattrsA([
+        NG_GUI,         gui,
+        NG_SAVEPREFS,   TRUE,
+        NIL,            NIL])
+ENDPROC
+
+PROC font()
+ ng_setattrsA([
+        NG_GUI,         gui,
+        NG_CHANGEGUI,   NG_OPENGUI,
+        NG_GUIID,       GUI_FONT,
+        NIL,            NIL])
+ENDPROC
+
+PROC screenmode()
+ ng_setattrsA([
+        NG_GUI,         gui,
+        NG_CHANGEGUI,   NG_OPENGUI,
+        NG_GUIID,       GUI_SCREENMODE,
+        NIL,            NIL])
+ENDPROC
+
+PROC closechilds()
+ ng_setattrsA([
+        NG_GUI,         gui,
+        NG_CHANGEGUI,   NG_CLOSECHILDS,
+        NIL,            NIL])
+ENDPROC
+
+PROC new()
+ ng_setattrsA([
+        NG_GUI,         gui,
+        NG_CHANGEGUI,   NG_OPENGUI,
+        NG_GUIID,       GUI_MULTI,
+        NIL,            NIL])
+ENDPROC
+
+PROC closepw()  
+ END pw
+ENDPROC -2
+
+PROC closeall() IS 0
+
+PROC gauge()
+ IF pw=NIL THEN NEW pw.progresswin(&#x27;NewGUI - ProgressWindow&#x27;,&#x27;Füllanzeige-Fenster&#x27;,&#x27;Anfangswert&#x27;,3,2,1,50,screen,NIL)
+  ng_setattrsA([
+        NG_GUI,         gui,
+        NG_CHANGEGUI,   NG_OPENGUI,
+        NG_GUIID,       GUI_GAUGE,
+        NIL,            NIL])
+ENDPROC
+
+PROC setgauge(x,y)
+ DEF    oldval=0,
+        status[20]:STRING
+  oldval:=pw.get()
+   IF (oldval&lt;y) AND (y&lt;&gt;50)
+    StrCopy(status,&#x27;Zunahme&#x27;)
+   ELSEIF (oldval&gt;y) AND (y&lt;&gt;50)
+    StrCopy(status,&#x27;Abnahme&#x27;)
+   ELSEIF y=50
+    StrCopy(status,&#x27;Anfangswert&#x27;)
+   ENDIF
+  pw.set(y,status,NIL)
+ENDPROC
+
+PROC change()
+ DEF    guihandle
+  ng_setattrsA([NG_GUI,gui,
+        NG_GUIID,       GUI_MULTI,
+        NG_CHANGEGUI,   NG_NEWGUI,
+        NG_NEWDATA,
+                [ROWS,                          -&gt; Alles Untereinander
+                [BEVELR,                        -&gt; Einen Recessed Bevel um die Elemente
+                [FILLGROUP1,                  -&gt; Außerdem mit dem FILLGROUP1 hinterlegen!
+                [EQCOLS,                        -&gt; Und alle Elemente im Bevel nebeneinander, und ALLE gleich Breit (EQCOLS)
+                        [SBUTTON,{change},&#x27;Wechseln&#x27;],       -&gt; Ein Button (SBUTTON = Variable Breite!)
+                        [SBUTTON,{block},&#x27;Main - Blockieren&#x27;],  -&gt; Ein Button (SBUTTON = Variable Breite!) -&gt; Fenster blockieren!
+                        [SBUTTON,{hide},&#x27;Main - Verstecken&#x27;]]]],
+                [DBEVELR,                       -&gt; Einen Doppelten Recessed (Eingedrückten) Bevel um die folgenden Elemente
+                [FILLGROUP1,                  -&gt; Alles im Bevel mit dem Pattern 1 füllen
+                [ROWS,                          -&gt; Im Bevel (und FILLGROUP) alles untereinander
+                        [TEXT,&#x27;Unter-Fenster (gewechselt)&#x27;,&#x27;NewGUI-Beispiel:&#x27;,TRUE,3]        -&gt; Text ausgeben
+                ]]],                            -&gt; Rows, FILLGROUP1 und Bevelr - Schließen!
+                [BAR]                           -&gt; Einen Trennstrich erzeugen
+                ]                               -&gt; Ein Button mit variabler Breite, außerdem ALLE verbleibenden Attribute schließen
+         ,NIL,NIL])
+ENDPROC
+
+PROC about()
+ ng_setattrsA([
+        NG_GUI,         gui,
+        NG_CHANGEGUI,   NG_OPENGUI,
+        NG_GUIID,       GUI_ABOUT,
+        NIL,            NIL])
+ENDPROC
+
+PROC test1()
+ WriteF(&#x27;Test!\n&#x27;)
+ENDPROC
+
+PROC block()
+ DEF    a
+  WriteF(&#x27;\nBlockiere Fenster: &#x27;)
+   ng_setattrsA([
+        NG_GUI,         gui,
+        NG_CHANGEGUI,   NG_BLOCKGUI,
+        NG_GUIID,       GUI_FIRST,
+        NIL,    NIL])
+    FOR a:=0 TO 50                              -&gt; Eine Schleife ist eigendlich eine etwas unsaubere
+     Delay(1)                                   -&gt; Methode, sie dient hier nur zur veranschaulichung
+      WriteF(&#x27;.&#x27;)
+     guimessage(gui)                            -&gt; Stelle rechenintensive Sachen etc. stehen, WICHTIG
+    ENDFOR                                      -&gt; ist, daß guimessage() manchmal zwischendurch aufgerufen wird!
+   ng_setattrsA([
+        NG_GUI,         gui,
+        NG_CHANGEGUI,   NG_UNBLOCKGUI,
+        NG_GUIID,       GUI_FIRST,
+        NIL,    NIL])
+ENDPROC
+
+PROC hide()
+ ng_setattrsA([
+        NG_GUI,         gui,
+        NG_CHANGEGUI,   NG_CLOSEGUI,
+        NG_GUIID,       GUI_FIRST,
+        NIL,    NIL])
+ENDPROC
+
+PROC appear()
+ ng_setattrsA([
+        NG_GUI,         gui,
+        NG_CHANGEGUI,   NG_OPENGUI,
+        NG_GUIID,       GUI_FIRST,
+        NIL,    NIL])
+ENDPROC
+
+PROC rexxmsg(s,mes=NIL)                         -&gt; Programm zum parsen von ARexx-Messages
+ WriteF(&#x27;Rexx-Msg: &quot;\s&quot;\n&#x27;,s)                   -&gt; ARexx-String (s) ausgeben!
+
+  mes:=NIL                                      -&gt; Message auf NIL setzen
+ENDPROC  StrCmp(&#x27;QUIT&#x27;,s),0,&#x27;Reply-Message&#x27;     -&gt; Rückgabe! Format = BOOL,INT,STRING     (Beenden?,Returncode,Replystring)
+
+PROC ticker()
+ IF tickon=TRUE
+   ng_setattrsA([NG_GUI,gui,
+        NG_CHANGETICKER,TRUE,NIL,NIL])
+  tickon:=FALSE
+ ELSE
+   ng_setattrsA([NG_GUI,gui,
+        NG_CHANGETICKER,{tickmsg},NIL,NIL])
+  tickon:=TRUE
+ ENDIF
+ENDPROC
+
+PROC tickmsg()                  IS      WriteF(&#x27;Tick für das Main-Fenster!\n&#x27;)
+
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

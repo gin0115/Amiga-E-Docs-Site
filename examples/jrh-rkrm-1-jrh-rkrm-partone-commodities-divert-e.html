@@ -1,0 +1,190 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>divert.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-jrh-rkrm-1.html">JRH-RKRM-1</a> &rsaquo; divert.e</div><h1>File: <code>divert.e</code></h1><p class="meta">164 lines · project <a href="../examples/pkg-jrh-rkrm-1.html"><code>JRH-RKRM-1</code></a></p><p class="pathctx">JRH-RKRM-1/JRH-RKRM-PartOne/Commodities/divert.e</p><p class="prose">divert.e - <a href="../modules/commodity.html">commodity</a> to <a href="../modules/monitor.html">monitor</a> user inactivity</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/icon.html">icon</a></li></ul></div><h2>Source</h2><pre class="code">-&gt; divert.e - commodity to monitor user inactivity
+
+OPT PREPROCESS  -&gt; E-Note: we are using the CxXXX creation macros
+
+MODULE &#x27;icon&#x27;,
+       &#x27;commodities&#x27;,
+       &#x27;amigalib/argarray&#x27;,
+       &#x27;other/ecode&#x27;,
+       &#x27;devices/inputevent&#x27;,
+       &#x27;dos/dos&#x27;,
+       &#x27;exec/libraries&#x27;,
+       &#x27;exec/ports&#x27;,
+       &#x27;libraries/commodities&#x27;
+
+ENUM ERR_NONE, ERR_ARGS, ERR_BRKR, ERR_CRCX, ERR_CXERR, ERR_ECODE, ERR_LIB,
+     ERR_PORT, ERR_SIG
+
+RAISE ERR_BRKR IF CxBroker()=NIL,
+      ERR_CRCX IF CreateCxObj()=NIL,  -&gt; E-Note: the CxXXX macros use this
+      ERR_LIB  IF OpenLibrary()=NIL,
+      ERR_PORT IF CreateMsgPort()=NIL,
+      ERR_SIG  IF AllocSignal()=-1
+    
+CONST TIMER_CLICKS=100
+
+DEF broker_mp=NIL:PTR TO mp, broker=NIL, cocustom=NIL, cosignal=NIL,
+    task, cxsigflag, signal=-1, cxobjsignal
+  
+-&gt; E-Note: the C static used in the custom function is just a global variable
+DEF time=0
+
+PROC main() HANDLE
+  DEF ttypes=NIL, msg, cxfunc
+  cxbase:=OpenLibrary(&#x27;commodities.library&#x27;, 37)
+  -&gt; Open the icon.library for support functions, argXXX()
+  iconbase:=OpenLibrary(&#x27;icon.library&#x27;, 36)
+  broker_mp:=CreateMsgPort()
+  cxsigflag:=Shl(1, broker_mp.sigbit)
+
+  -&gt; argArrayInit() is a support function (in the 2.0 version of amigalib)
+  -&gt; that makes it easy to read arguments from either a CLI or from
+  -&gt; Workbench&#x27;s ToolTypes.  Because it uses icon.library, the library has
+  -&gt; to be open before before calling this function.  argArrayDone() cleans
+  -&gt; up after this function.
+  -&gt; E-Note: uses global &quot;wbmessage&quot; and &quot;arg&quot; so it needs no arguments
+  ttypes:=argArrayInit()
+
+  broker:=CxBroker([NB_VERSION, 0, &#x27;Divert&#x27;,  -&gt; String to identify this broker
+                    &#x27;Divert&#x27;, &#x27;Show divert&#x27;,
+                    -&gt; Don&#x27;t want any new commodities starting with this name.
+                    -&gt; If someone tries it, let me know
+                    NBU_UNIQUE OR NBU_NOTIFY, 0,
+  -&gt; argInt() (in amigalib) searches through the array set up by argArrayInit()
+  -&gt; for a specific ToolType.  If it finds one, it returns the numeric value of
+  -&gt; the number that followed the ToolType (e.g., CX_PRIORITY=7).  If it doesn&#x27;t
+  -&gt; find the ToolType, it returns the default value (the third argument).
+                    argInt(ttypes, &#x27;CX_PRIORITY&#x27;, 0),
+                    0, broker_mp, 0]:newbroker, NIL)
+
+  -&gt; CxCustom() takes two arguments, a pointer to the custom function and an
+  -&gt; ID.  Commodities Exchange will assign that ID to any CxMsg passed to the
+  -&gt; custom function.
+  -&gt; E-Note: eCodeCxCustom() protects an E function so you can use it as a
+  -&gt;         CX custom function
+  IF NIL=(cxfunc:=eCodeCxCustom({cxFunction})) THEN Raise(ERR_ECODE)
+  cocustom:=CxCustom(cxfunc, 0)
+  AttachCxObj(broker, cocustom)
+
+  -&gt; Allocate a signal bit for the signal CxObj
+  signal:=AllocSignal(-1)
+  -&gt; Set up the signal mask
+  cxobjsignal:=Shl(1, signal)
+  cxsigflag:=cxsigflag OR cxobjsignal
+
+  -&gt; CxSignal takes two arguments, a pointer to the task to signal (normally
+  -&gt; the commodity) and the number of the signal bit the commodity acquired
+  -&gt; to signal with.
+  task:=FindTask(NIL)
+  cosignal:=CxSignal(task, signal)
+  AttachCxObj(cocustom, cosignal)
+  ActivateCxObj(broker, TRUE)
+  processMsg()
+
+EXCEPT DO
+  IF signal&lt;&gt;-1 THEN FreeSignal(signal)
+  -&gt; DeleteCxObjAll() is a commodities.library function that not only deletes
+  -&gt; the CxObject pointed to in its argument, but it deletes all of the
+  -&gt; CxObjects that are attached to it.
+  IF broker THEN DeleteCxObjAll(broker)
+  -&gt; This amigalib function cleans up after argArrayInit()
+  IF ttypes THEN argArrayDone()
+  IF broker_mp
+    -&gt; Empty the port of all CxMsgs
+    WHILE msg:=GetMsg(broker_mp) DO ReplyMsg(msg)
+    DeleteMsgPort(broker_mp) -&gt; E-Note: C version incorrectly uses DeletePort()
+  ENDIF
+  IF iconbase THEN CloseLibrary(iconbase)
+  IF cxbase THEN CloseLibrary(cxbase)
+  SELECT exception
+  CASE ERR_ARGS;  WriteF(&#x27;Error: Could not parse tooltypes/arguments\n&#x27;)
+  CASE ERR_BRKR;  WriteF(&#x27;Error: Could not create broker\n&#x27;)
+  CASE ERR_CRCX;  WriteF(&#x27;Error: Could not create CX object\n&#x27;)
+  CASE ERR_CXERR; WriteF(&#x27;Error: Could not activate broker\n&#x27;)
+  CASE ERR_ECODE; WriteF(&#x27;Error: Ran out of memory in eCodeCxCustom()\n&#x27;)
+  CASE ERR_LIB;   WriteF(&#x27;Error: Could not open commodities.library\n&#x27;)
+  CASE ERR_PORT;  WriteF(&#x27;Error: Could not create message port\n&#x27;)
+  CASE ERR_SIG;   WriteF(&#x27;Error: Could not allocate signal\n&#x27;)
+  ENDSELECT
+ENDPROC
+
+PROC processMsg()
+  DEF msg, sigrcvd, msgid, done=FALSE
+  REPEAT
+    sigrcvd:=Wait(SIGBREAKF_CTRL_C OR cxsigflag)
+
+    WHILE msg:=GetMsg(broker_mp)
+      msgid:=CxMsgID(msg)
+      ReplyMsg(msg)
+
+      SELECT msgid
+      CASE CXCMD_DISABLE
+        ActivateCxObj(broker, FALSE)
+      CASE CXCMD_ENABLE
+        ActivateCxObj(broker, TRUE)
+      CASE CXCMD_KILL
+        done:=TRUE
+      CASE CXCMD_UNIQUE
+        done:=TRUE
+      ENDSELECT
+    ENDWHILE
+
+    IF sigrcvd AND SIGBREAKF_CTRL_C THEN done:=TRUE
+
+    -&gt; Check to see if the signal CxObj signalled us.
+    IF sigrcvd AND cxobjsignal THEN WriteF(&#x27;Got Signal\n&#x27;)
+  UNTIL done
+ENDPROC
+
+-&gt; The custom function for the custom CxObject.  Any code for a custom CxObj
+-&gt; must be short and sweet because it runs as part of the input.device task.
+PROC cxFunction(cxm, co)
+  DEF ie:PTR TO inputevent
+
+  -&gt; Get the struct InputEvent associated with this CxMsg.  Unlike the
+  -&gt; InputEvent extracted from a CxSender&#x27;s CxMsg, this is a *REAL* input
+  -&gt; event, be careful with it.
+  ie:=CxMsgData(cxm)
+
+  -&gt; This custom function counts the number of timer events that go by while
+  -&gt; no other input events occur.  If it counts more than a certain amount of
+  -&gt; timer events, it clears the count and diverts the timer event CxMsg to the
+  -&gt; custom object&#x27;s personal list.  If an event besides a timer event passes
+  -&gt; by, the timer event count is reset.
+  IF ie.class=IECLASS_TIMER
+    time++
+    IF time&gt;=TIMER_CLICKS
+      time:=0
+      DivertCxMsg(cxm, co, co)
+    ENDIF
+  ELSE
+    time:=0
+  ENDIF
+ENDPROC
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

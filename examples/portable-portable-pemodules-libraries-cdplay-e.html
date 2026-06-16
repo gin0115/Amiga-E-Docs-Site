@@ -1,0 +1,161 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>cdplay.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-portable.html">PortablE</a> &rsaquo; cdplay.e</div><h1>File: <code>cdplay.e</code></h1><p class="meta">135 lines · project <a href="../examples/pkg-portable.html"><code>PortablE</code></a></p><p class="pathctx">PortablE/PortablE/PEmodules/libraries/cdplay.e</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/io.html">exec/io</a></li><li><a href="../modules/ports.html">exec/ports</a></li></ul></div><h2>Source</h2><pre class="code">OPT MODULE
+OPT PREPROCESS
+OPT EXPORT
+
+MODULE &#x27;exec/ports&#x27;
+MODULE &#x27;exec/io&#x27;
+
+#define CDPLAYNAME &#x27;cdplay.library&#x27;
+CONST CDPLAYVERSION = 37
+
+#define base2min(val)  ((val)/75/60)
+
+#define base2sec(val)  Mod(((val)/75),60)
+
+#define btst(n,m)  (n AND m)
+
+#define bchg(n,m)          (n := IF (n AND m) THEN (n AND (NOT m)) ELSE ( n OR m))
+
+#define bset(n,m)          (n := n OR m)
+
+OBJECT cdrequest
+    request           : PTR TO iostd
+    msgport           : PTR TO mp
+    capacity          : PTR TO cdcapacity
+    inquiry           : PTR TO cdinquiry
+    toc               : PTR TO cdptoc
+    time              : PTR TO cdtime
+    volume            : PTR TO cdvolume
+
+    id[20]            : ARRAY OF CHAR
+    active            : CHAR
+    currenttrack      : CHAR
+    currentaddress
+
+    scsisense         : CHAR
+    scsidata          : CHAR
+    tocbuf            : CHAR
+ENDOBJECT
+
+OBJECT cdcapacity
+    maxsector
+    sectorsize
+    capacity
+ENDOBJECT
+
+CONST DEVTYPE_DIRECT_ACCESS       =    $00
+CONST DEVTYPE_SEQUENTIAL_ACCESS   =    $01
+CONST DEVTYPE_PRINTER             =    $02
+CONST DEVTYPE_PROCESSOR           =    $03
+CONST DEVTYPE_WRITE_ONCE          =    $04
+CONST DEVTYPE_CDROM               =    $05
+CONST DEVTYPE_SCANNER             =    $06
+CONST DEVTYPE_OPTICAL             =    $07
+CONST DEVTYPE_MEDIUM_CHANGER      =    $08
+CONST DEVTYPE_COMMUNICATIONS      =    $09
+CONST DEVTYPE_ASC_IT8_1           =    $0A
+CONST DEVTYPE_ASC_IT8_2           =    $0B
+CONST DEVTYPE_UNKNOWN             =     -1
+
+CONST ANSI_NONE          =   $00
+CONST ANSI_SCSI_1        =   $01
+CONST ANSI_SCSI_2        =   $02
+
+CONST RESP_SCSI_1          =   $00
+CONST RESP_CCS             =   $01
+CONST RESP_SCSI_2          =   $02
+
+CONST IFLAG_REMOVABLE                 = 1 SHL 0
+CONST IFLAG_AENC                      = 1 SHL 1
+CONST IFLAG_REL_ADDRESS               = 1 SHL 2
+CONST IFLAG_16WIDE_DATA               = 1 SHL 3
+CONST IFLAG_32WIDE_DATA               = 1 SHL 4
+CONST IFLAG_SYNC                      = 1 SHL 5
+CONST IFLAG_LINKED                    = 1 SHL 6
+CONST IFLAG_CMDQUE                    = 1 SHL 7
+CONST IFLAG_SOFTRESET                 = 1 SHL 8
+CONST IFLAG_TRMIOP                    = 1 SHL 9
+
+OBJECT cdinquiry
+    flags
+    devicetype          : CHAR
+    ansiversion         : CHAR
+    responseformat      : CHAR
+    isoversion          : CHAR
+    ecmaversion         : CHAR
+    vendorid[9]         : ARRAY OF CHAR
+    productid[17]       : ARRAY OF CHAR
+    revisionlevel[5]    : ARRAY OF CHAR
+    vendorspecific[21]  : ARRAY OF CHAR
+    reserved[36]        : ARRAY OF CHAR
+ENDOBJECT
+
+CONST TOC_SUBCHAN_NOT_AVAIL                 =  $00
+CONST TOC_SUBCHAN_CURRENT_POS               =  $01
+CONST TOC_SUBCHAN_MEDIA_CATALOG_NUM         =  $02
+CONST TOC_SUBCHAN_ISRC                      =  $03
+CONST TOC_SUBCHAN_RESERVED                  =  -1
+
+CONST IFLAG_PRE_EMPHASIS                              = 1 SHL 0
+CONST IFLAG_COPY_PROHIBITED                           = 1 SHL 1
+CONST IFLAG_AUDIO_TRACK                               = 1 SHL 2
+CONST IFLAG_2_CHAN                                    = 1 SHL 3
+
+OBJECT cdtrack
+    position,
+    flags,
+    subchan             : CHAR
+ENDOBJECT
+
+OBJECT cdptoc
+    tocsize
+    firsttrack          : CHAR
+    lasttrack           : CHAR
+    track[100]          : ARRAY OF cdtrack
+ENDOBJECT
+
+OBJECT cdtime
+    trackcurbase
+    trackremainbase
+    trackcompletebase
+    allcurbase
+    allremainbase
+    allcompletebase
+ENDOBJECT
+
+OBJECT cdvolume
+    output[4]           : ARRAY OF CHAR
+    volume[4]           : ARRAY OF CHAR
+ENDOBJECT
+
+CONST SCSI_STAT_NO_DISK      = 0
+CONST SCSI_STAT_PLAYING      = 1
+CONST SCSI_STAT_STOPPED      = 2
+CONST SCSI_STAT_PAUSED       = 3
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

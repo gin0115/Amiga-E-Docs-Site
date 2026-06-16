@@ -1,0 +1,288 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>NewAreaTest.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-bgui-ev41-8.html">BGUI_Ev41_8</a> &rsaquo; NewAreaTest.e</div><h1>File: <code>NewAreaTest.e</code></h1><p class="meta">262 lines · project <a href="../examples/pkg-bgui-ev41-8.html"><code>BGUI_Ev41_8</code></a></p><p class="pathctx">BGUI_Ev41_8/bgui_ev41_8/classes/newareaclass/NewAreaTest.e</p><p class="prose">-- --------------------------------------------------------------- -- * * -- Programname.........: NewAreaTest.e -- * * -- Description.........: Simple demonstration of my <a href="../modules/newareaclass.html">NewAreaClass</a> -- * * -- with a shitty drawn <a href="../modules/image.html">image</a> but I&#x27;ve got -- * * -- nothing more original 8( -- * * -- -- * * -- Author.....</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/bguim.html">libraries/bguim</a></li><li><a href="../modules/utility.html">utility</a></li></ul></div><h2>Source</h2><pre class="code">/* -- --------------------------------------------------------------- -- *
+ * -- Programname.........: NewAreaTest.e                             -- *
+ * -- Description.........: Simple demonstration of my NewAreaClass   -- *
+ * --                       with a shitty drawn image but I&#x27;ve got    -- *
+ * --                       nothing more original 8(                  -- *
+ * --                                                                 -- *
+ * -- Author..............: Daniel Kasmeroglu (alias Deekah)          -- *
+ * -- Version.............: 0.1     (14.03.1997)                      -- *
+ * -- --------------------------------------------------------------- -- */
+ 
+     /* -- ------------------------------------------------- -- *
+      * --                   Compiler-Option&#x27;s               -- *
+      * -- ------------------------------------------------- -- */
+
+OPT REG = 5                -&gt; activate register-optimisation
+OPT PREPROCESS             -&gt; enable preprocessor
+
+
+     /* -- ------------------------------------------------- -- *
+      * --                       E-Module&#x27;s                  -- *
+      * -- ------------------------------------------------- -- */
+
+MODULE &#x27;libraries/bguim&#x27;,
+       &#x27;libraries/bgui&#x27;,
+       &#x27;utility/tagitem&#x27;,
+       &#x27;utility/hooks&#x27;,
+       &#x27;exec/memory&#x27;,
+       &#x27;exec/lists&#x27;,
+       &#x27;exec/nodes&#x27;,
+       &#x27;graphics/gfx&#x27;,
+       &#x27;graphics/text&#x27;,
+       &#x27;graphics/rastport&#x27;,
+       &#x27;devices/inputevent&#x27;,
+       &#x27;intuition/icclass&#x27;,
+       &#x27;intuition/cghooks&#x27;,
+       &#x27;intuition/classusr&#x27;,
+       &#x27;intuition/screens&#x27;,
+       &#x27;intuition/classes&#x27;,
+       &#x27;intuition/gadgetclass&#x27;,
+       &#x27;intuition/intuition&#x27;,
+       &#x27;tools/installhook&#x27;,
+       &#x27;tools/boopsi&#x27;
+
+MODULE &#x27;utility&#x27;,
+       &#x27;bgui&#x27;
+
+MODULE &#x27;*newareaclass&#x27;
+
+
+     /* -- ------------------------------------------------- -- *
+      * --                       Constant&#x27;s                  -- *
+      * -- ------------------------------------------------- -- */
+
+ENUM GID_AREA = 1,        -&gt; // my display-area
+     GID_VERTPROP,        -&gt; // the props
+     GID_HORIZPROP,
+     GID_QUIT             -&gt; // you should know it&#x27;s function
+
+CONST ERR_LIBRARY = 1
+
+
+     /* -- ------------------------------------------------- -- *
+      * --                       Exception&#x27;s                 -- *
+      * -- ------------------------------------------------- -- */
+
+RAISE ERR_LIBRARY IF OpenLibrary() = NIL
+
+ 
+     /* -- ------------------------------------------------- -- *
+      * --                       Structure&#x27;s                 -- *
+      * -- ------------------------------------------------- -- */
+
+OBJECT demogui
+  owindow      : PTR TO object
+  window       : PTR TO window
+  gadgets[ 4 ] : ARRAY OF LONG
+ENDOBJECT
+
+
+     /* -- ------------------------------------------------- -- *
+      * --                  Global Declaration&#x27;s             -- *
+      * -- ------------------------------------------------- -- */
+
+DEF glo_class : PTR TO iclass     -&gt; // my &quot;newareaclass&quot;
+
+
+     /* -- ------------------------------------------------- -- *
+      * --                       Method&#x27;s                    -- *
+      * -- ------------------------------------------------- -- */
+
+PROC dem_Constructor() OF demogui
+DEF con_rport
+
+  self.gadgets[ GID_QUIT      - 1 ] := Button( &#x27;_Quit&#x27;, GID_QUIT )   
+
+  self.gadgets[ GID_VERTPROP  - 1 ] := PropObject,
+                                         PGA_FREEDOM,        FREEVERT,
+                                         PGA_NEWLOOK,        TRUE,
+                                         PGA_Arrows,         TRUE,
+                                       EndObject
+
+  self.gadgets[ GID_HORIZPROP - 1 ] := PropObject,
+                                         PGA_FREEDOM,        FREEHORIZ,
+                                         PGA_NEWLOOK,        TRUE,
+                                         PGA_Arrows,         TRUE,
+                                       EndObject
+
+  self.gadgets[ GID_AREA      - 1 ] := NewObjectA( glo_class, NIL,
+                                       [ ButtonFrame,
+                                         AREA_MinVWidth,       100,
+                                         AREA_MinVHeight,      50,
+                                         AREA_Width,           600,
+                                         AREA_Height,          400,
+                                         AREA_HProp,           self.gadgets[ GID_HORIZPROP - 1 ],
+                                         AREA_VProp,           self.gadgets[ GID_VERTPROP  - 1 ],
+                                         TAG_END ] )
+
+  GetAttr( AREA_RastPort, self.gadgets[ GID_AREA - 1 ], {con_rport} )
+  glo_DrawBullshit( con_rport, 200, 600 )  
+
+  self.owindow := WindowObject,
+                    WINDOW_Title,           &#x27;NewAreaClass demo&#x27;,
+                    WINDOW_CloseOnEsc,      TRUE,
+                    WINDOW_AutoAspect,      TRUE,
+                    WINDOW_SmartRefresh,    TRUE,
+                    WINDOW_AutoKeyLabel,    TRUE,
+                    WINDOW_MasterGroup,
+                      VGroupObject,
+                        ShineRaster,
+                        NoFrame,
+                        HOffset(16),
+                        VOffset(8),
+                        Spacing(4),
+                        StartMember,
+                          HGroupObject,
+                            StartMember,
+                              VGroupObject,
+                                StartMember,
+                                  self.gadgets[ GID_AREA - 1 ],
+                                EndMember,
+                                StartMember,
+                                  self.gadgets[ GID_HORIZPROP - 1 ],
+                                  FixMinHeight,
+                                EndMember,
+                              EndObject,
+                            EndMember,
+                            StartMember,
+                              self.gadgets[ GID_VERTPROP - 1 ],
+                              FixMinWidth,
+                            EndMember,
+                          EndObject,
+                        EndMember,
+                        StartMember,
+                          self.gadgets[ GID_QUIT - 1 ],
+                          FixMinHeight,
+                        EndMember,
+                      EndObject,
+                  EndObject
+
+
+ENDPROC
+
+
+PROC dem_StartInterface() OF demogui
+DEF sta_rc,sta_running,sta_signal
+
+  IF self.owindow &lt;&gt; NIL
+
+    self.window := WindowOpen( self.owindow )
+    IF self.window &lt;&gt; NIL
+
+      GetAttr( WINDOW_SigMask, self.owindow, {sta_signal} )
+      sta_running := TRUE
+
+      WHILE sta_running = TRUE
+
+        Wait( sta_signal )
+
+        WHILE (sta_rc := HandleEvent( self.owindow )) &lt;&gt; WMHI_NOMORE
+ 
+          SELECT sta_rc
+          CASE WMHI_CLOSEWINDOW ; sta_running := FALSE
+          CASE GID_QUIT         ; sta_running := FALSE
+          ENDSELECT
+
+        ENDWHILE
+
+      ENDWHILE
+
+      WindowClose( self.owindow )
+    ENDIF
+
+  ENDIF
+
+ENDPROC
+
+
+PROC end() OF demogui
+DEF end_run
+ 
+  IF self.owindow &lt;&gt; NIL
+    DisposeObject( self.owindow )
+  ELSE
+  
+    FOR end_run := GID_AREA TO GID_QUIT
+      IF self.gadgets[ end_run - 1 ] &lt;&gt; NIL THEN DisposeObject( self.gadgets[ end_run - 1 ] )  
+    ENDFOR
+
+  ENDIF
+
+ENDPROC
+
+
+     /* -- ------------------------------------------------- -- *
+      * --                     Procedure&#x27;s                   -- *
+      * -- ------------------------------------------------- -- */
+
+PROC glo_DrawBullshit( dra_rport : PTR TO rastport, dra_w, dra_h )
+DEF dra_cols,dra_x,dra_y
+
+  dra_cols := Shl( 1, dra_rport.bitmap.depth )
+  dra_w    := dra_w - 1
+  dra_h    := dra_h - 1
+
+  FOR dra_y := 0 TO dra_h
+    FOR dra_x := 0 TO dra_w
+      SetAPen( dra_rport, Mod( (dra_x + dra_y) * (dra_w - dra_y), dra_cols ) )
+      WritePixel( dra_rport, dra_x, dra_y )
+    ENDFOR
+  ENDFOR
+
+ENDPROC
+
+
+     /* -- ------------------------------------------------- -- *
+      * --                          Main                     -- *
+      * -- ------------------------------------------------- -- */
+
+PROC main() HANDLE
+DEF ma_object : PTR TO demogui
+
+  ma_object   := NIL
+  utilitybase := OpenLibrary( &#x27;utility.library&#x27;, 37 )
+  bguibase    := OpenLibrary( &#x27;bgui.library&#x27;, 41 )
+  glo_class   := nar_InitNewAreaClass()
+  IF glo_class &lt;&gt; NIL
+
+    PrintF( &#x27;Please wait, while calculating...\n&#x27; )
+    NEW ma_object.dem_Constructor()
+    ma_object.dem_StartInterface()
+
+  ENDIF
+
+EXCEPT DO
+
+  IF ma_object   &lt;&gt; NIL THEN END ma_object
+  IF glo_class   &lt;&gt; NIL THEN nar_FreeNewAreaClass( glo_class )
+  IF bguibase    &lt;&gt; NIL THEN CloseLibrary( bguibase )
+  IF utilitybase &lt;&gt; NIL THEN CloseLibrary( utilitybase )
+
+ENDPROC
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

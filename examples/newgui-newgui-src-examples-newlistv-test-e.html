@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>newlistv_test.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-newgui.html">newgui</a> &rsaquo; newlistv_test.e</div><h1>File: <code>newlistv_test.e</code></h1><p class="meta">78 lines · project <a href="../examples/pkg-newgui.html"><code>newgui</code></a></p><p class="pathctx">newgui/NewGUI/Src/Examples/newlistv_test.e</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/lists.html">exec/lists</a></li><li><a href="../modules/nodes.html">exec/nodes</a></li><li><a href="../modules/newgui.html">newgui/newgui</a></li><li><a href="../modules/newlistview.html">newgui/newlistview</a></li><li><a href="../modules/constructors.html">tools/constructors</a></li><li><a href="../modules/exceptions.html">tools/exceptions</a></li></ul></div><h2>Source</h2><pre class="code">OPT     LARGE
+OPT     OSVERSION = 37
+
+MODULE  &#x27;tools/exceptions&#x27;
+MODULE  &#x27;exec/nodes&#x27;
+MODULE  &#x27;exec/lists&#x27;
+MODULE  &#x27;tools/constructors&#x27;
+MODULE  &#x27;newgui/newlistview&#x27;
+MODULE  &#x27;newgui/newgui&#x27;
+
+CONST   GUI_MAIN=1
+
+DEF     result=-1
+DEF     n:PTR TO newlistv
+
+PROC main() HANDLE
+ DEF list, a, nodes
+  list:=newlist()
+   nodes:=[&#x27;zero&#x27;,&#x27;one&#x27;,&#x27;two&#x27;,&#x27;three&#x27;,&#x27;four&#x27;,&#x27;five&#x27;,&#x27;six&#x27;,&#x27;seven&#x27;,
+          &#x27;eight&#x27;,&#x27;nine&#x27;,&#x27;ten&#x27;,&#x27;eleven&#x27;,&#x27;twelve&#x27;,&#x27;thirteen&#x27;,&#x27;fourteen&#x27;]
+    ForAll({a}, nodes, `AddTail(list, newnode(NIL, a)))
+     newguiA([
+        NG_WINDOWTITLE, &#x27;NewGUI-DoubleClick-ListView-Plugin&#x27;,     
+        NG_BFPATTERN,   [$AAAA,$5555]:INT,                      /* Backfillpattern (Muster)             */
+        NG_BFEXP,       1,                                      /* Exponent (-&gt; graphics/gfxmacros/SetAfPt)     */
+        NG_BFBACKPEN,   3,                                      /* Hintergrundstift für den Pattern     */
+        NG_BFFRONTPEN,  2,                                      /* Zeichenstift für den Pattern         */
+        NG_PATTERNEXP,  1,                                      /* Exponent für den Pattern             */
+        NG_PATTERN1,    [$AAAA,$5555]:INT,                      /* Muster (Pattern) für FILLPATTERN1    */
+        NG_P1BACKPEN,   0,                                      /* Hintergrundstift für das Patternfilling (Muster)             */
+        NG_P1FRONTPEN,  0,                                      /* Zeichenstift für das Muster (Patternfilling)                 */
+/*                                                              /* ARexx-Port hinzufügen!               */
+        NG_REXXNAME,    &#x27;NEWGUI&#x27;,                               /* Name für einen ARexx-Port            */
+        NG_REXXPROC,    {rexxmsg},                              /* Prozedur die ARexx-Messages auswertet*/
+*/                                                              /* Durch den Port wird das EXE nicht größer!    */
+        NG_GUIID,       GUI_MAIN,
+        NG_GUI,
+                [ROWS,
+                [DBEVELR,
+                [FILLPATTERN1,
+                [ROWS,
+                [TEXT,&#x27;Double-Click ListView test...&#x27;,NIL,TRUE,1],
+                [SPACE],
+                [NEWLISTV,{listaction},NEW n.newlistv(&#x27;DoubleClick-ListView&#x27;, 15,7, list,result,NIL,FALSE)]]]],
+        [EQCOLS,
+                [BUTTON,{okaction},&#x27;OK&#x27;],
+                [BUTTON,{disabler},&#x27;Toggle Enabled&#x27;]
+        ]],NIL,NIL])
+
+EXCEPT DO
+ END n
+  IF exception
+   WriteF(&#x27;Exception = \d\n&#x27;,exception)
+  ENDIF
+ CleanUp(exception)
+ENDPROC
+
+PROC listaction(x,y,gui)
+  IF n.clicked THEN okaction(x,y,gui)
+  WriteF(&#x27;Current Selection: \d\n&#x27;,n.current)
+ENDPROC
+
+PROC okaction(x,y,gui)
+  IF (result:=n.current)= -1
+    WriteF(&#x27;No selection made\n&#x27;)
+    cancelaction()
+  ENDIF
+  WriteF(&#x27;Final Selection: \d\n&#x27;,result)
+
+ENDPROC
+
+PROC disabler() IS n.setdisabled(n.disabled=FALSE)
+
+PROC cancelaction()
+  WriteF(&#x27;Operation cancelled.\n&#x27;)
+ENDPROC
+
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

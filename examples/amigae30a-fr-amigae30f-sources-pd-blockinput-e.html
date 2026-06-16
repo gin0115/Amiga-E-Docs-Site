@@ -1,0 +1,175 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>blockinput.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-amigae30a-fr.html">amigae30a_fr</a> &rsaquo; blockinput.e</div><h1>File: <code>blockinput.e</code></h1><p class="meta">149 lines · project <a href="../examples/pkg-amigae30a-fr.html"><code>amigae30a_fr</code></a></p><p class="pathctx">amigae30a_fr/AmigaE30f/Sources/Pd/blockinput.e</p><p class="prose">blockinput.e (de la page 207 du livre sur les bibliothèques, modifié pour le * E par Trey Van Riper [jvanriper@uncavx.unca.edu])</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/types.html">exec/types</a></li></ul></div><h2>Source</h2><pre class="code">/* blockinput.e (de la page 207 du livre sur les bibliothèques, modifié pour le
+ * E par Trey Van Riper [jvanriper@uncavx.unca.edu])
+ */
+
+/* blockinput.e -- programme pour demonstrer comment bloquer les entrées d&#x27;une
+ * fenêtre en utilisant les requêtes, et comment affichier un busy pointer.
+ */
+
+OPT OSVERSION=37
+
+MODULE &#x27;exec/types&#x27;,&#x27;intuition/intuition&#x27;,&#x27;exec/ports&#x27;,&#x27;exec/memory&#x27;,
+       &#x27;utility/tagitem&#x27;
+
+/*
+ * Autant que je sache, le E ne vous llaisse pas mettre des données directement
+ * dans la mémoire Chip, donc vous devez les CopyMem de la mémoire Fast.  Donc....
+ */
+
+DEF chippointer
+
+/*
+ * beginWait()
+ *
+ * Efface la requête avec InitRequester. Ca met la requête  avec une margeur=0
+ * hauteur = 0, gauche = 0, haut = 0; en fait, tout est à zéro.
+ * Cette requête va simplement bloquer les entrées à la fenêtre tant que EndResques
+ * n&#x27;ets pas appelé.
+ *
+ * Le pointeur est mis sur un busy pointer de 4 couleurs, avec de bons offsets.
+ */
+
+PROC beginWait(win, waitRequest)
+
+ InitRequester(waitRequest)
+ IF Request(waitRequest, win)
+  SetPointer(win,chippointer, 16, 16, -6, 0)
+  SetWindowTitles(win,&#x27;Busy - Input Blocked&#x27;, Not(0))
+  RETURN TRUE
+ ELSE
+  RETURN FALSE
+ ENDIF
+
+ENDPROC
+
+/*
+ * endWait()
+ *
+ * Routine pour remettre à zéro le pointeur au défaut système, et enlève la
+ * requête installée avec beginWait().
+ */
+
+PROC endWait(win, waitRequest)
+
+ ClearPointer(win)
+ EndRequest(waitRequest, win)
+ SetWindowTitles(win,&#x27;Not Busy&#x27;, Not(0))
+
+
+ENDPROC
+
+/*
+ * processIDCMP()
+ *
+ * Attend que l&#x27;utilisateur ferme la fenêtre.
+ */
+
+PROC processIDCMP (wintmp)
+
+ DEF done, msg:PTR TO intuimessage, class, myreq:requester, tick_count,
+     temp:PTR TO mp,win:PTR TO window
+
+ done:=FALSE
+ win:=wintmp
+ IF beginWait(win, myreq)
+  /*
+   * Insérer du code ici pour qu&#x27;une fenêtre agissent sur la requête.
+   */
+
+  /* On compte à rebours les INTUITICKS, qui viennet environ toutes les
+   * 1/10 de secondes.  On garde le busy pointeur pour environ 3 secondes.
+   */
+   tick_count := 30
+ ENDIF
+ temp := win.userport
+ WHILE Not(done)
+  Wait(Shl(1,temp.sigbit))
+  WHILE NIL &lt;&gt; (msg := GetMsg(win.userport))
+   class := msg.class
+   ReplyMsg(msg)
+   SELECT class
+    CASE IDCMP_CLOSEWINDOW
+     done := TRUE
+    CASE IDCMP_INTUITICKS
+     IF tick_count&gt;0
+      DEC tick_count
+      IF tick_count = 0 THEN endWait(win,myreq)
+     ENDIF
+   ENDSELECT
+  ENDWHILE
+ ENDWHILE
+ENDPROC
+
+PROC main()
+ DEF win:PTR TO window,waitpointer
+
+waitpointer:=[$0000, $0000,
+
+              $0400, $07C0,
+              $0000, $07C0,
+              $0100, $0380,
+              $0000, $07E0,
+              $07C0, $1FF8,
+              $1FF0, $3FEC,
+              $3FF8, $7FDE,
+              $3FF8, $7FBE,
+              $7FFC, $FF7F,
+              $7EFC, $FFFF,
+              $7FFC, $FFFF,
+              $3FF8, $7FFE,
+              $3FF8, $7FFE,
+              $1FF0, $3FFC,
+              $07C0, $1FF8,
+              $0000, $07E0,
+
+              $0000, $0000]:INT
+
+IF chippointer:=AllocVec(72,MEMF_CHIP)
+ CopyMemQuick(waitpointer,chippointer,72)
+ENDIF
+
+ IF win:=OpenWindowTagList(NIL,
+                   [WA_IDCMP,IDCMP_CLOSEWINDOW OR IDCMP_INTUITICKS,
+                   WA_ACTIVATE, TRUE,
+                   WA_WIDTH, 320,
+                   WA_HEIGHT, 100,
+                   WA_CLOSEGADGET, TRUE,
+                   WA_DRAGBAR, TRUE,
+                   WA_DEPTHGADGET, TRUE,
+                   WA_SIZEGADGET, TRUE,
+                   WA_MAXWIDTH, Not(0),
+                   WA_MAXHEIGHT, Not(0)])
+ processIDCMP(win)
+ CloseWindow(win)
+ ENDIF
+
+IF chippointer THEN FreeVec(chippointer)
+
+ENDPROC
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

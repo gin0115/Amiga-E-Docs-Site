@@ -1,0 +1,395 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>xPage.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-fr-xpage.html">FR-xPage</a> &rsaquo; xPage.e</div><h1>File: <code>xPage.e</code></h1><p class="meta">369 lines · project <a href="../examples/pkg-fr-xpage.html"><code>FR-xPage</code></a></p><p class="pathctx">FR-xPage/xPage.e</p><p class="prose">$VER: xPage 1.1 (5-10-97) © Frédéric Rodrigues - Freeware-Registered XPK More</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/xpkmaster.html">xpkmaster</a></li></ul></div><h2>Source</h2><pre class="code">/* $VER: xPage 1.1 (5-10-97) © Frédéric Rodrigues - Freeware-Registered
+   XPK More
+*/
+
+OPT PREPROCESS,OSVERSION=36
+
+#define FREEWARE
+-&gt;#define REGISTERED
+
+MODULE &#x27;xpkmaster&#x27;,&#x27;xpk/xpk&#x27;,&#x27;utility/tagitem&#x27;,&#x27;dos/dos&#x27;,&#x27;dos/dosextens&#x27;,
+       &#x27;exec/ports&#x27;,&#x27;exec/nodes&#x27;,&#x27;intuition/intuition&#x27;,&#x27;graphics/rastport&#x27;,
+       &#x27;workbench/startup&#x27;,&#x27;exec/lists&#x27;
+
+ENUM ER_QUIT,ER_LIB,ER_XPK,ER_MEM,ER_DOS,ER_ARG
+ENUM TITLE_TOP,TITLE_BOTTOM,TITLE_SEARCH,TITLE_FOUND,TITLE_PRINT,TITLE_LOAD,
+     TITLE_CPT,TITLE_VERSION,TITLE_HELP,TITLE_NOTPRINT,TITLE_WRONG
+ENUM ARG_FILE,ARG_NBLINES
+CONST LEN_STRING=256,DELAY=50
+
+DEF xpkfib:PTR TO xpkfib,xpkerr[XPKERRMSGSIZE]:STRING,xpkbuf,nbytes,
+    c[1]:STRING,line,eof,nblines,cptlines,win:PTR TO window,
+    stringsearch[LEN_STRING]:STRING,searchagain=FALSE,maxnblines,nbchunk,
+    sumnblines,string[LEN_STRING]:STRING,argu
+
+PROC main() HANDLE
+  DEF t,title,wb:PTR TO wbstartup,args:PTR TO wbarg
+  /* if ran from workbench */
+  IF wbmessage
+    wb:=wbmessage
+#ifdef FREEWARE
+    IF wb.numargs&gt;=0
+#endif
+#ifdef REGISTERED
+    IF wb.numargs&lt;2
+#endif
+      StringF(string,&#x27;\s\n\n\s&#x27;,{version},{help})
+      EasyRequestArgs(0,[20,0,{error},string,{seeyou}],0,0)
+      RETURN
+    ENDIF
+    args:=wb.arglist
+    argu:=args[1].name
+    CurrentDir(args[1].lock)
+  ELSE
+    IF (arg[]=0) OR (arg[]=&quot;?&quot;) THEN Raise(ER_ARG)
+    argu:=arg        /* DANGER !!! the usage of arg here seems to make the prog crash under 2.1b */
+  ENDIF
+  cursoff()
+  SetMode(stdout,1)           /* set * to RAW mode */
+  win:=findwindow()
+  title:=win.title        /* save title */
+  calculatemaxlines()
+  IF (xpkbase:=OpenLibrary(&#x27;xpkmaster.library&#x27;,2))=NIL THEN Raise(ER_LIB)
+rewind:
+  /* ok, do some initialisations */
+  nblines:=cptlines:=nbchunk:=sumnblines:=0
+  IF (XpkOpen({xpkfib},[XPK_INNAME,argu,XPK_GETERROR,xpkerr,XPK_PASSTHRU,TRUE,TAG_DONE])&lt;&gt;0) THEN Raise(ER_XPK)
+  IF (xpkbuf:=New(xpkfib.nlen+1))=NIL THEN Raise(ER_MEM)
+  displaytitle(TITLE_LOAD)
+  WHILE (nbytes:=XpkRead(xpkfib,xpkbuf,xpkfib.nlen))&gt;0
+    sumnblines:=sumnblines+nblines
+    INC nbchunk
+    xpkbuf[nbytes]:=0       /* set end of xpkbuf */
+    nblines:=1
+    cptlines:=2
+    /* replace 12 by \n */
+    FOR t:=0 TO nbytes-1
+      IF xpkbuf[t]=12
+        xpkbuf[t]:=&quot;\n&quot;
+        INC nblines
+      ENDIF
+    ENDFOR
+    line:=xpkbuf
+    eof:=FALSE
+    Write(Output(),xpkbuf,page(xpkbuf))
+    IF searchagain=FALSE THEN displaytitle(TITLE_VERSION)
+    WHILE eof=FALSE
+      IF searchagain
+        c[]:=&quot;n&quot;
+      ELSE
+        displaytitle(TITLE_CPT)
+        Read(stdout,c,1)
+        calculatemaxlines()
+      ENDIF
+      t:=c[]
+      SELECT t
+        CASE &quot;t&quot;;line:=xpkbuf;pageup()
+        CASE &quot;b&quot;;line:=xpkbuf+nbytes
+                 gotocurrent()
+                 pagedown()
+        CASE 32;pagedown();
+        CASE 8;pageup();
+        CASE 13;IF line&lt;&gt;nextline() THEN WriteF(&#x27;\s\n&#x27;,line:=nextline()) ELSE displaytitle(TITLE_BOTTOM)
+#ifdef REGISTERED
+        CASE &quot;p&quot;;print()
+#endif
+        CASE 155;
+        CASE 63;displaytitle(TITLE_HELP)
+                cls()
+                WriteF(&#x27;\e[1m\s\e[22m\n\n&#x27;+
+                       &#x27;     HELP - this help\n&#x27;+
+                       &#x27;        t - top of chunk\n&#x27;+
+                       &#x27;        b - bottom of chunk\n&#x27;+
+                       &#x27;    SPACE - next page\n&#x27;+
+                       &#x27;BACKSPACE - previous page\n&#x27;+
+                       &#x27;    ENTER - next line\n&#x27;+
+                       &#x27;        p - print current page\n&#x27;+
+                       &#x27;        / - search for strings (separate them with &quot;|&quot;)\n&#x27;+
+                       &#x27;        n - search again\n&#x27;+
+                       &#x27;        j - next chunk\n&#x27;+
+                       &#x27;        r - rewind\n&#x27;+
+                       &#x27;      ESC - quit\n\n&#x27;,{version})
+#ifdef FREEWARE
+                WriteF(&#x27;Some options don&#x27;&#x27;t work with the freeware version:\n&#x27;+
+                       &#x27;workbench, search, print\n&#x27;+
+                       &#x27;So, register for just 2$\n\n&#x27;)
+#endif
+                WriteF(&#x27;\e[3mReach me at :\n\n&#x27;+
+                       &#x27;email : rodrigue@iles.siera.ups-tlse.fr\n&#x27;+
+                       &#x27;mail :  Frédéric RODRIGUES\n&#x27;+
+                       &#x27;        4 allées Antonio Machado app 3009D\n&#x27;+
+                       &#x27;        31100 Toulouse\n&#x27;+
+                       &#x27;        FRANCE\e[23m&#x27;)
+                 t:=cptlines
+                 Read(stdout,c,1)
+                 Read(stdout,c,1)
+                 gotocurrent()
+                 line:=previousline()       /* must do this to work */
+                 pagedown()
+                 cptlines:=t
+#ifdef REGISTERED
+        CASE &quot;/&quot;;SetMode(stdout,0)
+                 curson()
+                 WriteF(&#x27;/&#x27;)
+                 ReadStr(stdout,stringsearch)
+                 cursoff()
+                 SetMode(stdout,1)
+                 search()
+        CASE &quot;n&quot;;searchagain:=FALSE;search()
+#endif
+        CASE &quot;j&quot;;eof:=TRUE
+        CASE &quot;r&quot;;XpkClose(xpkfib);Dispose(xpkbuf);JUMP rewind
+        CASE 27;Raise(ER_QUIT)
+        DEFAULT;displaytitle(TITLE_WRONG)
+      ENDSELECT
+    ENDWHILE
+    displaytitle(TITLE_LOAD)
+  ENDWHILE
+  IF nbytes&lt;0 THEN Raise(ER_XPK)
+  Raise(ER_QUIT)
+EXCEPT
+  t:=IoErr()
+  IF win THEN SetWindowTitles(win,title,TRUE)
+  curson()
+  SetMode(stdout,0)
+  IF xpkfib THEN XpkClose(xpkfib)
+  IF xpkbase THEN CloseLibrary(xpkbase)
+  WriteF(&#x27;\s\n\n&#x27;,IF exception THEN {version} ELSE {seeyou})
+  SELECT exception
+    CASE ER_LIB;WriteF(&#x27;\s: cannot open xpkmaster.library&#x27;,{error});RETURN RETURN_ERROR
+    CASE ER_XPK;WriteF(&#x27;\s: \s\n&#x27;,{error},xpkerr);RETURN RETURN_FAIL
+    CASE ER_MEM;PrintFault(ERROR_NO_FREE_STORE,{error});RETURN RETURN_ERROR
+    CASE ER_DOS;PrintFault(t,{error});RETURN RETURN_FAIL
+    CASE ER_ARG;WriteF(&#x27;\s\n&#x27;,{help})
+  ENDSELECT
+  IF wbmessage
+    Delay(DELAY)
+    Close(stdout)
+  ENDIF
+ENDPROC
+
+PROC pagedown()
+  DEF i,j
+  j:=maxnblines
+  IF line&lt;&gt;xpkbuf THEN DEC j
+  FOR i:=1 TO maxnblines
+    IF line=nextline()  /* trying to find bottom */
+      displaytitle(TITLE_BOTTOM)
+      JUMP l
+    ENDIF
+    line:=nextline()
+  ENDFOR
+l:
+  FOR i:=1 TO j DO line:=previousline()  /* return to position */
+  cls()
+  FOR i:=1 TO maxnblines
+    WriteF(&#x27;\s\n&#x27;,line)
+    IF i&lt;&gt;maxnblines THEN line:=nextline()
+  ENDFOR
+ENDPROC
+
+PROC pageup()
+  DEF i
+  FOR i:=1 TO 2*maxnblines
+    IF (line:=previousline())=previousline()
+      displaytitle(TITLE_TOP)
+      JUMP m
+    ENDIF
+  ENDFOR
+m:
+  cls()
+  pagedown()
+ENDPROC
+
+PROC gotocurrent()
+  DEF i
+  FOR i:=1 TO maxnblines-1 DO line:=previousline()
+ENDPROC
+
+PROC print()
+  DEF i,fhp,out
+  IF fhp:=Open(&#x27;PRT:&#x27;,NEWFILE)
+    displaytitle(TITLE_PRINT)
+    out:=SetStdOut(fhp)
+    gotocurrent()
+    FOR i:=1 TO maxnblines
+      WriteF(&#x27;\s\n&#x27;,line)
+      IF i&lt;&gt;maxnblines THEN line:=nextline()
+    ENDFOR
+    SetStdOut(out)
+    Close(fhp)
+  ELSE
+    displaytitle(TITLE_NOTPRINT)
+  ENDIF
+ENDPROC
+
+/* searches for several strings */
+PROC search()
+  DEF s,len
+  /* display title first because string is shared */
+  displaytitle(TITLE_SEARCH)
+  len:=StrLen(stringsearch)
+  StrCopy(string,stringsearch,ALL)
+  s:=string
+  /* replace space by 0 */
+  WHILE s[]
+    IF s[]=&quot;|&quot; THEN s[]:=0
+    INC s
+  ENDWHILE
+  WHILE line&lt;&gt;nextline()
+    s:=string
+n:
+    IF InStr(line,s,0)&lt;&gt;-1
+      line:=previousline()
+      pagedown()
+      cptlines:=cptlines-2                /* must do this to get right */
+      displaytitle(TITLE_FOUND)
+      RETURN
+    ELSE
+      WHILE s[]++ DO NOP
+      IF (s-string)&gt;=len THEN JUMP o
+      JUMP n
+    ENDIF
+o:
+    line:=nextline()
+  ENDWHILE
+  eof:=TRUE
+  searchagain:=TRUE
+ENDPROC
+
+PROC nextline()
+  DEF pos
+  pos:=line
+  WHILE pos[]++&lt;&gt;0 DO NOP
+  IF pos=(xpkbuf+nbytes)
+    cptlines:=nblines-(maxnblines/2)*2-1  /* must do this to get right */
+    RETURN line
+  ELSE
+    INC cptlines
+    RETURN pos
+  ENDIF
+ENDPROC
+
+PROC previousline()
+  DEF pos
+  IF line=xpkbuf THEN RETURN xpkbuf   /* needed */
+  pos:=line-1
+  WHILE pos[]--&lt;&gt;0
+    IF pos&lt;=xpkbuf
+      cptlines:=2
+      RETURN xpkbuf
+    ENDIF
+  ENDWHILE
+  DEC cptlines
+  RETURN pos+1
+ENDPROC
+
+/* apparently unique way to get PTR to * window */
+/* I got this from TheSourceAsm */
+PROC findwindow()
+  DEF proc:PTR TO process,cli:PTR TO commandlineinterface,
+      id:infodata,pkt:standardpacket,fhandl:PTR TO filehandle,
+      msg:PTR TO mn,node:PTR TO ln,dospkt:PTR TO dospacket
+  proc:=FindTask(NIL)
+  cli:=Shl(proc.cli,2)
+  msg:=pkt.msg
+  node:=msg.ln
+  node.name:=pkt.pkt
+  dospkt:=pkt.pkt
+  dospkt.link:=msg
+  dospkt.port:=proc.msgport
+  dospkt.type:=ACTION_DISK_INFO
+  dospkt.arg1:=Shr(id,2)
+  fhandl:=Shl(stdout,2)
+  PutMsg(fhandl.type,pkt)
+  WaitPort(proc.msgport)
+  GetMsg(proc.msgport)
+  RETURN id.volumenode
+ENDPROC
+
+/* ok, just a function */
+PROC cls()
+  WriteF(&#x27;\e[0;0H\e[J&#x27;)
+ENDPROC
+
+PROC curson()
+  WriteF(&#x27;\e[1 p&#x27;)
+ENDPROC
+
+PROC cursoff()
+  WriteF(&#x27;\e[0 p&#x27;)
+ENDPROC
+
+/* it&#x27;s better programming if u get this */
+PROC displaytitle(tit)
+  DEF t,u
+  SELECT tit
+    CASE TITLE_CPT
+      u:=(cptlines+maxnblines)/2
+      t:=u+sumnblines
+      StringF(string,&#x27;\s · \d% of chunk \d · line \d · page \d&#x27;,argu,u*100/nblines,nbchunk,t,t/maxnblines)
+    CASE TITLE_SEARCH
+      StringF(string,&#x27;searching for \s...&#x27;,stringsearch)
+    CASE TITLE_FOUND
+      StringF(string,&#x27;found \s&#x27;,stringsearch)
+  ENDSELECT
+  SetWindowTitles(win,ListItem([&#x27;top of chunk&#x27;,&#x27;bottom of chunk&#x27;,string,string,&#x27;printing...&#x27;,&#x27;loading...&#x27;,string,{version},&#x27;help&#x27;,&#x27;cannot print&#x27;,&#x27;press HELP for help&#x27;],tit),TRUE)
+  IF tit&lt;&gt;TITLE_CPT THEN IF tit&lt;&gt;TITLE_HELP THEN IF tit&lt;&gt;TITLE_LOAD THEN IF tit&lt;&gt;TITLE_SEARCH THEN Delay(DELAY)
+ENDPROC
+
+/* calculate the size of display based on the screen font */
+PROC calculatemaxlines()
+  DEF rastport:PTR TO rastport
+  rastport:=win.rport
+  maxnblines:=(win.height-win.bordertop)/rastport.txheight-1
+  /* necessary to get right values */
+  IF Even(maxnblines) THEN DEC maxnblines
+ENDPROC
+
+PROC sizewin(win) IS (win.height-win.bordertop-win.borderbottom)/win.rport.txheight,(win.width-win.borderleft-win.borderright)/win.rport.txwidth
+
+PROC page(buf)
+DEF x,y
+  x,y:=sizewin(win)
+  WHILE buf[]
+
+  ENDWHILE
+ENDPROC
+
+CHAR &#x27;$VER: &#x27;
+#ifdef FREEWARE
+version: CHAR &#x27;xPage 1.1 (5.10.97) © Frédéric Rodrigues\nXPK More&#x27;,0
+#endif
+#ifdef REGISTERED
+version: CHAR &#x27;xPage 1.1 (5.10.97) © Frédéric RODRIGUES - Registered\nXPK More&#x27;,0
+#endif
+error: CHAR &#x27;xPage&#x27;,0
+help: CHAR &#x27;CLI usage:  xPage filename\nWB  usage:  Click xPage, Shift/Doubleclick text file\nWhile viewing file, press HELP for help screen&#x27;,0
+seeyou: CHAR &#x27;See you later !&#x27;,0
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

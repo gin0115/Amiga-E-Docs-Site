@@ -1,0 +1,250 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>NewMandel_EFloat.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-newgui3-1b4.html">NewGUI3_1b4</a> &rsaquo; NewMandel_EFloat.e</div><h1>File: <code>NewMandel_EFloat.e</code></h1><p class="meta">224 lines · project <a href="../examples/pkg-newgui3-1b4.html"><code>NewGUI3_1b4</code></a></p><p class="pathctx">NewGUI3_1b4/NewGUI/Src/Examples/NewMandel_EFloat.e</p><p class="prose">* Runs the NewGUI-Engine (guimessage-handling) in a seperate Task * -===============================================================- * * The Code for the calculating is taken out of the Amiga-E <a href="../modules/example.html">Example</a>- * Sources from gfx/mandel.e it was only changed to fit into the * scheme of the gfx-<a href="../modules/plugin.html">plugin</a> and i</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/dos.html">dos/dos</a></li><li><a href="../modules/intuition.html">intuition/intuition</a></li><li><a href="../modules/newgui.html">newgui/newgui</a></li><li><a href="../modules/ng-guitask.html">newgui/ng_guitask</a></li><li><a href="../modules/ng-showerror.html">newgui/ng_showerror</a></li></ul></div><h2>Source</h2><pre class="code">/* 
+ *  Runs the NewGUI-Engine (guimessage-handling) in a seperate Task
+ * -===============================================================-
+ * 
+ * The Code for the calculating is taken out of the Amiga-E Example-
+ * Sources from gfx/mandel.e it was only changed to fit into the
+ * scheme of the gfx-plugin and into the task-handling-code!
+ */
+
+OPT     LARGE 
+OPT     OSVERSION = 37
+
+MODULE  &#x27;dos/dos&#x27;                               -&gt; For SIGBREAKF_CTRL_C
+MODULE  &#x27;newgui/newgui&#x27;                         -&gt; NewGUI-Engine
+MODULE  &#x27;newgui/ng_guitask&#x27;                     -&gt; Task-Code for NewGUI
+MODULE  &#x27;newgui/ng_showerror&#x27;                   -&gt; Error-Handling-Code (not neccesarry)
+MODULE  &#x27;intuition/intuition&#x27;                   -&gt; For window.rport-PTR
+
+ENUM    GUI_MAIN = 1,
+        GUI_WIN2
+
+OBJECT  gfx     OF      plugin                  -&gt; A Plugin to do BASIC gfx-Output to a Plugin-Area
+PRIVATE                                         -&gt; Feel free to modify it, maybe you could make it
+ rastport                                       -&gt; to use a own bitmap/rastport and copy this bitmap into
+ width                                          -&gt; the Plugins Area so the display will not be trashed
+ height                                         -&gt; if a resize happens...
+ENDOBJECT
+
+CONST   GFX = PLUGIN                            -&gt; A Synonym for PLUGIN...
+
+DEF     info:PTR TO guitaskinfo,                -&gt; Guitaskinfo-Structure
+        gfx:PTR TO gfx,                         -&gt; BASIC Graphics-Output in a NewGUI - Window
+        x=0,                                    -&gt; Starting Point for mandelbrot-generation
+        num_line=NIL,                           -&gt; Calculation-Status (+ gadget-adress)
+        num_pixel=NIL,                          -&gt; Calculation-Status (+ gadget-adress)
+        iterations=20,                          -&gt; Iterations in the Main-calculating loop
+        run=TRUE,                               -&gt; Stop/Run the Calculation
+        refreshgui=TRUE                         -&gt; Refresh the Number-Display
+
+PROC main()     HANDLE
+ opengui()                                      -&gt; Open the gui (in a other task!)
+
+  calculate()                                   -&gt; Calculate the Mandelbrot-GFX
+
+EXCEPT DO                                       -&gt; Exception-Handling, but do it every time the program ends
+ ng_endtask(info)                               -&gt; End and kill the gui-task
+ IF (gfx&lt;&gt;NIL) THEN END gfx                     -&gt; And free the mem for the plugin if neccessary
+  IF exception THEN ng_showerror(exception)     -&gt; If any exception happened then show it
+ CleanUp(exception)                             -&gt; Cleanup (with exception as return-code)
+ENDPROC
+
+PROC opengui()                                  -&gt; Should open the gui!
+  info:=ng_newtask(                             -&gt; initialize a new task for the GUI!!!!
+       [NG_WINDOWTITLE,         &#x27;NewGUI-Task-Demo&#x27;,
+        NG_WINDOWTYPE,          WTYPE_NOSIZE,   -&gt; No size-Gadget because the Plugin does not
+        NG_GUIID,       GUI_MAIN,               -&gt; a resize occours...
+        NG_GUI,
+                [ROWS,
+                [DBEVELR,
+                [EQROWS,
+                        [TEXT,&#x27;Calculation&#x27;,&#x27;Mandelbrot&#x27;,FALSE,2],
+                        [TEXT,&#x27;a seperate Task&#x27;,&#x27;The GUI runs in&#x27;,FALSE,2],
+                        [TEXT,&#x27;NewGUI&#x27;,&#x27;with&#x27;,FALSE,2]
+                ]],
+                [BEVELR,
+                [ROWS,
+                        [GFX,0,NEW gfx.gfx(200,100)]    -&gt; The Plugin...
+                ]],
+                [DBEVELR,
+                [ROWS,
+                [EQCOLS,
+                        num_line:=[NUM,0,&#x27;Line&#x27;,TRUE,3],
+                        num_pixel:=[NUM,0,&#x27;Pixel&#x27;,TRUE,3]
+                ],
+                        [CHECK,{refresh},&#x27;Display Render-Info&#x27;,refreshgui,TRUE],
+                [BEVELR,
+                [COLS,
+                        [TEXT,&#x27;Iterations :&#x27;,&#x27;Number of&#x27;,FALSE,3],
+                        [SLIDE,{setiteration},&#x27;     &#x27;,FALSE,1,50,iterations,2,&#x27;%2ld&#x27;]
+                ]]]],
+                [BAR],
+                [BEVELR,
+                [EQCOLS,
+                        [SBUTTON,{stop},&#x27;Stop&#x27;],
+                [SPACEH],
+                        [SBUTTON,{reset},&#x27;Reset&#x27;]
+                ]]],
+        NIL,NIL],NG_STACK_SIZE)                 -&gt; NG_STACK_SIZE is Standart-Size of 4096 bytes!
+ENDPROC
+
+PROC calculate()                                -&gt; Do other important things...
+ DEF    xmax,
+        ymax,
+        y=0,
+        xr,
+        width=3.5,
+        height=2.8,
+        left,
+        top
+  Wait(info.sig OR SIGBREAKF_CTRL_C)            -&gt; Wait until the GUI is ready (or Break!)
+
+   top:=!0.0-1.55
+   left:=!0.0-2.1
+   xmax:=200!
+   ymax:=100-1!
+
+    WHILE (ng_checkgui(info)=FALSE)             -&gt; Wait until the GUI will be closed
+     Delay(1)                                   -&gt; Give other Tasks our CPU-Time...
+      IF (run=TRUE) AND (x&lt;=200)                -&gt; Only if neccesarry!
+       xr:=x!/xmax*width+left
+        FOR y:=0 TO 200-1 
+         gfx.plot(x,y,calc(xr,y!/ymax*height+top))      -&gt; Plot the Point into the Plugin...
+          IF (refreshgui=TRUE) THEN ng_setattrsA([
+                NG_GUI,         info.gui,
+                NG_CHANGEGAD,   TRUE,
+                NG_GADGET,      num_pixel,
+                NG_NEWDATA,     y,
+                NIL,            NIL])
+        ENDFOR
+         IF (refreshgui=TRUE) THEN ng_setattrsA([
+                NG_GUI,         info.gui,
+                NG_CHANGEGAD,   TRUE,
+                NG_GADGET,      num_line,
+                NG_NEWDATA,     x,
+                NIL,            NIL])
+       x++
+      ENDIF
+    ENDWHILE
+ENDPROC
+
+PROC calc(x,y)
+  DEF   xtemp,
+        it=0,
+        xc,
+        yc
+   xc:=x
+   yc:=y
+    WHILE (it++&lt;iterations) AND (!x*x+(!y*y)&lt;16.0)
+     xtemp:=x
+      x:=!x*x-(!y*y)+xc
+     y:=!xtemp+xtemp*y+yc
+    ENDWHILE
+ENDPROC it
+
+PROC stop()                                     -&gt; Stop/Run the GUI...
+ IF (run=TRUE)
+  run:=FALSE
+ ELSE
+  run:=TRUE
+ ENDIF
+ENDPROC
+
+PROC refresh(x,y)                       IS refreshgui:=y
+
+PROC setiteration(x,y)                  IS iterations:=y
+
+PROC reset()
+ gfx.clear()
+  x:=0
+ENDPROC
+
+-&gt; Plugin-Stuff (Not very Flexible at all, because the Display is trashed at resize
+-&gt; The problem could be solved with making a temporary rastport and then Copy this
+-&gt; rastport into the Plugins-Box... feel free ! :-)
+
+PROC gfx(minwidth,minheight)            OF gfx
+ self.width:=minwidth
+  self.height:=minheight
+ENDPROC
+
+PROC will_resize()                      OF gfx IS FALSE
+
+PROC min_size(x,y)                      OF gfx IS self.width, self.height
+
+PROC render(ta,x,y,xs,ys,win:PTR TO window)     OF gfx
+ IF (self.rastport=NIL) THEN self.rastport:=win.rport
+  run:=FALSE
+   x:=0
+  run:=TRUE
+ENDPROC
+
+PROC clear()                            OF gfx  
+ SetAPen(self.rastport,0)
+  RectFill(self.rastport,self.x,self.y,(self.x+self.xs),(self.y+self.ys))
+ENDPROC
+
+PROC plot(x,y,color=1)                  OF gfx
+ IF (self.rastport&lt;&gt;NIL)
+  SetStdRast(self.rastport)
+   IF (x&lt;self.xs)
+    IF (y&lt;self.ys)
+     Plot(x+self.x,y+self.y,color)
+     RETURN TRUE
+    ENDIF
+   ENDIF
+  ENDIF
+ENDPROC FALSE
+
+PROC line(x1,y1,x2,y2,color=1)          OF gfx
+ IF (self.rastport&lt;&gt;NIL)
+  SetStdRast(self.rastport)
+   IF (x1&lt;self.xs) AND (x2&lt;self.xs)
+    IF (y1&lt;self.ys) AND (y2&lt;self.ys)
+     Line(x1+self.x,y1+self.y,x2+self.x,y2+self.y,color)
+     RETURN TRUE
+    ENDIF
+   ENDIF
+ ENDIF
+ENDPROC FALSE
+
+PROC box(x1,y1,x2,y2,color=1)           OF gfx
+ IF (self.rastport&lt;&gt;NIL)
+  SetStdRast(self.rastport)
+   IF (x1&lt;self.xs) AND (x2&lt;self.xs)
+    IF (y1&lt;self.ys) AND (y2&lt;self.ys)
+     Box(x1+self.x,y1+self.y,x2+self.x,y2+self.y,color)
+     RETURN TRUE
+    ENDIF
+   ENDIF
+ ENDIF
+ENDPROC FALSE
+
+PROC colour(foreground,background=0)    OF gfx IS Colour(foreground,background)
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

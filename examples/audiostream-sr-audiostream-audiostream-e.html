@@ -1,0 +1,1129 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>audiostream.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-audiostream-sr.html">audiostream_sr</a> &rsaquo; audiostream.e</div><h1>File: <code>audiostream.e</code></h1><p class="meta">1103 lines · project <a href="../examples/pkg-audiostream-sr.html"><code>audiostream_sr</code></a></p><p class="pathctx">audiostream_sr/AudioSTREAM/audiostream.e</p><p class="prose">AudioSTREAM Professional (c) 1997-98 Immortal SYSTEMS Source codes for version 1.0 ================================================= Source: audiostream.e Description: main source Contains: <a href="../modules/startup.html">startup</a>,cleanup,project menu,setting menu play options,main control,info <a href="../modules/window.html">window</a>,<a href="../modules/global.html#const-cg-system">CG_SYSTEM</a> Version: 1.0 -------</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/asevents.html">*libs/asevents</a></li><li><a href="../modules/asguisetup.html">*libs/asguisetup</a></li><li><a href="../modules/asmisc.html">*libs/asmisc</a></li><li><a href="../modules/exec.html">exec</a></li><li><a href="../modules/memory.html">exec/memory</a></li><li><a href="../modules/icon.html">icon</a></li><li><a href="../modules/muimaster.html">muimaster</a></li><li><a href="../modules/boopsi.html">tools/boopsi</a></li><li><a href="../modules/tagitem.html">utility/tagitem</a></li></ul></div><h2>Source</h2><pre class="code">/*
+
+      AudioSTREAM Professional
+      (c) 1997-98 Immortal SYSTEMS
+
+      Source codes for version 1.0
+      
+      =================================================
+
+      Source:     audiostream.e
+      Description:    main source
+      Contains:   startup,cleanup,project menu,setting menu
+                  play options,main control,info window,CG_SYSTEM
+      Version:    1.0
+ --------------------------------------------------------------------
+*/
+
+      OPT OSVERSION = 39
+      OPT PREPROCESS,LARGE
+
+      MODULE &#x27;muimaster&#x27; , &#x27;libraries/mui&#x27;,&#x27;utility&#x27;
+      MODULE &#x27;utility/tagitem&#x27; , &#x27;utility/hooks&#x27;,&#x27;amigalib/ports&#x27;
+      MODULE &#x27;tools/boopsi&#x27; , &#x27;tools/installhook&#x27;,&#x27;other/ecode&#x27;
+      MODULE &#x27;exec&#x27;,&#x27;exec/interrupts&#x27;,&#x27;exec/nodes&#x27;,&#x27;hardware/intbits&#x27;
+      MODULE &#x27;icon&#x27;,&#x27;exec/io&#x27;,&#x27;exec/ports&#x27;,&#x27;devices/ahi&#x27;,&#x27;dos/dos&#x27;
+      MODULE &#x27;exec/memory&#x27;,&#x27;libraries/asl&#x27;,&#x27;exec/execbase&#x27;,&#x27;mpega&#x27;
+
+      MODULE &#x27;*GUI_DECLARATIONS&#x27;
+      MODULE &#x27;*libs/asguisetup&#x27;
+      MODULE &#x27;*libs/asevents&#x27;
+      MODULE &#x27;*libs/asmisc&#x27;
+      MODULE &#x27;*DECLARATIONS&#x27;,&#x27;*customclasses&#x27;,&#x27;*tracks&#x27;,&#x27;*common&#x27;
+      MODULE &#x27;*songs&#x27;,&#x27;*dsp&#x27;,&#x27;*samples&#x27;,&#x27;*global&#x27;,&#x27;*rta&#x27;
+
+
+      OBJECT obj_module OF obj_base
+            PRIVATE
+            author[32]:ARRAY
+            annotation[64]:ARRAY
+            infotext:PTR TO CHAR
+            infotextlength
+
+            PUBLIC
+            sglist:PTR TO obj_sglist
+            trlist:PTR TO obj_trlist
+            smlist:PTR TO obj_smlist
+      ENDOBJECT
+
+
+
+
+-&gt;      ***
+-&gt;    GLOBAL VARIABLES
+-&gt;      *** 
+
+      DEF arexx : obj_arexx , hooks : obj_hooks
+      DEF icihook:hook
+
+      DEF _appl: obj_application
+      DEF _appm: obj_appmenu
+      DEF _main: objw_maincontrol
+      DEF _info: objw_info
+      DEF _about: objw_about
+      DEF _sels: objw_selectsong
+      DEF _mopt: objw_moduleoptions
+      DEF _sged: objw_songeditor
+      DEF _sgop: objw_songoptions
+      DEF _sdsp: objw_songdsp
+      DEF _inst: objw_instrument
+      DEF _idsp: objw_instrumentdsp
+      DEF _smed: objw_sampleeditor
+      DEF _smme: obj_sampleedmenu
+      DEF _wved: objw_waveeditor
+      DEF _wvme: obj_waveedmenu
+      DEF _popt: objw_playoptions
+      DEF _pcki: objw_pickinstrument
+      DEF _pcks: objw_picksample
+      DEF _pckw: objw_pickwave
+      DEF _pckt: objw_picktrack
+      DEF _lofl: objw_loadfromlist
+      DEF _lied: objw_listeditor
+      DEF _cvol: objw_changevolume
+      DEF _cpit: objw_changepitch
+      DEF _crch: objw_createchord
+      DEF _tran: objw_transpose
+      DEF _dspm: objw_dspmanager
+      DEF _tred: objw_trackeditor
+      DEF _trop: objw_trackoptions
+      DEF _sect: objw_sectioneditor
+      DEF _tdsp: objw_trackdsp
+      DEF _mpeg: objw_mpegdecoder
+
+
+      -&gt; ----------------------------------------------------------
+
+      -&gt; RETARGETABLE AUDIO GLOBAL VARIABLES
+      DEF soundhook:hook
+      DEF playertask
+
+
+      -&gt; GENERAL GLOBAL VARIABLES
+
+      DEF upd=TRUE,lck=FALSE,rxm=FALSE,rxr=0
+
+      -&gt; MISC SPPECIFIC DECLARATIONS, MODULE LOCAL
+
+      
+      DEF vbint:PTR TO is, guisetup:obj_guisetup
+      DEF osig:PTR TO obj_sigs, cfg:PTR TO obj_cfg
+      DEF ahimaxf,ahiminf
+
+      -&gt; DATA STORAGE GLOBAL VARIABLES
+
+      DEF module:PTR TO obj_module
+      DEF curtrackp:PTR TO obj_track
+      DEF csamplep:PTR TO obj_sample
+
+      -&gt; STORAGE SYSTEMS
+      DEF sgl:PTR TO obj_sglist
+      DEF trl:PTR TO obj_trlist
+      DEF sml:PTR TO obj_smlist
+
+      -&gt; MISC GLOBAL FLAGS
+      DEF changed=TRUE,shiftflg=FALSE
+           
+      DEF mdata:obj_mdata
+      DEF loadeddsps=0
+      
+      DEF sections -&gt; sections present
+      DEF cursectp:PTR TO obj_section  
+      DEF cursect -&gt; NUMBER of current section
+
+      -&gt; REQUESTERS
+
+      DEF samplereq:PTR TO filerequester
+
+
+
+      -&gt; important global variables
+
+      DEF reckey=TRUE
+      DEF miscinfo[8]:ARRAY
+
+      DEF mainwindowtitle[80]:STRING
+      DEF infotitle[80]:STRING
+
+      DEF ts[40]:STRING   -&gt; temporary string for universal use
+
+      -&gt;   CUSTOM CLASSES
+
+      DEF myeater,chaneditor,dslist,effclass,eatflag,eatflag2,eatflag3
+      DEF sampleed
+      DEF table:PTR TO CHAR
+
+
+      -&gt; INTERCOMMUNICATION STUFF
+      DEF icp:PTR TO mp
+
+      DEF data:obj_ptdata
+      DEF sigmask2
+-&gt; ---------------------------------------------------------------
+
+PROC main() HANDLE    -&gt; STARTUP
+
+      DEF running = TRUE , result_domethod , sigs=0,temp
+      DEF signum1,signum2,sigbit1=0,mywindow
+      DEF icon = NIL,mainsigmask
+      DEF i,cfghandle,notify_opened=FALSE,gui_opened=FALSE
+      DEF eb:PTR TO execbase,cpubits,icpsb
+
+      -&gt; open debug window
+      #ifdef CONDEBUG
+            stdout:=OPENDEBUG
+            conout:=stdout
+      #endif
+
+      CDEBUG(SYSTEM: Starting program...,0)
+
+      mpegabase:=0
+
+      -&gt; cpu test
+      eb:=execbase
+      cpubits:=eb.attnflags
+      CDEBUG(SYSTEM: CPU flags are $\h,cpubits)
+      IF (cpubits AND AFF_68020)=0 THEN Raise(&quot;CPU&quot;)
+      CDEBUG(SYSTEM: required 68020+ found,0)
+      CDEBUG(---,0)
+
+      -&gt; setup icp
+      IF NIL=(icp:=createPort(0, 0)) THEN Raise(&quot;ICPE&quot;)
+      icpsb:=Shl(1,icp.sigbit)
+      IF -1=(signum2:=AllocSignal(-1)) THEN Throw(&quot;MISC&quot;,0)
+      sigmask2:=Shl(1,signum2)
+      -&gt; needed libraries and icon init
+      IF open_rta() = FALSE THEN Throw (&quot;LIB&quot;, &quot;ahi&quot;)
+      CDEBUG(SYSTEM: Retargetable audio OK,0)
+
+      IF (playertask:=run_playertask())=NIL THEN Raise(&quot;PTSK&quot;)
+
+      IF (utilitybase := OpenLibrary(&#x27;utility.library&#x27;, 0)) = NIL THEN Throw(&quot;LIB&quot;,&quot;UTIL&quot;)
+      CDEBUG(SYSTEM: utility.library OK at \h,utilitybase)
+      IF ( muimasterbase := OpenLibrary( &#x27;muimaster.library&#x27; , 16 ) ) = NIL THEN Throw( &quot;LIB&quot; , &quot;muim&quot; )
+      CDEBUG(SYSTEM: muimaster.library OK at \h ,muimasterbase)
+      CDEBUG(---,0)
+      -&gt; init custom classes
+      CDEBUG(SYSTEM: Init custom classes...,0)
+      IF (myeater:=init_eater())=NIL THEN Throw(&quot;MUI&quot;,0)
+      CDEBUG(SYSTEM: myeater class OK at \h,myeater)
+      IF (chaneditor:=init_channel())=NIL THEN Throw(&quot;MUI&quot;,0)
+      CDEBUG(SYSTEM: chaneditor class OK at \h,chaneditor)
+      IF (effclass:=init_effect())=NIL THEN Throw(&quot;MUI&quot;,0)
+      CDEBUG(SYSTEM: eff class OK at \h,effclass)
+      IF (dslist:=init_dslist())=NIL THEN Throw(&quot;MUI&quot;,0)
+      CDEBUG(SYSTEM: dslist class OK at \h,dslist)
+      IF (sampleed:=init_sampleed())=NIL THEN Throw(&quot;MUI&quot;,0)
+      CDEBUG(SYSTEM: sampleed class OK at \h,sampleed)
+      CDEBUG(---,0)
+
+      -&gt; init disk icon
+      IF ( iconbase := OpenLibrary( &#x27;icon.library&#x27; , 0 ) ) THEN icon := GetDiskObject( &#x27;PROGDIR:AudioStream&#x27; ) ELSE Throw( &quot;LIB&quot; , &quot;icon&quot; )
+      CDEBUG(SYSTEM: icon.library OK at \h,iconbase)
+
+      -&gt; open custom libraries
+      IF ( asmiscbase := OpenLibrary(&#x27;PROGDIR:Libs/asmisc.library&#x27;,1))=NIL THEN Throw (&quot;LIB&quot;,&quot;strg&quot;)
+      CDEBUG(SYSTEM: asmisc.library OK at \h,asmiscbase)
+      Strginit()  -&gt; init asmisc.library, dummy now
+      IF ( asguisetupbase := OpenLibrary( &#x27;PROGDIR:Libs/asguisetup.library&#x27;, 1)) = NIL THEN Throw (&quot;LIB&quot;,&quot;agui&quot;)
+      CDEBUG(SYSTEM: asguisetup.library OK at \h,asguisetupbase)
+      IF ( aseventsbase := OpenLibrary (&#x27;PROGDIR:Libs/asevents.library&#x27;,1)) = NIL THEN Throw(&quot;LIB&quot;,&quot;anot&quot;)
+      CDEBUG(SYSTEM: asevents.library OK at \h,aseventsbase)
+      notify_opened:=TRUE
+      gui_opened:=TRUE
+      CDEBUG(---,0)
+
+      -&gt; ARexx init NOT YET USED
+      -&gt; FOR ARexx init you must fill an &quot;app_arexx&quot; OBJECT defined in GUI.em line 17
+      -&gt; this OBJECT gets 2 fields : one FOR the commands AND one FOR the arexx error hoo
+
+      installhook( icihook, {icihookentry})
+      installhook( arexx.error , {arexx_error} )
+      init_callbacks()
+      CDEBUG(SYSTEM: Callback hooks installed,0)
+
+      -&gt; install vertical blank interrupt
+      NEW osig
+      IF -1=(signum1:=AllocSignal(-1)) THEN Throw(&quot;MISC&quot;,0)
+      
+      osig.mytask:=FindTask(NIL)
+      sigbit1:=Shl(1,signum1)
+      osig.signal1:=sigbit1;
+      osig.enable1:=FALSE;osig.enable2:=FALSE;osig.counter:=0
+      vbint:=NewM(SIZEOF is, MEMF_PUBLIC OR MEMF_CLEAR)
+      vbint.ln.type:=NT_INTERRUPT;vbint.ln.pri:=-60
+      vbint.ln.name:=&#x27;AudioSTREAM&#x27;; vbint.data:=osig
+      vbint.code:=eCodeIntServer({vertBServer})
+      AddIntServer(INTB_VERTB, vbint)
+      CDEBUG(SYSTEM: VBeam interrupt server installed,0)
+
+      -&gt; gui setup init - required FOR calling custom libraries
+      init_guisetup(icon)
+   
+      -&gt; create MUI GUI
+      IF Gui_create( guisetup,hooks ) = NIL THEN Throw( &quot;MUI&quot; , Mui_Error() )
+      CDEBUG(SYSTEM: MUI init OK,0)
+      Notify_init( guisetup,hooks,icihook)
+      CDEBUG(SYSTEM: MUI notifications installed OK,0)
+
+      -&gt; libs are not needed now,closing
+      CloseLibrary(aseventsbase)
+      notify_opened:=FALSE
+      CDEBUG(SYSTEM: asevents.library closed,0)
+      -&gt;CloseLibrary(asguisetupbase)
+      -&gt;gui_opened:=FALSE
+      -&gt;CDEBUG(SYSTEM: asguisetuplibrary closed,0)
+      -&gt; !!!!!!  from 981107, asguisetup library CAN&#x27;T BE CLOSED
+
+      CDEBUG(---,0)
+
+
+      logit(&#x27;Welcome TO \eiAudioSTREAM Professional\en&#x27;)
+
+      -&gt; load cfg
+      -&gt; CDEBUG(SYSTEM: Loading configuration,0)
+      
+      /*
+      IF NIL&lt;&gt;(cfghandle:=Open(&#x27;PROGDIR:AudioSTREAM.Config&#x27;,OLDFILE))
+            Read(cfghandle,cfg,SIZEOF obj_cfg)
+            Close(cfghandle)
+            CDEBUG(SYSTEM: cfg file loaded,0)
+            logit(&#x27;Configuration loaded&#x27;)
+      ELSE
+            CDEBUG(SYSTEM: cfg file not found,0)
+            logit(&#x27;WARNING: Config file not found&#x27;)
+      ENDIF */
+
+      /*awake()
+      examine_audiomode(cfg.ahimodeid,cfg.ahimixfreq)
+      set(_popt.sltimeres,MUIA_Slider_Level,cfg.timeresolution)
+      IF cfg.mono THEN set(_popt.chmonomode,MUIA_Selected,MUI_TRUE)
+      status_idle() */
+
+      -&gt; filerequester initialization
+      get(_main.base,MUIA_Window_Window,{mywindow})
+      samplereq:=Mui_AllocAslRequest(ASL_FILEREQUEST,[ASLFR_WINDOW,mywindow,
+           ASLFR_TITLETEXT,&#x27;Select sample&#x27;,
+           ASLFR_INITIALDRAWER,&#x27;RAM:&#x27;,
+           ASLFR_INITIALPATTERN,&#x27;~(#?.(info|backdrop))&#x27;,
+           ASLFR_DOPATTERNS,TRUE])
+      IF samplereq=NIL THEN Throw(&quot;NREQ&quot;,0)
+      CDEBUG(SYSTEM: Sample requester allocated \h,samplereq)
+
+      NEW module.create()
+      module.activate()
+
+      icc([CG_SYSTEM,IC_UPDATEINFO])
+      changed:=FALSE
+      icc([CG_SYSTEM,IC_UPDATEMAINTITLE])
+
+      initsectionstuff()
+
+      -&gt;    ***
+      -&gt;    MUI EVENT LOOP
+      -&gt;    ***
+
+      CDEBUG(SYSTEM: Setup OK !,0)
+
+      mainsigmask:=(sigbit1 OR icpsb OR sigmask2 OR SIGBREAKF_CTRL_C)
+      osig.enable1:=TRUE
+superloop:      WHILE (domethod(_appl.app,[MUIM_Application_NewInput,{sigs}]) &lt;&gt; MUIV_Application_ReturnID_Quit)
+            IF (sigs) THEN sigs:=Wait(sigs OR mainsigmask )
+            IF (sigs AND sigbit1) THEN updategui1()
+            IF (sigs AND icpsb) THEN process_icp_msg()
+            IF (sigs AND sigmask2)
+                  icc([CG_SED,IC_PLAYCURSOR,data.cursor])
+                  ENDIF
+            EXIT (sigs AND SIGBREAKF_CTRL_C)
+      ENDWHILE
+      osig.enable1:=FALSE
+
+
+      -&gt;    ***
+      -&gt;    MAIN exception HANDLER
+      -&gt;    ***
+
+
+      EXCEPT DO
+
+      SELECT exception
+            CASE &quot;LIB&quot;
+                  SELECT exceptioninfo
+                        CASE &quot;muim&quot;
+                              error_simple( &#x27;Can&#x27;&#x27;t open muimaster.library v16+&#x27; )
+                        CASE &quot;icon&quot;
+                              error_simple( &#x27;Can&#x27;&#x27;t open icon.library&#x27; )
+                        CASE &quot;UTIL&quot;
+                              error_simple( &#x27;Can&#x27;&#x27;t open utility library&#x27;)
+                        CASE &quot;ahi&quot;
+                              error_simple( &#x27;Can&#x27;&#x27;t open ahi.device V4+&#x27;)
+                        CASE &quot;agui&quot;
+                              error_simple( &#x27;Can&#x27;&#x27;t open asguisetup.library&#x27;)
+                        CASE &quot;anot&quot;
+                              error_simple( &#x27;Can&#x27;&#x27;t open asevents.library&#x27;)
+                        CASE &quot;strg&quot;
+                              error_simple( &#x27;Can&#x27;&#x27;t open asmisc.library&#x27;)
+                   ENDSELECT
+
+            CASE &quot;MEM&quot;
+                  error( &#x27;Fatal: Out OF memory&#x27; )
+            CASE &quot;NIL&quot;
+                  error( &#x27;Fatal: NIL pointer access detected&#x27; )
+
+            CASE &quot;MUI&quot;
+                  SELECT exceptioninfo
+                        CASE MUIE_OutOfMemory
+                             error_simple( &#x27;MUI out OF memory&#x27; )
+                        CASE MUIE_OutOfGfxMemory
+                             error_simple( &#x27;MUI out OF gfx memory&#x27; )
+                        CASE MUIE_MissingLibrary
+                             error_simple( &#x27;Can&#x27;&#x27;t open required MUI library&#x27; )
+                        CASE MUIE_NoARexx
+                             error_simple( &#x27;Can&#x27;&#x27;t create Arexx port&#x27; )
+                        DEFAULT
+                             error_simple( &#x27;Unknown MUI problem&#x27; )
+                 ENDSELECT
+
+            CASE &quot;CPU&quot;
+                  error_simple( &#x27;68020+ required&#x27;)
+            CASE &quot;NREQ&quot;
+                  error_simple( &#x27;Can&#x27;&#x27;t allocate file requesters&#x27;)
+            CASE &quot;PTSK&quot;
+                  error_simple( &#x27;Can&#x27;&#x27;t create player subtask&#x27;)
+            CASE &quot;MISC&quot;
+                  error_simple( &#x27;Unknown error?! What IS that - PC?&#x27;)
+            CASE &quot;ICPE&quot;
+                  error_simple( &#x27;Can&#x27;&#x27;t create message port&#x27;)
+   ENDSELECT
+
+      -&gt;    ***
+      -&gt;    CLEANUP
+      -&gt;    ***
+
+      CDEBUG(--- Cleaning up,0)
+
+      IF data.playing
+            stop_playing()
+            CDEBUG(SYSTEM: Player stopped,0)
+      ENDIF
+
+      -&gt; requester check
+      get(_mpeg.pampeg,MUIA_Popasl_Active,{temp})
+      IF temp
+            logit(&#x27;ERROR: Close all ASL requesters first&#x27;)
+            JUMP superloop
+      ENDIF
+
+
+      -&gt; flush the module
+      END module
+
+      -&gt; free file requesters
+      IF samplereq THEN Mui_FreeAslRequest(samplereq)
+
+      -&gt; flush ALL DSP plugins
+      logit(&#x27;Closing DSP PlugIns...&#x27;)
+      flush_all_dsp_plugins() 
+      CDEBUG(SYSTEN: DSP plugins have been flushed,0)
+
+      RemIntServer(INTB_VERTB,vbint)
+      CDEBUG(SYSTEM: VBEAM server removed,0)
+
+      IF signum1&gt;-1 THEN FreeSignal(signum1)
+      IF signum2&gt;-1 THEN FreeSignal(signum2)
+      dispose_myapp()
+      IF icon     THEN FreeDiskObject( icon )
+      IF iconbase   THEN CloseLibrary( iconbase )
+
+      -&gt;remove custom classes
+      IF myeater    THEN Mui_DeleteCustomClass (myeater)
+      IF chaneditor  THEN Mui_DeleteCustomClass (chaneditor)
+      IF dslist  THEN Mui_DeleteCustomClass (dslist)
+      IF sampleed  THEN Mui_DeleteCustomClass (sampleed)
+      CDEBUG(SYSTEM: Custom classes removed,0)
+
+      -&gt;close MUI
+      IF muimasterbase  THEN CloseLibrary( muimasterbase )
+      IF asguisetupbase THEN CloseLibrary (asguisetupbase)
+      CDEBUG(SYSTEM: MUI closed,0)
+
+      -&gt; close asmisc.library memory pools
+      Strgflush()
+
+      IF asmiscbase THEN CloseLibrary (asmiscbase)
+      IF notify_opened THEN CloseLibrary (aseventsbase)
+      IF utilitybase THEN CloseLibrary(utilitybase)
+      
+      IF mpegabase
+            icc([CG_SED,ICP_FLUSH])
+            CloseLibrary(mpegabase)
+      ENDIF
+      IF playertask THEN kill_playertask()
+      close_rta()
+
+      IF icp THEN deletePort(icp)
+      CDEBUG(SYSTEM: Cleanup completed &amp; libraries closed OK,0)
+      CDEBUG(---,0)
+      CDEBUG(SYSTEM: Program terminated. Press ENTER...,0)
+
+ENDPROC
+
+
+-&gt; --------------------------------------------------------------
+
+#define ICPC_UNLOCKSAMPLE 1024
+
+PROC process_icp_msg()
+      DEF incoming:PTR TO icpmsg
+      DEF a
+
+      WHILE (incoming:=GetMsg(icp))
+            CDEBUG(SYSTEM: ICP message received - command $\h,incoming.command)
+            a:=incoming.command
+            SELECT a
+                  CASE ICPC_UNLOCKSAMPLE
+                        icc([CG_SED,IC_PLAYCURSOR,-1])
+                        icc([CG_SED,IC_UNLOCK])
+                        
+
+            ENDSELECT
+            ReplyMsg(incoming)
+      ENDWHILE
+
+ENDPROC
+
+
+
+
+PROC init_guisetup(icon)
+      guisetup.mmbase:=muimasterbase
+      guisetup.intbase:=intuitionbase
+      guisetup.icon:=icon
+      guisetup.class:=myeater
+      guisetup.editor:=chaneditor
+      guisetup.effclass:=effclass
+      guisetup.dslist:=dslist
+      guisetup.sampleed:=sampleed
+      guisetup.strgbase:=asmiscbase
+
+      guisetup._appl:=_appl
+      guisetup._appm:=_appm
+      guisetup._main:=_main
+      guisetup._info:=_info
+      guisetup._about:=_about
+      guisetup._sels:=_sels
+      guisetup._mopt:=_mopt
+      guisetup._sged:=_sged
+      guisetup._sgop:=_sgop
+      guisetup._sdsp:=_sdsp
+      guisetup._inst:=_inst
+      guisetup._idsp:=_idsp
+      guisetup._smed:=_smed
+      guisetup._smme:=_smme
+      guisetup._wved:=_wved
+      guisetup._wvme:=_wvme
+      guisetup._popt:=_popt
+      guisetup._pcki:=_pcki
+      guisetup._pcks:=_pcks
+      guisetup._pckw:=_pckw
+      guisetup._pckt:=_pckt
+      guisetup._lofl:=_lofl
+      guisetup._lied:=_lied
+      guisetup._cvol:=_cvol
+      guisetup._cpit:=_cpit
+      guisetup._crch:=_crch
+      guisetup._tran:=_tran
+      guisetup._dspm:=_dspm
+      guisetup._tred:=_tred
+      guisetup._trop:=_trop
+      guisetup._sect:=_sect
+      guisetup._tdsp:=_tdsp
+      guisetup._mpeg:=_mpeg
+ENDPROC
+
+
+
+-&gt;/////////////////////////////////////////////////////////////////////////////
+-&gt;//////////////////////// Hook function called by ARexx in case of error /////
+-&gt;/////////////////////////////////////////////////////////////////////////////
+PROC arexx_error( hook , obj , msg ) IS error_simple( &#x27;Unknown ARexx command recieved&#x27; )
+
+
+
+PROC dispose_myapp()
+
+   IF _appl.app THEN Mui_DisposeObject( _appl.app )
+
+ENDPROC
+
+
+PROC status_change(status:PTR TO CHAR)
+
+   set (_info.txstatus , MUIA_Text_Contents , status)
+
+ENDPROC
+
+
+PROC status_idle()
+
+   set (_info.txstatus, MUIA_Text_Contents, &#x27;- Idle -&#x27;)
+
+ENDPROC
+
+
+/*PROC examine_audiomode(aid,freq)
+
+DEF minmixfreq,maxmixfreq,thisid,actual,stereo
+DEF modename[64]:STRING
+
+AhI_GetAudioAttrsA(aid,NIL,
+        [AHIDB_MINMIXFREQ,{minmixfreq},
+        AHIDB_MAXMIXFREQ,{maxmixfreq},
+        AHIDB_STEREO,{stereo},
+        AHIDB_BUFFERLEN,64,
+        AHIDB_NAME,modename,
+        AHIDB_AUDIOID,{thisid},
+            TAG_DONE])
+   IF freq=0 THEN freq:=maxmixfreq
+   actual:=scan_afreq(freq)
+   IF stereo=0
+     cfg.mono:=TRUE
+     set (_popt.chmonomode,MUIA_Selected,MUI_TRUE)
+     set (_popt.chmonomode,MUIA_Disabled,MUI_TRUE)
+   ELSE
+     set (_popt.chmonomode,MUIA_Disabled,FALSE)
+        ENDIF
+   ahimaxf:=maxmixfreq
+   ahiminf:=minmixfreq
+   set (_popt.slmixfreq,MUIA_Slider_Min,minmixfreq)
+   set (_popt.slmixfreq,MUIA_Slider_Max,maxmixfreq)
+   set (_popt.slmixfreq,MUIA_Slider_Level,freq)
+   set (_popt.txaudiomode,MUIA_Text_Contents,modename)
+   domethod(_popt.txactual,[MUIM_SetAsString,MUIA_Text_Contents,
+     &#x27;%ld&#x27;,actual])
+   cfg.ahimodeid:=thisid
+   cfg.ahimixfreq:=actual
+
+ENDPROC*/
+
+
+
+
+
+/*PROC scan_afreq(freq)
+
+DEF actualindex,actualfreq
+
+      AhI_GetAudioAttrsA(cfg.ahimodeid,NIL,[AHIDB_INDEXARG,freq,AHIDB_INDEX,{actualindex},
+               TAG_DONE])
+      AhI_GetAudioAttrsA (cfg.ahimodeid,NIL,[AHIDB_FREQUENCYARG,actualindex,
+             AHIDB_FREQUENCY,{actualfreq},TAG_DONE])
+
+ENDPROC actualfreq*/
+
+
+-&gt;  VERTICAL BLANK INTERRUPT
+
+PROC vertBServer(data:PTR TO obj_sigs)
+
+   data.counter:=data.counter+1
+   IF (data.counter&gt;50) AND (data.enable1)
+       data.counter:=0
+       Signal(data.mytask,data.signal1)
+   ENDIF
+
+ENDPROC
+
+
+PROC updategui1()
+DEF tmp[50]:STRING
+      StringF(tmp,&#x27;\d \eiChip\en \d \eiFast\en&#x27;,
+            AvailMem(MEMF_CHIP),AvailMem(MEMF_FAST))
+      set(_info.txmemory,MUIA_Text_Contents,tmp)
+
+ENDPROC
+
+
+      
+            /* ---------------------
+               CALLBACK PROCEDURES
+               ---------------------   */ 
+
+
+/* ----------------------- PLAY OPTIONS window */
+
+/*
+
+
+
+            O     B     S     O     L     E     T     E     !
+
+
+
+
+PROC pf_po_slider(hook,obj,msg)
+
+   cfg.ahimixfreq:=scan_afreq(^msg)
+   domethod(_popt.txactual,[MUIM_SetAsString,MUIA_Text_Contents,
+     &#x27;%ld&#x27;,cfg.ahimixfreq])
+
+ENDPROC
+
+
+
+PROC pf_po_pick(hook,obj,msg)
+
+      DEF req:PTR TO ahiaudiomoderequester,mywindow
+
+      get (_popt.base,MUIA_Window_Window,{mywindow})
+         req:=NIL
+         req:=AhI_AllocAudioRequestA([AHIR_WINDOW,mywindow,
+            AHIR_TITLETEXT,&#x27;Select Audio Mode&#x27;,
+             TAG_DONE])
+        IF req=NIL THEN RETURN
+         sleep()
+         IF AhI_AudioRequestA(req,[TAG_DONE])
+                cfg.ahimodeid:=req.audioid
+            examine_audiomode(cfg.ahimodeid,0)
+         ENDIF
+         awake()
+         AhI_FreeAudioRequest(req)
+
+ENDPROC
+
+
+PROC pf_po_timeres(hook,obj,msg)
+
+      cfg.timeresolution:=^msg
+
+ENDPROC
+
+PROC pf_po_monoon(hook,obj,msg)
+
+      cfg.mono:=TRUE
+
+ENDPROC
+
+PROC pf_po_monooff(hook,obj,msg)
+
+      cfg.mono:=FALSE
+
+ENDPROC
+
+PROC pf_po_enter(hook,obj,msg)
+
+      DEF mixf
+
+   mixf:=Val(^msg,ALL)
+   IF mixf&gt;ahimaxf THEN mixf:=ahimaxf
+   IF mixf&lt;ahiminf THEN mixf:=ahiminf
+   set(_popt.slmixfreq,MUIA_Slider_Level,mixf)
+   cfg.ahimixfreq:=scan_afreq(mixf)
+   domethod(_popt.txactual,[MUIM_SetAsString,MUIA_Text_Contents,
+     &#x27;%ld&#x27;,cfg.ahimixfreq])
+
+ENDPROC
+
+PROC pf_po_presets(hook,obj,msg)
+      DEF mixf
+      DEF presets[6]:LIST
+
+      ListCopy(presets,[15000,22050,24000,28400,44100,48000],ALL)
+
+   mixf:=presets[^msg]
+   IF mixf&gt;ahimaxf THEN mixf:=ahimaxf
+   IF mixf&lt;ahiminf THEN mixf:=ahiminf
+   set(_popt.slmixfreq,MUIA_Slider_Level,mixf)
+   cfg.ahimixfreq:=scan_afreq(mixf)
+   domethod(_popt.txactual,[MUIM_SetAsString,MUIA_Text_Contents,
+     &#x27;%ld&#x27;,cfg.ahimixfreq])
+
+ENDPROC
+*/
+
+
+-&gt; ---------------------   MENU STUFF
+
+
+
+PROC pfm_saveasdefault(hook,obj,msg)
+DEF cfghandle
+
+sleep()
+logit(&#x27;Saving configuration...&#x27;)
+IF cfghandle:=Open(&#x27;PROGDIR:AudioSTREAM.Config&#x27;,NEWFILE)
+   Write(cfghandle,cfg,SIZEOF obj_cfg )
+   Close(cfghandle)
+   ENDIF
+awake()
+status_idle()
+ENDPROC
+
+
+
+PROC pfm_quit(hook,obj,msg)
+IF changed
+   IF confirm(&#x27;Current project has been changed. Quit anyway ?&#x27;) THEN
+     domethod(_appl.app,[MUIM_Application_ReturnID,
+       MUIV_Application_ReturnID_Quit])
+   ELSE
+   domethod(_appl.app,[MUIM_Application_ReturnID,
+       MUIV_Application_ReturnID_Quit])
+    ENDIF
+ENDPROC
+
+
+-&gt; ------------------------------ MODULE SECTION
+
+-&gt; constructor
+
+PROC create() OF obj_module
+      SUPER self.create()
+      AstrCopy(self.author,&#x27;Anonymous&#x27;,32)
+      AstrCopy(self.annotation,&#x27;AudioSTREAM rulez!&#x27;,64)
+      NEW sgl.create(16,NIL,NIL)
+      self.sglist:=sgl
+      NEW trl.create(256,NIL)
+      self.trlist:=trl
+      NEW sml.create(256,NIL)
+      self.smlist:=sml
+ENDPROC
+
+-&gt; destructor
+PROC end() OF obj_module
+      SUPER self.end()
+      IF self.infotext THEN END self.infotext[self.infotextlength]
+      END sgl
+      self.sglist:=NIL
+      END trl
+      self.trlist:=NIL
+      END sml
+      self.smlist:=NIL
+ENDPROC
+
+-&gt; methods
+
+
+PROC setname(x:PTR TO CHAR) OF obj_module
+
+       SUPER self.setname(x)
+       IF upd THEN nset(_mopt.stname,MUIA_String_Contents,self.getname())
+ENDPROC
+
+
+PROC setauthor(x:PTR TO CHAR) OF obj_module
+
+       AstrCopy(self.author,x,32)
+       IF upd THEN nset(_mopt.stauthor,MUIA_String_Contents,self.author)
+ENDPROC
+
+PROC setannotation(x:PTR TO CHAR) OF obj_module
+
+       AstrCopy(self.annotation,x,64)
+       IF upd THEN nset(_mopt.stannotation,MUIA_String_Contents,self.annotation)
+ENDPROC
+
+
+PROC activate() OF obj_module
+
+       SUPER self.activate()
+       IF upd
+             nset(_mopt.stname,MUIA_String_Contents,self.getname())
+             nset(_mopt.stauthor,MUIA_String_Contents,self.author)
+             nset(_mopt.stannotation,MUIA_String_Contents,self.annotation)
+             icc([CG_SYSTEM,IC_UPDATEMAINTITLE])
+       ENDIF
+
+ENDPROC
+
+
+
+PROC matrixor(hook,obj,msg)
+
+logit(&#x27;Starting MatriXOR...&#x27;)
+error(&#x27;\ec\eb\e8MatriXor v1.1\en\e0\n\n\ecHeavy matrix has not \n\ecxored your FAT correctly.\n&#x27; + 
+      &#x27;\n\ec\eiFor more detailed informations ask \n\ec\e8xmichal1@br.fjfi.cvut.cz&#x27;)
+ENDPROC
+
+
+
+-&gt; ===============================================================
+
+
+
+PROC s_keyboard(hook,obj,msg) -&gt; special keyboard event handler
+DEF p:PTR TO LONG
+DEF c,q,temp
+
+rxm:=FALSE
+
+p:=msg
+c:=p[]
+q:=p[1]   -&gt; code,qualifier
+q:=q AND $00000dff
+
+domethod(_info.txstatus,[MUIM_SetAsString,MUIA_Text_Contents,
+   &#x27;%lx/%lx&#x27;,p[],p[1]])
+
+IF q=$10  -&gt; LEFT ALT - F1-F8 = SELECT current command layer
+   IF (c&gt;$49) AND (c&lt;$58) THEN icc([CG_TED,IC_SETTPARAM,TRCURCL,c-$50])
+
+ENDIF
+
+      shiftflg:=q AND 1
+
+
+IF q=$00000100
+      SELECT c
+
+      CASE $2d    -&gt; prev track slot
+      icc([CG_TED,IC_GOPREV])
+      eatflag:=1
+      CASE $2e    -&gt; next track slot
+      icc([CG_TED,IC_GONEXT])
+      eatflag:=1
+      CASE $1d    -&gt; prev section
+      domethod(_sect.imleft,[MUIM_CallHook,hooks.sect_pressbutton])
+      eatflag:=1
+      CASE $1e    -&gt; next section
+      domethod(_sect.imright,[MUIM_CallHook,hooks.sect_pressbutton])
+      eatflag:=1
+
+      ENDSELECT  
+
+ENDIF
+
+
+
+
+IF (q=0)
+
+   SELECT c
+     CASE $50
+     set(_tred.cyoct,MUIA_Cycle_Active,0)
+     eatflag:=1
+     CASE $51
+     set(_tred.cyoct,MUIA_Cycle_Active,1)
+     eatflag:=1
+     CASE $52
+     set(_tred.cyoct,MUIA_Cycle_Active,2)
+     eatflag:=1
+     CASE $53
+     set(_tred.cyoct,MUIA_Cycle_Active,3)
+     eatflag:=1
+     CASE $54
+     set(_tred.cyoct,MUIA_Cycle_Active,4)
+     eatflag:=1
+
+
+
+     CASE $40;     icc([CG_SYSTEM,IC_STOP])  -&gt; SPACE
+   ENDSELECT
+
+   -&gt; EAT FILTER
+SELECT c
+      CASE $41  -&gt; backspace
+      eatflag:=1
+      /* CASE $44  -&gt; enter
+      eatflag:=1 */
+      CASE $46  -&gt; del
+      eatflag:=1
+ENDSELECT         
+
+
+
+   IF (c&gt;$54) AND (c&lt;$5a) THEN eatflag:=1  -&gt; eat F6-F10 (temporarily)
+   IF c&lt;64
+     temp:=table[c*2]
+     IF temp&lt;&gt;255 THEN eatflag:=1    -&gt; eat notes
+   ENDIF
+ENDIF
+
+ENDPROC
+
+
+
+
+
+-&gt; ===============================================================
+
+
+-&gt;   INSTALL ALL HOOKS FOR NOTIFICATIONS
+
+
+
+
+
+
+PROC init_callbacks()
+
+
+
+/* display hooks */
+
+installhook(hooks.sdsp_disphook,{sdsp_disphook})
+installhook(hooks.tdsp_disphook,{tdsp_disphook})
+
+/* other */
+
+
+installhook(hooks.fm_saveasdefault,{pfm_saveasdefault})
+
+
+-&gt;installhook(hooks.fm_delallsongs,{pfm_delallsongs})
+installhook(hooks.fm_quit,{pfm_quit})
+
+installhook(hooks.fm_smakeclone,{pfm_smakeclone})
+
+installhook(hooks.f_dm_load,{pf_dm_load})
+installhook(hooks.f_dm_flush,{pf_dm_flush})
+installhook(hooks.f_dm_flushall,{pf_dm_flushall})
+installhook(hooks.f_dm_active,{f_dspm_active})
+
+/*
+installhook(hooks.f_dspe_add,{pf_dspe_add})
+installhook(hooks.f_dspe_insert,{pf_dspe_insert})
+installhook(hooks.f_dspe_delete,{pf_dspe_delete})
+installhook(hooks.f_dspe_delall,{pf_dspe_delall})
+
+installhook(hooks.sdsp_action,{sdsp_action})
+installhook(hooks.sdsp_lactive,{sdsp_lactive})
+installhook(hooks.sdsp_dragdrop,{sdsp_dragdrop})
+
+installhook(hooks.tdsp_action,{tdsp_action})
+installhook(hooks.tdsp_lactive,{tdsp_lactive})
+installhook(hooks.tdsp_dragdrop,{tdsp_dragdrop})
+*/
+
+
+-&gt; keyboard special hook
+installhook(hooks.s_keyboard,{s_keyboard})
+installhook(hooks.ted_editorevent,{ted_keyboard})
+
+-&gt; matrixor hook
+installhook(hooks.fm_matrixor,{matrixor})
+
+
+installhook(hooks.sect_pressbutton,{f_sect_pressbutton})
+installhook(hooks.sect_listactive,{f_sect_listactive})
+-&gt;installhook(hooks.sect_doubleclick,{f_sect_doubleclick})
+installhook(hooks.sect_dragdrop,{f_sect_dragdrop})
+
+installhook(hooks.sged_listactive,{f_sged_listactive})
+installhook(hooks.sged_pressbutton,{f_sged_pressbutton})
+installhook(hooks.sged_dragdrop,{f_sged_dragdrop})
+
+
+ENDPROC
+
+/* ----------------------------------------------------------
+             this IS the magic PROC called as a hook
+   ---------------------------------------------------------- */
+
+PROC icihookentry(hook,obj,param:PTR TO LONG) HANDLE
+      DEF sg,ic
+
+      sg:=param[0]
+      ic:=param[1]
+      rxr:=ERR_OK
+
+      SELECT sg
+            CASE CG_SYSTEM
+                  icisystem(obj,ic,param+8)
+            CASE CG_SONG
+                  icisong(obj,ic,param+8)
+            CASE CG_TED
+                  icited(obj,ic,param+8)
+            CASE CG_SED
+                  icised(obj,ic,param+8)
+      ENDSELECT
+
+      rxm:=FALSE
+EXCEPT
+      SELECT exception
+            CASE &quot;MEM&quot;
+                  errnomem()
+            ENDSELECT
+     rxm:=FALSE
+
+ENDPROC rxr
+
+-&gt;-------------------------------------
+
+PROC icisystem(obj,ic,param:PTR TO LONG)
+      DEF sgl:PTR TO obj_sglist,csp:PTR TO obj_song
+
+      sgl:=module.sglist
+      csp:=sgl.geta()
+      SELECT ic
+
+            CASE IC_UPDATEINFO
+                  StrCopy(infotitle,&#x27;Info Window | &#x27;,ALL)
+                  IF csp
+                        StringF(ts,&#x27;Tempo: \d&#x27;,csp.getparam(SGTEMPO))
+                        StrAdd(infotitle,ts,ALL)
+                  ENDIF
+                  set(_info.base,MUIA_Window_Title,infotitle)
+
+            CASE IC_UPDATEMAINTITLE
+                  StrCopy(mainwindowtitle,&#x27;Main Control | &#x27;,ALL)
+                  StrAdd(mainwindowtitle,module.getname(),ALL)
+                  IF changed THEN StrAdd(mainwindowtitle,&#x27;  (CHANGED!)&#x27;,ALL)
+                  set(_main.base,MUIA_Window_Title,mainwindowtitle)
+
+            CASE IC_STOP
+                  stop_playing()
+            CASE IC_WAITPLMSG
+                  Wait(Shl(1,icp.sigbit))
+                  process_icp_msg()
+            CASE IC_FLUSHMEM
+                  AllocMem(-1,0)
+                  logit(&#x27;Unused libs &amp; devs flushed.&#x27;)
+
+            CASE IC_SLEEP
+                  set (_appl.app,MUIA_Application_Sleep,MUI_TRUE)
+
+            CASE IC_AWAKE
+                  set (_appl.app,MUIA_Application_Sleep,FALSE)
+            CASE IC_SETMNAME
+                  module.setname(^param)
+                  CHANGED
+            CASE IC_SETMAUTHOR
+                  module.setauthor(^param)
+                  CHANGED
+            CASE IC_SETMANNOT
+                  module.setannotation(^param)
+                  CHANGED
+      ENDSELECT
+
+ENDPROC
+
+
+progver:
+   CHAR  &#x27;$VER: AudioStream 0.0 (981112)\n&#x27;,0
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

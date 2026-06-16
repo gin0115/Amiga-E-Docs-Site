@@ -1,0 +1,875 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>peps.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-capus.html">capus</a> &rsaquo; peps.e</div><h1>File: <code>peps.e</code></h1><p class="meta">849 lines · project <a href="../examples/pkg-capus.html"><code>capus</code></a></p><p class="pathctx">capus/Peps/peps.e</p><p class="prose">========================================================================= = <a href="../modules/peps.html">Peps</a> v0.1 © 1994 NasGûl =========================================================================</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/dosextens.html">dos/dosextens</a></li><li><a href="../modules/intuition.html">intuition/intuition</a></li><li><a href="../modules/reqtools.html">reqtools</a></li></ul></div><h2>Source</h2><pre class="code">/*=========================================================================
+ = Peps v0.1 © 1994 NasGûl
+ =========================================================================*/
+
+OPT OSVERSION=37
+
+MODULE &#x27;intuition/intuition&#x27;,&#x27;gadtools&#x27;,&#x27;libraries/gadtools&#x27;,&#x27;intuition/gadgetclass&#x27;,&#x27;intuition/screens&#x27;,
+       &#x27;graphics/text&#x27;,&#x27;exec/lists&#x27;,&#x27;exec/nodes&#x27;,&#x27;exec/ports&#x27;,&#x27;eropenlib&#x27;,&#x27;utility/tagitem&#x27;,
+       &#x27;rexxsyslib&#x27;,&#x27;rexx/storage&#x27;
+MODULE &#x27;dos/dosextens&#x27;,&#x27;peps&#x27;,&#x27;dos/dostags&#x27;
+MODULE &#x27;reqtools&#x27;,&#x27;libraries/reqtools&#x27;,&#x27;graphics/displayinfo&#x27;
+
+CONST DEBUG=FALSE   /* for dWriteF() Proc */
+
+CONST FIND_INTERNAL=0, /* for p_FindProcName() Proc */
+      FIND_AREXX=1
+
+/* All &quot;programm don&#x27;t work..&quot; errors */
+
+ENUM ER_NONE,ER_LOCKSCREEN,ER_VISUAL,ER_CONTEXT,ER_MENUS,ER_GADGET,ER_WINDOW,
+     ER_BADARGS,ER_ONLYCLI,ER_NOFILE,ER_TEMPNOVALID,ER_PORTEXIST,ER_CREATEPORT,
+     ER_MEM,ER_RUNED,ER_CONOUT,ER_EXENOVALID,ER_SAMEDIR,ER_OPENSCREEN,ER_SCREENSIG,
+     ER_LIST,ER_MENUS,ER_NOMENUFILE
+
+RAISE ER_MEM IF New()=NIL,
+      ER_MEM IF String()=NIL
+
+DEF screen:PTR TO screen,       /* like examples/gadtoolsdemo.e */
+    visual=NIL,
+    tattr:PTR TO textattr,
+    menu=NIL,
+    reelquit=FALSE,
+    offy
+/*=======================================
+ = pp Definitions
+ =======================================*/
+DEF pp_window=NIL:PTR TO window            /* Window and gadgets list */
+DEF pp_glist=NIL
+/*==================*/
+/*     Gadgets      */
+/*==================*/
+CONST GA_G_SOURCE=0                        /* gadgets num */
+CONST GA_G_FILELIST=1
+CONST GA_G_PROCLIST=2
+CONST GA_G_ERRORSLIST=3
+/*=============================
+ = Gadgets labels of pp
+ =============================*/
+DEF g_source                              /* gadgets adr */
+DEF g_filelist
+DEF g_proclist
+DEF g_errorslist
+/*==========================
+ = Arg Definitions
+ ==========================*/
+DEF esource[100]:STRING        /* the source name */
+DEF ecsource[100]:STRING       /* the source file without .e */
+DEF ec[100]:STRING             /* ec options (-e by default) */
+DEF pubscreenname[100]:STRING  /* pubscreenname for window (Workbench by def) */
+DEF menufile[256]:STRING       /* file who content menus */
+DEF nomenu=FALSE               /* no menu */
+DEF screensig=-1               /* signal for pubscreen */
+DEF typescreen=SUPER_KEY       /* type of screen */
+DEF screenbydefault=FALSE      /* pubscreen by def */
+DEF screenshanghai=FALSE
+DEF editorcommand[100]:STRING  /* the name of your text editor (ED &lt;esource&gt; byf def */
+DEF tempfile[100]:STRING       /* name of the temp file ( T:PepsMain.e by def) */
+DEF b_deletetemp=FALSE         /* delete temp (TRUE/FALSE) ( FALSE by def) */
+DEF compilandexit=FALSE        /* Compil and exit */
+DEF insertcomment=FALSE        /* InsertComment in PepsMain.e */
+DEF prgportname[100]:STRING    /* the name of the Arexx Port (PepsPort by def) */
+DEF edarexxportname[100]:STRING    /* Port arexx for Editor */
+DEF arexxport:PTR TO mp        /* Arexx Port of Peps */
+DEF dummyport:PTR TO mp        /* DummyReplyPort */
+DEF execname[256]:STRING       /* Exec Name (the name of the source code without the .e by def) */
+DEF myb:PTR TO eubase          /* My base (see Peps.m and Peps.doc) */
+DEF myout                      /* handle for ec output */
+DEF myconout[256]:STRING       /* window out description */
+DEF emptylist:PTR TO lh        /* just a empty list (lh) */
+DEF currentfilenode            /* the current filenode (seleted in the ListView gaget (File) */
+DEF erscriptname[256]:STRING,arexxer=TRUE
+DEF currentdir[256]:STRING     /* the current dir when launch */
+PMODULE &#x27;PepsData&#x27;
+PMODULE &#x27;PepsMenus&#x27;
+PMODULE &#x27;Pmodules:DWriteF&#x27;
+PROC p_LookAllMessage() /*&quot;p_LookAllMessage()&quot;*/
+/*===============================================================================
+ = Para         : NONE
+ = Return       : NONE
+ = Description  : Look message on window,arexx port and Ctrl C/D/E/F.
+ ==============================================================================*/
+    DEF sigreturn
+    DEF ppport:PTR TO mp
+    IF pp_window THEN ppport:=pp_window.userport ELSE ppport:=NIL
+    sigreturn:=Wait(Shl(1,ppport.sigbit) OR
+            Shl(1,arexxport.sigbit) OR $F000)
+    IF (sigreturn AND Shl(1,ppport.sigbit))
+        p_LookppMessage()
+    ENDIF
+    IF (sigreturn AND Shl(1,arexxport.sigbit))
+        p_LookArexxMessage()
+    ENDIF
+    IF (sigreturn AND $F000)
+        reelquit:=TRUE
+    ENDIF
+ENDPROC
+PROC p_LookppMessage() /*&quot;p_LookppMessage()&quot;*/
+/*===============================================================================
+ = Para         : NONE
+ = Return       : NONE
+ = Description  : Look Idcmp message.
+ ==============================================================================*/
+   DEF mes:PTR TO intuimessage
+   DEF g:PTR TO gadget
+   DEF type=0,infos=NIL
+   DEF curfile:PTR TO filenode,ret,adr_menu,ms,number
+   ms:=pp_window.menustrip
+   WHILE (mes:=Gt_GetIMsg(pp_window.userport))
+       type:=mes.class
+       SELECT type
+       CASE IDCMP_MENUPICK
+            ret:=mes.code
+            IF ret&lt;&gt;$FFFF
+                adr_menu:=ItemAddress(ms,ret)
+                SELECT ret
+                    CASE $F800
+                        EasyRequestArgs(0,[20,0,0,&#x27;Peps v0.1&#x27;,&#x27;Ok&#x27;],0,NIL)
+                    CASE $F820
+                        Execute(&#x27;Newshell&#x27;,0,stdout)
+                    CASE $F840
+                        p_RebuildMenu()
+                    CASE $F860
+                        reelquit:=TRUE
+                    DEFAULT
+                        number:=p_ExecuteMenu(ms,adr_menu)
+                ENDSELECT
+            ENDIF
+       CASE IDCMP_REFRESHWINDOW
+           p_RenderppWindow()
+       CASE IDCMP_CLOSEWINDOW
+           reelquit:=TRUE
+       CASE IDCMP_GADGETUP
+          g:=mes.iaddress
+          infos:=g.gadgetid
+          SELECT infos
+          CASE GA_G_SOURCE
+          CASE GA_G_FILELIST
+              currentfilenode:=mes.code
+              curfile:=p_GetAdrNode(myb.pmodulelist,currentfilenode)
+              Gt_SetGadgetAttrsA(g_proclist,pp_window,NIL,[GTLV_LABELS,p_EmptyList(curfile.proclist),TAG_DONE,0])
+          CASE GA_G_PROCLIST
+          CASE GA_G_ERRORSLIST
+          ENDSELECT
+       ENDSELECT
+       Gt_ReplyIMsg(mes)
+   ENDWHILE
+   WHILE (mes:=Gt_GetIMsg(pp_window.userport)) DO Gt_ReplyIMsg(mes)
+ENDPROC
+PROC p_LookArexxMessage() /*&quot;p_LookArexxMessage()&quot;*/
+/*===============================================================================
+ = Para         : NONE
+ = Return       : NONE
+ = Description  : Process arexx Messge.
+ ==============================================================================*/
+    DEF mess_rexx:PTR TO rexxmsg
+    DEF commande:PTR TO LONG
+    DEF test
+    DEF execcom[256]:STRING,dodel=TRUE
+    DEF ret_str[256]:STRING
+    dWriteF([&#x27;p_LookArexxMessge()\n&#x27;],0)
+    WHILE (mess_rexx:=GetMsg(arexxport))
+    IF IsRexxMsg(mess_rexx)
+        commande:=mess_rexx.args
+        IF StrCmp(commande[0],&#x27;EC&#x27;,ALL) /* Make compilation */
+            WindowToFront(pp_window)
+            p_CleanAllList()
+            IF (p_ReadSourceFile(esource,TRUE))&lt;&gt;FALSE
+                p_RenderppWindow()
+                p_WriteFPmoduleList(myb.pmodulelist)
+                p_CalculTotalMem(myb.pmodulelist)
+                StringF(execcom,&#x27;EC \s \s&#x27;,ec,ecsource)
+                IF (test:=p_Execute(execcom))&lt;&gt;0
+                    WindowToFront(pp_window)
+                    p_ParsingError(myb.pmodulelist,test)
+                ELSE
+                IF (test:=p_CopyFile(ecsource,execname))=FALSE
+                    p_AjouteInfoNode(myb.infolist,&#x27;Error Copy Exec.&#x27;)
+                    dodel:=FALSE
+                ENDIF
+            ENDIF
+        ELSE
+            p_CleanAllList()
+            p_AjouteInfoNode(myb.infolist,&#x27;Internal Error.&#x27;)
+        ENDIF
+        IF ((b_deletetemp=TRUE) AND (dodel=TRUE))
+            DeleteFile(tempfile)
+            test:=InStr(tempfile,&#x27;.e&#x27;,0)
+            MidStr(execcom,tempfile,0,test)
+            DeleteFile(execcom)
+            p_AjouteInfoNode(myb.infolist,&#x27;Delete TempFile.&#x27;)
+         ENDIF
+        ELSEIF StrCmp(commande[0],&#x27;QUIT&#x27;,ALL) /* Quit */
+            reelquit:=TRUE
+        ELSEIF StrCmp(commande[0],&#x27;ECOPT&#x27;,ALL)
+            p_ChangeECOpt()
+        ELSEIF StrCmp(commande[0],&#x27;FINDPROC&#x27;,8)
+            MidStr(execcom,commande[0],8,ALL)
+            execcom:=TrimStr(execcom)
+            ret_str:=p_FindProcName(myb.pmodulelist,execcom,FIND_AREXX)
+            StringF(execcom,&#x27;\s&#x27;,ret_str)
+            mess_rexx.result2:=String(EstrLen(execcom))
+            StrCopy(mess_rexx.result2,execcom,ALL)
+        ELSEIF StrCmp(commande[0],&#x27;NEWSHELL&#x27;,ALL)
+            Execute(&#x27;NewShell&#x27;,0,stdout)
+        ENDIF
+    ENDIF
+    ReplyMsg(mess_rexx)
+    IF mess_rexx.result2 THEN DisposeLink(mess_rexx.result2)
+    ENDWHILE
+    WHILE (mess_rexx:=GetMsg(arexxport)) DO ReplyMsg(arexxport)
+ENDPROC
+PROC p_ChangeECOpt() /*&quot;p_ChangeECOpt()&quot;*/
+/*===============================================================================
+ = Para         : NONE
+ = Return       : NONE
+ = Description  : Call StringRequester to change EC Options.
+ ==============================================================================*/
+    DEF str_return[256]:STRING
+    IF (str_return:=p_GetWithStringReq(&#x27;Change EC options&#x27;,ec))&lt;&gt;NIL THEN ec:=str_return
+ENDPROC
+PROC p_GetWithStringReq(titre,texte) /*&quot;p_GetWithStringReq(titre,texte)&quot;*/
+/*===============================================================================
+ = Para         : title of the StringRequester,Text in String Gadget.
+ = Return       : new string if ok,else NIL.
+ = Description  : PopUp a StringRequester (ReqTools.library).
+ ==============================================================================*/
+    DEF req:PTR TO rtfilerequester
+    DEF return_string[256]:STRING
+    DEF retour
+    return_string:=NIL
+    IF req:=RtAllocRequestA(RT_REQINFO,NIL)
+    retour:=RtGetStringA(texte,300,titre,NIL,[RT_WINDOW,pp_window,RT_LOCKWINDOW,TRUE,TAG_DONE,0])
+    IF retour THEN return_string:=texte
+    RtFreeRequest(req)
+    ENDIF
+    RETURN return_string
+ENDPROC return_string
+PROC p_ReadSourceFile(s,inglobal) /*&quot;p_ReadSourceFile(s,inglobal)&quot;*/
+/*===============================================================================
+ = Para         : Source file (main file or pmodule),inglobal always TRUE.
+ = Return       : FALSE if error,else TRUE.
+ = Description  : Read Source File. (file who not exists are skipped).
+ ==============================================================================*/
+    DEF len,adr,buf,handle,flen=TRUE,a=0,p=0
+    DEF r_str[256]:STRING
+    DEF a_str[256]:STRING
+    DEF str_line[256]:STRING
+    DEF piv_str[256]:STRING
+    DEF procstr[256]:STRING,pos,newmod[256]:STRING
+    DEF debp,finp
+    DEF myfilenode:PTR TO filenode
+    DEF myprocnode:PTR TO procnode
+    DEF lg=0
+    DEF inproc=FALSE
+    DEF nocopyproc=FALSE
+    StringF(a_str,&#x27;Error File:\s&#x27;,s)
+    IF (flen:=FileLength(s))=-1
+        p_AjouteInfoNode(myb.infolist,a_str)
+        RETURN FALSE
+    ELSEIF (buf:=New(flen+1))=NIL
+        p_AjouteInfoNode(myb.infolist,a_str)
+        RETURN FALSE
+    ELSEIF (handle:=Open(s,1005))=NIL
+        IF buf THEN Dispose(buf)
+        p_AjouteInfoNode(myb.infolist,a_str)
+        RETURN FALSE
+    ENDIF
+    len:=Read(handle,buf,flen)
+    Close(handle)
+    IF len&lt;1
+    IF buf THEN Dispose(buf)
+        p_AjouteInfoNode(myb.infolist,a_str)
+        RETURN FALSE
+    ENDIF
+    adr:=buf
+    IF FindName(myb.pmodulelist,s)
+        StringF(a_str,&#x27;File \s Exists.\n&#x27;,s)
+        p_AjouteInfoNode(myb.infolist,a_str)
+        IF buf THEN Dispose(buf)
+        RETURN FALSE
+    ELSE
+        myfilenode:=New(SIZEOF filenode)
+        myfilenode.deflist:=p_InitList()
+        myfilenode.proclist:=p_InitList()
+        p_AjouteNode(myb.pmodulelist,s,myfilenode.node)
+    ENDIF
+    StringF(a_str,&#x27;New File :\s&#x27;,s)
+    p_AjouteInfoNode(myb.infolist,a_str)
+    FOR a:=0 TO len-1
+        IF buf[a]=10
+            lg:=a-p
+            IF lg&lt;&gt;0
+                StrCopy(r_str,adr,lg)
+                str_line:=TrimStr(r_str)
+                IF StrCmp(str_line,&#x27;PROC&#x27;,4)
+                    inglobal:=FALSE
+                    inproc:=TRUE
+                    debp:=adr-buf
+                    pos:=InStr(str_line,&#x27;(&#x27;,0)
+                    StrCopy(procstr,str_line,pos+1)
+                    IF p_FindProcName(myb.pmodulelist,procstr,FIND_INTERNAL)
+                        StringF(a_str,&#x27;Proc \s Exists.\n&#x27;,procstr)
+                        p_AjouteInfoNode(myb.infolist,a_str)
+                        nocopyproc:=TRUE
+                        JUMP suite
+                    ELSE
+                        myprocnode:=New(SIZEOF procnode)
+                        p_AjouteNode(myfilenode.proclist,procstr,myprocnode.node)
+                        p_AjouteNode(myb.proclist,procstr,0)
+                        StringF(a_str,&#x27;New Proc :\s&#x27;,procstr)
+                        p_AjouteInfoNode(myb.infolist,a_str)
+                       JUMP suite
+                    ENDIF
+                ELSEIF StrCmp(str_line,&#x27;ENDPROC&#x27;,7)
+                    IF nocopyproc=FALSE
+                        inglobal:=TRUE
+                        inproc:=FALSE
+                        finp:=adr-buf
+                        myprocnode.length:=finp-debp+EstrLen(str_line)
+                        myprocnode.buffer:=New(myprocnode.length)
+                        CopyMem(buf+debp,myprocnode.buffer,myprocnode.length)
+                        JUMP suite
+                    ELSE
+                        inglobal:=TRUE
+                        inproc:=FALSE
+                        JUMP suite
+                    ENDIF
+                ELSEIF StrCmp(str_line,&#x27;PMODULE&#x27;,7)
+                    piv_str:=found_para(&#x27;PMODULE&#x27;,str_line,&#x27;\a&#x27;)
+                    IF piv_str
+                        StringF(newmod,&#x27;\s.e&#x27;,piv_str)
+                        p_ReadSourceFile(newmod,TRUE)
+                        inglobal:=TRUE
+                        inproc:=FALSE
+                    ENDIF
+                    JUMP suite
+                ELSEIF ((inglobal=TRUE) AND (inproc=FALSE))
+                    p_AjouteNode(myfilenode.deflist,r_str,0)
+                    JUMP suite
+                ENDIF
+            ENDIF
+            suite:
+            p:=a+1
+            adr:=buf+a+1
+        ENDIF
+    ENDFOR
+    Dispose(buf)
+    RETURN TRUE
+ENDPROC
+PROC found_para(str_para,parse_str,sep) /*&quot;found_para(str_para,parse_str,sep)&quot;*/
+/*===============================================================================
+ = Para         : the string,the key word (ex: string=PMODULE &#x27;Mod1&#x27; keywod=PMODULE).
+ = Return       : the parameter if ok,else NIL.
+ = Description  : found the paramater of a key word.
+ ==============================================================================*/
+    DEF p[256]:STRING,pos_dep,pos_fin
+    pos_dep:=InStr(parse_str,str_para,0)
+    IF pos_dep&lt;&gt;-1
+    pos_dep:=InStr(parse_str,sep,pos_dep)
+    pos_fin:=InStr(parse_str,sep,pos_dep+1)
+    MidStr(p,parse_str,pos_dep+1,(pos_fin-pos_dep)-1)
+    RETURN p
+    ELSE
+    RETURN FALSE
+    ENDIF
+ENDPROC
+PROC p_WriteFPmoduleList(ptr_list:PTR TO lh) /*&quot;p_WriteFPmoduleList(ptr_list:PTR TO lh)&quot;*/
+/*===============================================================================
+ = Para         : Address of a list (the eubase.pmodulelist).
+ = Return       : NONE.
+ = Description  : Write the TemFile.
+ ==============================================================================*/
+    DEF w_fnode:PTR TO ln
+    DEF w_pnode:PTR TO ln
+    DEF w_filenode:PTR TO filenode
+    DEF w_procnode:PTR TO procnode
+    DEF pivlist:PTR TO lh
+    DEF defnode:PTR TO ln
+    DEF h,commentstr[256]:STRING
+    IF h:=Open(tempfile,1006)
+        w_filenode:=ptr_list.head
+        WHILE w_filenode
+            w_fnode:=w_filenode
+            IF w_fnode.succ&lt;&gt;0
+                IF p_EmptyList(w_filenode.deflist)&lt;&gt;-1
+                    IF insertcomment=TRUE
+                        StringF(commentstr,&#x27;/*============================\n&#x27;+
+                                           &#x27; = Def include From :\s\n&#x27;+
+                                           &#x27; ============================*/\n&#x27;,w_fnode.name)
+                        Write(h,commentstr,EstrLen(commentstr))
+                    ENDIF
+                    pivlist:=w_filenode.deflist
+                    defnode:=pivlist.head
+                    WHILE defnode
+                        IF defnode.succ&lt;&gt;0
+                            Write(h,defnode.name,EstrLen(defnode.name))
+                            Write(h,&#x27;\n&#x27;,1)
+                        ENDIF
+                        defnode:=defnode.succ
+                    ENDWHILE
+                ENDIF
+            ENDIF
+            w_filenode:=w_fnode.succ
+        ENDWHILE
+        w_filenode:=ptr_list.head
+        WHILE w_filenode
+            w_fnode:=w_filenode
+            IF w_fnode.succ&lt;&gt;0
+                IF p_EmptyList(w_filenode.proclist)&lt;&gt;-1
+                    IF insertcomment=TRUE
+                        StringF(commentstr,&#x27;/*============================\n&#x27;+
+                                           &#x27; = Proc include From :\s\n&#x27;+
+                                           &#x27; ============================*/\n&#x27;,w_fnode.name)
+                        Write(h,commentstr,EstrLen(commentstr))
+                    ENDIF
+                    pivlist:=w_filenode.proclist
+                    w_procnode:=pivlist.head
+                    WHILE w_procnode
+                        w_pnode:=w_procnode
+                        IF w_pnode.succ&lt;&gt;0
+                            Write(h,w_procnode.buffer,w_procnode.length)
+                            Write(h,&#x27;\n&#x27;,1)
+                            IF CtrlC() THEN JUMP fin
+                        ENDIF
+                        w_procnode:=w_pnode.succ
+                    ENDWHILE
+                ENDIF
+            ENDIF
+            w_filenode:=w_fnode.succ
+        ENDWHILE
+        fin:
+        IF h THEN Close(h)
+    ELSE
+        p_AjouteInfoNode(myb.infolist,&#x27;Save Temp Error.&#x27;)
+    ENDIF
+ENDPROC
+PROC p_FindProcName(ptr_list:PTR TO lh,pname,mode) /*&quot;p_FindProcName(ptr_list:PTR TO lh,pname,mode)&quot;*/
+/*===============================================================================
+ = Para     : address of list,name of proc
+ = Return   : TRUE if proc is already in list else FALSE.
+ = Description  : Find a proc name.
+ ==============================================================================*/
+    DEF w_fnode:PTR TO ln
+    DEF w_filenode:PTR TO filenode
+    DEF return_str[256]:STRING
+    DEF bufstr[256]:STRING,lock
+    w_filenode:=ptr_list.head
+    WHILE w_filenode
+    w_fnode:=w_filenode
+    IF w_fnode.succ&lt;&gt;0
+        IF p_EmptyList(w_filenode.proclist)&lt;&gt;-1
+            IF FindName(w_filenode.proclist,pname) 
+                IF mode=FIND_INTERNAL 
+                    RETURN TRUE
+                ELSEIF mode=FIND_AREXX
+                    IF lock:=Lock(w_fnode.name,-2)
+                        NameFromLock(lock,bufstr,256)
+                        AddPart(bufstr,&#x27;&#x27;,256)
+                        StrAdd(bufstr,w_fnode.name,ALL)
+                        UnLock(lock)
+                    ENDIF
+                    IF (p_LookIfFullName(bufstr))=TRUE
+                        StringF(return_str,&#x27;\s \s&#x27;,bufstr,w_fnode.name)
+                    ELSE
+                        StringF(return_str,&#x27;\s\s \s&#x27;,currentdir,bufstr,w_fnode.name)
+                    ENDIF
+                    RETURN return_str
+                ENDIF
+            ENDIF
+        ENDIF
+    ENDIF
+    w_filenode:=w_fnode.succ
+    ENDWHILE
+    IF mode=FIND_INTERNAL THEN RETURN FALSE ELSE RETURN &#x27;&#x27;
+ENDPROC
+PROC p_ParsingError(ptr_list:PTR TO lh,errorline) /*&quot;p_ParsingError(ptr_list:PTR TO lh,errorline)&quot;*/
+/*===============================================================================
+ = Para         : Address of a list (eubase.pmodulelist),num line error.
+ = Return       : NONE
+ = Description  : Count line to find the file/proc error.
+ ==============================================================================*/
+    DEF w_fnode:PTR TO ln
+    DEF w_pnode:PTR TO ln
+    DEF w_filenode:PTR TO filenode
+    DEF w_procnode:PTR TO procnode
+    DEF curline=0,numline=0
+    DEF pivlist:PTR TO lh
+    DEF defnode:PTR TO ln
+    DEF debline=0
+    DEF strarexx[256]:STRING
+    DEF fullname[256]:STRING
+    DEF bufstr[256]:STRING
+    DEF lock
+    w_filenode:=ptr_list.head
+    WHILE w_filenode
+    w_fnode:=w_filenode
+    IF w_fnode.succ&lt;&gt;0
+        IF p_EmptyList(w_filenode.deflist)&lt;&gt;-1
+        IF insertcomment=TRUE
+            curline:=curline+3
+        ENDIF
+        pivlist:=w_filenode.deflist
+        defnode:=pivlist.head
+        WHILE defnode
+            IF defnode.succ&lt;&gt;0
+            IF curline=errorline
+                p_AjouteInfoNode(myb.infolist,&#x27;Error In Globals Def.&#x27;)
+                IF arexxer=TRUE
+                StringF(fullname,&#x27;\s&#x27;,w_fnode.name)
+                IF lock:=Lock(fullname,-2)
+                    NameFromLock(lock,bufstr,256)
+                    AddPart(bufstr,&#x27;&#x27;,256)
+                    StrAdd(bufstr,fullname,ALL)
+                    dWriteF([&#x27;p_ParsingError() Lock ok Full\s &#x27;,&#x27;Name\s\n&#x27;],[bufstr,w_fnode.name])
+                    UnLock(lock)
+                ENDIF
+                IF (p_LookIfFullName(fullname))=TRUE
+                    StringF(strarexx,&#x27;\s \s \s&#x27;,erscriptname,bufstr,w_fnode.name)
+                ELSE
+                    StringF(strarexx,&#x27;\s \s\s \s&#x27;,erscriptname,currentdir,bufstr,w_fnode.name)
+                ENDIF
+                p_SendRexxCommand(strarexx,&#x27;REXX&#x27;,RXCOMM+RXFF_RESULT)
+                ENDIF
+                JUMP errorfound
+            ENDIF
+            INC curline
+            ENDIF
+            defnode:=defnode.succ
+        ENDWHILE
+        ENDIF
+    ENDIF
+    w_filenode:=w_fnode.succ
+    ENDWHILE
+    w_filenode:=ptr_list.head
+    WHILE w_filenode
+    w_fnode:=w_filenode
+    IF w_fnode.succ&lt;&gt;0
+        IF p_EmptyList(w_filenode.proclist)&lt;&gt;-1
+        IF insertcomment=TRUE
+            curline:=curline+3
+        ENDIF
+        pivlist:=w_filenode.proclist
+        w_procnode:=pivlist.head
+        WHILE w_procnode
+            w_pnode:=w_procnode
+            IF w_pnode.succ&lt;&gt;0
+            debline:=curline
+            numline:=p_CountLine(w_procnode.buffer,w_procnode.length)
+            curline:=curline+numline
+            IF ((errorline&gt;debline) AND (errorline&lt;curline))
+                p_AjouteInfoNode(myb.infolist,&#x27;Error In File:&#x27;)
+                p_AjouteInfoNode(myb.infolist,w_fnode.name)
+                p_AjouteInfoNode(myb.infolist,&#x27;Error In Proc:&#x27;)
+                p_AjouteInfoNode(myb.infolist,w_pnode.name)
+                IF compilandexit
+                WriteF(&#x27;Error In File:\s\n&#x27;,w_fnode.name)
+                WriteF(&#x27;Error In Proc:\s\n&#x27;,w_pnode.name)
+                ENDIF
+                IF arexxer=TRUE
+                StringF(fullname,&#x27;\s&#x27;,w_fnode.name)
+                IF lock:=Lock(fullname,-2)
+                    NameFromLock(lock,bufstr,256)
+                    AddPart(bufstr,&#x27;&#x27;,256)
+                    StrAdd(bufstr,w_fnode.name,ALL)
+                    dWriteF([&#x27;p_ParsingError() Lock ok Full\s &#x27;,&#x27;Name\s\n&#x27;],[bufstr,fullname])
+                    UnLock(lock)
+                ENDIF
+                IF p_LookIfFullName(fullname)
+                    StringF(strarexx,&#x27;\s \s \s \s&#x27;,erscriptname,bufstr,w_fnode.name,w_pnode.name)
+                ELSE
+                    StringF(strarexx,&#x27;\s \s\s \s \s&#x27;,erscriptname,currentdir,bufstr,w_fnode.name,w_pnode.name)
+                ENDIF
+                p_SendRexxCommand(strarexx,&#x27;REXX&#x27;,RXCOMM+RXFF_RESULT)
+                ENDIF
+                JUMP errorfound
+            ENDIF
+            ENDIF
+            w_procnode:=w_pnode.succ
+        ENDWHILE
+        ENDIF
+    ENDIF
+    w_filenode:=w_fnode.succ
+    ENDWHILE
+    errorfound:
+ENDPROC
+PROC p_CountLine(buff,l) /*&quot;p_CountLine(buff,l)&quot;*/
+/*===============================================================================
+ = Para         : address of buffer (procnode.buffer),length of buffer (procnode.length)
+ = Return       : the number of line (PROC=1 and ENDPROC=number of line).
+ = Description  : count buffer line.
+ ==============================================================================*/
+    DEF adr,pos,line=0,longlu=0
+    adr:=buff
+    REPEAT
+    pos:=InStr(adr,&#x27;\n&#x27;,1)
+    INC line
+    adr:=adr+pos+1
+    longlu:=longlu+pos+1
+    UNTIL ((pos=-1) OR (longlu=l))
+    RETURN line
+ENDPROC
+PROC p_CalculTotalMem(list:PTR TO lh) /*&quot;p_CalculTotalMem(list:PTR TO lh)&quot;*/
+/*===============================================================================
+ = Para         : Address of a list (eubase.pmodulelist).
+ = Return       : NONE.
+ = Description  : count total mem use.
+ ==============================================================================*/
+    DEF fnode:PTR TO ln
+    DEF pnode:PTR TO ln
+    DEF mfilenode:PTR TO filenode
+    DEF mprocnode:PTR TO procnode
+    DEF totalsize=0,pivlist:PTR TO lh
+    DEF a_str[256]:STRING
+    mfilenode:=list.head
+    WHILE mfilenode
+    fnode:=mfilenode
+    IF fnode.succ&lt;&gt;0
+        totalsize:=totalsize+EstrLen(fnode.name)+SIZEOF filenode
+        pivlist:=mfilenode.proclist
+        mprocnode:=pivlist.head
+        IF p_EmptyList(mfilenode.proclist)&lt;&gt;-1
+        totalsize:=totalsize+SIZEOF lh
+        WHILE mprocnode
+            pnode:=mprocnode
+            IF pnode.succ&lt;&gt;0
+                totalsize:=totalsize+EstrLen(pnode.name)+SIZEOF procnode+mprocnode.length
+            ENDIF
+            mprocnode:=pnode.succ
+        ENDWHILE
+        ENDIF
+    ENDIF
+    mfilenode:=fnode.succ
+    ENDWHILE
+    StringF(a_str,&#x27;»»»» TotalBytes :\d&#x27;,totalsize)
+    p_AjouteInfoNode(myb.infolist,a_str)
+ENDPROC
+PROC p_Execute(command) /*&quot;p_Execute(command)&quot;*/
+/*===============================================================================
+ = Para         : the command string.
+ = Return       : the returncode.
+ = Description  : run a prg.
+ ==============================================================================*/
+    DEF ret
+    ret:=SystemTagList(command,[SYS_OUTPUT,myout,
+                SYS_INPUT,Input(),
+             NP_STACKSIZE,8000,
+             NP_PRIORITY,0,
+             0])
+    RETURN ret
+ENDPROC
+PROC p_RunEditor() /*&quot;p_RunEditor()&quot;*/
+/*===============================================================================
+ = Para         : NONE
+ = Return       : the returncode.
+ = Description  : Runback the editor.
+ ==============================================================================*/
+    DEF r
+    r:=SystemTagList(editorcommand,[SYS_OUTPUT,myout,SYS_INPUT,NIL,SYS_ASYNCH,TRUE,SYS_USERSHELL,TRUE,NP_STACKSIZE,8000,
+               NP_PRIORITY,0,NP_PATH,NIL,NP_CONSOLETASK,NIL,TAG_DONE])
+    RETURN r
+ENDPROC
+PROC p_CopyFile(source,destination) /*&quot;p_CopyFile(source,destination)&quot;*/
+/*===============================================================================
+ = Para         : source file,destination file
+ = Return       : TRUE if ok,else FALSE.
+ = Description  : Copy a file.
+ ==============================================================================*/
+
+    DEF hs,hd,buf,lo,lt,lf
+    DEF ret=FALSE
+    IF hs:=Open(source,1005)
+    IF (lf:=FileLength(source))&lt;&gt;-1
+        IF buf:=New(lf+1)
+        IF lo:=Read(hs,buf,lf)
+            IF hd:=Open(destination,1006)
+            lt:=Write(hd,buf,lo)
+            IF lt=lo THEN ret:=TRUE
+            Close(hd)
+            ENDIF
+        ENDIF
+        ENDIF
+        IF buf THEN Dispose(buf)
+    ENDIF
+    Close(hs)
+    ENDIF
+    RETURN ret
+ENDPROC
+PROC p_SendRexxCommand(comrexx,portname,action_mode) /*&quot;p_SendRexxCommand(comrexx,portname,action_mode)&quot;*/
+/*===============================================================================
+ = Para         : Arexx script name.
+ = Return       : NONE.
+ = Description  : send arexx message (parsing errors).
+ ==============================================================================*/
+    DEF rc=FALSE
+    DEF rarg:PTR TO rexxarg
+    DEF rxmsg:PTR TO rexxmsg
+    DEF retxmsg:PTR TO rexxmsg
+    DEF ap:PTR TO mp
+    DEF test:PTR TO LONG
+    DEF execmsg:PTR TO mn
+    DEF node:PTR TO ln
+    DEF return_str[256]:STRING
+    dWriteF([&#x27;p_SendRexxCommand() \s&#x27;,&#x27; \s&#x27;,&#x27;\h\n&#x27;],[comrexx,portname,action_mode])
+    IF rxmsg:=CreateRexxMsg(dummyport,NIL,NIL)
+        execmsg:=rxmsg
+        node:=execmsg
+        node.name:=&#x27;REXX&#x27;
+        node.type:=NT_MESSAGE
+        node.pri:=0
+        execmsg.replyport:=dummyport
+        IF test:=CreateArgstring(comrexx,EstrLen(comrexx))
+            CopyMem({test},rxmsg.args,4)
+            rxmsg.action:=action_mode
+            rxmsg.passport:=dummyport
+            rxmsg.stdin:=Input()
+            rxmsg.stdout:=myout
+            Forbid()
+            ap:=FindPort(portname)
+            IF ap
+                PutMsg(ap,rxmsg)
+            ENDIF
+            Permit()
+            IF ap
+                WaitPort(dummyport)
+                IF retxmsg:=GetMsg(dummyport)
+                    rc:=retxmsg.result1
+                    rarg:=retxmsg.result2
+                    IF rc=0
+                        p_AjouteInfoNode(myb.infolist,&#x27;Arexx Macro.&#x27;)
+                    ELSE
+                        StringF(return_str,&#x27;Arexx Error :\d&#x27;,rc)
+                        p_AjouteInfoNode(myb.infolist,return_str)
+                    ENDIF
+                    /*IF retxmsg THEN ReplyMsg(retxmsg)*/
+                ENDIF
+            ELSE
+                p_AjouteInfoNode(myb.infolist,&#x27;Editor Port no found.&#x27;)
+            ENDIF
+            IF test THEN ClearRexxMsg(rxmsg,16)
+        ENDIF
+        IF rxmsg THEN DeleteRexxMsg(rxmsg)
+    ENDIF
+ENDPROC
+PROC p_LookIfFullName(nom) /*&quot;p_LookIfFullName(nom)&quot;*/
+/*===============================================================================
+ = Para         : filename.
+ = Return       : TRUE if filename content : or /.
+ = Description  : like name proc.
+ ==============================================================================*/
+    DEF lpos
+    IF ((lpos:=InStr(nom,&#x27;:&#x27;,0)&lt;&gt;-1) OR
+       (lpos:=InStr(nom,&#x27;/&#x27;,0)&lt;&gt;-1)) THEN RETURN TRUE
+    RETURN FALSE
+ENDPROC
+
+PROC main() HANDLE /*&quot;main()&quot;*/
+/*===============================================================================
+ = Para         : NONE
+ = Return       : ER_NONE if ok,else FALSE.
+ = Description  : Main Proc.
+ ==============================================================================*/
+    DEF testmain
+    DEF execcom[256]:STRING
+    tattr:=[&#x27;topaz.font&#x27;,8,0,0]:textattr
+    VOID &#x27;$VER:Peps v0.1 © 1994 NasGûl (26-05-94)&#x27;
+    IF wbmessage&lt;&gt;NIL
+        Raise(ER_ONLYCLI)
+    ELSE
+        IF (testmain:=p_StartCli())&lt;&gt;ER_NONE THEN Raise(testmain)
+    ENDIF
+    IF compilandexit=FALSE
+        IF (testmain:=p_RunEditor())&gt;0 THEN Raise(ER_RUNED)
+    ENDIF
+    IF (testmain:=p_OpenLibraries())&lt;&gt;ER_NONE THEN Raise(testmain)
+    IF (testmain:=p_CreateArexxPort(prgportname,0))&lt;&gt;ER_NONE THEN Raise(testmain)
+    IF (dummyport:=CreateMsgPort())=NIL THEN Raise(ER_CREATEPORT)
+    IF (testmain:=p_InitPeps())&lt;&gt;ER_NONE THEN Raise(testmain)
+    IF (testmain:=p_SetUpScreen())&lt;&gt;ER_NONE THEN Raise(testmain)
+    IF nomenu=FALSE
+        p_RebuildMenu()
+    ENDIF
+    IF (testmain:=p_InitppWindow())&lt;&gt;ER_NONE THEN Raise(testmain)
+    IF (testmain:=p_OpenppWindow())&lt;&gt;ER_NONE THEN Raise(testmain)
+    IF (testmain:=p_OpenConsole())&lt;&gt;ER_NONE THEN Raise(testmain)
+    p_CleanAllList()
+    p_ReadSourceFile(esource,TRUE)
+    p_RenderppWindow()
+    IF compilandexit
+        p_WriteFPmoduleList(myb.pmodulelist)
+        p_CalculTotalMem(myb.pmodulelist)
+        StringF(execcom,&#x27;EC \s \s&#x27;,ec,ecsource)
+        IF (testmain:=p_Execute(execcom))&lt;&gt;0
+            WindowToFront(pp_window)
+            p_ParsingError(myb.pmodulelist,testmain)
+        ELSE
+            StringF(execcom,&#x27;Copy \s \s&#x27;,ecsource,execname)
+            Execute(execcom,0,stdout)
+        ENDIF
+        Raise(ER_NONE)
+    ENDIF
+    REPEAT
+        p_LookAllMessage()
+    UNTIL reelquit=TRUE
+    Raise(ER_NONE)
+EXCEPT
+    IF myout THEN p_CloseConsole()
+    IF pp_window THEN p_RemppWindow()
+    IF screen THEN p_SetDownScreen()
+    IF myb THEN p_RemPeps()
+    IF dummyport THEN DeleteMsgPort(dummyport)
+    IF arexxport THEN p_DeleteArexxPort(arexxport)
+    p_CloseLibraries()
+    SELECT exception
+    /*============= CLI ERROR ==================*/
+    CASE ER_BADARGS;    WriteF(&#x27;Bad Args.\n&#x27;)
+    CASE ER_ONLYCLI;    WriteF(&#x27;Only Cli.\n&#x27;)
+    CASE ER_NOFILE;     WriteF(&#x27;Can\at find file \s.\n&#x27;,esource)
+    CASE ER_TEMPNOVALID; WriteF(&#x27;TempFile Invalid.\n&#x27;)
+    CASE ER_PORTEXIST;   WriteF(&#x27;Port \s exist.\n&#x27;,prgportname)
+    CASE ER_CREATEPORT;  WriteF(&#x27;can\at create port.\n&#x27;)
+    CASE ER_EXENOVALID;  WriteF(&#x27;ExecName Invalid.\n&#x27;)
+    CASE ER_SAMEDIR;     WriteF(&#x27;Peps Same dir than source code.\n&#x27;)
+    CASE ER_NOMENUFILE;  WriteF(&#x27;can\at find the menufile \s.\n&#x27;,menufile)
+    /*============= WINDOW ERROR ================*/
+    CASE ER_LOCKSCREEN; WriteF(&#x27;Lock Screen Failed.&#x27;)
+    CASE ER_VISUAL;     WriteF(&#x27;Error Visual.&#x27;)
+    CASE ER_CONTEXT;    WriteF(&#x27;Error Context.&#x27;)
+    CASE ER_MENUS;      WriteF(&#x27;Error Menus.&#x27;)
+    CASE ER_GADGET;     WriteF(&#x27;Error Gadget.&#x27;)
+    CASE ER_WINDOW;     WriteF(&#x27;Error Window.&#x27;)
+    CASE ER_OPENSCREEN; WriteF(&#x27;Can\at Open Screen.\n&#x27;)
+    CASE ER_CONOUT;     WriteF(&#x27;Error Console Window.\n&#x27;)
+    CASE ER_SCREENSIG;  WriteF(&#x27;Can\at Allocate Signal for the screen.\n&#x27;)
+    /*============= APP ERROR =================*/
+    CASE ER_RUNED;      WriteF(&#x27;Need Editor.\n&#x27;)
+    ENDSELECT
+    CleanUp(0)
+ENDPROC
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

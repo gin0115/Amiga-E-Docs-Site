@@ -1,0 +1,159 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>endoomview.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-doomwad.html">doomwad</a> &rsaquo; endoomview.e</div><h1>File: <code>endoomview.e</code></h1><p class="meta">133 lines · project <a href="../examples/pkg-doomwad.html"><code>doomwad</code></a></p><p class="pathctx">doomwad/Examples/endoomview.e</p><p class="prose">** ENDOOM viewer ** ** A little example for my &quot;<a href="../modules/doomwad.html">doomwad</a>.m&quot; module ** ** Have fun... **</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/doomwad.html">doomwad</a></li></ul></div><h2>Source</h2><pre class="code">/*
+** ENDOOM viewer
+**
+** A little example for my &quot;doomwad.m&quot; module
+**
+** Have fun...
+**
+*/
+
+MODULE &#x27;doomwad&#x27;,&#x27;exec/memory&#x27;,&#x27;dos/dos&#x27;,&#x27;intuition/screens&#x27;,&#x27;intuition/intuition&#x27;,
+       &#x27;graphics/text&#x27;,&#x27;diskfont&#x27;, &#x27;libraries/diskfont&#x27;
+
+DEF mwh:PTR TO wadhandle, mdb:dirblock, r,c,scr:PTR TO screen, tattr:textattr
+
+PROC main()
+  DEF x,y,p,fg,bg,fnt
+  
+  -&gt; Little message
+  WriteF(&#x27;ENDOOM viewer v1.0 ©1998 Peter Gordon\n\nPointless? No, just a programming excersize...\n\n&#x27;)
+  
+  -&gt; Details of the IBM style font to use
+  tattr.name:=&#x27;ansi.font&#x27;
+  tattr.ysize:=8
+  tattr.style:=0
+  tattr.flags:=0
+  
+  -&gt; Try to load the font from disk. Doesnt matter if we fail, AmigaOS will
+  -&gt; just revert to topaz.
+  IF(diskfontbase:=OpenLibrary(&#x27;diskfont.library&#x27;,36))
+    fnt:=OpenDiskFont(tattr)
+    CloseLibrary(diskfontbase)
+  ENDIF
+  
+  -&gt; Open WAD
+  IF(mwh:=openwad(arg))
+  
+    -&gt; Pointless information :)
+    WriteF(&#x27;&quot;\s&quot; is a&#x27;,arg)
+    IF(mwh.iwad) THEN WriteF(&#x27;n IWAD\n&#x27;) ELSE WriteF(&#x27; PWAD\n&#x27;)
+
+    -&gt; Find the ENDOOM entry
+    WriteF(&#x27;Scanning for ENDOOM lump...&#x27;)
+    r,c:=findentry(&#x27;ENDOOM&#x27;,mwh,mdb)
+    IF(r)
+      
+      -&gt; Wahay! We got one!
+      WriteF(&#x27;FOUND!\n&#x27;)
+      
+      -&gt; Allocate memory to load the ENDOOM lump into
+      IF(c:=NewM(mdb.size,MEMF_ANY))
+      
+        -&gt; Seek to endoom lump
+        Seek(mwh.dosh,mdb.offset,OFFSET_BEGINNING)
+        
+        -&gt; Read it in
+        Read(mwh.dosh,c,mdb.size)
+        
+        -&gt; Open a 640 x 256 x 16 screen
+        IF(scr:=OpenS(640,256,4,$8000,0,[SA_FONT,tattr,SA_SHOWTITLE,FALSE,0,0]))
+          
+          -&gt; Completely blank it
+          Box(0,0,639,255,0)
+          
+          -&gt; El-Crappo MS-DOG colours :)
+          SetColour(scr,0,0,0,0)
+          SetColour(scr,1,0,0,170)
+          SetColour(scr,2,0,170,0)
+          SetColour(scr,3,0,170,170)
+          SetColour(scr,4,170,0,0)
+          SetColour(scr,5,170,0,170)
+          SetColour(scr,6,170,170,0)
+          SetColour(scr,7,170,170,170)
+          SetColour(scr,8,102,102,102)
+          SetColour(scr,9,0,80,255)
+          SetColour(scr,10,40,255,40)
+          SetColour(scr,11,20,255,255)
+          SetColour(scr,12,255,20,20)
+          SetColour(scr,13,255,20,255)
+          SetColour(scr,14,255,255,0)
+          SetColour(scr,15,255,255,255)
+          
+          -&gt; &quot;p&quot; is the position from the start of the ENDOOM lump
+          -&gt; &quot;x&quot; and &quot;y&quot; are the screen positions
+          p:=0
+          x:=0
+          y:=0
+          
+          -&gt; Loop through the whole endoom lump
+          WHILE(p&lt;(mdb.size/2))
+          
+            -&gt; The ENDOOM lump is basically a dump of the PC text screen
+            -&gt; memory, so we have to extract useful values from it.
+            -&gt; The foreground colour is stored in the low 4 bits, the
+            -&gt; background colour is stored in the next 3 bits, and the
+            -&gt; remaining bit is &quot;BLINK&quot;, but we&#x27;re ignoring blink :)
+            fg:=(Char(c+(p*2)+1) AND %00001111)
+            bg:=Shr((Char(c+(p*2)+1) AND %01110000),4)
+            
+            -&gt; Set the colour
+            Colour(fg,bg)
+            
+            -&gt; Print the char
+            TextF(x*8,y*8+24,&#x27;\c&#x27;,Char(c+(p*2)))
+            
+            -&gt; Next char in ENDOOM
+            INC p
+            
+            -&gt; Next screen position
+            INC x
+            IF(x=80)
+              x:=0
+              INC y
+            ENDIF
+          ENDWHILE
+          
+          -&gt; Wait for mouse
+          WHILE(Mouse()=0);WaitTOF();ENDWHILE
+          
+          -&gt; Byee!
+          CloseS(scr)
+        ENDIF
+        Dispose(c)
+      ENDIF
+    ELSE
+      WriteF(&#x27;No chance :)\n&#x27;)
+    ENDIF
+    closewad(mwh)
+  ENDIF
+  IF(fnt) THEN CloseFont(fnt)
+ENDPROC
+
+      
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

@@ -1,0 +1,480 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>MenuClass.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-portable.html">PortablE</a> &rsaquo; MenuClass.e</div><h1>File: <code>MenuClass.e</code></h1><p class="meta">454 lines · project <a href="../examples/pkg-portable.html"><code>PortablE</code></a></p><p class="pathctx">PortablE/PortablE/Examples/Amiga/OS4_ReAction/MenuClass.e</p><p class="prose">An AmigaOS4.1FE SDK example converted to PortablE. From SDK:Examples/GUI/MenuClass/MenuClass.c</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/diskfont.html">diskfont</a></li><li><a href="../modules/exec.html">exec</a></li><li><a href="../modules/reaction-macros.html">target/reaction/reaction_macros</a></li></ul></div><h2>Source</h2><pre class="code">/* An AmigaOS4.1FE SDK example converted to PortablE.
+   From SDK:Examples/GUI/MenuClass/MenuClass.c
+*/
+OPT POINTER, PREPROCESS
+MODULE &#x27;exec&#x27;, &#x27;dos&#x27;, &#x27;intuition&#x27;
+MODULE &#x27;diskfont&#x27;, &#x27;utility&#x27;, &#x27;window&#x27;, &#x27;layout&#x27; /*, &#x27;button&#x27;, &#x27;bitmap&#x27;*/
+MODULE &#x27;target/reaction/reaction_macros&#x27;, &#x27;graphics/text&#x27;, &#x27;classes/window&#x27;, &#x27;gadgets/layout&#x27;, &#x27;gadgets/button&#x27;, &#x27;images/bitmap&#x27;
+
+ENUM MID_PROJECT = 1,  /* Zero is an invalid value for a menu ID */
+	MID_OPEN,
+	MID_SAVE,
+	MID_SAVEAS,
+	MID_ICONIFY,
+	MID_ABOUT,
+	MID_QUIT,
+	
+	MID_EXTRAS,
+	MID_SUBMENU,
+	MID_TOGGLEIMAGE,
+	MID_SHOWMENU,
+	MID_HIDEMENU,
+	MID_SHOWITEMS,
+	MID_HIDEITEMS,
+	MIDMAX
+CONST MID_AUTO_BASE = 1000
+
+TYPE PTIO IS PTR TO INTUIOBJECT
+
+RAISE &quot;LIB&quot; IF OpenLibrary() = NIL
+
+CONST BUFFER_SIZE = 128
+
+PROC main() RETURNS ret
+	DEF windowobj:PTIO, layoutobj:PTIO, displayobj:PTIO
+	DEF menustripobj:PTIO
+	DEF project_menuobj:PTIO, parent:PTIO, obj:PTIO
+	DEF showmenu_itemobj:PTIO, hidemenu_itemobj:PTIO
+	DEF showitems_itemobj:PTIO, hideitems_itemobj:PTIO
+	DEF imageobj[2]:ARRAY OF PTIO
+	DEF tta:PTR TO ttextattr
+	DEF dri:PTR TO drawinfo
+	DEF scr:PTR TO screen
+	DEF win:PTR TO window
+	DEF port:PTR TO mp
+	DEF which_image
+	DEF waitmask, input, id
+	DEF code:INT
+	DEF buffer[BUFFER_SIZE]:ARRAY OF CHAR
+	DEF label:STRPTR
+	DEF hidden:BOOL
+	DEF done:BOOL
+	
+	which_image := 0
+	id := MID_AUTO_BASE
+	done := FALSE
+	
+	ret := RETURN_ERROR
+	
+	diskfontbase := OpenLibrary(&#x27;diskfont.library&#x27;, 0)
+	utilitybase := OpenLibrary(&#x27;utility.library&#x27;, 0)
+	windowbase := OpenLibrary(&#x27;window.class&#x27;, 0)
+	layoutbase := OpenLibrary(&#x27;gadgets/layout.gadget&#x27;, 0)
+	
+	IF (intuitionbase.version &gt; 54) OR ((intuitionbase.version = 54) AND (intuitionbase.revision &gt;= 6)) = FALSE
+		Print(&#x27;This program requires at least version 54.6 of intuition.library.\n&#x27;)
+		RETURN
+	ENDIF
+	
+	port := AllocSysObject(ASOT_PORT,NILA)
+	
+	IF scr := LockPubScreen(&#x27;Workbench&#x27;)
+		/* Load a couple of images, to be freed manually
+		 * on program termination.
+		 */
+		imageobj[0] := menuImage(&#x27;flaggreen&#x27;,scr)  !!PTR!!PTR TO INTUIOBJECT
+		imageobj[1] := menuImage(&#x27;flagyellow&#x27;,scr) !!PTR!!PTR TO INTUIOBJECT
+		
+		/* Try defining slightly bigger version of the
+		 * Workbench screen&#x27;s current font, to be used
+		 * as the font for a menu item.
+		 */
+		IF dri := GetScreenDrawInfo(scr)
+			tta := ObtainTTextAttr(dri.font)
+			IF tta THEN tta.ysize := tta.ysize + 10
+			FreeScreenDrawInfo(scr,dri)
+		ENDIF
+		
+		/* Build the whole menu tree. By assigning an ID
+		 * also to the menu title objects, we allow the
+		 * user to ask for help on them as well, instead
+		 * of only being able to do so on the menu items.
+		 *
+		 * Also, for the sake of this example, we assign
+		 * automatically generated non-zero IDs to some
+		 * items we don&#x27;t need to properly identify when
+		 * they get selected.
+		 */
+		menustripobj := MStrip,
+			MA_ADDCHILD, MTitle(&#x27;Project&#x27;),
+				MA_ID, MID_PROJECT,
+				MA_ADDCHILD, MItem(&#x27;O|Open...&#x27;),
+					MA_ID, MID_OPEN,
+					MA_IMAGE, menuImage(&#x27;open&#x27;,scr),
+				MEnd,
+				
+				MA_ADDCHILD, MSeparator,
+				MEnd,
+				
+				MA_ADDCHILD, MItem(&#x27;S|Save&#x27;),
+					MA_ID, MID_SAVE,
+					MA_IMAGE, menuImage(&#x27;save&#x27;,scr),
+				MEnd,
+				
+				MA_ADDCHILD, MItem(&#x27;A|Save as...&#x27;),
+					MA_ID, MID_SAVEAS,
+					MA_IMAGE, menuImage(&#x27;saveas&#x27;,scr),
+				MEnd,
+				
+				MA_ADDCHILD, MSeparator,
+				MEnd,
+				
+				MA_ADDCHILD, MItem(&#x27;I|Iconify&#x27;),
+					MA_ID, MID_ICONIFY,
+					MA_IMAGE, menuImage(&#x27;iconify&#x27;,scr),
+				MEnd,
+				
+				MA_ADDCHILD, MItem(&#x27;?|About...&#x27;),
+					MA_ID, MID_ABOUT,
+					MA_IMAGE, menuImage(&#x27;info&#x27;,scr),
+				MEnd,
+				
+				MA_ADDCHILD, MSeparator,
+				MEnd,
+				
+				MA_ADDCHILD, MItem(&#x27;Q|Quit&#x27;),
+					MA_ID, MID_QUIT,
+					MA_IMAGE, menuImage(&#x27;quit&#x27;,scr),
+				MEnd,
+			MEnd,
+			
+			MA_ADDCHILD, MTitle(&#x27;Extras&#x27;),
+				MA_ID, MID_EXTRAS,
+				MA_ADDCHILD, MItem(&#x27;Sub-menu example&#x27;),
+					MA_ID, MID_SUBMENU,
+					MA_ADDCHILD, MItem(&#x27;As you can&#x27;),
+						MA_ID, id++,
+					MEnd,
+					MA_ADDCHILD, MItem(&#x27;see from&#x27;),
+						MA_ID, id++,
+						MA_ADDCHILD, MItem(&#x27;this example,&#x27;),
+							MA_ID, id++,
+						MEnd,
+						MA_ADDCHILD, MItem(&#x27;there is&#x27;),
+							MA_ID, id++,
+							MA_ADDCHILD, MItem(&#x27;virtually no&#x27;),
+								MA_ID, id++,
+							MEnd,
+							MA_ADDCHILD, MItem(&#x27;limit to&#x27;),
+								MA_ID, id++,
+								MA_ADDCHILD, MItem(&#x27;how many sub-menu&#x27;),
+									MA_ID, id++,
+								MEnd,
+								MA_ADDCHILD, MItem(&#x27;levels you can&#x27;),
+									MA_ID, id++,
+									MA_ADDCHILD, MItem(&#x27;have with&#x27;),
+										MA_ID, id++,
+									MEnd,
+									MA_ADDCHILD, MItem(&#x27;Intuition&#x27;),
+										MA_ID, id++,
+										MA_ADDCHILD, MItem(&#x27;when using its new&#x27;),
+											MA_ID, id++,
+										MEnd,
+										MA_ADDCHILD, MItem(&#x27;BOOPSI menu class.&#x27;),
+											MA_ID, id++,
+											MA_TEXTATTR, tta,
+										MEnd,
+									MEnd,
+								MEnd,
+							MEnd,
+						MEnd,
+					MEnd,
+				MEnd,
+				
+				MA_ADDCHILD, MSeparator,
+				MEnd,
+				
+				MA_ADDCHILD, MItem(&#x27;Toggle this image&#x27;),
+					MA_ID, MID_TOGGLEIMAGE,
+					MA_IMAGE, imageobj[which_image],
+					MA_FREEIMAGE, FALSE,
+				MEnd,
+				
+				MA_ADDCHILD, MSeparator,
+				MEnd,
+				
+				MA_ADDCHILD, MItem(&#x27;Show Project menu&#x27;),
+					MA_ID, MID_SHOWMENU,
+					MA_HIDDEN, TRUE,
+				MEnd,
+				
+				MA_ADDCHILD, MItem(&#x27;Hide Project menu&#x27;),
+					MA_ID, MID_HIDEMENU,
+				MEnd,
+				
+				MA_ADDCHILD, MSeparator,
+				MEnd,
+				
+				MA_ADDCHILD, MItem(&#x27;Show dummy items&#x27;),
+					MA_ID, MID_SHOWITEMS,
+					MA_HIDDEN, TRUE,
+				MEnd,
+				
+				MA_ADDCHILD, MItem(&#x27;Hide dummy items&#x27;),
+					MA_ID, MID_HIDEITEMS,
+				MEnd,
+				
+				MA_ADDCHILD, MSeparator,
+				MEnd,
+				
+				MA_ADDCHILD, MItem(&#x27;Dummy item #1&#x27;),
+					MA_ID, id++,
+				MEnd,
+				
+				MA_ADDCHILD, MItem(&#x27;Dummy item #2&#x27;),
+					MA_ID, id++,
+				MEnd,
+				
+				MA_ADDCHILD, MItem(&#x27;Dummy item #3&#x27;),
+					MA_ID, id++,
+				MEnd,
+			MEnd,
+		MEnd
+		
+		UnlockPubScreen(NILA,scr)
+	ENDIF
+	
+	layoutobj := VGroupObject,
+		LAYOUT_DEFERLAYOUT, TRUE,
+		LAYOUT_SPACEOUTER, TRUE,
+		LAYOUT_FIXEDVERT, FALSE,
+		LAYOUT_ADDCHILD, displayobj := ButtonObject,
+			GA_READONLY, TRUE,
+		ButtonEnd,
+		CHILD_WEIGHTEDHEIGHT, 0,
+		
+		LAYOUT_ADDCHILD, HGroupObject,
+			LAYOUT_EVENSIZE, TRUE,
+			LAYOUT_HORIZALIGNMENT, LALIGN_CENTER,
+			LAYOUT_ADDCHILD, ButtonObject,
+				GA_ID, 1,
+				GA_RELVERIFY, TRUE,
+				GA_TEXT, &#x27;Quit test&#x27;,
+			ButtonEnd,
+			CHILD_WEIGHTEDWIDTH, 0,
+		EndGroup,
+		CHILD_WEIGHTEDHEIGHT, 0,
+		CHILD_MINWIDTH, 350,
+	EndGroup
+	
+	windowobj := WindowObject,
+		WA_PUBSCREENNAME, &#x27;Workbench&#x27;,
+		WA_IDCMP, IDCMP_CLOSEWINDOW OR IDCMP_GADGETUP OR IDCMP_MENUPICK OR IDCMP_MENUHELP,
+		WA_ACTIVATE, TRUE,
+		WA_CLOSEGADGET, TRUE,
+		WA_TITLE, &#x27;BOOPSI menu class test&#x27;,
+		WA_DRAGBAR, TRUE,
+		WA_DEPTHGADGET, TRUE,
+		WA_SIZEGADGET, TRUE,
+		WA_MENUHELP, TRUE,
+		
+		WINDOW_POSITION, WPOS_CENTERSCREEN,
+		WINDOW_ICONIFYGADGET, port&lt;&gt;NIL,
+		WINDOW_POPUPGADGET, TRUE,
+		WINDOW_JUMPSCREENSMENU, TRUE,
+		WINDOW_APPPORT, port,
+		WINDOW_PARENTGROUP, layoutobj,
+		WINDOW_MENUSTRIP, menustripobj,
+	WindowEnd
+	
+	IF menustripobj
+		project_menuobj := IdoMethod(menustripobj,MM_FINDID,0,MID_PROJECT) !!PTR!!PTR TO INTUIOBJECT
+		showmenu_itemobj := IdoMethod(menustripobj,MM_FINDID,0,MID_SHOWMENU) !!PTR!!PTR TO INTUIOBJECT
+		hidemenu_itemobj := IdoMethod(menustripobj,MM_FINDID,0,MID_HIDEMENU) !!PTR!!PTR TO INTUIOBJECT
+		showitems_itemobj := IdoMethod(menustripobj,MM_FINDID,0,MID_SHOWITEMS) !!PTR!!PTR TO INTUIOBJECT
+		hideitems_itemobj := IdoMethod(menustripobj,MM_FINDID,0,MID_HIDEITEMS) !!PTR!!PTR TO INTUIOBJECT
+	ENDIF
+	
+	IF windowobj
+		IF win := RA_OpenWindow(windowobj)
+			GetAttr(WINDOW_SIGMASK,windowobj,ADDRESSOF waitmask)
+			
+			/* Event handling */
+
+			WHILE done = FALSE
+				Wait(waitmask)
+				
+				WHILE (input := RA_HandleInput(windowobj,ADDRESSOF code)) &lt;&gt; WMHI_LASTMSG
+					SELECT input AND WMHI_CLASSMASK
+						CASE WMHI_CLOSEWINDOW
+							done := TRUE
+							
+						CASE WMHI_ICONIFY
+							RA_Iconify(windowobj)
+							
+						CASE WMHI_UNICONIFY
+							win := RA_OpenWindow(windowobj)
+							GetAttr(WINDOW_SIGMASK,windowobj,ADDRESSOF waitmask)
+							IF win = NIL THEN done := TRUE
+							
+						CASE WMHI_JUMPSCREEN
+							RA_CloseWindow(windowobj)
+							win := RA_OpenWindow(windowobj)
+							GetAttr(WINDOW_SIGMASK,windowobj,ADDRESSOF waitmask)
+							IF win
+								ScreenToFront(win.wscreen)
+							ELSE
+								done := TRUE
+							ENDIF
+							
+						CASE WMHI_MENUPICK
+							id := NO_MENU_ID
+							
+							WHILE (id := IdoMethod(menustripobj,MM_NEXTSELECT,0,id)) &lt;&gt; NO_MENU_ID
+								obj := IdoMethod(menustripobj,MM_FINDID,0,id) !!PTR!!PTR TO INTUIOBJECT
+								
+								IF obj
+									GetAttr(MA_LABEL,obj,ADDRESSOF label)
+									IF InStr(label,&#x27;|&#x27;) &lt;&gt; -1 THEN label := label + (2*SIZEOF CHAR)
+									SnPrintf(buffer,BUFFER_SIZE,&#x27;Menu selection: &quot;\s&quot;&#x27;,label)
+									SetGadgetAttrsA(displayobj !!PTR!!PTR TO gadget,win,NIL,[GA_TEXT,buffer,TAG_END]:tagitem)
+								ENDIF
+								
+								SELECT MIDMAX OF id
+									CASE MID_ICONIFY
+										RA_Iconify(windowobj)
+										
+									CASE MID_QUIT
+										done := TRUE
+										
+									CASE MID_TOGGLEIMAGE
+										which_image := 1 - which_image
+										SetAttrsA(obj,[MA_IMAGE,imageobj[which_image],TAG_END]:tagitem)
+										
+									CASE MID_SHOWMENU, MID_HIDEMENU
+										hidden := (id = MID_HIDEMENU)
+										IF showmenu_itemobj THEN SetAttrsA(showmenu_itemobj,[MA_HIDDEN,NOT hidden,TAG_END]:tagitem)
+										IF hidemenu_itemobj THEN SetAttrsA(hidemenu_itemobj,[MA_HIDDEN,hidden,TAG_END]:tagitem)
+										IF project_menuobj  THEN SetAttrsA(project_menuobj, [MA_HIDDEN,hidden,TAG_END]:tagitem)
+										
+									CASE MID_SHOWITEMS, MID_HIDEITEMS
+										hidden := (id = MID_HIDEITEMS)
+										IF showitems_itemobj THEN SetAttrsA(showitems_itemobj,[MA_HIDDEN,NOT hidden,TAG_END]:tagitem)
+										IF hideitems_itemobj THEN SetAttrsA(hideitems_itemobj,[MA_HIDDEN,hidden,TAG_END]:tagitem)
+										
+										GetAttr(MA_PARENT,showitems_itemobj,ADDRESSOF parent)
+										obj := hideitems_itemobj
+										
+										WHILE obj := IdoMethod(parent,MM_NEXTCHILD,0,obj) !!PTR!!PTR TO INTUIOBJECT
+											SetAttrsA(obj,[MA_HIDDEN,hidden,TAG_END]:tagitem)
+										ENDWHILE
+								ENDSELECT
+							ENDWHILE
+							
+						CASE WMHI_MENUHELP
+							GetAttr(MA_MENUHELPID,menustripobj,ADDRESSOF id)
+							
+							IF id &lt;&gt; NO_MENU_ID
+								obj := IdoMethod(menustripobj,MM_FINDID,0,id) !!PTR!!PTR TO INTUIOBJECT
+								
+								IF obj
+									GetAttr(MA_LABEL,obj,ADDRESSOF label)
+									IF InStr(label,&#x27;|&#x27;) &lt;&gt; -1 THEN label := label + (2*SIZEOF CHAR)
+									SnPrintf(buffer,BUFFER_SIZE,&#x27;Help requested for: &quot;%s&quot;&#x27;,label)
+									SetGadgetAttrsA(displayobj !!PTR!!PTR TO gadget,win,NIL,[GA_TEXT,buffer,TAG_END]:tagitem)
+								ENDIF
+							ELSE
+								AstrCopy(buffer,&#x27;HELP requested while no menu or item was selected&#x27;,BUFFER_SIZE)
+								SetGadgetAttrsA(displayobj !!PTR!!PTR TO gadget,win,NIL,[GA_TEXT,buffer,TAG_END]:tagitem)
+							ENDIF
+							
+						CASE WMHI_GADGETUP
+							SELECT id := (input AND WMHI_GADGETMASK)
+								CASE 1
+									done := TRUE
+							ENDSELECT
+					ENDSELECT
+				ENDWHILE
+			ENDWHILE
+		ENDIF
+	ENDIF
+	
+	ret := RETURN_OK
+FINALLY
+	PrintException()
+	
+	IF win THEN RA_CloseWindow(windowobj)
+	IF windowobj THEN DisposeObject(windowobj)
+	
+	IF menustripobj THEN DisposeObject(menustripobj)
+	
+	IF imageobj[0] THEN DisposeObject(imageobj[0])
+	IF imageobj[1] THEN DisposeObject(imageobj[1])
+	
+	IF tta THEN FreeTTextAttr(tta)
+	
+	IF port THEN FreeSysObject(ASOT_PORT,port)
+	
+	IF diskfontbase THEN CloseLibrary(diskfontbase)
+	IF utilitybase THEN CloseLibrary(utilitybase)
+	IF windowbase THEN CloseLibrary(windowbase)
+	IF layoutbase THEN CloseLibrary(layoutbase)
+ENDPROC
+
+PROC menuImage(name:ARRAY OF CHAR, screen:PTR TO screen) RETURNS image:PTR TO image
+	DEF prev_win:APTR, dir:BPTR, prev_dir:BPTR
+	DEF name_s:STRING, name_g:STRING, len
+	DEF imageobj:PTR TO INTUIOBJECT
+	
+	len := StrLen(name)
+	NEW name_s[len + 3]
+	NEW name_g[len + 3]
+	
+	IF (name_s &lt;&gt; NILS) AND (name_g &lt;&gt; NILS)
+		StrCopy(name_s,name)
+		StrAdd( name_s,&#x27;_s&#x27;)
+		
+		StrCopy(name_g,name)
+		StrAdd( name_g,&#x27;_g&#x27;)
+		
+		prev_win := SetProcWindow(-1 !!VALUE!!APTR)  /* Disable requesters */
+		dir := Lock(&#x27;TBIMAGES:&#x27;,SHARED_LOCK)
+		SetProcWindow(prev_win)				/* Re-enable requesters */
+		
+		IF dir &lt;&gt; ZERO
+			prev_dir := CurrentDir(dir)
+			
+			imageobj := NewObjectA(NIL,&#x27;bitmap.image&#x27;,[BITMAP_SOURCEFILE, name,
+			                                           BITMAP_SELECTSOURCEFILE, name_s,
+			                                           BITMAP_DISABLEDSOURCEFILE, name_g,
+			                                           BITMAP_SCREEN, screen,
+			                                           BITMAP_MASKING, TRUE,
+			                                           TAG_END]:tagitem)
+			image := imageobj !!PTR!!PTR TO image
+			
+			IF image THEN SetAttrsA(imageobj, [IA_HEIGHT, image.height + 2, TAG_END]:tagitem)
+			
+			CurrentDir(prev_dir)
+			UnLock(dir)
+		ENDIF
+	ENDIF
+FINALLY
+	END name_s, name_g
+ENDPROC
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

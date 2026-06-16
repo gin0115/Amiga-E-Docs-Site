@@ -1,0 +1,144 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>layers.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-portable.html">PortablE</a> &rsaquo; layers.e</div><h1>File: <code>layers.e</code></h1><p class="meta">118 lines · project <a href="../examples/pkg-portable.html"><code>PortablE</code></a></p><p class="pathctx">PortablE/PortablE/PEmodules/target/CPP_AmigaOS4/graphics/layers.e</p><p class="prose">$Id: <a href="../modules/layers.html">layers</a>.h,v 1.19 2005/11/10 15:36:43 hjfrieden Exp $</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/lists.html">target/exec/lists</a></li><li><a href="../modules/hooks.html">target/utility/hooks</a></li></ul></div><h2>Source</h2><pre class="code">/* $Id: layers.h,v 1.19 2005/11/10 15:36:43 hjfrieden Exp $ */
+OPT NATIVE, POINTER
+PUBLIC MODULE &#x27;target/graphics/gfx_shared3&#x27;
+MODULE &#x27;target/exec/lists&#x27;, &#x27;target/exec/semaphores&#x27;, &#x27;target/graphics/gfx&#x27;
+MODULE &#x27;target/utility/hooks&#x27;, &#x27;target/utility/tagitem&#x27;
+{#include &lt;graphics/layers.h&gt;}
+NATIVE {GRAPHICS_LAYERS_H} CONST
+
+/*
+ * layer status flags. These really belong to
+ * graphics/clip.h but are here for traditional reason
+ * (and to confuse you).
+ */
+
+NATIVE {LAYERSIMPLE}           CONST LAYERSIMPLE           = 1
+NATIVE {LAYERSMART}            CONST LAYERSMART            = 2
+NATIVE {LAYERSUPER}            CONST LAYERSUPER            = 4
+NATIVE {LAYERUPDATING}         CONST LAYERUPDATING         = $10
+NATIVE {LAYERBACKDROP}         CONST LAYERBACKDROP         = $40
+NATIVE {LAYERREFRESH}          CONST LAYERREFRESH          = $80
+NATIVE {LAYER_CLIPRECTS_LOST}  CONST LAYER_CLIPRECTS_LOST  = $100   /* during BeginUpdate */
+                                      /* or during layerop */
+                                      /* this happens if out of memory */
+NATIVE {LAYERIREFRESH}         CONST LAYERIREFRESH         = $200
+NATIVE {LAYERIREFRESH2}        CONST LAYERIREFRESH2        = $400
+
+NATIVE {LAYERSAVEBACK}         CONST LAYERSAVEBACK         = $800   /* New for V44: Set if clips
+                                       * are saved back */
+NATIVE {LAYERHIDDEN}           CONST LAYERHIDDEN           = $1000  /* New for V45: Layer is invisible */
+NATIVE {LAYERSTAYTOP}          CONST LAYERSTAYTOP          = $2000  /* New for V45: Layer can&#x27;t be moved
+                                       * behind other layers */
+NATIVE {LAYERMOVECHANGESSHAPE} CONST LAYERMOVECHANGESSHAPE = $4000  /* New for V45: Report MoveLayer()
+                                       * to shapechangehook */
+
+/*
+ * Thor says: Keep hands off this Layer_Info. There&#x27;s really nothing in
+ * here to play with. The only thing you possibly may be interested in
+ * is the top_layer that points to the topmost layer of this layer_info,
+ * and the Lock which locks this structure. Even that is quite private,
+ * but everything else is really really private. Leave all this to
+ * layers.library as some fields are likely to change their meaning
+ * in the near future.
+ */
+
+-&gt;&quot;OBJECT layer_info&quot; is on-purposely missing from here (it can be found in &#x27;graphics/gfx_shared3&#x27;)
+
+NATIVE {NEWLAYERINFO_CALLED} CONST NEWLAYERINFO_CALLED = 1
+
+/*
+ * Special backfill hook values you may want to install here.
+ *
+ * LAYERS_NOBACKFILL is the value needed to get no backfill hook
+ * LAYERS_BACKFILL is the value needed to get the default backfill hook
+ */
+NATIVE {LAYERS_NOBACKFILL}  CONST LAYERS_NOBACKFILL  = 1!!VALUE!!PTR TO hook
+NATIVE {LAYERS_BACKFILL}    CONST LAYERS_BACKFILL    = 0!!VALUE!!PTR TO hook
+
+/*
+ * Special codes for ShowLayer():
+ * Give this as target layer where
+ * to move your layer to.
+ */
+NATIVE {LAYER_BACKMOST}     CONST LAYER_BACKMOST     = 0!!VALUE!!PTR TO layer
+NATIVE {LAYER_FRONTMOST}    CONST LAYER_FRONTMOST    = 1!!VALUE!!PTR TO layer
+
+/*
+ * CreateBackFillHookA() attributes
+ */
+NATIVE {LAYERS_DUMMY}       CONST LAYERS_DUMMY       = (TAG_USER)
+NATIVE {BFHA_APen}          CONST BFHA_APEN          = (LAYERS_DUMMY+0)  /* foreground color (def ~0) */
+NATIVE {BFHA_BPen}          CONST BFHA_BPEN          = (LAYERS_DUMMY+1)  /* background color (def ~0) */
+NATIVE {BFHA_DrMd}          CONST BFHA_DRMD          = (LAYERS_DUMMY+2)  /* drawmode (def JAM2) */
+NATIVE {BFHA_PatSize}       CONST BFHA_PATSIZE       = (LAYERS_DUMMY+3)  /* pattern size, see SetAfPt() */
+NATIVE {BFHA_Pattern}       CONST BFHA_PATTERN       = (LAYERS_DUMMY+4)  /* the pattern */
+NATIVE {BFHA_BitMap}        CONST BFHA_BITMAP        = (LAYERS_DUMMY+5)  /* bitmap to use as backfill */
+NATIVE {BFHA_Width}         CONST BFHA_WIDTH         = (LAYERS_DUMMY+6)  /* width of bm */
+NATIVE {BFHA_Height}        CONST BFHA_HEIGHT        = (LAYERS_DUMMY+7)  /* height of bm */
+NATIVE {BFHA_OffsetX}       CONST BFHA_OFFSETX       = (LAYERS_DUMMY+8)  /* x offset into the bm */
+NATIVE {BFHA_OffsetY}       CONST BFHA_OFFSETY       = (LAYERS_DUMMY+9)  /* y offset into the bm */
+
+/*
+ * CreateLayerA() attributes
+ */
+NATIVE {LAYA_MinX}          CONST LAYA_MINX          = (LAYERS_DUMMY+30) /* upper left corner */
+NATIVE {LAYA_MinY}          CONST LAYA_MINY          = (LAYERS_DUMMY+31) /* of layer */
+NATIVE {LAYA_MaxX}          CONST LAYA_MAXX          = (LAYERS_DUMMY+32) /* lower right corner */
+NATIVE {LAYA_MaxY}          CONST LAYA_MAXY          = (LAYERS_DUMMY+33) /* of layer */
+NATIVE {LAYA_ShapeRegion}   CONST LAYA_SHAPEREGION   = (LAYERS_DUMMY+34) /* shape of this layer */
+NATIVE {LAYA_ShapeHook}     CONST LAYA_SHAPEHOOK     = (LAYERS_DUMMY+35) /* hook to create layer shape */
+NATIVE {LAYA_InFrontOf}     CONST LAYA_INFRONTOF     = (LAYERS_DUMMY+36) /* create the layer in front
+                                              * of the given one */
+NATIVE {LAYA_BitMap}        CONST LAYA_BITMAP        = (LAYERS_DUMMY+37) /* common bitmap used by
+                                              * all layers */
+NATIVE {LAYA_SuperBitMap}   CONST LAYA_SUPERBITMAP   = (LAYERS_DUMMY+38) /* the superbitmap, sets
+                                              * LAYERSUPER */
+NATIVE {LAYA_SimpleRefresh} CONST LAYA_SIMPLEREFRESH = (LAYERS_DUMMY+39) /* make it a simple refresh
+                                              * layer */
+NATIVE {LAYA_SmartRefresh}  CONST LAYA_SMARTREFRESH  = (LAYERS_DUMMY+40) /* smart refresh layer
+                                              * (default TRUE) */
+NATIVE {LAYA_Hidden}        CONST LAYA_HIDDEN        = (LAYERS_DUMMY+41) /* make it invisible */
+NATIVE {LAYA_Backdrop}      CONST LAYA_BACKDROP      = (LAYERS_DUMMY+42) /* request backdrop layer */
+NATIVE {LAYA_Flags}         CONST LAYA_FLAGS         = (LAYERS_DUMMY+43) /* layer flags */
+NATIVE {LAYA_BackFillHook}  CONST LAYA_BACKFILLHOOK  = (LAYERS_DUMMY+44) /* backfill hook for this layer */
+NATIVE {LAYA_Behind}        CONST LAYA_BEHIND        = (LAYERS_DUMMY+45) /* create behind layer
+                                              * (default FALSE) */
+NATIVE {LAYA_StayTop}       CONST LAYA_STAYTOP       = (LAYERS_DUMMY+46) /* create a window that stays
+                                              * on top of all other layers */
+
+/*
+ * The message a backfill hook receives
+ */
+NATIVE {BackFillMessage} OBJECT backfillmessage
+    {Layer}	layer	:PTR TO layer
+    {Bounds}	bounds	:rectangle
+    {OffsetX}	offsetx	:VALUE
+    {OffsetY}	offsety	:VALUE
+ENDOBJECT
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

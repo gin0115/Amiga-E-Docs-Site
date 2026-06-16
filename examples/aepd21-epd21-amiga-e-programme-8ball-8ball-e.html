@@ -1,0 +1,133 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>8Ball.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-aepd21.html">AEPD21</a> &rsaquo; 8Ball.e</div><h1>File: <code>8Ball.e</code></h1><p class="meta">107 lines · project <a href="../examples/pkg-aepd21.html"><code>AEPD21</code></a></p><p class="pathctx">AEPD21/EPD21/Amiga_E-Programme/8Ball/8Ball.e</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/diskfont.html">diskfont</a></li><li><a href="../modules/rastport.html">graphics/rastport</a></li><li><a href="../modules/text.html">graphics/text</a></li><li><a href="../modules/intuition.html">intuition/intuition</a></li></ul></div><h2>Source</h2><pre class="code">
+MODULE &#x27;intuition/intuition&#x27;
+MODULE &#x27;graphics/rastport&#x27;
+MODULE &#x27;graphics/text&#x27;
+MODULE &#x27;diskfont&#x27;
+
+PROC main()
+
+DEF fortune, class
+DEF eightwin:PTR TO window
+DEF arinf:PTR TO areainfo
+DEF artmpras:PTR TO tmpras
+DEF arcoords[60]:ARRAY
+DEF armem
+DEF myrast:PTR TO rastport
+DEF myitext:PTR TO intuitext
+DEF mytextattr:PTR TO textattr
+DEF myfont:PTR TO textfont
+
+  IF diskfontbase := OpenLibrary(&#x27;diskfont.library&#x27;,36)
+    mytextattr := [&#x27;times.font&#x27;,18,0,1]:textattr
+    myfont := OpenDiskFont(mytextattr)
+    CloseLibrary(diskfontbase)
+  ENDIF
+
+  Rnd(-VbeamPos())
+
+  IF eightwin := OpenW(0,0,200,210,
+                       (IDCMP_MOUSEBUTTONS OR IDCMP_CLOSEWINDOW),
+                       (WFLG_DRAGBAR OR WFLG_DEPTHGADGET OR
+                        WFLG_CLOSEGADGET OR WFLG_ACTIVATE),
+                       &#x27;Magic 8 Ball&#x27;,0,1,0)
+
+    fortune := [&#x27;Cannot predict now&#x27;,
+                &#x27;Better not tell you now&#x27;,
+                &#x27;Reply hazy try again&#x27;,
+                &#x27;Concentrate &amp; ask again&#x27;,
+                &#x27;Ask again later&#x27;,
+                &#x27;My sources say no&#x27;,
+                &#x27;Outlook not so good&#x27;,
+                &#x27;My reply is no&#x27;,
+                &#x27;Don&#x27;&#x27;t count on it&#x27;,
+                &#x27;Very doubtful&#x27;,
+                &#x27;No&#x27;,
+                &#x27;It is certain&#x27;,
+                &#x27;Signs point to yes&#x27;,
+                &#x27;Most likely&#x27;,
+                &#x27;It is decidedly so&#x27;,
+                &#x27;Outlook good&#x27;,
+                &#x27;Yes, definitely&#x27;,
+                &#x27;As I see it, yes&#x27;,
+                &#x27;You may rely on it&#x27;,
+                &#x27;Yes&#x27;]
+
+    arinf := New(SIZEOF areainfo)
+    artmpras := New(SIZEOF tmpras)
+    myrast := stdrast
+
+    IF armem := AllocRaster(eightwin.width, eightwin.height)
+
+      InitTmpRas(artmpras, armem, 5000)
+      InitArea(arinf, arcoords, 6)
+
+      myrast.tmpras := artmpras
+      myrast.areainfo := arinf
+
+      SetAPen(stdrast,1)
+      SetBPen(stdrast,0)
+      /*SetOPen(stdrast,4)*/
+      /*myrast.aolpen := 7    Neither of these seem to work */
+      AreaMove(stdrast,100,100)
+      AreaEllipse(stdrast,100,110,92,92)
+      AreaEnd(stdrast)
+
+      IF myfont&lt;&gt;0 THEN SetFont(stdrast,myfont)
+      Colour(7,1)
+      myitext := [7,1,RP_JAM2,NIL,103,mytextattr,NIL,0]:intuitext
+
+      WHILE (class := WaitIMessage(eightwin)) &lt;&gt; IDCMP_CLOSEWINDOW
+
+        IF (class=IDCMP_MOUSEBUTTONS) AND (MsgCode()=SELECTUP)
+          /*TextF(46,108,&#x27;\s&#x27;,ListItem(fortune,(Rnd(8))) )*/
+          myitext.itext := ListItem(fortune,(Rnd(20)))
+          myitext.leftedge := 100-(IntuiTextLength(myitext)/2)
+          PrintIText(myrast, myitext, 0, 0)
+          Delay(75)
+          Box(9,94,190,120,1)
+        ENDIF
+
+      ENDWHILE
+
+      FreeRaster(armem, eightwin.width, eightwin.height)
+
+    ELSE
+      TextF(70,100,&#x27;No mem for circle drawing!&#x27;)
+      Delay(75)
+
+    ENDIF
+
+    IF myfont THEN CloseFont(myfont)
+    CloseW(eightwin)
+
+  ENDIF
+
+  CleanUp(0)
+ENDPROC
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

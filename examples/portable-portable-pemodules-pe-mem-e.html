@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Mem.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-portable.html">PortablE</a> &rsaquo; Mem.e</div><h1>File: <code>Mem.e</code></h1><p class="meta">91 lines · project <a href="../examples/pkg-portable.html"><code>PortablE</code></a></p><p class="pathctx">PortablE/PortablE/PEmodules/PE/Mem.e</p><p class="prose">PE/Mem.e Implements New()/etc using any allocator, adding auto-deallocation upon program exit.</p><h2>Source</h2><pre class="code">/* PE/Mem.e
+   Implements New()/etc using any allocator, adding auto-deallocation upon program exit.
+*/
+OPT NATIVE, POINTER, INLINE, PREPROCESS
+MODULE &#x27;target/PE/base&#x27;, &#x27;PE/Mem_prototypes&#x27;
+
+PRIVATE
+OBJECT memNode
+	next:PTR TO memNode	-&gt;circular
+	prev:PTR TO memNode
+ENDOBJECT
+
+CONST ALIGN_SIZE    = SIZEOF VALUE	-&gt;must be a power of 2, and &gt;= 4
+CONST ALIGN_SIZE_M1 = ALIGN_SIZE - 1
+#define AlignRoundUp(mem) ((mem) + ALIGN_SIZE_M1 AND NOT ALIGN_SIZE_M1)	-&gt;rounded up to a multiple of SIZEOF VALUE, so it is VALUE aligned
+
+#define SIZEOF_memNode AlignRoundUp(SIZEOF memNode)	-&gt;memNode header must be rounded up (if it isn&#x27;t already), so that the memory after it stays VALUE aligned
+
+DEF memHead:PTR TO memNode, memTail:PTR TO memNode, memSem:SEMAPHORE
+PUBLIC
+
+PROC new()
+	-&gt;a dummy allocation so that never have to deal with head or tail being NIL (nor removal of tail node)
+	memHead := baseNew(SIZEOF_memNode) ; IF memHead = NIL THEN Raise(&quot;MEM&quot;)
+	memHead.next := memHead
+	memHead.prev := memHead
+	memTail := memHead
+	
+	memSem := baseNewSemaphore()
+ENDPROC
+
+PROC end()
+	DEF node:PTR TO memNode, next:PTR TO memNode
+	
+	-&gt;auto-deallocate anything remaining in the list
+	next := memHead
+	REPEAT
+		node := next
+		next := node.next
+		
+		baseDispose(node)
+	UNTIL next = memHead
+	memHead := NIL
+	memTail := NIL
+	
+	memSem := baseDisposeSemaphore(memSem)
+ENDPROC
+
+
+PROC NewR(size, noClear=FALSE:BOOL) RETURNS mem:ARRAY REPLACEMENT
+	mem := New(size, noClear)
+	IF mem = NIL THEN Raise(&quot;MEM&quot;)
+ENDPROC
+
+PROC New(size, noClear=FALSE:BOOL) RETURNS mem:ARRAY REPLACEMENT
+	DEF node:PTR TO memNode
+	
+	IF node := baseNew(size + SIZEOF_memNode, noClear)
+		-&gt;add mem to head of linked list
+		baseSemLock(memSem)
+		node.prev := memTail
+		node.next := memHead
+		memTail.next := node
+		memHead.prev := node
+		memHead := node
+		baseSemUnlock(memSem)
+		
+		-&gt;return mem without node header
+		mem := node + SIZEOF_memNode
+	ENDIF
+ENDPROC
+
+PROC Dispose(mem:ARRAY) REPLACEMENT
+	DEF node:PTR TO memNode
+	
+	IF mem
+		-&gt;retrieve node
+		node := mem - SIZEOF_memNode
+		
+		-&gt;remove mem from linked list
+		baseSemLock(memSem)
+		node.next.prev := node.prev
+		node.prev.next := node.next
+		IF memHead = node THEN memHead := node.next
+		baseSemUnlock(memSem)
+		
+		-&gt;finally perform deallocation
+		baseDispose(node)
+	ENDIF
+ENDPROC NILA
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

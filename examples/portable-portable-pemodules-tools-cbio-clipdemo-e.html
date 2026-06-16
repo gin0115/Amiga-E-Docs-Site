@@ -1,0 +1,240 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>cbio_clipdemo.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-portable.html">PortablE</a> &rsaquo; cbio_clipdemo.e</div><h1>File: <code>cbio_clipdemo.e</code></h1><p class="meta">214 lines · project <a href="../examples/pkg-portable.html"><code>PortablE</code></a></p><p class="pathctx">PortablE/PortablE/PEmodules/tools/cbio_clipdemo.e</p><p class="prose">Clipdemo.e Demonstrate use of <a href="../modules/clipboard.html">clipboard</a> I/O. Uses general functions provided in the module &#x27;<a href="../modules/cbio.html">cbio</a>&#x27;.</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/clipboard.html">devices/clipboard</a></li><li><a href="../modules/exec.html">exec</a></li></ul></div><h2>Source</h2><pre class="code">/* Clipdemo.e
+	
+	Demonstrate use of clipboard I/O.  Uses general functions provided in the
+	module &#x27;cbio&#x27;.
+*/
+OPT POINTER
+MODULE &#x27;*cbio&#x27;
+MODULE &#x27;exec&#x27;
+MODULE &#x27;devices/clipboard&#x27;, &#x27;dos/dos&#x27;, &#x27;exec/ports&#x27;, &#x27;exec/io&#x27;, &#x27;amigalib/ports&#x27;, &#x27;other/split&#x27;
+
+PRIVATE
+ENUM ERR_NONE=0, ERR_ARGS, ERR_PORT
+ENUM FORGETIT, READIT, WRITEIT, POSTIT
+
+PROC ior2io(ior:PTR TO ioclipreq) IS ior !!PTR!!PTR TO io
+PUBLIC
+
+
+PROC main()
+	DEF todo, string:ARRAY OF CHAR, arglist:LIST
+	
+	todo := FORGETIT
+	-&gt;Very simple code to parse for arguments - will suffice for the sake of
+	-&gt;this example
+	-&gt;E-Note: use argSplit() to get arguments
+	IF (arglist := argSplit())=NILL THEN Raise(ERR_ARGS)
+	IF ListLen(arglist) &gt; 0
+		IF StrCmp(arglist[0]!!ARRAY OF CHAR, &#x27;-r&#x27;)
+			todo := READIT
+		ELSE IF StrCmp(arglist[0]!!ARRAY OF CHAR, &#x27;-w&#x27;)
+			todo := WRITEIT
+		ELSE IF StrCmp(arglist[0]!!ARRAY OF CHAR, &#x27;-p&#x27;)
+			todo := POSTIT
+		ENDIF
+		
+		string := NILA
+		IF ListLen(arglist) &gt; 1 THEN string := arglist[1] !!ARRAY OF CHAR
+	ENDIF
+	
+	SELECT todo
+	CASE READIT
+		readClip()
+	CASE POSTIT
+		postClip(string)
+	CASE WRITEIT
+		writeClip(string)
+	DEFAULT
+		Print(&#x27;\n&#x27;+
+&#x27;Possible switches are:\n\n&#x27;+
+&#x27;-r            Read, and output contents of clipboard.\n\n&#x27;+
+&#x27;-w [string]   Write string to clipboard.\n\n&#x27;+
+&#x27;-p [string]   Write string to clipboard using the clipboard POST mechanism.\n\n&#x27;+
+&#x27;              The Post can be satisfied by reading data from\n&#x27;+
+&#x27;              the clipboard.  Note that the message may never\n&#x27;+
+&#x27;              be received if some other application posts, or\n&#x27;)
+		Print(&#x27;&#x27;+
+&#x27;              performs an immediate write to the clipboard.\n\n&#x27;+
+&#x27;              To run this test you must run two copies of this example.\n&#x27;+
+&#x27;              Use the -p switch with one to post data, and the -r switch\n&#x27;+
+&#x27;              with another to read the data.\n\n&#x27;+
+&#x27;              The process can be stopped by using the BREAK command,\n&#x27;+
+&#x27;              in which case this example checks the CLIP write ID\n&#x27;+
+&#x27;              to determine if it should write to the clipboard before\n&#x27;+
+&#x27;              exiting.\n\n&#x27;)
+	ENDSELECT
+FINALLY
+	SELECT exception
+	CASE ERR_ARGS;  Print(&#x27;Error: could not split arguments\n&#x27;)
+	ENDSELECT
+ENDPROC
+
+
+/*	Read, and output FTXT in the clipboard.
+*/
+PROC readClip()
+	DEF ior:PTR TO ioclipreq, buf:PTR TO cbbuf
+	
+	-&gt;Open clipboard.device unit 0
+	ior := cbOpen(0)
+	-&gt;Look for FTXT in clipboard
+	IF cbQueryFTXT(ior)
+		-&gt;Obtain a copy of the contents of each CHRS chunk
+		WHILE buf := cbReadCHRS(ior)
+			-&gt;Process data
+			Print(&#x27;\s\n&#x27;, buf.mem)
+			-&gt;Free buffer allocated by cbReadCHRS()
+			cbFreeBuf(buf)
+		ENDWHILE
+		
+		-&gt;The next call is not really needed if you are sure you read to the end of
+		-&gt;the clip.
+		cbReadDone(ior)
+	ELSE
+		Print(&#x27;No FTXT in clipboard\n&#x27;)
+	ENDIF
+FINALLY
+	IF ior THEN cbClose(ior)
+	SELECT exception
+	CASE &quot;CBOP&quot;;  Print(&#x27;Error opening clipboard unit 0\n&#x27;)
+	CASE &quot;CBRD&quot;;  Print(&#x27;Error reading from clipboard\n&#x27;)
+	ENDSELECT
+ENDPROC
+
+
+/*	Write a string to the clipboard
+*/
+PROC writeClip(string:ARRAY OF CHAR)
+	DEF ior:PTR TO ioclipreq
+	
+	IF string = NILA
+		Print(&#x27;No string argument given\n&#x27;)
+		RETURN
+	ENDIF
+	
+	-&gt;Open clipboard.device unit 0
+	ior := cbOpen(0)
+	cbWriteFTXT(ior, string)
+FINALLY
+	IF ior THEN cbClose(ior)
+	SELECT exception
+	CASE &quot;CBWR&quot;;  Print(&#x27;Error writing to clipboard: error = \d\n&#x27;, ior.error)
+	CASE &quot;CBOP&quot;;  Print(&#x27;Error opening clipboard.device\n&#x27;)
+	ENDSELECT
+ENDPROC
+
+
+/*	Write a string to the clipboard using the POST mechanism
+	
+	The POST mechanism can be used by applications which want to defer writing
+	text to the clipboard until another application needs it (by attempting to
+	read it via CMD_READ).  However note that you still need to keep a copy of
+	the data until you receive a SatisfyMsg from the clipboard.device, or your
+	program exits.
+	
+	In most cases it is easier to write the data immediately.
+	
+	If your program receives the SatisfyMsg from the clipboard.device, you MUST
+	write some data.  This is also how you reply to the message.
+	
+	If your program wants to exit before it has received the satisfymsg, you
+	must check the clipid field at the time of the post against the current
+	post ID which is obtained by sending the CBD_CURRENTWRITEID command.
+	
+	If the value in clipid (returned by CBD_CURRENTWRITEID) is greater than
+	your post ID, it means that some other application has performed a post, or
+	immediate write after your post, and that you&#x27;re application will never
+	receive the satisfymsg.
+	
+	If the value in clipid (returned by CBD_CURRENTWRITEID) is equal to your
+	post ID, then you must write your data, and send CMD_UPDATE before exiting.
+*/
+PROC postClip(string:ARRAY OF CHAR)
+	DEF satisfy:PTR TO mp, sm:PTR TO satisfymsg, ior:PTR TO ioclipreq, mustwrite, postID
+	
+	IF string = NILA
+		Print(&#x27;No string argument given\n&#x27;)
+		RETURN
+	ENDIF
+	
+	IF (satisfy := createPort(NILA, 0))=NIL THEN Raise(ERR_PORT)
+	-&gt;Open clipboard.device unit 0
+	ior := cbOpen(0)
+	mustwrite := FALSE
+	
+	-&gt;Notify clipboard we have data
+	ior.data    := satisfy !!PTR!!ARRAY!!ARRAY OF CHAR
+	ior.clipid  := 0
+	ior.command := CBD_POST
+	DoIO(ior2io(ior))
+	
+	postID := ior.clipid
+	
+	Print(&#x27;\nClipID = \d\n&#x27;, postID)
+	
+	-&gt;Wait for CTRL-C break, or message from clipboard
+	Wait(SIGBREAKF_CTRL_C OR (1 SHL satisfy.sigbit))
+	
+	-&gt;See if we got a message, or a break
+	Print(&#x27;Woke up\n&#x27;)
+	
+	IF sm := GetMsg(satisfy) !!PTR!!PTR TO satisfymsg
+		Print(&#x27;Got a message from the clipboard\n\n&#x27;)
+		
+		-&gt;We got a message - we MUST write some data
+		mustwrite := TRUE
+		-&gt;E-Note: I think we should reply to the msg...
+		ReplyMsg(sm.msg)
+	ELSE
+		-&gt;Determine if we must write before exiting by checking to see if our
+		-&gt;POST is still valid
+		ior.command := CBD_CURRENTWRITEID
+		DoIO(ior2io(ior))
+		
+		Print(&#x27;CURRENTWRITEID = \d\n&#x27;, ior.clipid)
+		
+		IF postID &gt;= ior.clipid THEN mustwrite := TRUE
+	ENDIF
+	
+	-&gt;Write the string of text
+	IF mustwrite
+		cbWriteFTXT(ior, string)
+	ELSE
+		Print(&#x27;No need to write to clipboard\n&#x27;)
+	ENDIF
+FINALLY
+	IF ior THEN cbClose(ior)
+	IF satisfy THEN deletePort(satisfy)
+	SELECT exception
+	CASE ERR_PORT;  Print(&#x27;Error creating message port\n&#x27;)
+	CASE &quot;CBOP&quot;;    Print(&#x27;Error opening clipboard.device\n&#x27;)
+	CASE &quot;CBWR&quot;;    Print(&#x27;Error writing to clipboard\n&#x27;)
+	ENDSELECT
+ENDPROC
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

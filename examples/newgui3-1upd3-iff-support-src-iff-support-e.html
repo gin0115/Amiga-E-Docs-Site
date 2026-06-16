@@ -1,0 +1,199 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>iff_support.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-newgui3-1upd3.html">NewGUI3_1upd3</a> &rsaquo; iff_support.e</div><h1>File: <code>iff_support.e</code></h1><p class="meta">173 lines · project <a href="../examples/pkg-newgui3-1upd3.html"><code>NewGUI3_1upd3</code></a></p><p class="pathctx">NewGUI3_1upd3/IFF_Support/Src/iff_support.e</p><p class="prose">* Loading/Saveing Files using the <a href="../modules/iffparse.html">iffparse</a>.<a href="../modules/library.html">library</a> * -================================================- * *</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/dos.html">dos/dos</a></li><li><a href="../modules/iffparse.html">iffparse</a></li><li><a href="../modules/iffparse.html">libraries/iffparse</a></li></ul></div><h2>Source</h2><pre class="code">/* 
+ *  Loading/Saveing Files using the iffparse.library
+ * -================================================-
+ * 
+ * 
+ */
+
+OPT     OSVERSION = 37
+OPT     MODULE
+
+MODULE  &#x27;dos/dos&#x27;
+MODULE  &#x27;iffparse&#x27;
+MODULE  &#x27;libraries/iffparse&#x27;
+
+/*
+ENUM    ERR_NONE=0,
+        ERR_MEM=1
+
+DEF     file=NIL,
+        mode=0
+
+EXPORT PROC main()     HANDLE
+ DEF    buf[80]:STRING,
+        id=0,
+        size=0,
+        type=0,
+        finish=FALSE,
+        node=NIL,
+        error=FALSE,
+        got=0
+  IF (file:=iff_init())
+   mode:=iff_open(file,&#x27;RAM:Demo.IFF&#x27;,NEWFILE,&quot;DEMO&quot;)
+
+    StrCopy(buf,&#x27;Demo-String1&#x27;)
+     iff_write(file,&quot;STR1&quot;,buf,StrLen(buf)+1)
+    StrCopy(buf,&#x27;String2 of the DEMO&#x27;)
+     iff_write(file,&quot;STR2&quot;,buf,StrLen(buf)+1)
+
+   iff_close(file,mode)
+
+-&gt;
+   mode:=iff_open(file,&#x27;RAM:Demo.IFF&#x27;,OLDFILE)
+
+    WHILE finish=FALSE
+     finish,node:=iff_step(file)
+      IF (node&lt;&gt;NIL)
+       id,size,type:=iff_info(node)
+
+        WriteF(&#x27;ID = $\h Type = $\h, Size = \d\n&#x27;,id,type,size)
+
+         IF (id&lt;&gt;ID_FORM)
+          error,got:=iff_read(file,buf,size)
+
+           WriteF(&#x27;\d Bytes Readed - Data = &quot;\s&quot;\n&#x27;,got,buf)
+         ENDIF
+      ENDIF
+    ENDWHILE
+
+   iff_close(file,mode)
+  ELSE
+   Raise(ERR_MEM)
+  ENDIF
+
+EXCEPT DO
+IF (file&lt;&gt;NIL) THEN iff_close(file,mode)
+ iff_exit(file)
+  IF exception
+   SELECT       exception
+        CASE    ERR_MEM
+                WriteF(&#x27;Out of memory!\n&#x27;)
+   ENDSELECT
+  ENDIF
+ CleanUp(exception)
+ENDPROC
+
+*/
+
+EXPORT PROC iff_init()
+ DEF    iffhandle=NIL:PTR TO iffhandle
+  IF (iffparsebase:=OpenLibrary(&#x27;iffparse.library&#x27;,37))
+   iffhandle:=AllocIFF()
+  ELSE
+   RETURN FALSE
+  ENDIF
+ENDPROC iffhandle
+
+EXPORT PROC iff_exit(iffhandle:PTR TO iffhandle)
+  IF (iffhandle&lt;&gt;NIL) THEN FreeIFF(iffhandle)
+ IF (iffparsebase&lt;&gt;NIL) THEN CloseLibrary(iffparsebase)
+iffhandle:=NIL
+ENDPROC
+
+EXPORT PROC iff_open(iffhandle:PTR TO iffhandle,filename,mode,id=0)
+ IF (iffhandle&lt;&gt;NIL)
+  iffhandle.stream:=Open(filename,mode)
+   IF (iffhandle.stream&lt;&gt;NIL)
+    InitIFFasDOS(iffhandle)
+     IF (mode=NEWFILE)
+      OpenIFF(iffhandle,IFFF_WRITE)
+       PushChunk(iffhandle,id,ID_FORM,IFFSIZE_UNKNOWN)
+     ELSE
+      OpenIFF(iffhandle,IFFF_READ)
+     ENDIF
+   ELSE
+    RETURN NIL
+   ENDIF
+ ENDIF
+ENDPROC mode
+
+EXPORT PROC iff_close(iffhandle:PTR TO iffhandle,mode)
+ IF (iffhandle&lt;&gt;NIL)
+  IF (mode=NEWFILE)
+   PopChunk(iffhandle)
+  ENDIF
+    CloseIFF(iffhandle)
+   IF (iffhandle.stream&lt;&gt;NIL) THEN Close(iffhandle.stream)
+  iffhandle.stream:=NIL
+ ENDIF
+ENDPROC
+
+EXPORT PROC iff_write(iffhandle,id,data,size)
+ IF (iffhandle&lt;&gt;NIL)
+  PushChunk(iffhandle,0,id,IFFSIZE_UNKNOWN)
+   WriteChunkBytes(iffhandle,data,size)
+  PopChunk(iffhandle)
+ ENDIF
+ENDPROC
+
+EXPORT PROC iff_beginchunk(iffhandle,id)
+ IF (iffhandle&lt;&gt;NIL)
+  PushChunk(iffhandle,0,id,IFFSIZE_UNKNOWN)
+ ENDIF
+ENDPROC
+
+EXPORT PROC iff_writeraw(iffhandle,data,size)
+ IF (iffhandle&lt;&gt;NIL)
+  WriteChunkBytes(iffhandle,data,size)
+ ENDIF 
+ENDPROC
+
+EXPORT PROC iff_endchunk(iffhandle)
+ IF (iffhandle&lt;&gt;NIL)
+  PopChunk(iffhandle)
+ ENDIF
+ENDPROC
+
+EXPORT PROC iff_read(iffhandle,buf,size)
+ DEF    error=FALSE
+  IF (iffhandle&lt;&gt;NIL) AND (size&gt;0)
+   error:=ReadChunkBytes(iffhandle,buf,size)
+  ELSE
+   error:=TRUE
+  ENDIF
+ENDPROC error,size
+
+EXPORT PROC iff_info(cn:PTR TO contextnode)    IS      cn.id, cn.size, cn.type
+
+EXPORT PROC iff_step(iffhandle:PTR TO iffhandle)
+ DEF    error=0,
+        fin=FALSE,
+        node=NIL
+  IF (iffhandle&lt;&gt;NIL)
+   error:=ParseIFF(iffhandle,IFFPARSE_RAWSTEP)
+    IF (error=IFFERR_EOC)       -&gt; -2
+     fin,node:=iff_step(iffhandle)
+    ELSEIF error
+     fin:=TRUE
+    ELSE
+     node:=CurrentChunk(iffhandle)
+    ENDIF
+  ENDIF
+ENDPROC fin, node
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

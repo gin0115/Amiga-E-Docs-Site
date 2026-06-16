@@ -1,0 +1,144 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>macros.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-ecx220.html">ecx220</a> &rsaquo; macros.e</div><h1>File: <code>macros.e</code></h1><p class="meta">118 lines · project <a href="../examples/pkg-ecx220.html"><code>ecx220</code></a></p><p class="pathctx">ecx220/ecx220/source/fract/cosmic/macros.e</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/lists.html">exec/lists</a></li></ul></div><h2>Source</h2><pre class="code">OPT MODULE,PREPROCESS
+OPT EXPORT
+
+MODULE &#x27;exec/lists&#x27;,&#x27;exec/nodes&#x27;,&#x27;exec/tasks&#x27;
+
+#define New2D(w,h)    NewR((w)*(h))
+#define New3D(w,h,d)  NewR((w)*(h)*(d))
+
+#define ASTR(bstr)    (Shl(bstr,2)+1)
+#define APTR(bptr)    Shl(bptr,2)
+#define BPTR(aptr)    Shr(aptr,2)
+
+#define TagInit(varname)  varname:=[
+#define Tag(tag,data)     tag,data,
+#define TagDone           TAG_DONE]
+
+#define TagInitNEW(varname) varname:=NEW [
+
+
+#define ColorRange(start,numcols) INT numcols,start
+#define Color(r,g,b)              CHAR r,0,0,0,g,0,0,0,b,0,0,0
+#define ColorEnd                  LONG 0
+
+#define ADDR(varname)   {varname}
+
+#define Mask(sig)       Shl(1,sig)
+
+#define DupStr(str)     StrCopy(String(StrLen(str)),str)
+#define DupStrE(str)    StrCopy(String(EstrLen(str)),str)
+
+#define ExceptionReport(pname)  exceptionReport(pname)
+
+PROC exceptionReport(pname)
+DEF str[5]:ARRAY OF CHAR,str2,x,fmt
+  IF exception
+    PutLong(str,exception)
+    str[4]:=0
+    str2:=str
+    WHILE str2[]=0 DO str2++
+
+    FOR x:=0 TO 3
+      IF (str[x]&lt;&gt;0) AND ((str[x]&lt;32) OR (str[x]&gt;127)) THEN str2:=-1
+    ENDFOR
+
+    IF exception&lt;1000
+      PrintF(&#x27;\s: Exception #\d recieved!\n&#x27;,pname,exception)
+    ELSEIF str2=-1
+      PrintF(&#x27;\s: Exception $\z\h[8]\n recieved!\n&#x27;,pname,exception)
+    ELSE
+      PrintF(&#x27;\s: Exception &quot;\s&quot; recieved!\n&#x27;,pname,str2)
+    ENDIF
+  ENDIF
+ENDPROC
+
+#define StartArrayStruct(var)  var:=[
+#define Array(list,struct)     list:struct,
+#define EndArray               NIL]
+
+#define NewLine                PutStr(&#x27;\n&#x27;)
+
+#define PrintBool(exp)         IF (exp) THEN &#x27;TRUE&#x27; ELSE &#x27;FALSE&#x27;
+#define IsNotNull(exp)         IF (exp) THEN (exp) ELSE &#x27;NULL POINTER&#x27;
+
+-&gt;PROC initHeader(h)
+-&gt;  MOVE.L  h,A0
+-&gt;  MOVE.L  A0,8(A0)
+-&gt;  ADDQ.L  #4,A0
+-&gt;  CLR.L   (A0)
+-&gt;  MOVE.L  A0,-(A0)
+-&gt;ENDPROC
+
+#define ForwardList(list,num) forward(list,num)
+
+PROC forward(list:PTR TO lh,num)
+DEF n:REG PTR TO ln
+  n:=list.head
+  WHILE num&gt;0
+-&gt;    PrintF(&#x27;name=&quot;\s&quot;\n&#x27;,IF n THEN IF n.name THEN n.name; ELSE &#x27;NULL POINTER&#x27;)
+    n:=n.succ
+    EXIT n=NIL
+    num--
+  ENDWHILE
+ENDPROC n
+
+#define Long2Str(l)   long2str(l,[0,0])
+
+PROC long2str(l,tmp)
+  PutLong(tmp,l)
+ENDPROC tmp
+
+PROC getProgramName()
+DEF b,c,d,thistask:PTR TO tc
+  IF wbmessage
+    thistask:=FindTask(NIL)
+    d:=DupStr(thistask.ln.name)
+  ELSE
+    GetProgramName(b:=String(1024),1024)
+    c:=FilePart(b)
+    d:=DupStr(c)
+    Dispose(b)
+  ENDIF
+ENDPROC d
+
+#define WaitBreak               waitBreak()
+#define WaitBreakD              waitBreak(&quot;D&quot;,$2000)
+#define WaitBreakE              waitBreak(&quot;E&quot;,$4000)
+#define WaitBreakF              waitBreak(&quot;F&quot;,$8000)
+
+PROC waitBreak(c=&quot;C&quot;,mask=$1000)
+  PrintF(&#x27;&lt;CTRL-\c&gt;\n&#x27;,c)
+  Wait(mask)
+ENDPROC
+
+-&gt;----------------------------------------------------------------------------&lt;-
+
+CHAR &#x27;macros.m 3.2 (21/4/96)&#x27;,0
+CHAR &#x27;© Chris Sumner 1996&#x27;,0
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

@@ -1,0 +1,315 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>AP-ProNET-C.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-ap-examples.html">AP-examples</a> &rsaquo; AP-ProNET-C.e</div><h1>File: <code>AP-ProNET-C.e</code></h1><p class="meta">289 lines · project <a href="../examples/pkg-ap-examples.html"><code>AP-examples</code></a></p><p class="pathctx">AP-examples/AP-examples/AP-ProNET-C.e</p><p class="prose"><a href="../modules/example.html">Example</a> of using AWNPipe to create a <a href="../modules/reaction.html">reaction</a> gui in E, by Dave Norris</p><h2>Source</h2><pre class="code">
+/* Example of using AWNPipe to create a reaction gui in E, by Dave Norris */
+
+-&gt;MODULE none needed
+
+DEF pipefile,small,instring[10]:LIST,mainpage,clientpage,close,startinfo,pipereaderror,
+    in0[100]:STRING,in1[100]:STRING,in2[100]:STRING,in3[100]:STRING,in4[100]:STRING,
+    in5[100]:STRING,in6[100]:STRING,in7[100]:STRING,in8[100]:STRING,in9[100]:STRING,
+    str_spaces[10]:ARRAY OF INT,unitgadstr[200]:STRING,tbuffer[200]:STRING
+
+     /*************  startup page  *************/
+
+DEF ss0[80]:STRING,ss1[80]:STRING,ss2[80]:STRING,ss3[80]:STRING,ss4[80]:STRING,ss5[80]:STRING,
+    messagestr[9]:LIST,mtstr,startuplist
+
+     /*************  pipe strings  *************/
+
+DEF layout,layoutv,layoutbj,labelunit,space,le
+
+CONST DETATCH=0,ATTACH=1
+
+PROC main()
+  close:=FALSE   -&gt; set to false in DEF&#x27;s
+  setdefaults()
+  buildgui()
+  WHILE close=FALSE
+    getline()
+-&gt;    PrintF(&#x27;getline() got=\s.\s.\s.\s.\s\n&#x27;,in0,in1,in2,in3,in4)
+    IF StrCmp(&#x27;iconify&#x27;,in0)
+      IF small=FALSE
+        topipe(&#x27;id 0 s 32\n&#x27;)  -&gt; iconify
+        small:=TRUE
+      ELSE
+        topipe(&#x27;id 0 s 64\n&#x27;)  -&gt; uniconify
+        small:=FALSE
+      ENDIF
+    ELSEIF StrCmp(&#x27;close&#x27;,in0)
+      close:=TRUE
+    ENDIF
+    topipe(&#x27;con\n&#x27;)       -&gt; tell pipe there&#x27;s no more modify commands, we want event
+  ENDWHILE
+  Close(pipefile)
+  IF pipereaderror THEN PrintF(&#x27;\n Sorry, had to close down the gui,&#x27;+
+                               &#x27;\n received a read error from the pipe.\n&#x27;)
+ENDPROC
+
+PROC startupmessage()            -&gt; put intro message on startup page
+  DEF x
+  attachedlist(startuplist,mainpage,DETATCH)
+  FOR x:=0 TO 7
+    addnodebuffer(startuplist,messagestr[x])
+  ENDFOR
+  attachedlist(startuplist,mainpage,ATTACH)
+ENDPROC
+
+PROC addnodebuffer(id,text)                           -&gt; add node to list
+  StringF(tbuffer,&#x27;id \d addnode gt=&quot;\s&quot;\n&#x27;,id,text)
+ENDPROC topipe(tbuffer)                               -&gt; returns gadget id
+
+PROC attachedlist(list,page,switch)
+  StringF(tbuffer,&#x27;id \d page \d list=\d\n&#x27;,list,page,switch)
+  topipe(tbuffer)                       -&gt; detach/attach list
+ENDPROC
+
+
+      /*********************************** GUI **********************************/
+
+
+PROC buildgui()
+DEF layoutmainpage[30]:STRING,layoutclientpage[30]:STRING
+
+  pipefile:=Open(&#x27;awnpipe:ProNET-C/xc&#x27;,OLDFILE) -&gt;wcon:300//200/200/PipeEvents
+  topipe(&#x27;&quot; ProNET-Control 1.0&quot; m defg ig it=&quot;ProNET-C&quot; ii=&quot;ProNET-Control&quot; a cs\n&#x27;)
+  mainpage:=topipe(&#x27;clicktab ctl &quot; Startup| Server| Client&quot;\n&#x27;)
+
+      /************************  Start page  *********************/
+
+  StringF(layoutmainpage,&#x27;layout b 0 so si page \d\n&#x27;,mainpage) -&gt; for tabs
+
+  topipe(layoutmainpage)
+    topipe(layoutv)
+      startuplist:=topipe(&#x27;listbrowser ro minh=120\n&#x27;) -&gt;minw 500 minh=140
+      topipe(&#x27;browsernode gt &quot; &quot;\n&#x27;)            -&gt; put in text after window opens
+      topipe(space)
+      topipe(layout)
+        topipe(space)
+        topipe(&#x27;layout gt=&quot; Startup Prefs &quot; b 3 so si v\n&#x27;)
+          topipe(space)
+          topipe(layout)
+            topipe(space)
+            topipe(&#x27;chooser pu cl &quot; Open Window | Iconfiy &quot; s=0 weiw=0\n&#x27;)
+            topipe(&#x27;button gt=&quot; Snapshot Window &quot; weih=0  weiw=0\n&#x27;)
+            topipe(space)
+          topipe(le)
+          topipe(space)
+        topipe(le)
+        topipe(space)
+      topipe(le)
+      topipe(space)
+    topipe(le)
+  topipe(le)
+
+      /***********************  End Start page *******************/
+
+
+      /************************  Server  *********************/
+
+  topipe(layoutmainpage)
+    topipe(layoutv)
+      topipe(&#x27;listbrowser lbl &quot;  Click on a unit to activate it &quot; minh 70 st\n&#x27;) -&gt; minw 550-&gt;350
+      topipe(&#x27;browsernode gt &quot; .config file not yet loaded&quot;\n&#x27;)
+      topipe(&#x27;button gt=&quot; Load units from Devs:ProNET/.config &quot; weih 0 cj\n&#x27;)
+      topipe(&#x27;listbrowser lbl &quot;  Units activated &quot; ro minh=70 multi st\n&#x27;) -&gt; minw 550 weiw
+      topipe(&#x27;browsernode gt &quot; None&quot;\n&#x27;)
+      topipe(&#x27;button gt &quot; Stop ProNET-Server on all units &quot; weih 0 cj\n&#x27;) -&gt; weiw 1
+    topipe(le)
+  topipe(le)
+
+      /**********************  End Server  *********************/
+
+
+  StringF(tbuffer,&#x27;layout b 0 page \d\n&#x27;,mainpage)
+
+  topipe(tbuffer)
+    clientpage:=topipe(&#x27;clicktab ctl &quot; Mount| Page |  Talk &quot;\n&#x27;)
+  topipe(le)
+
+
+      /************************  Client  *********************/
+
+  StringF(layoutclientpage,&#x27;layout b 0 so si page \d\n&#x27;,clientpage)
+
+  topipe(layoutclientpage)
+    topipe(layoutv)
+      topipe(&#x27;listbrowser lbl &quot; Status | Local Name | Remote Name | Volume Name | Unique &quot; st v\n&#x27;) -&gt;minw 500 minh=140
+      topipe(&#x27;browsernode gt &quot;||||&quot;\n&#x27;)
+      StringF(tbuffer,&#x27;string gt=&quot;\s&quot; ro cj\n&#x27;,startinfo)
+      topipe(tbuffer)
+      topipe(&#x27;layout b 0 si so bj weih=0\n&#x27;)
+        topipe(&#x27;button gt &quot; Scan server &quot; weih=0\n&#x27;)
+        topipe(space)
+        topipe(labelunit)
+        topipe(unitgadstr)
+        topipe(space)
+        topipe(&#x27;label gt=&quot;Local Name:&quot;\n&#x27;)
+        topipe(&#x27;string cj minw=120 maxc=20 dis=1\n&#x27;)
+      topipe(le)
+    topipe(le)
+  topipe(le)
+
+     /***********************  End Client  ********************/
+
+
+      /************************  page  **************************/
+
+  topipe(layoutclientpage)
+    topipe(layoutv)
+      topipe(space)
+      topipe(&#x27;layout gt=&quot; Send message to server &quot; b 3 so si v\n&#x27;)
+        topipe(space)
+        topipe(layout)
+          topipe(space)
+          topipe(layoutv)
+            topipe(&#x27;label gt=&quot; Message:&quot;\n&#x27;)
+            topipe(&#x27;string lj minw=324 maxc=70\n&#x27;)
+          topipe(le)
+          topipe(space)
+        topipe(le)
+        topipe(space)
+        topipe(layoutbj)
+          topipe(space)
+          topipe(labelunit)
+          topipe(unitgadstr)
+          topipe(space)
+          topipe(&#x27;button gt &quot; Send message &quot; weih 0 weiw 0\n&#x27;)
+          topipe(space)
+        topipe(le)
+        topipe(space)
+      topipe(le)
+      topipe(space)
+    topipe(le)
+  topipe(le)
+
+     /***********************  End page  ************************/
+
+
+     /************************  talk  **************************/
+
+  topipe(layoutclientpage)
+    topipe(space)
+    topipe(layoutv)
+    topipe(space)
+    topipe(&#x27;layout gt=&quot; Chat with server &quot; b 3 so si v\n&#x27;)
+      topipe(space)
+      topipe(layoutbj)
+        topipe(space)
+        topipe(&#x27;button gt &quot; Start Pronet-talk on both machines &quot; cj weih=0 weiw=0\n&#x27;)
+        topipe(space)
+      topipe(le)
+      topipe(layoutbj)
+        topipe(space)
+        topipe(labelunit)
+        topipe(unitgadstr)
+        topipe(space)
+      topipe(le)
+      topipe(space)
+    topipe(le)
+    topipe(space)
+    topipe(le)
+    topipe(space)
+  topipe(le)
+
+
+     /***********************  End talk  ************************/
+
+
+  topipe(&#x27;open\n&#x27;)      -&gt; open the window
+  startupmessage()       -&gt; put text in startup listbrowser
+  topipe(&#x27;con\n&#x27;)       -&gt; start listening to events from the pipe
+ENDPROC
+
+     /********************************** End GUI ********************************/
+
+
+PROC setdefaults()    -&gt; ******* put here to unclutter main() *******
+
+  instring:=[in0,in1,in2,in3,in4,in5,in6,in7,in8,in9]:LONG
+  startinfo:=&#x27;Start the remote server before attempting to scan it&#x27;
+
+  mtstr:=&#x27; &#x27;
+
+  ss0:=&#x27;  Example of using AWNPipe in E,&#x27;
+  ss1:=&#x27;  to produce a reaction gui.&#x27;
+  ss2:=&#x27;  As you can see from this programs size,&#x27;
+  ss3:=&#x27;  using AWNPipe can make your program code smaller.&#x27;
+  ss4:=&#x27;  It also lets you write the gui code faster,&#x27;
+  ss5:=&#x27;  leaving you to concentrate on the main code.&#x27;
+
+  messagestr:=[ss0,ss1,mtstr,ss2,ss3,mtstr,ss4,ss5]:LONG
+
+  layout:=&#x27;layout b 0 so si\n&#x27;
+  layoutv:=&#x27;layout b 0 v so si\n&#x27;
+  layoutbj:=&#x27;layout b 0 so si bj\n&#x27;
+  labelunit:=&#x27;label gt=&quot;Unit:&quot;\n&#x27;
+  space:=&#x27;space\n&#x27;
+  le:=&#x27;le\n&#x27;
+
+  StringF(unitgadstr,&#x27;chooser pu cl &quot; 0 | 1 | 2 &quot; maxn=3 weiw=0\n&#x27;)
+
+ENDPROC
+
+PROC getline()     -&gt; loops until all data seperated by spaces is collected
+  DEF input[1024]:STRING
+  IF ReadStr(pipefile,input)&lt;&gt;-1     -&gt; returns -1 if error or EOF encounted
+-&gt;    PrintF(&#x27;incomming=\s\n&#x27;,input)
+    cutup_str(input)
+  ENDIF
+ENDPROC
+
+PROC cutup_str(input)
+  DEF space,x,gap
+  x:=0
+  WHILE (space:=InStr(input,&#x27; &#x27;))&lt;&gt;-1
+    StrCopy(instring[x],input,space)
+    MidStr(input,input,space+1)
+    gap:=StrLen(input)
+    input:=TrimStr(input)
+    INC x
+    str_spaces[x]:=gap-StrLen(input)
+  ENDWHILE
+  StrCopy(instring[x],input)
+ENDPROC
+
+PROC topipe(data)
+  DEF res,input[10]:STRING
+  Fputs(pipefile,data)             -&gt; used instead of VfPrintf()
+-&gt;  PrintF(&#x27;Data Sent=\s.&#x27;,data)
+  IF ReadStr(pipefile,input)&lt;&gt;-1     -&gt; returns -1 if error or EOF encounted
+-&gt;    PrintF(&#x27;Data comming back=\s.\n\n&#x27;,input)
+    IF StrCmp(input,&#x27;ok&#x27;,2)
+      IF StrLen(input)&gt;2 THEN res:=RightStr(input,input,(StrLen(input)-3))
+    ENDIF
+  ELSE
+-&gt;    PrintF(&#x27;Error or EOF from ReadStr(pipef,input)\n&#x27;)
+    pipereaderror:=TRUE
+    close:=TRUE
+  ENDIF
+ENDPROC Val(res)
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

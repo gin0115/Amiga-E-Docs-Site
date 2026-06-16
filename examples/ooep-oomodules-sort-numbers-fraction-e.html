@@ -1,0 +1,269 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>fraction.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-ooep.html">OOEP</a> &rsaquo; fraction.e</div><h1>File: <code>fraction.e</code></h1><p class="meta">243 lines · project <a href="../examples/pkg-ooep.html"><code>OOEP</code></a></p><p class="pathctx">OOEP/oomodules/sort/numbers/fraction.e</p><p class="prose">Things which are marked with &#x27;CHANGE&#x27; should be changed NOTE: this <a href="../modules/object.html">object</a> is basically based on <a href="../modules/integer.html">integer</a>, so why not inherit from it? In other words, it inherits technically, but not logically. So don&#x27;t let it inherit from <a href="../modules/integer.html">integer</a> but from <a href="../modules/number.html">number</a>? - make it possible for add(), multiply() etc. to take</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/numbers.html">oomodules/sort/numbers</a></li></ul></div><h2>Source</h2><pre class="code">/*
+
+Things which are marked with &#x27;CHANGE&#x27; should be changed
+
+
+NOTE: this object is basically based on integer, so why not inherit from it?
+      In other words, it inherits technically, but not logically. So don&#x27;t
+      let it inherit from integer but from number?
+
+      - make it possible for add(), multiply() etc. to take &#x27;Integer&#x27; as
+        argument, too?
+*/
+
+OPT MODULE
+OPT EXPORT
+
+MODULE &#x27;oomodules/sort/numbers&#x27;, &#x27;oomodules/sort/numbers/integer&#x27;
+
+
+OBJECT fraction OF number
+  upper:PTR TO integer
+  lower:PTR TO integer
+ENDOBJECT
+
+PROC name() OF fraction IS &#x27;Fraction&#x27;
+
+PROC init() OF fraction
+DEF up:PTR TO integer,lo:PTR TO integer
+
+  NEW up.new()
+  self.upper:=up
+  NEW lo.new()
+  self.lower:=lo
+ENDPROC
+
+PROC getUpper() OF fraction IS self.upper.get()
+PROC getLower() OF fraction IS self.lower.get()
+
+PROC setUpper(value) OF fraction IS self.upper.set(value)
+PROC setLower(value) OF fraction IS self.lower.set(value)
+
+/*
+ * negate the fraction just by nagating the Upper
+ */
+PROC negate() OF fraction
+  self.upper.negate()
+ENDPROC
+
+PROC add(what:PTR TO fraction) OF fraction
+DEF resultingUpper:PTR TO integer,
+    resultingLower:PTR TO integer,
+    result_a,result_b
+
+  NEW resultingUpper.new()
+  NEW resultingLower.new()
+
+  IF self.lower.cmp(what.lower)=0    -&gt; nenner sind gleich
+    self.setUpper(self.getUpper() + what.getUpper()) -&gt; CHANGE when integer.add() exists
+  ELSE -&gt; nenner sind unterschiedlich
+    resultingUpper.set( (self.getUpper() * what.getLower()) + (self.getLower() * what.getUpper()))  -&gt; zähler1 * nenner2 + nenner1 * zähler2
+    resultingLower.set( self.getLower() * what.getLower())  -&gt; nenner1 * nenner2
+
+    /* kürzen fehlt noch */
+
+    self.upper.set( resultingUpper.get() )
+    self.lower.set( resultingLower.get() )
+
+  ENDIF
+
+  END resultingUpper
+  END resultingLower
+
+ENDPROC
+
+PROC substract(what:PTR TO fraction) OF fraction
+/*
+
+pure lazyness:
+
+just negate the argument, then add it...
+*/
+  what.negate()
+  self.add(what)
+  what.negate()
+ENDPROC
+
+PROC multiply(what:PTR TO fraction) OF fraction
+DEF resultingUpper:PTR TO integer,
+    resultingLower:PTR TO integer
+
+  NEW resultingUpper.new()
+  NEW resultingLower.new()
+
+  resultingUpper.set( self.getUpper() * what.getUpper() ) /* CHANGE integer.mul */
+  resultingLower.set( self.getLower() * what.getLower() ) /* dto. */
+
+  /* kürzen fehlt */
+
+  self.upper.set( resultingUpper.get() )
+  self.lower.set( resultingLower.get() )
+
+  END resultingUpper
+  END resultingLower
+
+ENDPROC
+
+PROC divide(bywhat:PTR TO fraction) OF fraction
+DEF swapper:PTR TO integer
+
+  NEW swapper.new() -&gt; we need something to store
+
+  swapper.set( bywhat.getUpper() ) -&gt; store upper
+
+  bywhat.setUpper( bywhat.getLower() ) -&gt; set upper
+  bywhat.setLower( swapper.get() ) -&gt; set lower
+
+  self.multiply( bywhat ) -&gt; multiply
+
+  -&gt; now swap back
+
+  bywhat.setLower( bywhat.getUpper() )
+  bywhat.setUpper( swapper.get() )
+
+  END swapper
+ENDPROC
+
+PROC write() OF fraction
+DEF out
+
+  out := String(30) -&gt; think that&#x27;s enough
+
+  StringF(out, &#x27;\d/\d&#x27;, self.getUpper(), self.getLower())
+ENDPROC out
+
+PROC end() OF fraction
+DEF integer:PTR TO integer
+
+  integer := self.upper
+  END integer
+
+  integer := self.lower
+  END integer
+
+ENDPROC
+
+PROC select(optionlist,index) OF fraction
+/*
+
+  With select up to now two arguments are taken:
+
+  &quot;copy&quot; - takes a fraction as argument and gets its values. Take it as  a
+           simple copy.
+  &quot;set&quot;  - takes two numbers and uses them as Upper, Lower
+*/
+DEF item, fraction:PTR TO fraction
+
+  item := ListItem(optionlist, index)
+
+  SELECT item
+    CASE &quot;copy&quot;
+      INC index
+      fraction := ListItem(optionlist,index) -&gt; typed list
+
+      self.setUpper( fraction.getUpper() )
+      self.setLower( fraction.getLower() )
+    CASE &quot;set&quot;
+      INC index
+      item := ListItem(optionlist,index)
+      self.setUpper( item )
+      INC index
+      item := ListItem(optionlist,index)
+      self.setLower( item )
+  ENDSELECT
+
+ENDPROC index
+
+-&gt; just copies its attributes
+PROC copy(to:PTR TO fraction) OF fraction
+  to.setUpper( self.getUpper() )
+  to.setLower( self.getLower() )
+ENDPROC
+
+PROC flt2fraction(flt) OF fraction
+/*
+
+This method sets its objects attributes to the values found in
+the float.
+
+*/
+DEF index,lower=-1, gefunden=0, fltindex,
+    result, out[80]:STRING,
+    fltupper,upper, fltlower
+
+  FOR index := 1 TO 1000
+    fltindex := index! -&gt; richtig
+    result := !flt * fltindex  -&gt;richtig
+
+    -&gt;RealF(out,result,5); WriteF(&#x27;::\s\n&#x27;,out)
+
+    result := !Fceil(result)-result
+
+    result := result &lt; 0.0001
+
+    IF result THEN gefunden := 1
+    IF gefunden=1
+      lower:= index
+      index:=1000
+    ENDIF
+  ENDFOR
+
+  IF lower=-1 THEN lower:=1000
+-&gt; the lower is found
+
+  fltlower := lower!
+  fltupper := !flt * fltlower
+  upper := !fltupper!
+
+  self.setUpper(upper)
+  IF upper=0
+    self.setLower(1)
+  ELSE
+    self.setLower(lower)
+  ENDIF
+ENDPROC
+
+PROC fraction2flt() OF fraction -&gt; move to Float
+DEF flt,upper,lower,kleiner=0
+
+  IF (upper := self.getUpper())&lt;0
+    upper:=upper*(-1)
+    INC kleiner
+  ENDIF
+  IF (lower := self.getLower())&lt;0
+    lower:=lower*(-1)
+    INC kleiner
+  ENDIF
+
+  flt := ! upper / lower
+
+  IF kleiner=1 THEN flt := ! 0 - flt
+
+ENDPROC flt
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

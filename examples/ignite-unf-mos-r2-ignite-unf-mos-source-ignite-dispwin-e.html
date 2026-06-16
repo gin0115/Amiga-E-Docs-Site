@@ -1,0 +1,538 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>dispwin.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-ignite-unf-mos-r2.html">ignite-unf-mos-r2</a> &rsaquo; dispwin.e</div><h1>File: <code>dispwin.e</code></h1><p class="meta">512 lines · project <a href="../examples/pkg-ignite-unf-mos-r2.html"><code>ignite-unf-mos-r2</code></a></p><p class="pathctx">ignite-unf-mos-r2/ignite-unf-mos/source/ignite/dispwin.e</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/boopsi.html">amigalib/boopsi</a></li><li><a href="../modules/lists.html">amigalib/lists</a></li><li><a href="../modules/io.html">exec/io</a></li><li><a href="../modules/memory.html">exec/memory</a></li><li><a href="../modules/nodes.html">exec/nodes</a></li><li><a href="../modules/ports.html">exec/ports</a></li><li><a href="../modules/gfx.html">graphics/gfx</a></li><li><a href="../modules/rastport.html">graphics/rastport</a></li><li><a href="../modules/classes.html">intuition/classes</a></li><li><a href="../modules/classusr.html">intuition/classusr</a></li><li><a href="../modules/intuition.html">intuition/intuition</a></li><li><a href="../modules/intuitionbase.html">intuition/intuitionbase</a></li><li><a href="../modules/screens.html">intuition/screens</a></li><li><a href="../modules/mui.html">libraries/mui</a></li><li><a href="../modules/muip.html">libraries/muip</a></li><li><a href="../modules/muicustomclass.html">mui/muicustomclass</a></li><li><a href="../modules/muimaster.html">muimaster</a></li><li><a href="../modules/installhook.html">tools/installhook</a></li><li><a href="../modules/utility.html">utility</a></li><li><a href="../modules/hooks.html">utility/hooks</a></li><li><a href="../modules/tagitem.html">utility/tagitem</a></li></ul></div><h2>Source</h2><pre class="code">OPT MODULE, PREPROCESS
+
+-&gt;MODULE &#x27;*modules&#x27;
+
+MODULE &#x27;*mainmisc&#x27;
+MODULE &#x27;*fractmisc&#x27;
+MODULE &#x27;*/jobdev/jobdefs&#x27;
+MODULE &#x27;*zonegroup&#x27;
+MODULE &#x27;*zoneview&#x27;
+
+MODULE &#x27;utility/tagitem&#x27;
+MODULE &#x27;utility/hooks&#x27;
+MODULE &#x27;graphics/gfx&#x27;
+MODULE &#x27;graphics/rastport&#x27;
+MODULE &#x27;intuition/classes&#x27;
+MODULE &#x27;intuition/classusr&#x27;
+MODULE &#x27;intuition/screens&#x27;
+MODULE &#x27;intuition/intuition&#x27;
+MODULE &#x27;intuition/intuitionbase&#x27;
+MODULE &#x27;libraries/mui&#x27;
+MODULE &#x27;libraries/muip&#x27;
+MODULE &#x27;exec/io&#x27;
+MODULE &#x27;exec/nodes&#x27;
+MODULE &#x27;exec/ports&#x27;
+
+MODULE &#x27;muimaster&#x27;
+MODULE &#x27;utility&#x27;
+
+MODULE &#x27;mui/muicustomclass&#x27;
+MODULE &#x27;tools/installhook&#x27;
+MODULE &#x27;amigalib/boopsi&#x27;
+MODULE &#x27;amigalib/lists&#x27;
+
+MODULE &#x27;exec/memory&#x27;
+
+
+
+#ifdef DEBUG
+   #define DEBUGF(str,...) DebugF(str,...)
+#else
+   #define DEBUGF(str,...)
+#endif
+
+CONST ZONEBUFSIZE = 100
+
+OBJECT dispwindata OF hook
+   ignitehook:PTR TO hook
+   selfobj:PTR TO object
+   zoneviewmcc:PTR TO mui_customclass
+   zoneviewobj:PTR TO object
+   zonegroupmcc:PTR TO mui_customclass
+   zonegroupobj:PTR TO object
+   rm:PTR TO rendermsg
+   zoneBuf[ZONEBUFSIZE]:ARRAY OF zone
+   currZone:PTR TO zone
+ENDOBJECT
+
+
+-&gt; the only exported item
+EXPORT PROC createDispWinClass()
+ENDPROC eMui_CreateCustomClass(NIL,MUIC_Window,NIL,SIZEOF dispwindata,{dispWinDispatcher})
+
+
+PROC dispWinDispatcher(cl:PTR TO iclass, obj:PTR TO object, msg:PTR TO msg)
+
+   -&gt;DEBUGF(&#x27;dispWinDispatcher(): $\h\n&#x27;, msg.methodid)
+
+   SELECT msg.methodid
+   CASE MUIM_DispWin_Render ; RETURN dispWinRender(cl, obj, msg)
+   CASE MUIM_DispWin_StopRender ; RETURN dispWinStopRender(cl, obj, msg)
+   CASE OM_NEW            ; RETURN dispWinNew(cl, obj, msg)
+   CASE OM_DISPOSE        ; RETURN dispWinDispose(cl, obj, msg)
+   CASE OM_SET            ; RETURN dispWinSet(cl, obj, msg)
+   CASE OM_GET            ; RETURN dispWinGet(cl, obj, msg)
+   CASE MUIM_Setup        ; RETURN dispwinSetup(cl, obj, msg)
+   CASE MUIM_Cleanup      ; RETURN dispwinCleanup(cl, obj, msg)
+   ENDSELECT
+
+ENDPROC doSuperMethodA(cl, obj, msg)
+
+-&gt; called from ignite when user hits render button
+PROC dispWinRender(cl, obj:PTR TO object, msg)
+   DEF data:PTR TO dispwindata, err
+
+   data := INST_DATA(cl, obj)
+
+   DEBUGF(&#x27;dispWinRender()\n&#x27;)
+
+   err := DOMETHODA(data.rm.object, [MUIM_Fract_GetParams, data.rm.parameters])
+   IF err THEN RETURN err
+
+   ABORTRMSG(data.rm)
+   WAITRMSG(data.rm)
+   data.rm.redraw := [NIL,0,0,data.rm.display.width,data.rm.display.height,NIL]:redrawmsg
+   data.rm.zone := data.currZone
+   SENDRMSG(data.rm)
+
+ENDPROC NIL
+
+PROC dispWinStopRender(cl, obj, msg)
+   DEF data:PTR TO dispwindata
+
+   DEBUGF(&#x27;dispWinStopRender()\n&#x27;)
+
+   data := INST_DATA(cl, obj)
+
+   STOPRMSG(data.rm)
+
+ENDPROC
+
+PROC initZoneBuffer(data:PTR TO dispwindata)
+   DEF a, zone:PTR TO zone
+
+   zone := data.zoneBuf
+   FOR a := 0 TO ZONEBUFSIZE-2 DO zone[a].next :=  zone[a] + SIZEOF zone
+   zone := data.zoneBuf
+   FOR a := 1 TO ZONEBUFSIZE-1 DO zone[a].prev :=  zone[a] - SIZEOF zone
+
+   zone := data.zoneBuf
+   zone.prev := zone[ZONEBUFSIZE-1]
+
+   zone := zone.prev
+   zone.next := zone[0-ZONEBUFSIZE+1]
+
+   data.currZone := data.zoneBuf
+
+ENDPROC
+
+PROC doSuperNewA(cl, obj, tags) IS doSuperMethodA(cl, obj, [OM_NEW, tags, NIL])
+
+PROC dispWinNew(cl:PTR TO iclass, obj:PTR TO object, msg:PTR TO opnew) HANDLE
+   DEF data:PTR TO dispwindata, gr=NIL, gr2=NIL, tags:PTR TO tagitem, tag:PTR TO tagitem
+
+
+   DEBUGF(&#x27;dispWinNew doSuperMethodA()\n&#x27;)
+
+   IF (obj := doSuperNewA(cl, obj,
+   [MUIA_Window_RootObject, gr := VGroup, End,
+    TAG_MORE, msg.attrlist,
+    NIL])) = NIL THEN (IF gr THEN Mui_DisposeObject(gr)) BUT RETURN NIL
+
+   DEBUGF(&#x27;dispWinNew doSuperMethodA() DONE\n&#x27;)
+
+   data := INST_DATA(cl, obj)
+   data.selfobj := obj
+
+   data.zonegroupmcc := createZonegroupClass()
+   IF data.zonegroupmcc = NIL THEN Raise(&quot;ZGMC&quot;)
+
+   data.zoneviewmcc := createZoneviewClass()
+   IF data.zoneviewmcc = NIL THEN Raise(&quot;ZVMC&quot;)
+
+   installhook(data, {dispWinActionHandler})
+
+   tags := msg.attrlist
+
+   DEBUGF(&#x27;dispWinNew getting args..tags=$\h\nitem0=[$\h,$\h], item1=[$\h,$\h]\n&#x27;,
+      tags, tags.tag, tags.data, tags[1].tag, tags[1].data)
+   DEBUGF(&#x27;utilitybase=$\h, tags=$\h\n&#x27;, utilitybase, tags)
+
+   data.ignitehook :=   GetTagData(MUIA_DispWin_IgniteHook, NIL, tags)
+   DEBUGF(&#x27;data.ignitehook=$\h\n&#x27;, data.ignitehook)
+
+   data.rm :=           GetTagData(MUIA_DispWin_RenderMsg, NIL, tags)
+   DEBUGF(&#x27;data.rm=$\h\n&#x27;, data.rm)
+
+   IF data.ignitehook = NIL THEN Raise(&quot;TAGS&quot;)
+   IF data.rm = NIL THEN Raise(&quot;TAGS&quot;)
+
+   DEBUGF(&#x27;dispWinNew() got args, now to group\n&#x27;)
+
+
+   data.zonegroupobj := NewObjectA(data.zonegroupmcc.mcc_class,
+                                       NIL,
+                                       [MUIA_Zonegroup_ActionHook, data,
+                                        NIL])
+
+   IF data.zonegroupobj = NIL THEN Raise(&quot;ZGOB&quot;)
+
+   data.zoneviewobj := NewObjectA(data.zoneviewmcc.mcc_class,
+                                       NIL,
+                                       [MUIA_Zoneview_ActionHook, data,
+                                        MUIA_Frame, MUIV_Frame_InputList,
+                                        MUIA_FillArea, FALSE,
+                                        NIL])
+
+   IF data.zoneviewobj = NIL THEN Mui_DisposeObject(data.zonegroupobj) BUT Raise(&quot;ZVOB&quot;)
+
+   initZoneBuffer(data)
+
+   DOMETHODA(data.zonegroupobj, [MUIM_Zonegroup_Get_Zone, data.currZone])
+
+   DOMETHODA(gr, [OM_ADDMEMBER, data.zonegroupobj])
+   DOMETHODA(gr, [OM_ADDMEMBER, data.zoneviewobj])
+
+   DEBUGF(&#x27;dispWinNew() group done, now to notifications\n&#x27;)
+
+   DOMETHODA(obj, [MUIM_Notify, MUIA_Window_CloseRequest, MUI_TRUE,
+      obj, 3, MUIM_CallHook, data, AH_CLOSEREQUEST])
+
+   data.rm.zoneviewobj := data.zoneviewobj
+   data.rm.display := XGET(data.zoneviewobj, MUIA_Zoneview_Display)
+
+   DEBUGF(&#x27;dispWinNew() exiting\n&#x27;)
+
+EXCEPT
+
+   SetIoErr(exception)
+   coerceMethodA(cl, obj, [OM_DISPOSE])
+   RETURN NIL
+
+ENDPROC obj
+
+PROC dispWinDispose(cl:PTR TO iclass, obj:PTR TO object, msg:PTR TO msg)
+   DEF data:PTR TO dispwindata
+
+   DEBUGF(&#x27;dispWinDispose()\n&#x27;)
+
+   data := INST_DATA(cl,obj)
+
+   IF data.rm
+      ABORTRMSG(data.rm)
+      WAITRMSG(data.rm)
+      CloseDevice(data.rm)
+      IF data.rm.parameters THEN FreeVec(data.rm.parameters)
+      DeleteIORequest(data.rm)
+   ENDIF
+
+   IF data.zonegroupmcc THEN Mui_DeleteCustomClass(data.zonegroupmcc)
+   IF data.zoneviewmcc THEN Mui_DeleteCustomClass(data.zoneviewmcc)
+
+ENDPROC doSuperMethodA(cl, obj, msg)
+
+PROC dispwinSetup(cl:PTR TO iclass, obj:PTR TO object, msg:PTR TO msg) HANDLE
+   DEF data:PTR TO dispwindata
+
+  IF doSuperMethodA(cl, obj, msg) = FALSE THEN RETURN FALSE
+
+  data := INST_DATA(cl, obj)
+
+  DEBUGF(&#x27;dispwinSetup()\n&#x27;)
+
+EXCEPT
+
+   SetIoErr(exception)
+   coerceMethodA(cl, obj, [MUIM_Cleanup])
+   RETURN NIL
+
+ENDPROC MUI_TRUE
+
+PROC dispwinCleanup(cl:PTR TO iclass, obj:PTR TO object, msg:PTR TO msg)
+   DEF data:PTR TO dispwindata
+
+   data := INST_DATA(cl, obj)
+
+   DEBUGF(&#x27;dispwinCleanup()\n&#x27;)
+
+ENDPROC doSuperMethodA(cl, obj, msg)
+
+PROC dispWinSet(cl:PTR TO iclass, obj:PTR TO object, msg:PTR TO opset)
+   DEF data:PTR TO dispwindata, tags:PTR TO tagitem, tag:PTR TO tagitem
+
+   data := INST_DATA(cl,obj)
+
+   DEBUGF(&#x27;dispwinSet()\n&#x27;)
+
+   tags := msg.attrlist
+   WHILE tag := NextTagItem({tags})
+      SELECT tag.tag
+      ENDSELECT
+   ENDWHILE
+
+ENDPROC doSuperMethodA(cl, obj, msg)
+
+
+PROC dispWinGet(cl:PTR TO iclass, obj:PTR TO object, msg:PTR TO opget)
+   DEF data:PTR TO dispwindata
+
+   data := INST_DATA(cl, obj)
+
+   DEBUGF(&#x27;dispwinGet()\n&#x27;)
+
+   SELECT msg.attrid
+   CASE MUIA_DispWin_IsDispWin ; PutLong(msg.storage, TRUE) ; RETURN MUI_TRUE
+   CASE MUIA_DispWin_RenderMsg ; PutLong(msg.storage, data.rm) ; RETURN MUI_TRUE
+   ENDSELECT
+
+ENDPROC doSuperMethodA(cl, obj, msg)
+
+
+PROC dispWinZoom(data:PTR TO dispwindata, disp:PTR TO display, selectX, selectY, mouseX, mouseY)
+   DEF fpixel:DOUBLE, minDispRad, maxZoomRad
+   DEF zoomCentX, zoomCentY
+   DEF dispCentX, dispCentY
+   DEF zone:PTR TO zone
+
+   DEBUGF(&#x27;dispWinZoom($\h, $\h, \d, \d, \d, \d)\n&#x27;,
+   data, disp, selectX, selectY, mouseX, mouseY)
+
+   zone := data.currZone
+   data.currZone := data.currZone.next
+
+   fpixel := ! zone.r / (Min(disp.width, disp.height)!) * 2.0
+   dispCentX := disp.width / 2
+   dispCentY := disp.height / 2
+   zoomCentX := selectX + mouseX / 2
+   zoomCentY := selectY + mouseY / 2
+
+   data.currZone.x := ! zone.x + (!fpixel * (zoomCentX-dispCentX!))
+   data.currZone.y := ! zone.y + (!fpixel * (zoomCentY-dispCentY!))
+   minDispRad := Min(disp.width, disp.height) / 2
+   maxZoomRad := Max(Abs(mouseX-selectX), Abs(mouseY-selectY)) / 2
+   data.currZone.r := ! zone.r * (maxZoomRad! / (minDispRad!))
+   DOMETHODA(data.zonegroupobj, [MUIM_Zonegroup_Set_Zone, data.currZone])
+   DOMETHODA(data.selfobj, [MUIM_DispWin_Render])
+ENDPROC
+
+PROC dispWinMove(data:PTR TO dispwindata, disp:PTR TO display, selectX, selectY, mouseX, mouseY)
+   DEF fpixel:DOUBLE, zone:PTR TO zone
+
+   DEBUGF(&#x27;dispWinMove($\h, $\h, \d, \d, \d, \d)\n&#x27;,
+   data, disp, selectX, selectY, mouseX, mouseY)
+
+   ABORTRMSG(data.rm)
+   WAITRMSG(data.rm)
+
+   zone := data.currZone
+   data.currZone := data.currZone.next
+
+   fpixel := ! zone.r / (Min(disp.width, disp.height)!) * 2.0
+
+   data.currZone.x := ! zone.x - (!fpixel * (mouseX-selectX!))
+   data.currZone.y := ! zone.y - (!fpixel * (mouseY-selectY!))
+   data.currZone.r := zone.r
+
+   DOMETHODA(data.zonegroupobj, [MUIM_Zonegroup_Set_Zone, data.currZone])
+   DOMETHODA(data.rm.object, [MUIM_Fract_GetParams, data.rm.parameters])
+
+   data.rm.zoneviewobj := data.zoneviewobj
+   data.rm.display := disp
+
+   -&gt; under cxonstruction
+   IF mouseX &gt; selectX
+      IF mouseY &gt; selectY
+         -&gt; down-right
+         data.rm.redraw := [NIL,
+            0,
+            0,
+            mouseX-selectX,
+            disp.height,
+            [NIL,
+            mouseX-selectX,
+            0,
+            disp.width-(mouseX-selectX),
+            mouseY-selectY,
+            NIL]]
+      ELSE
+         -&gt; up-right
+         data.rm.redraw := [NIL,
+            0,
+            0,
+            mouseX-selectX,
+            disp.height,
+            [NIL,
+            mouseX-selectX,
+            disp.height-1-(selectY-mouseY),
+            disp.width-(mouseX-selectX),
+            selectY-mouseY,
+            NIL]]
+      ENDIF
+   ELSE
+      IF mouseY &gt; selectY
+         -&gt; down-left
+         data.rm.redraw := [NIL,
+            0,
+            0,
+            disp.width,
+            mouseY-selectY,
+            [NIL,
+            disp.width-1-(selectX-mouseX),
+            mouseY-selectY,
+            selectX-mouseX,
+            disp.height-(mouseY-selectY),
+            NIL]]
+      ELSE
+         -&gt; up-left
+         data.rm.redraw := [NIL,
+            disp.width-1-(selectX-mouseX),
+            0,
+            selectX-mouseX,
+            disp.height,
+            [NIL,
+            0,
+            disp.height-1-(selectY-mouseY),
+            disp.width-(selectX-mouseX),
+            selectY-mouseY,
+            NIL]]
+      ENDIF
+   ENDIF
+
+   data.rm.zone := data.currZone
+   SENDRMSG(data.rm)
+
+ENDPROC
+
+
+
+PROC dispWinActionHandler(data:PTR TO dispwindata, obj, msg:PTR TO LONG)
+   DEF display:PTR TO display, oldzone:PTR TO zone
+
+   DEBUGF(&#x27;dispWinActionHandler() act=\d\n&#x27;, msg[])
+
+   SELECT msg[]++
+   CASE AH_RENDER
+      ABORTRMSG(data.rm)
+      WAITRMSG(data.rm)
+      data.rm.zoneviewobj := data.zoneviewobj
+      display := msg[]
+      data.rm.display := display
+      data.rm.zone := data.currZone
+      data.rm.redraw := [NIL,0,0,display.width,display.height,NIL]
+      SENDRMSG(data.rm)
+   CASE AH_ABORTRENDER
+      ABORTRMSG(data.rm)
+      WAITRMSG(data.rm)
+   CASE AH_ZOOM
+      dispWinZoom(data, msg[]++, msg[]++, msg[]++, msg[]++, msg[]++)
+   CASE AH_MOVE
+      dispWinMove(data, msg[]++, msg[]++, msg[]++, msg[]++, msg[]++)
+   CASE AH_CLOSEREQUEST /* we call this ourselves threw notification */
+      DEBUGF(&#x27;AH_CLOSEREQUEST\n&#x27;, msg[])
+      ABORTRMSG(data.rm)
+      WAITRMSG(data.rm)
+      set(data.selfobj, MUIA_Window_Open, FALSE)
+      DOMETHODA(_app(data.selfobj), [MUIM_Application_PushMethod, data.selfobj,
+         3, MUIM_CallHook, data.ignitehook, IH_DELETEWIN])
+   CASE AH_NEWZONE  /* zoneview,zonegroup calls these */
+      data.currZone := data.currZone.next
+      DOMETHODA(data.zonegroupobj, [MUIM_Zonegroup_Get_Zone, data.currZone])
+      DOMETHODA(data.selfobj, [MUIM_DispWin_Render])
+   CASE AH_PREVZONE
+      data.currZone := data.currZone.prev
+      DOMETHODA(data.zonegroupobj, [MUIM_Zonegroup_Set_Zone, data.currZone])
+      DOMETHODA(data.selfobj, [MUIM_DispWin_Render])
+   CASE AH_NEXTZONE
+      data.currZone := data.currZone.next
+      DOMETHODA(data.zonegroupobj, [MUIM_Zonegroup_Set_Zone, data.currZone])
+      DOMETHODA(data.selfobj, [MUIM_DispWin_Render])
+   CASE AH_SKIP_LEFT
+      oldzone := data.currZone
+      data.currZone := data.currZone.next
+      data.currZone.x := ! oldzone.x - oldzone.r
+      data.currZone.y := oldzone.y
+      data.currZone.r := oldzone.r
+      DOMETHODA(data.zonegroupobj, [MUIM_Zonegroup_Set_Zone, data.currZone])
+      DOMETHODA(data.selfobj, [MUIM_DispWin_Render])
+   CASE AH_SKIP_RIGHT
+      oldzone := data.currZone
+      data.currZone := data.currZone.next
+      data.currZone.x := ! oldzone.x + oldzone.r
+      data.currZone.y := oldzone.y
+      data.currZone.r := oldzone.r
+      DOMETHODA(data.zonegroupobj, [MUIM_Zonegroup_Set_Zone, data.currZone])
+      DOMETHODA(data.selfobj, [MUIM_DispWin_Render])
+   CASE AH_SKIP_UP
+      oldzone := data.currZone
+      data.currZone := data.currZone.next
+      data.currZone.y := ! oldzone.y - oldzone.r
+      data.currZone.x := oldzone.x
+      data.currZone.r := oldzone.r
+      DOMETHODA(data.zonegroupobj, [MUIM_Zonegroup_Set_Zone, data.currZone])
+      DOMETHODA(data.selfobj, [MUIM_DispWin_Render])
+   CASE AH_SKIP_DOWN
+      oldzone := data.currZone
+      data.currZone := data.currZone.next
+      data.currZone.y := ! oldzone.y + oldzone.r
+      data.currZone.x := oldzone.x
+      data.currZone.r := oldzone.r
+      DOMETHODA(data.zonegroupobj, [MUIM_Zonegroup_Set_Zone, data.currZone])
+      DOMETHODA(data.selfobj, [MUIM_DispWin_Render])
+   CASE AH_SKIP_IN
+      oldzone := data.currZone
+      data.currZone := data.currZone.next
+      data.currZone.x := ! oldzone.x
+      data.currZone.y := oldzone.y
+      data.currZone.r := ! oldzone.r * 0.5
+      DOMETHODA(data.zonegroupobj, [MUIM_Zonegroup_Set_Zone, data.currZone])
+      DOMETHODA(data.selfobj, [MUIM_DispWin_Render])
+   CASE AH_SKIP_OUT
+      oldzone := data.currZone
+      data.currZone := data.currZone.next
+      data.currZone.x := ! oldzone.x
+      data.currZone.y := oldzone.y
+      data.currZone.r := ! oldzone.r * 2.0
+      DOMETHODA(data.zonegroupobj, [MUIM_Zonegroup_Set_Zone, data.currZone])
+      DOMETHODA(data.selfobj, [MUIM_DispWin_Render])
+   ENDSELECT
+   DEBUGF(&#x27;dispWinActionHandler() DONE\n&#x27;)
+ENDPROC
+
+
+
+
+
+
+
+
+
+
+
+
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

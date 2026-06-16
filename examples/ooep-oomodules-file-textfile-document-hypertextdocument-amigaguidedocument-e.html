@@ -1,0 +1,222 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>amigaguideDocument.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-ooep.html">OOEP</a> &rsaquo; amigaguideDocument.e</div><h1>File: <code>amigaguideDocument.e</code></h1><p class="meta">196 lines · project <a href="../examples/pkg-ooep.html"><code>OOEP</code></a></p><p class="pathctx">OOEP/oomodules/file/textfile/document/hypertextDocument/amigaguideDocument.e</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/hypertextdocument.html">oomodules/file/textfile/document/hypertextdocument</a></li></ul></div><h2>Source</h2><pre class="code">OPT MODULE
+
+MODULE  &#x27;oomodules/file/textfile/document/hyperTextDocument&#x27;,
+        &#x27;oomodules/file/textfile/document&#x27;
+
+EXPORT OBJECT amigaguideDocument OF hyperTextDocument
+ENDOBJECT
+
+EXPORT OBJECT amigaguideNode OF hyperTextNode
+ENDOBJECT
+
+PROC display() OF amigaguideDocument IS EMPTY
+
+PROC edit() OF amigaguideDocument IS EMPTY
+
+PROC buildNodeList() OF amigaguideDocument
+DEF list1=NIL,
+    list2=NIL,
+    list3=NIL,
+    finalList,
+    len=0
+
+  list1 := self.buildBlockList(&#x27;@node&#x27;, &#x27;@endnode&#x27;, 0, &quot;FrFr&quot;, {workOnNode})
+  list2 := self.buildBlockList(&#x27;@Node&#x27;, &#x27;@EndNode&#x27;, 0, &quot;FrFr&quot;, {workOnNode})
+  list3 := self.buildBlockList(&#x27;@NODE&#x27;, &#x27;@ENDNODE&#x27;, 0, &quot;FrFr&quot;, {workOnNode})
+
+
+  len := IF list1 THEN ListLen(list1) ELSE 0
+  len := len + IF list2 THEN ListLen(list2) ELSE 0
+  len := len + IF list3 THEN ListLen(list3) ELSE 0
+
+
+  finalList := List(len)
+
+  IF list1 THEN ListCopy(finalList, list1)
+  IF list2 THEN ListAdd(finalList, list2)
+  IF list3 THEN ListAdd(finalList, list3)
+
+  SetList(finalList,len)
+
+  IF list1 THEN Dispose(list1)
+  IF list2 THEN Dispose(list2)
+  IF list3 THEN Dispose(list3)
+
+  RETURN finalList
+
+ENDPROC
+
+/*
+EXPORT PROC workOnNode(node:PTR TO amigaguideNode)
+DEF line,
+    position,
+    str
+
+  IF node.startLine = -1 THEN RETURN
+
+  line := node.document.getLine(node.startLine)
+
+  WriteF(&#x27;line:\s\n&#x27;, line)
+
+  position := InStr(line, &#x27; &#x27;, 6)
+
+  IF position&gt;-1 -&gt; we found the name, extract it
+
+    str := String(position-6)
+
+    node.identifier := str
+    StrCopy(node.identifier, line+6, position-6)
+
+    str := String(StrLen(line)-position)
+    node.title := str
+    StrCopy(node.title, line+position+1)
+
+  ENDIF
+
+  RETURN node
+
+ENDPROC
+*/
+
+EXPORT PROC workOnNode(n:PTR TO amigaguideNode)
+DEF node:PTR TO amigaguideNode
+
+  NEW node
+  n.copyTo(node)
+  END n
+
+  IF node.startLine = -1 THEN RETURN
+
+  node.getIdentifier()
+  node.getTitle()
+
+  RETURN node
+
+ENDPROC
+
+PROC getIdentifier() OF amigaguideNode
+DEF line:PTR TO CHAR,
+    position
+
+  IF self.startLine = -1 THEN RETURN
+
+  line := self.document.getLine(self.startLine)
+
+  IF line[6]=&quot;\q&quot;
+
+    position := InStr(line, &#x27;\q&#x27;, 7)
+
+    self.identifier := String(position-7)
+    StrCopy(self.identifier, line+7, position-7)
+
+  ELSE
+
+    position := InStr(line, &#x27; &#x27;, 6)
+
+    self.identifier := String(position-6)
+    StrCopy(self.identifier, line+6, position-6)
+
+  ENDIF
+
+  RETURN self.identifier
+
+ENDPROC
+
+PROC getTitle() OF amigaguideNode
+DEF line:PTR TO CHAR,
+    position,
+    len
+
+  IF self.startLine = -1 THEN RETURN
+
+  line := self.document.getLine(self.startLine)
+
+  IF line[6]=&quot;\q&quot;
+
+    position := InStr(line, &#x27;\q&#x27;, 7)
+    INC position
+
+  ELSE
+
+    position := InStr(line, &#x27; &#x27;, 6)
+
+  ENDIF
+
+
+  IF line[position+1] = &quot;\q&quot;
+
+    len := StrLen(line)-position-3
+    self.title := String(len)
+    StrCopy(self.title, line+position+2, len)
+
+  ELSE
+
+    len := StrLen(line)-position-1
+    self.title := String(len)
+    StrCopy(self.title, line+position+1, len)
+
+  ENDIF
+
+  RETURN self.title
+
+ENDPROC
+
+EXPORT PROC dumpNodeList(list)
+DEF item:PTR TO amigaguideNode,
+    index
+
+  IF list
+    WriteF(&#x27;The list contains \d nodes.\n&#x27;, ListLen(list))
+
+    FOR index := 0 TO ListLen(list)-1
+
+      item := ListItem(list,index)
+
+      dumpNodeInfo(item)
+
+    ENDFOR
+
+  ENDIF
+
+ENDPROC
+
+EXPORT PROC dumpNodeInfo(n:PTR TO amigaguideNode)
+
+  IF n.startLine = -1 THEN RETURN
+
+  WriteF(&#x27;The node starts at line \d and ends at line \d.\n&#x27;, n.startLine, n.endLine)
+  WriteF(&#x27;It\as name is \s and it\as title \s.\n&#x27;, n.identifier, n.title)
+
+
+ENDPROC
+/*EE folds
+-1
+50 27 54 13 57 25 60 36 63 16 66 7 
+EE folds*/
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

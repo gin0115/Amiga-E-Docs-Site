@@ -1,0 +1,253 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>playsid.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-gec-extra.html">GEC-extra</a> &rsaquo; playsid.e</div><h1>File: <code>playsid.e</code></h1><p class="meta">227 lines · project <a href="../examples/pkg-gec-extra.html"><code>GEC-extra</code></a></p><p class="pathctx">GEC-extra/GEC/source/Grio/modules/playsid.e</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/file.html">grio/file</a></li><li><a href="../modules/playsid.html">playsid</a></li></ul></div><h2>Source</h2><pre class="code">OPT MODULE
+OPT REG=5
+OPT STRMERGE
+
+
+MODULE &#x27;playsid&#x27;,&#x27;libraries/playsidbase&#x27;,&#x27;exec/execbase&#x27;
+
+
+OBJECT psidbase
+   psid:playsidbase
+   display:PTR TO displaydata
+ENDOBJECT
+
+
+DEF psidbase:PTR TO psidbase,song,res
+
+
+EXPORT ENUM PSIDERR_NONE,PSIDERR_NOLIB,PSIDERR_RESOURCE,PSIDERR_BADMOD
+
+EXPORT CONST PSIDINFO_TITLE=0,PSIDINFO_AUTHOR=2,PSIDINFO_COPYRIGHT=4,
+             PSIDINFO_SONGS=6,PSIDINFO_DEFSONG=8
+
+
+/*
+
+MODULE &#x27;grio/file&#x27;,&#x27;exec/memory&#x27;
+PROC main()
+DEF sh:PTR TO sidheader,size
+ sh,size:=gReadFile(arg,MEMF_CHIP)
+ IF sh
+     psidPlay(sh,size)
+     Wait($1000)
+     psidStop()
+     gFreeFile(sh)
+ ENDIF
+ENDPROC
+
+*/
+
+
+EXPORT PROC psidPlay(module:PTR TO sidheader,size)
+DEF error
+error:=PSIDERR_NOLIB ; res:=FALSE
+IF (psidbase:=playsidbase:=OpenLibrary(&#x27;playsid.library&#x27;,1))
+   error:=PSIDERR_RESOURCE 
+   IF AllocEmulResource()=NIL
+      error:=PSIDERR_BADMOD ;res:=TRUE
+      IF CheckModule(module)=NIL
+         SetVertFreq(execbase::execbase.vblankfrequency)
+         SetDisplaySignal(FindTask(NIL),NIL)
+         SetReverseEnable(-1)
+         SetModule(module,module,size)
+         IF StartSong(song:=module.defsong)=NIL
+            SetDisplayEnable(-1)
+            RETURN TRUE,PSIDERR_NONE
+         ENDIF
+      ENDIF
+   ENDIF
+ENDIF
+ENDPROC psidStop(),error
+
+
+
+EXPORT PROC psidStop()
+IF psidbase
+   IF psidbase.psid.playmode AND (PM_PLAY OR PM_PAUSE) THEN StopSong()
+   IF res
+      FreeEmulResource()
+      res:=FALSE
+   ENDIF
+   CloseLibrary(psidbase)
+   psidbase:=NIL
+ENDIF
+ENDPROC NIL
+
+
+
+EXPORT PROC psidPause()
+IF psidbase
+   IF psidbase.psid.playmode=PM_PLAY
+      PauseSong()
+   ELSEIF psidbase.psid.playmode=PM_PAUSE
+      ContinueSong()
+   ENDIF
+ENDIF
+ENDPROC
+
+
+EXPORT PROC psidSetSong(number)
+IF psidbase
+   IF psidbase.psid.playmode AND (PM_PLAY OR PM_PAUSE)
+      StopSong()
+      StartSong(song:=number)
+   ENDIF
+ENDIF
+ENDPROC song
+
+
+EXPORT PROC psidFwdSong(speed=32) IS ForwardSong(speed)
+
+
+EXPORT PROC psidRewSong(speed=32) IS RewindSong(speed)
+
+
+EXPORT PROC psidGetModInfo(module:PTR TO sidheader,buf,x)
+DEF out,str[32]:STRING,fmtarg,fmt=0
+SetStr(str,0)
+out:=str
+IF module.id=SID_HEADER
+   SELECT x
+       CASE 0
+           out:=module.name
+       CASE 1
+           out:=&#x27;Author :&#x27;
+       CASE 2
+           out:=module.author
+       CASE 3
+           out:=&#x27;Copyright :&#x27;
+       CASE 4
+           out:=module.copyright
+       CASE 5
+           out:=&#x27; &#x27;
+       CASE 6
+           fmtarg:=module.number
+           fmt:=&#x27;Songs   : \d&#x27;
+       CASE 7
+           fmtarg:=module.defsong
+           fmt:=&#x27;Defsong : \d&#x27;
+       CASE 8
+           fmt:=&#x27;Length : $\h&#x27;
+           fmtarg:=module.length
+       CASE 9
+           out:=&#x27; &#x27;
+       CASE 10
+           fmt:=&#x27;Start :  $\z\h[4]&#x27;
+           fmtarg:=module.start
+       CASE 11
+           fmt:=&#x27;Init  :  $\z\h[4]&#x27;
+           fmtarg:=module.init
+       CASE 12
+           fmt:=&#x27;Main  :  $\z\h[4]&#x27;
+           fmtarg:=module.main
+   ENDSELECT
+ENDIF
+IF fmt THEN StringF(str,fmt,fmtarg)
+AstrCopy(buf,out)
+ENDPROC
+
+
+
+EXPORT PROC psidGetMinute()
+IF psidbase
+   RETURN psidbase.psid.timeminutes
+ENDIF
+ENDPROC NIL
+
+
+EXPORT PROC psidGetSecond()
+IF psidbase
+   RETURN psidbase.psid.timeseconds
+ENDIF
+ENDPROC NIL
+
+
+
+EXPORT PROC psidIsEnabled()
+DEF x,i
+IF psidbase
+   IF psidbase.psid.playmode=PM_PLAY
+      i:=NIL
+      FOR x:=0 TO 3
+         IF psidbase.display.enve[x]
+            INC i
+         ENDIF
+         EXIT i
+      ENDFOR
+      IF i
+         RETURN TRUE
+      ENDIF
+   ENDIF
+ENDIF
+ENDPROC FALSE
+
+
+
+EXPORT PROC psidNumberSongs(module:PTR TO sidheader)
+IF module.id=SID_HEADER
+   RETURN module.number
+ENDIF
+ENDPROC NIL
+
+
+EXPORT PROC psidCurrentSong() IS song
+
+
+EXPORT PROC psidGetVolume(chan)
+IF psidbase
+   IF chan&gt;0
+      IF chan&lt;5
+         RETURN psidbase.display.enve[chan-1]
+      ENDIF
+   ENDIF
+ENDIF
+ENDPROC 0
+
+/*
+EXPORT PROC psidGetSample(chan)
+IF psidbase
+   IF chan
+      IF chan&lt;5
+         RETURN psidbase.display.sample[chan-1],
+                psidbase.display.length[chan-1],
+                psidbase.display.period[chan-1]
+      ENDIF
+   ENDIF
+ENDIF
+ENDPROC
+*/
+
+
+
+
+
+
+
+
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

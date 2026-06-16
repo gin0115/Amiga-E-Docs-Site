@@ -1,0 +1,194 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>PubScreenNames.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-amigae30a-fr.html">amigae30a_fr</a> &rsaquo; PubScreenNames.e</div><h1>File: <code>PubScreenNames.e</code></h1><p class="meta">168 lines · project <a href="../examples/pkg-amigae30a-fr.html"><code>amigae30a_fr</code></a></p><p class="pathctx">amigae30a_fr/AmigaE30f/Sources/Pd/PubScreenNames.e</p><p class="prose">PubScreenNames.e * Affiche le nom et quelques atres attributs d&#x27;écrans public ouverts * Teste aussi la présence d&#x27;écran particulier. * * Domaine Public par Diego Caravana. * ( Source traduit par Olivier ANH (BUGSS) ) * * Merci à Wouter van Oortmerssen pour son TRES BON travail, en espérant * qu&#x27;il c</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/screens.html">intuition/screens</a></li></ul></div><h2>Source</h2><pre class="code">/* PubScreenNames.e
+ * Affiche le nom et quelques atres attributs d&#x27;écrans public ouverts
+ * Teste aussi la présence d&#x27;écran particulier.
+ *
+ * Domaine Public par Diego Caravana.
+ * ( Source traduit par Olivier ANH (BUGSS) )
+ *
+ * Merci à Wouter van Oortmerssen pour son TRES BON travail, en espérant
+ * qu&#x27;il continuera a programmer en E !
+ *
+ * Hé, apprenez le E !!!
+ *
+ */
+
+/* TAB=4 */
+
+OPT OSVERSION=37
+
+/* Ici les OBJECTs qu&#x27;on utilise pour copier les données inhérentes aux écrans
+ * public. Copier les données est nécessaire car le vérroulliage (lock) de la
+ * liste (PubScreen List) doit être le plus court possible (voir les autodocs
+ * de Commodore). C&#x27;est due au fait que la liste ne peut être modifiée (i.e.
+ * aucune fnêtre ne peut s&#x27;ouvrir ou se fermer) tant qu&#x27;elle est verrouillée
+ * par un tache.
+ */
+
+OBJECT mypubscreen
+        name, flags:INT, visitorcnt:INT, screen, task, next
+ENDOBJECT
+
+MODULE &#x27;intuition/screens&#x27;, &#x27;exec/lists&#x27;, &#x27;exec/nodes&#x27;
+
+CONST ARGS_NUM=2
+ENUM  ARG_FULL, ARG_EXISTS
+
+ENUM ERR_NONE=0, ERR_PUBLOCK, ERR_MEM, ERR_WRONGARGS, OK_FOUND, OK_NOTFOUND
+
+DEF     localpslist:mypubscreen, strflags[25]:STRING, args[ARGS_NUM]:ARRAY OF LONG
+
+RAISE ERR_MEM           IF String()=NIL,
+          ERR_PUBLOCK   IF LockPubScreenList()=NIL,
+          ERR_WRONGARGS IF ReadArgs()=NIL,
+          ERR_MEM               IF New()=NIL
+
+PROC main() HANDLE
+DEF pslist:PTR TO lh, psnode:PTR TO ln, i=0, localpsnode:PTR TO mypubscreen,
+        pubscreen:PTR TO pubscreennode, publock=NIL, rdargs=NIL
+
+        VOID &#x27;$VER: PubScreenNames 1.1 (13.02.93) par Diego Caravana&#x27;
+
+        rdargs := ReadArgs(&#x27;FULL/S,EXISTS/K&#x27;, args, 0)
+
+        /* Prend la liste des écran public ;
+         * Elle ne sera pas modifiée pendant la lecture
+         */
+        publock := LockPubScreenList()
+
+        /* première boucle : copie toutes les données nécessaires le plus vite possible
+         */
+        pslist := publock
+        psnode := pslist.head
+        localpsnode := localpslist
+
+        WHILE psnode.succ &lt;&gt; NIL
+
+                /* teste si un écran EXISTS avec un nom spécifié
+                 */
+                IF StrCmp(psnode.name, args[ARG_EXISTS], ALL) THEN Raise(OK_FOUND)
+
+                /* alloue une chaine dynamique pour reduire la mémoire utilisée
+                 * car les STRINGs ne sont pas permises (bientôt, j&#x27;espère :)
+                 * dans les OBJECTs
+                 */
+                localpsnode.name:=String(StrLen(psnode.name)+2)
+                StrCopy(localpsnode.name, psnode.name, ALL)
+                IF args[ARG_FULL]=-1    /* copy only if needed */
+                        pubscreen:=psnode
+                        localpsnode.flags:=pubscreen.flags
+                        localpsnode.visitorcnt:=pubscreen.visitorcount
+                        localpsnode.task:=pubscreen.sigtask
+                        localpsnode.screen:=pubscreen.screen
+                ENDIF
+
+                /* alloue un OBJECT pour contenir les informations du
+                 * prochain écran
+                 */
+                localpsnode.next:=New(SIZEOF mypubscreen)
+
+                /* change les pointeurs pour éxaminer la chaine
+                 */
+                localpsnode:=localpsnode.next
+                psnode:=psnode.succ
+        ENDWHILE
+
+        UnlockPubScreenList()
+        publock:=NIL    /* pour mémoire que l&#x27;on a déverrouillé (release the lock)*/
+
+        /* à ce point, si un nom d&#x27;écran est spécifié avec EXIST, il n&#x27;a pas
+         * été trouvé comme Ecran Public (Public Screen) dans la boucle
+         * précédente, on peut alors sortir avec une code de retour null
+         */
+        IF StrLen(args[ARG_EXISTS]) &lt;&gt; 0 THEN Raise(OK_NOTFOUND)
+
+        /* imprime l&#x27;entête avec la description des champs
+     */
+        IF args[ARG_FULL]=-1    /* imprime le bon ! */
+                WriteF(&#x27;\n N. Nom               Visiteurs Ecran      Tache      Flags\n&#x27;)
+                WriteF(  &#x27; ---------------------------------------------------------------------------\n&#x27;)
+        ELSE
+                WriteF(&#x27;\n N. Nom\n&#x27;)
+                WriteF(  &#x27; ----------------------\n&#x27;)
+        ENDIF
+
+        /* Seconde boucle : imprime toutes les données
+         */
+        localpsnode:=localpslist
+        WHILE localpsnode.next &lt;&gt; NIL
+                i++
+
+                IF args[ARG_FULL]=-1    /* choisir les infos à imprimer */
+
+                        /* not-so-simple code: the two flags are independent by one another
+                         * and also we want a &quot;|&quot; (OR in C) put between them; then, there
+                         * is a default string which is used when no flag is set
+                         */
+                        StrCopy(strflags,&#x27;&lt;No Flags Set&gt;&#x27;,ALL)
+                        IF localpsnode.flags AND SHANGHAI
+                                StrCopy(strflags,&#x27;SHANGHAI&#x27;,ALL)
+                                IF localpsnode.flags AND POPPUBSCREEN
+                                        StrAdd(strflags,&#x27;|POPPUBSCREEN&#x27;,ALL)
+                                ENDIF
+                        ELSE
+                                IF localpsnode.flags AND POPPUBSCREEN
+                                        StrCopy(strflags,&#x27;POPPUBSCREEN&#x27;,ALL)
+                                ENDIF
+                        ENDIF
+
+                        WriteF(&#x27; \l\d[2] \l\s[18]    \l\d[3]   $\z\h[8]  $\z\h[8]  \l\s\n&#x27;,
+                                i, localpsnode.name, localpsnode.visitorcnt,
+                                localpsnode.screen, localpsnode.task, strflags )
+                ELSE
+                        WriteF(&#x27; \l\d[2] \l\s[18]\n&#x27;, i, localpsnode.name)
+                ENDIF
+
+                localpsnode:=localpsnode.next
+        ENDWHILE
+        WriteF(&#x27;\n Trouvé \d Public Screen(s)\n\n&#x27;, i)
+
+        Raise(ERR_NONE)
+
+EXCEPT
+        IF publock THEN UnlockPubScreenList()
+    IF rdargs THEN FreeArgs(rdargs)
+
+        SELECT exception
+                CASE ERR_NONE;
+                CASE OK_FOUND;          CleanUp(5)              /* Si WARN, ce sera vrai (true) */
+                CASE OK_NOTFOUND;       CleanUp(0)
+                CASE ERR_PUBLOCK;       WriteF(&#x27;*** Ne peut obtenir les infos sur PubScreen !\n&#x27;)
+                CASE ERR_MEM;           WriteF(&#x27;*** Pas de  mémoire !\n&#x27;)
+                DEFAULT;                        PrintFault(IoErr(), &#x27;*** Erreur&#x27;)
+        ENDSELECT
+
+        IF exception THEN CleanUp(10)
+        CleanUp(0)
+
+ENDPROC
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

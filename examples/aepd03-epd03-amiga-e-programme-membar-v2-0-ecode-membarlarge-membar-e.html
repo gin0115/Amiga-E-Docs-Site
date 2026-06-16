@@ -1,0 +1,234 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>MemBar.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-aepd03.html">AEPD03</a> &rsaquo; MemBar.e</div><h1>File: <code>MemBar.e</code></h1><p class="meta">208 lines · project <a href="../examples/pkg-aepd03.html"><code>AEPD03</code></a></p><p class="pathctx">AEPD03/EPD03/Amiga_E-Programme/MemBar/V2.0_ECode/MemBarLarge/MemBar.e</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/execbase.html">exec/execbase</a></li><li><a href="../modules/lists.html">exec/lists</a></li><li><a href="../modules/memory.html">exec/memory</a></li><li><a href="../modules/nodes.html">exec/nodes</a></li><li><a href="../modules/ports.html">exec/ports</a></li><li><a href="../modules/types.html">exec/types</a></li><li><a href="../modules/rastport.html">graphics/rastport</a></li><li><a href="../modules/intuition.html">intuition/intuition</a></li><li><a href="../modules/screens.html">intuition/screens</a></li></ul></div><h2>Source</h2><pre class="code">MODULE &#x27;exec/execbase&#x27;
+MODULE &#x27;exec/lists&#x27;
+MODULE &#x27;exec/memory&#x27;
+MODULE &#x27;exec/nodes&#x27;
+MODULE &#x27;exec/ports&#x27;
+MODULE &#x27;exec/types&#x27;
+MODULE &#x27;graphics/rastport&#x27;
+MODULE &#x27;intuition/intuition&#x27;
+MODULE &#x27;intuition/screens&#x27;
+
+PMODULE &#x27;PMODULES:systime&#x27;
+
+/*************/
+/* CONSTANTS */
+/*************/
+
+CONST MAXMODE = 2,
+      WTF_THRESHOLD = 10
+
+/***********/
+/* GLOBALS */
+/***********/
+
+DEF dateStr [8] : STRING,
+    win : PTR TO window
+
+
+
+PROC succFrom (listNode)
+  DEF node : ln
+  /*----------------------------------------------*/
+  /* Extract successor from a listnode structure. */
+  /*----------------------------------------------*/
+  node := listNode
+ENDPROC  node.succ
+
+
+
+PROC maxMem (memType)
+  DEF execBase : PTR TO execbase,
+      blockSize = 0,
+      memHeader : PTR TO mh,
+      memList : PTR TO lh
+
+  /*---------------------------------------------------------------*/
+  /* Calculate max memory of type memType.  memType will be either */
+  /* MEMF_CHIP for chip memory, or MEMF_FAST for fast memory.      */
+  /* The memory is gotten from the memList in execbase, which is a */
+  /* list of memory available to the system.                       */
+  /*---------------------------------------------------------------*/
+
+  Forbid ()
+
+  /* Break down execBase. */
+  execBase := execbase
+  memList := execBase.memlist
+  memHeader := memList.head
+
+  /* Follow the memlist to accumulate total ram of type memType. */
+  WHILE succFrom (memHeader.ln) /* MemHeader.mh_Node.ln_Succ */
+    IF (memHeader.attributes AND memType)
+      blockSize := blockSize + memHeader.upper - memHeader.lower
+    ENDIF
+    memHeader := succFrom (memHeader.ln)
+  ENDWHILE
+
+  Permit ()
+
+ENDPROC  blockSize
+
+
+
+PROC cleanUp (errMsg)
+  IF errMsg THEN WriteF (&#x27;\s\n&#x27;, errMsg)
+  IF win THEN CloseW (win)
+ENDPROC
+
+
+
+PROC main ()
+  DEF  windowTitle,
+       programName,
+       mode = 0,
+       delay = 20,
+       bool = TRUE,
+       msg : PTR TO intuimessage,
+       class,
+       code,
+       max,
+       x,
+       wtfLevel = WTF_THRESHOLD
+
+  /*----------------------------------------------------------------------*/
+  /* Open a window on workbench screen, width of about half the titlebar, */
+  /* height of titlebar, which will display a guage of chip and fast      */
+  /* memory.  If right mouse button is pressed in the window, the display */
+  /* will toggle to datetime and back to memory guage.                    */
+  /*----------------------------------------------------------------------*/
+
+  programName := &#x27;MemBar V2.1&#x27;
+
+  IF (win := OpenW (0, 0, 320, 10,
+                    (IDCMP_MOUSEBUTTONS + IDCMP_CLOSEWINDOW),
+                    (WFLG_CLOSEGADGET + WFLG_DRAGBAR +
+                     WFLG_DEPTHGADGET + WFLG_SMART_REFRESH +
+                     WFLG_NOCAREREFRESH + WFLG_RMBTRAP),
+                    programName,
+                    NIL,
+                    WBENCHSCREEN,
+                    NIL)) = NIL
+    cleanUp (&#x27;MemBar : Can\at open window.&#x27;)
+  ENDIF
+
+  WHILE bool
+
+    Delay (delay)
+    INC wtfLevel
+
+    IF wtfLevel &gt;= (WTF_THRESHOLD + exp (mode + 1, 3))
+      WindowToFront (win)
+      wtfLevel := 0
+    ENDIF
+
+    WHILE msg := GetMsg (win.userport)
+
+      class := msg.class
+      code := msg.code
+
+      ReplyMsg (msg)
+
+      SELECT class
+        CASE IDCMP_CLOSEWINDOW
+          bool := FALSE
+        CASE IDCMP_MOUSEBUTTONS
+          IF code = MENUUP
+            INC mode
+            IF mode = MAXMODE
+              mode := 0
+              windowTitle := programName
+            ELSE
+              windowTitle := &#x27;        &#x27;
+            ENDIF
+            SetWindowTitles (win, windowTitle, NIL);
+          ENDIF
+      ENDSELECT
+
+    ENDWHILE
+
+    SELECT mode
+      CASE 0
+        /*-------------*/
+        /* show membar */
+        /*-------------*/
+
+        Line ( 31, 1,  31, 8, 2)
+        Line ( 30, 1,  30, 8, 2)
+        Line (264, 1, 264, 8, 2)
+        Line (263, 1, 263, 8, 2)
+        Line ( 32, 1, 262, 1, 2)
+        Line ( 32, 4, 262, 4, 2)
+        Line ( 32, 5, 262, 5, 2)
+        Line ( 32, 8, 262, 8, 2)
+
+        max := maxMem (MEMF_CHIP)
+
+        x := Div (Mul (231, (max - AvailMem (MEMF_CHIP))), max) + 32
+
+        Line (32, 2, x, 2, 3)
+        Line (32, 3, x, 3, 3)
+
+        INC x
+
+        Line (263, 2, x, 2, 2)
+        Line (263, 3, x, 3, 2)
+
+        max := maxMem (MEMF_FAST)
+        x := Div (Mul (231, (max - AvailMem (MEMF_FAST))), max) + 32
+
+        Line (32, 6, x, 6, 3)
+        Line (32, 7, x, 7, 3)
+
+        INC x
+
+        Line (263, 6, x, 6, 2)
+        Line (263, 7, x, 7, 2)
+
+        delay := 20
+
+      CASE 1
+        /*-----------*/
+        /* show time */
+        /*-----------*/
+
+        IF delay &lt;&gt; 10
+          Colour (1, 0)
+          delay := 10  /* Eat as little time as possible, */
+                       /* but remain somewhat accurate.   */
+        ENDIF
+        TextF (30, 7, &#x27;\s&#x27;, systemTimeStr (dateStr))
+
+    ENDSELECT
+
+  ENDWHILE
+
+  cleanUp (NIL)
+
+ENDPROC
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

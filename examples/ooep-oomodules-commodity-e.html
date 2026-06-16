@@ -1,0 +1,475 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>commodity.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-ooep.html">OOEP</a> &rsaquo; commodity.e</div><h1>File: <code>commodity.e</code></h1><p class="meta">449 lines · project <a href="../examples/pkg-ooep.html"><code>OOEP</code></a></p><p class="pathctx">OOEP/oomodules/commodity.e</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/commodities.html">oomodules/library/commodities</a></li></ul></div><h2>Source</h2><pre class="code">OPT MODULE
+OPT OSVERSION=37
+
+MODULE  &#x27;oomodules/library/commodities&#x27;,
+        &#x27;oomodules/object&#x27;,
+
+        &#x27;commodities&#x27;,
+        &#x27;libraries/commodities&#x27;,
+        &#x27;exec/ports&#x27;
+
+
+DEF nb:PTR TO newbroker,
+    hotkey, hotkeyID,
+
+    cxlib:PTR TO commodities
+
+EXPORT OBJECT commodity OF object
+/****** object/commodity ******************************
+
+    NAME
+        commodity of object -- Commodity object. Installs a commodity in the
+            system.
+
+    PURPOSE
+        Add commodity facilities to your application.
+
+    ATTRIBUTES
+        broker:LONG -- Pointer to broker structure as returned and used
+            by the commodities.library
+
+        messagePort:PTR TO mp -- Message port of the commodity. Messages
+            arrive here when we press the hotkey, enable the commodity and
+            so on.
+
+        openGUIProc:LONG -- Address of the proc to call when the commodity is
+            told to open the gui (via hotkey or exchange program). No
+            arguments.
+
+        closeGUIProc:LONG -- The opposite of the open gui proc.
+
+        killProc:LONG -- Address of proc to call when the commodity is told
+            to quit. If left NIL a standard proc is called that removes the
+            commodity from the system, frees the message port and other
+            allocated resources. That standard proc is removeFromSystem().
+            You may put your own proc here and call removeFromSystem() when
+            you&#x27;re finished. See autodoc of that proc.
+
+    NOTES
+        A quick &amp; dirty implementation from one of my old sources. I&#x27;m sure it
+        isn&#x27;t finished.
+
+    SEE ALSO
+        object
+
+********/
+  broker
+  messagePort:PTR TO mp
+  openGUIProc
+  closeGUIProc
+  killProc
+ENDOBJECT
+
+PROC init() OF commodity
+/****** commodity/init ******************************
+
+    NAME
+        init() of commodity -- Initialization of the object.
+
+    SYNOPSIS
+        commodity.init()
+
+    FUNCTION
+        Opens commodities library if needed and creates message port. Some
+        flags are set. The commodity is set to be unique.
+
+    SEE ALSO
+        commodity
+
+********/
+
+  NEW cxlib.new()
+
+  self.messagePort := CreateMsgPort()
+  NEW nb
+
+  nb.unique := NBU_UNIQUE OR NBU_NOTIFY
+  nb.flags := COF_SHOW_HIDE
+  nb.port := self.messagePort
+
+  hotkeyID := 1
+
+  SUPER self.init()
+
+ENDPROC
+
+PROC select(opts,i) OF commodity
+/****** commodity/select ******************************
+
+    NAME
+        select() of commodity -- Selection of action.
+
+    SYNOPSIS
+        commodity.select(LONG, LONG)
+
+        commodity.select(opts, i)
+
+    FUNCTION
+        The following tags are recognized:
+            &quot;name&quot; -- Name of cx.
+
+            &quot;title&quot; -- Title of cx. Some simple line that says who did it.
+
+            &quot;desc&quot; -- Short description line (&#x27;OS3 version&#x27;, &#x27;Testversion&#x27;)
+
+            &quot;vers&quot; -- Version byte
+
+            &quot;hotk&quot; -- Hotkey string, e.g. &#x27;control alt d&#x27;
+
+            &quot;open&quot; -- Pointer to proc that will be called if the cx is told
+                to open the gui. No arguments are passed.
+
+            &quot;clos&quot; -- Pointer to proc that will be called if the cx is told
+                to close the gui. No arguments are passed.
+
+            &quot;kill&quot; -- Pointer to proc that will be called if the cx is told
+                to kill the gui. No arguments are passed. If you use this tag
+                be sure to call removeFromSystem().
+
+            &quot;now&quot; -- If this tag is found in the list the cx is added to the
+                system at once. Do *NOT* provide any more tags, this one has
+                to be the last one in the list. If you do, behaviour is
+                undefined.
+
+        The tags &quot;name&quot;, &quot;titl&quot;, &quot;desc&quot; and &quot;hotkey&quot; have to be provided.
+        However, this is not checked. If you forget one, behaviour is
+        undefined.
+
+    INPUTS
+        opts:LONG -- Option list.
+
+        i:LONG -- Index of optionlist.
+
+    RESULT
+        LONG -- Current index we are at.
+
+    EXAMPLE
+         NEW cx.new([&quot;name&quot;, &#x27;DevEnv&#x27;,
+                     &quot;titl&quot;, &#x27;DevEnv 0.5ß © 1995,6 Gregor Goldbach&#x27;,
+                     &quot;desc&quot;, &#x27;E Development Environment&#x27;,
+                     &quot;vers&quot;, 5,
+                     &quot;hotk&quot;, &#x27;control alt d&#x27;,
+                     &quot;open&quot;, {showMainWindow},
+                     &quot;now&quot;])
+    SEE ALSO
+        commodity
+
+********/
+DEF item
+
+  item:=ListItem(opts,i)
+
+
+  SELECT item
+
+    CASE &quot;name&quot;
+
+      INC i
+      nb.name := ListItem(opts,i)
+
+    CASE &quot;titl&quot;
+
+      INC i
+      nb.title := ListItem(opts,i)
+
+    CASE &quot;desc&quot;
+
+      INC i
+      nb.descr := ListItem(opts,i)
+
+    CASE &quot;hotk&quot;
+
+      INC i
+      hotkey := ListItem(opts,i)
+
+    CASE &quot;vers&quot;
+
+      INC i
+      nb.version := ListItem(opts,i)
+
+    CASE &quot;now&quot;
+
+      self.addToSystem()
+      END nb
+
+    CASE &quot;open&quot;
+
+      INC i
+      self.openGUIProc := ListItem(opts,i)
+
+    CASE &quot;clos&quot;
+
+      INC i
+      self.closeGUIProc := ListItem(opts,i)
+
+    CASE &quot;kill&quot;
+
+      INC i
+      self.killProc := ListItem(opts,i)
+
+  ENDSELECT
+
+ENDPROC i
+
+EXPORT PROC addToSystem() OF commodity
+/****** commodity/addToSystem ******************************
+
+    NAME
+        addToSystem() of commodity -- Adds commodity to the system.
+
+    SYNOPSIS
+        commodity.addToSystem()
+
+    FUNCTION
+        The commodity is installed by the commodities library, arguments set
+        in select() will be used. Check self.broker to know if the creation
+        was successful or not. There may be an exception for this in the
+        future.
+
+    SEE ALSO
+        commodity
+
+********/
+DEF filter, sender, translate
+
+  IF nb
+
+    self.broker:=CxBroker(nb,0) -&gt; Create broker with the filled nb structure
+
+    IF self.broker
+
+
+        /* Create a filter which checks *
+         * input events for our hotkey. */
+        IF filter:=CreateCxObj(CX_FILTER,hotkey,0)
+           /* We have to attach the filter to *
+            * our broker.                     */
+          AttachCxObj(self.broker,filter)
+           /* Create a sender which sends us *
+            * hotkey/data info to our port   */
+          IF sender:=CreateCxObj(CX_SEND,self.messagePort,hotkeyID)
+            /* Attach the sender to the filter */
+            AttachCxObj(filter,sender)
+            /* Create a translator which &#x27;eats&#x27; *
+             * the input event if it was ours.  */
+            IF translate:=CreateCxObj(CX_TRANSLATE,0,0)
+              /* Attach also the translator to the filter */
+              AttachCxObj(filter,translate)
+              /* Global error-check on our filter */
+              IF (CxObjError(filter)=0)
+                /* No errors. Let&#x27;s go! */
+                ActivateCxObj(self.broker,TRUE)
+                /* We use a subroutine now         *
+                 * (only to have a cleaner source) */
+              ENDIF
+            ENDIF
+          ENDIF
+        ENDIF
+      ENDIF
+    ENDIF
+
+ENDPROC
+
+PROC removeFromSystem() OF commodity
+/****** commodity/removeFromSystem ******************************
+
+    NAME
+        removeFromSystem() of commodity --
+
+    SYNOPSIS
+        commodity.removeFromSystem()
+
+    FUNCTION
+
+    RESULT
+
+    EXAMPLE
+
+    CREATION
+
+    HISTORY
+
+    NOTES
+
+    SEE ALSO
+        commodity
+
+********/
+
+  DeleteCxObjAll(self.broker)
+  DeleteMsgPort(self.messagePort)
+
+  END cxlib
+
+ENDPROC
+
+EXPORT PROC handleInputs() OF commodity
+/****** commodity/handleInputs ******************************
+
+    NAME
+        handleInputs() of commodity --
+
+    SYNOPSIS
+        commodity.handleInputs()
+
+    FUNCTION
+
+    RESULT
+
+    EXAMPLE
+
+    CREATION
+
+    HISTORY
+
+    NOTES
+
+    SEE ALSO
+        commodity
+
+********/
+DEF msg,msgid,msgtype,rcode,
+    proc
+
+  REPEAT
+    rcode:=0        /* reset main LOOP RETURN code */
+
+    /* Wait for any message at our port */
+
+    WaitPort(self.messagePort)
+
+
+    /* Get the message :) */
+
+    IF msg:=GetMsg(self.messagePort)
+
+      /* Get more data from message for CX */
+
+      msgid:=CxMsgID(msg)
+      msgtype:=CxMsgType(msg)
+
+      /* Reply (here OR later but important!) */
+
+      ReplyMsg(msg)
+
+      /* Check for CXM_IEVENT (Hotkey) */
+
+      IF msgtype=CXM_IEVENT
+
+        /* Was it our hotkey? */
+
+        IF msgid=hotkeyID
+
+          /*** Here the hotkey action takes place! ***/
+
+          proc := self.openGUIProc
+          IF proc THEN proc()
+
+        ENDIF
+
+      /* Check for CXM_COMMAND (Exchange, ...) */
+
+      ELSEIF msgtype=CXM_COMMAND
+
+        /* Exchange command Disable */
+
+        IF msgid=CXCMD_DISABLE
+
+          /*** Remove patches / stop cx-action here ***/
+
+          ActivateCxObj(self.broker,FALSE)
+
+          /* Exchange command Enable */
+
+        ELSEIF msgid=CXCMD_ENABLE
+
+          /*** Install patches / start our cx-action here ***/
+
+          ActivateCxObj(self.broker,TRUE)
+
+          /* Exchange command Show (if COF_SHOW_HIDE flag is SET) */
+
+        ELSEIF msgid=CXCMD_APPEAR
+
+          /*** Open our GUI/window here ***/
+
+          proc := self.openGUIProc
+          IF proc THEN proc()
+
+          /* Exchange command Hide (see CMD_APPEAR) */
+
+        ELSEIF msgid=CXCMD_DISAPPEAR
+
+          /*** Close our GUI/window here ***/
+
+
+          /* We were started again by a stupid user, *
+           * so we tell him and ask to quit.         *
+           * (CXCMD_UNIQUE if nb.unique filled)      *
+           * rcode becomes 1 if user wants to quit   */
+
+          proc := self.closeGUIProc
+          IF proc THEN proc()
+
+        ELSEIF msgid=CXCMD_UNIQUE
+
+          rcode:=EasyRequestArgs(0,[20,0,&#x27;CX 37.0&#x27;,&#x27;CX already works.\nQuit it now?&#x27;,&#x27;Quit|Cancel&#x27;],0,0)
+
+          /* Exchange Killer command */
+
+        ELSEIF msgid=CXCMD_KILL
+
+          proc := self.killProc
+          IF proc THEN proc()
+
+          rcode:=1
+
+          /* COMMAND check end */
+
+        ENDIF
+
+      /* COMMAND &amp; IEVENT check end */
+
+      ENDIF
+
+    /* message scanned &amp; replied */
+
+    ENDIF
+
+  /* get the next message from our master */
+
+  UNTIL rcode
+
+ENDPROC
+
+/*EE folds
+-1
+17 44 19 30 22 115 25 56 
+EE folds*/
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

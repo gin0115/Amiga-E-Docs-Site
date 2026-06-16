@@ -1,0 +1,145 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>fvkiller.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-frontier-src.html">FRONTIER-Src</a> &rsaquo; fvkiller.e</div><h1>File: <code>fvkiller.e</code></h1><p class="meta">119 lines · project <a href="../examples/pkg-frontier-src.html"><code>FRONTIER-Src</code></a></p><p class="pathctx">FRONTIER-Src/FRONTIER-Src/fvkiller.e</p><p class="prose">---------------------------------------------------------------- * * Project : Filevirus Library * * Program : fvkiller.e (fvfiller.c) * * Author : Bjorn Reese &lt;breese@imada.ou.dk&gt; * * <a href="../modules/translator.html">Translator</a>: Mathias Grundler (turrican@starbase.inka.de) * * Short : <a href="../modules/example.html">Example</a> of a simple virus killer * Compile wit</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/dos.html">dos/dos</a></li><li><a href="../modules/dostags.html">dos/dostags</a></li><li><a href="../modules/memory.html">exec/memory</a></li><li><a href="../modules/types.html">exec/types</a></li><li><a href="../modules/filevirus.html">filevirus</a></li><li><a href="../modules/filevirus.html">libraries/filevirus</a></li></ul></div><h2>Source</h2><pre class="code">/* ----------------------------------------------------------------
+ *
+ *  Project   : Filevirus Library
+ *
+ *  Program   : fvkiller.e (fvfiller.c)
+ *
+ *  Author    : Bjorn Reese &lt;breese@imada.ou.dk&gt;
+ *
+ *  Translator: Mathias Grundler (turrican@starbase.inka.de)
+ *
+ *  Short     : Example of a simple virus killer
+ *              Compile with &quot;ec fvkiller.e&quot;
+ *
+ * ---------------------------------------------------------------- */
+
+
+MODULE &#x27;dos/dos&#x27;
+MODULE &#x27;dos/dostags&#x27;
+MODULE &#x27;exec/types&#x27;
+MODULE &#x27;exec/memory&#x27;
+MODULE &#x27;filevirus&#x27;
+MODULE &#x27;libraries/filevirus&#x27;
+
+/* The following C-Source is replaced by the E-Function &gt;FileLength(filename)&lt;
+
+long FileSize(BPTR file)
+{
+  long len = 0;
+  struct FileInfoBlock *fib;
+
+  if ( fib=AllocDosObjectTags(DOS_FIB, ADO_FH_Mode) ) {
+    len = ExamineFH(file, fib) ? fib-&gt;fib_Size : 0L;
+    FreeDosObject(DOS_FIB, fib);
+  }
+  return len;
+}
+*/
+
+/* ---------------------------------------------------------------- */
+
+PROC repairFile(p:PTR TO filevirusnode,fname)
+ DEF    f=NIL,
+        len,
+        buff,
+        answer[256]:STRING,
+        repair                  -&gt; E`s SELECT don`t take Procedures as Parameter!
+
+  IF (f:=Open(fname,MODE_OLDFILE))
+   len:=FileLength(fname)               -&gt; Original C-Source: len = FileSize(f)
+    IF (buff:=AllocMem(len,MEMF_ANY OR MEMF_CLEAR))
+     Read(f,buff,len)
+
+      p.fv_Buffer   :=buff
+      p.fv_BufferLen:=len
+
+      WriteF(&#x27;File: &quot;\s&quot; &#x27;,fname)
+
+       IF (FvCheckFile(p)=0)
+        IF (p.fv_FileInfection&lt;&gt;NIL)
+         WriteF(&#x27;*** virus &quot;\s&quot; found\n&#x27;,p.fv_FileInfection.fi_VirusName)
+         WriteF(&#x27;Repair (yes/no) : &#x27;)
+          Fgets(answer,256,stdin)
+           IF (answer[0]=&#x27;y&#x27;)
+            repair:=(FvRepairFile(p, NIL, 0))
+            SELECT      repair
+             CASE       FVMSG_DELETE
+              Close(f)
+               f:=NIL
+                IF (DeleteFile(fname))
+                  WriteF(&#x27;File deleted\n&#x27;)
+                ELSE
+                  WriteF(&#x27;Error! Cannot delete\n&#x27;)
+                ENDIF
+             CASE       FVMSG_RENAME
+                WriteF(&#x27;Please rename\n&#x27;)
+             CASE       FVMSG_SAVE
+                Close(f)
+                 IF (f:=Open(fname, MODE_NEWFILE))
+                  Seek(f, 0, OFFSET_BEGINNING)
+                   Write(f,buff,p.fv_BufferLen)
+                  WriteF(&#x27;Hunk/code removed\n&#x27;)
+                 ELSE
+                  WriteF(&#x27;Error! Unable to remove hunk/code\n&#x27;)
+                 ENDIF
+             DEFAULT
+              WriteF(&#x27;No action taken\n&#x27;)
+            ENDSELECT
+          ENDIF
+        ELSE
+         WriteF(&#x27;clean\n&#x27;)
+        ENDIF
+       ELSE
+        WriteF(&#x27;error \d\n&#x27;, p.fv_Status)
+       ENDIF
+     FreeMem(buff, len)
+    ENDIF
+   IF (f&lt;&gt;NIL) THEN Close(f)
+  ELSE
+   WriteF(&#x27;Unable to open File &quot;\s&quot;\n&#x27;,fname)
+  ENDIF
+ENDPROC
+
+/* ---------------------------------------------------------------- */
+
+PROC main()
+ DEF    p:PTR TO filevirusnode
+  IF (filevirusbase:=OpenLibrary(&#x27;filevirus.library&#x27;, 2))
+   IF (p:=FvAllocNode())
+    repairFile(p, arg)
+     FvFreeNode(p)
+   ELSE
+    WriteF(&#x27;FvAllocNode() failed\n&#x27;)
+   ENDIF
+   CloseLibrary(filevirusbase)
+  ELSE
+   WriteF(&#x27;Cannot open &quot;filevirus.library&quot; V.2+\n&#x27;)
+  ENDIF
+ENDPROC
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

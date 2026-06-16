@@ -1,0 +1,415 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>StackMon.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-aepd08.html">AEPD08</a> &rsaquo; StackMon.e</div><h1>File: <code>StackMon.e</code></h1><p class="meta">389 lines · project <a href="../examples/pkg-aepd08.html"><code>AEPD08</code></a></p><p class="pathctx">AEPD08/EPD08/Amiga_E-Programme/StackMon/StackMon.e</p><p class="prose">***********************</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/dosextens.html">dos/dosextens</a></li></ul></div><h2>Source</h2><pre class="code">/*************************/
+/*			 */
+/*  StackMon v1.0	 */
+/*  © 1993 David Kinder  */
+/*			 */
+/*  Written with AmigaE  */
+/*			 */
+/*************************/
+
+OPT OSVERSION = 37
+
+MODULE &#x27;dos/dosextens&#x27;,
+       &#x27;exec/execbase&#x27;,&#x27;exec/lists&#x27;,&#x27;exec/nodes&#x27;,&#x27;exec/tasks&#x27;,
+       &#x27;gadtools&#x27;,&#x27;libraries/gadtools&#x27;,
+       &#x27;graphics/text&#x27;,
+       &#x27;intuition/intuition&#x27;,&#x27;intuition/screens&#x27;,
+       &#x27;utility/tagitem&#x27;
+
+OBJECT mynode
+  succ : LONG
+  pred : LONG
+  type : CHAR
+  pri : CHAR
+  name : LONG
+  ptr : LONG
+ENDOBJECT
+
+ENUM NONE,ER_GAD,ER_SCR,ER_VISUAL,ER_CONTEXT,ER_GADGET,ER_WINDOW
+
+DEF scr : PTR TO screen,
+    wnd : PTR TO window,
+    listv : PTR TO lh,
+    currtask : PTR TO tc,
+    exec : PTR TO execbase,
+    offset,visual,glist,gadg,stk,max,size,mypri,
+    version
+
+PROC main() HANDLE
+  version := &#x27;$VER: StackMon 1.0 (6.9.93)&#x27;
+  changepri()
+  openwin()
+  handlemsg()
+  Raise(NONE)
+EXCEPT
+  closewin()
+  IF exception &gt; 0 THEN error(ListItem([&#x27;&#x27;,&#x27;open gadtools.library&#x27;,
+    &#x27;find screen&#x27;,&#x27;get visual info&#x27;,&#x27;create context&#x27;,&#x27;create gadget&#x27;,
+    &#x27;open window&#x27;],exception))
+ENDPROC
+
+PROC openwin()
+  DEF font : PTR TO textattr
+
+  exec := execbase
+  IF (gadtoolsbase := OpenLibrary(&#x27;gadtools.library&#x27;,37)) = NIL THEN
+    Raise(ER_GAD)
+  IF (scr := LockPubScreen(NIL)) = NIL THEN Raise(ER_SCR)
+  font := scr.font
+  offset := font.ysize
+  IF (visual := GetVisualInfoA(scr,NIL)) = NIL THEN Raise(ER_VISUAL)
+  IF (gadg := CreateContext({glist})) = NIL THEN Raise(ER_CONTEXT)
+
+  listv := [0,0,0,0,0]:lh
+  listv.head := listv+4; listv.tail := 0; listv.tailpred := listv
+
+  gettasks()
+  font := [&#x27;topaz.font&#x27;,8,0,0]:textattr
+
+  IF (gadg := CreateGadgetA(BUTTON_KIND,gadg,
+    [12,offset+127,64,14,&#x27;_About&#x27;,font,2,PLACETEXT_IN,visual,0]:newgadget,
+    [GT_UNDERSCORE,&quot;_&quot;,TAG_DONE])) = NIL THEN Raise(ER_GADGET)
+  IF (gadg := CreateGadgetA(BUTTON_KIND,gadg,
+    [206,offset+127,64,14,&#x27;_Cancel&#x27;,font,3,PLACETEXT_IN,visual,
+     0]:newgadget,[GT_UNDERSCORE,&quot;_&quot;,TAG_DONE])) = NIL THEN Raise(ER_GADGET)
+  IF (gadg := CreateGadgetA(BUTTON_KIND,gadg,
+    [87,offset+127,108,14,&#x27;_Update list&#x27;,font,4,PLACETEXT_IN,visual,
+     0]:newgadget,[GT_UNDERSCORE,&quot;_&quot;,TAG_DONE])) = NIL THEN Raise(ER_GADGET)
+  IF (gadg := CreateGadgetA(LISTVIEW_KIND,gadg,
+    [12,offset+55,258,72,NIL,font,1,0,visual,0]:newgadget,[GTLV_SCROLLWIDTH,
+     18,GTLV_LABELS,listv,TAG_DONE])) = NIL THEN Raise(ER_GADGET)
+
+  IF (wnd := OpenWindowTagList(NIL,
+   [WA_LEFT,100,
+    WA_TOP,30,
+    WA_WIDTH,282,
+    WA_HEIGHT,offset+147,
+    WA_GADGETS,glist,
+    WA_IDCMP,IDCMP_CLOSEWINDOW+IDCMP_VANILLAKEY+IDCMP_CHANGEWINDOW+
+      LISTVIEWIDCMP,
+    WA_FLAGS,WFLG_DRAGBAR+WFLG_DEPTHGADGET+WFLG_CLOSEGADGET+WFLG_ACTIVATE+
+      WFLG_RMBTRAP,
+    WA_PUBSCREEN,scr,
+    WA_SCREENTITLE,&#x27;StackMon v1.0&#x27;,
+    WA_TITLE,&#x27;StackMon v1.0&#x27;,
+    WA_ZOOM,[0,offset+55+Mul(282,65536)],
+    TAG_DONE])) = NIL THEN Raise(ER_WINDOW)
+
+  SetStdRast(wnd.rport)
+  SetTopaz(8)
+  Gt_RefreshWindow(wnd,NIL)
+  DrawBevelBoxA(wnd.rport,12,offset+18,258,12,
+    [GT_VISUALINFO,visual,GTBB_RECESSED,TRUE,TAG_DONE])
+  Colour(1,0)
+  TextF(12,offset+13,&#x27;Monitoring:&#x27;)
+  TextF(12,offset+40,&#x27;Current:&#x27;)
+  TextF(141,offset+40,&#x27;Stack:&#x27;)
+  TextF(12,offset+50, &#x27;Largest:&#x27;)
+ENDPROC
+
+PROC closewin()
+  IF visual THEN FreeVisualInfo(visual)
+  IF wnd THEN CloseWindow(wnd)
+  IF glist THEN FreeGadgets(glist)
+  IF scr THEN UnlockPubScreen(NIL,scr)
+  IF gadtoolsbase THEN CloseLibrary(gadtoolsbase)
+  SetTaskPri(FindTask(NIL),mypri)
+ENDPROC
+
+PROC handlemsg()
+  DEF msg : PTR TO intuimessage,
+      addr : PTR TO gadget,
+      class,code,id
+
+  WHILE TRUE
+    getinfo()
+    Delay(10)
+    REPEAT
+      msg := Gt_GetIMsg(wnd.userport)
+      class := msg.class
+      code := msg.code
+      addr := msg.iaddress
+      Gt_ReplyIMsg(msg)
+
+      IF class = IDCMP_CLOSEWINDOW THEN Raise(NONE)
+      IF class = IDCMP_CHANGEWINDOW
+        Gt_BeginRefresh(wnd)
+	Gt_RefreshWindow(wnd,NIL)
+        Gt_EndRefresh(wnd,TRUE)
+      ENDIF
+      IF class = IDCMP_GADGETUP
+	id := addr.gadgetid
+	SELECT id
+	  CASE 1
+	    startmon(code)
+	  CASE 2
+	    about()
+	  CASE 3
+	    cancel()
+	  CASE 4
+	    update()
+	ENDSELECT
+      ENDIF
+      IF class = IDCMP_VANILLAKEY
+	SELECT code
+	  CASE &quot;a&quot;
+	    about()
+	  CASE &quot;c&quot;
+	    cancel()
+	  CASE &quot;u&quot;
+	    update()
+	ENDSELECT
+      ENDIF
+
+    UNTIL msg = NIL
+  ENDWHILE
+ENDPROC
+
+PROC about()
+  request(&#x27;StackMon v1.0\n© 1993 David Kinder\n\n&quot;Rise and reverberate&quot;&#x27;,
+    &#x27;Continue&#x27;)
+ENDPROC
+
+PROC request(body,gadgets)
+  EasyRequestArgs(0,[SIZEOF easystruct,0,&#x27;StackMon&#x27;,body,gadgets],0,NIL)
+ENDPROC
+
+PROC gettasks()
+  DEF list : PTR TO lh
+
+  Forbid()
+  Disable()
+  list := exec.taskwait
+  scanlist(list.head)
+  list := exec.taskready
+  scanlist(list.head)
+  Enable()
+  Permit()
+ENDPROC
+
+PROC scanlist(pr : PTR TO process)
+  DEF node : PTR TO ln,
+      cli : PTR TO commandlineinterface,
+      name[128] : STRING,
+      len 
+
+  node := pr
+  WHILE node.succ &lt;&gt; NIL
+    IF node.type = NT_PROCESS
+      IF (cli := Mul(pr.cli,4)) = 0 
+        addtolist(node.name,pr,TRUE)
+      ELSE
+	IF cli.module = 0
+	  addtolist(node.name,pr,TRUE)
+	ELSE
+          len := Char(Mul(cli.commandname,4))
+          StrCopy(name,Mul(cli.commandname,4)+1,len)
+          addtolist(name,pr,TRUE)
+	ENDIF
+      ENDIF
+    ENDIF
+    IF node.type = NT_TASK THEN addtolist(node.name,pr,FALSE)
+    pr := node.succ
+    node := pr
+  ENDWHILE
+ENDPROC
+
+PROC addtolist(name,task,process)
+  DEF mem : PTR TO mynode
+
+  mem := New(SIZEOF mynode)
+  IF mem &lt;&gt; NIL
+    mem.name := String(StrLen(name))
+    IF mem.name &lt;&gt; NIL THEN StrCopy(mem.name,name,ALL)
+    mem.ptr := task
+    IF process = TRUE THEN mem.pri := 1
+    Enqueue(listv,mem)
+  ENDIF
+ENDPROC
+
+PROC freelist()
+  DEF mem : PTR TO mynode
+
+  WHILE (mem := RemHead(listv)) &lt;&gt; NIL
+    IF mem.name &lt;&gt; NIL THEN DisposeLink(mem.name)
+    Dispose(mem)
+  ENDWHILE
+ENDPROC
+
+PROC update()
+  freelist()
+  gettasks()
+  Gt_SetGadgetAttrsA(gadg,wnd,NIL,[GTLV_LABELS,listv,TAG_DONE])
+  Gt_RefreshWindow(wnd,NIL)
+ENDPROC
+
+PROC startmon(id)
+  DEF pos : PTR TO mynode,
+      list : PTR TO lh,
+      status
+
+  pos := listv.head
+  WHILE id &gt; 0
+    pos := pos.succ
+    id--
+  ENDWHILE
+
+  currtask := pos.ptr
+  stk := 0
+  TextF(100,offset+13,&#x27;                     &#x27;)
+  TextF(189,offset+40,&#x27;        &#x27;)
+  TextF(76,offset+40,&#x27;        &#x27;)
+  TextF(76,offset+50,&#x27;        &#x27;)
+  TextF(141,offset+50,&#x27;               &#x27;)
+
+  status := FALSE
+  list := exec.taskwait
+  IF searchlist(list.head,currtask) = FALSE
+    list := exec.taskready
+    IF searchlist(list.head,currtask) = FALSE
+      currtask := NIL
+      Colour(2,0)
+      TextF(141,offset+50,&#x27;Task Terminated&#x27;)
+      Colour(0,0)
+      RectFill(wnd.rport,14,offset+19,267,offset+28)
+    ELSE
+      status := TRUE
+    ENDIF
+  ELSE
+    status := TRUE
+  ENDIF
+
+  IF status = TRUE
+    Forbid()
+    size := currtask.spupper-currtask.splower
+    max := currtask.spupper-currtask.spreg
+    Permit()
+    Colour(2,0)
+    TextF(100,offset+13,&#x27;\s(0,21)&#x27;,pos.name)
+    TextF(189,offset+40,&#x27;\d&#x27;,size)
+    TextF(76,offset+50,&#x27;\d&#x27;,max)
+  ENDIF
+ENDPROC
+
+PROC cancel()
+  currtask := NIL
+  TextF(100,offset+13,&#x27;                     &#x27;)
+  TextF(189,offset+40,&#x27;        &#x27;)
+  TextF(76,offset+40,&#x27;        &#x27;)
+  TextF(76,offset+50,&#x27;        &#x27;)
+  TextF(141,offset+50,&#x27;               &#x27;)
+  Colour(0,0)
+  RectFill(wnd.rport,14,offset+19,267,offset+28)
+ENDPROC
+
+PROC getinfo()
+  DEF list : PTR TO lh,
+      newstk,gauge
+
+  IF currtask &lt;&gt; NIL
+    list := exec.taskwait
+    IF searchlist(list.head,currtask) = FALSE
+      list := exec.taskready
+      IF searchlist(list.head,currtask) = FALSE
+	currtask := NIL
+	Colour(2,0)
+	TextF(76,offset+40,&#x27;        &#x27;)
+	TextF(141,offset+50,&#x27;Task Terminated&#x27;)
+      ENDIF
+    ENDIF
+  ENDIF
+
+  IF currtask &lt;&gt; NIL
+    Forbid()
+    newstk := currtask.spupper-currtask.spreg
+    Permit()
+
+    IF stk &lt;&gt; newstk
+      stk := newstk
+      Colour(2,0)
+      TextF(76,offset+40,&#x27;        &#x27;)
+      TextF(76,offset+40,&#x27;\d&#x27;,stk)
+      IF stk &gt; max
+	max := stk
+        Colour(2,0)
+	TextF(76,offset+50,&#x27;        &#x27;)
+	TextF(76,offset+50,&#x27;\d&#x27;,max)
+      ENDIF
+      IF stk &gt; size
+	Colour(2,0)
+	TextF(141,offset+50,&#x27;Stack Overflow&#x27;)
+      ENDIF
+      gauge := Div(Mul(stk,254),size)
+      IF gauge &gt; 253 THEN gauge := 253
+      IF gauge &gt; 0
+	Colour(3,0)
+	RectFill(wnd.rport,14,offset+19,gauge+14,offset+28)
+      ENDIF
+      IF gauge &lt; 253
+	Colour(0,0)
+	RectFill(wnd.rport,gauge+15,offset+19,267,offset+28)
+      ENDIF
+    ENDIF
+  ENDIF
+ENDPROC
+
+PROC searchlist(pr : PTR TO ln,lookfor)
+  DEF rval
+
+  Forbid()
+  Disable()
+  rval := FALSE
+  WHILE pr.succ &lt;&gt; NIL
+    IF pr = lookfor THEN rval := TRUE
+    pr := pr.succ
+  ENDWHILE
+  Enable()
+  Permit()
+ENDPROC rval
+
+PROC changepri()
+  DEF mypr : PTR TO ln
+
+  mypr := FindTask(NIL)
+  mypri := mypr.pri
+  IF mypri &lt; 1 THEN SetTaskPri(mypr,1)
+ENDPROC
+
+PROC error(errstring)
+  DEF str[60] : STRING
+
+  IF stdout = NIL
+    StrCopy(str,&#x27;Could not &#x27;,ALL)
+    StrAdd(str,errstring,ALL)
+    request(str,&#x27;Abort&#x27;)
+  ELSE
+    WriteF(&#x27;Could not \s\n&#x27;,errstring)
+  ENDIF
+ENDPROC
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

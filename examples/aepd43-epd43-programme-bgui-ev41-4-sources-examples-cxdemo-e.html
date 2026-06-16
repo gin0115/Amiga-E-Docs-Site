@@ -1,0 +1,266 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>CXDemo.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-aepd43.html">AEPD43</a> &rsaquo; CXDemo.e</div><h1>File: <code>CXDemo.e</code></h1><p class="meta">240 lines · project <a href="../examples/pkg-aepd43.html"><code>AEPD43</code></a></p><p class="pathctx">AEPD43/EPD43/Programme/bgui_ev41_4/sources/examples/CXDemo.e</p><p class="prose">** CXDEMO.E ** ** (C) Copyright 1996 Marco Talamelli. ** All Rights Reserved. ** ** On 22 May 96: A dead-loop bug corrected by Dominique Dutoit. ** On 25 May 96: A big bad bug <a href="../modules/fixed.html">fixed</a> in <a href="../modules/libraries.html">libraries</a>/<a href="../modules/bgui.html">bgui</a>.m so ** this example now works. *</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/bgui.html">libraries/bgui</a></li></ul></div><h2>Source</h2><pre class="code">/*
+**      CXDEMO.E
+**
+**      (C) Copyright 1996 Marco Talamelli.
+**          All Rights Reserved.
+**
+**      On 22 May 96: A dead-loop bug corrected by Dominique Dutoit.
+**      On 25 May 96: A big bad bug fixed in libraries/bgui.m so
+**                    this example now works.
+**/
+
+OPT OSVERSION=37
+OPT PREPROCESS
+
+MODULE  &#x27;libraries/bgui&#x27;,
+        &#x27;libraries/bgui_macros&#x27;,
+        &#x27;libraries/gadtools&#x27;,
+        &#x27;libraries/commodities&#x27;,
+        &#x27;bgui&#x27;,
+        &#x27;dos/dos&#x27;,
+        &#x27;tools/boopsi&#x27;,
+        &#x27;utility/tagitem&#x27;,
+        &#x27;intuition/screens&#x27;,
+        &#x27;intuition/intuition&#x27;,
+        &#x27;intuition/classes&#x27;,
+        &#x27;intuition/classusr&#x27;,
+        &#x27;intuition/gadgetclass&#x27;
+
+/*
+**      Key ID.
+**/
+#define CX_F1_PRESSED           1
+
+/*
+**      Gadget ID&#x27;s.
+**/
+#define ID_HIDE                 1
+#define ID_QUIT                 2
+
+PROC main()
+
+DEF cm_broker:PTR TO object, wn_window, ga_hide, ga_quit,
+        signal = 0, winsig = 0, sigrec, type, id, rc,
+        running = TRUE,infotxt:PTR TO CHAR
+
+/*
+**      Information text.
+**/
+    infotxt := &#x27;\ec\eb\ed8&#x27;+
+                 &#x27;CxDemo\n\n\ed2\en&#x27;+
+                 &#x27;This is a small &quot;do-nothing&quot; example of how\n&#x27;+
+                 &#x27;to use the BGUI commodity class.\n&#x27;+
+                 &#x27;In this example F1 is the Hotkey used to\n&#x27;+
+                 &#x27;signal the broker to open the window.&#x27;
+
+        /*
+        **      Open the library.
+        **/
+    IF bguibase := OpenLibrary( &#x27;bgui.library&#x27;, 37 )
+
+        /*
+        **      Setup a commodity object.
+        **/
+        cm_broker := CommodityObject,
+                COMM_NAME,              &#x27;CxDemo&#x27;,
+                COMM_TITLE,             &#x27;Simple BGUI broker.&#x27;,
+                COMM_DESCRIPTION,       &#x27;Does not do anything usefull.&#x27;,
+                COMM_SHOWHIDE,          TRUE,
+        EndObject
+
+        /*
+        **      Object OK?
+        **/
+        IF cm_broker
+                /*
+                **      Create a small window.
+                **/
+                wn_window := WindowObject,
+                        WINDOW_TITLE,           &#x27;CxDemo&#x27;,
+                        WINDOW_RMBTRAP,         TRUE,
+                        WINDOW_SIZEGADGET,      FALSE,  /* No use in this window. */
+                        WINDOW_AUTOASPECT,      TRUE,
+                        WINDOW_AUTOKEYLABEL,    TRUE,
+                        WINDOW_MASTERGROUP,
+                                VGroupObject, HOffset( 6 ), VOffset( 6 ), Spacing( 6 ), GROUP_BACKFILL, SHINE_RASTER,
+                                        StartMember,
+                                                InfoObject, ButtonFrame,
+                                                        FRM_FLAGS,              FRF_RECESSED,
+                                                        INFO_TEXTFORMAT,        infotxt,
+                                                        INFO_FIXTEXTWIDTH,      TRUE,
+                                                        INFO_MINLINES,          6,
+                                                EndObject,
+                                        EndMember,
+                                        StartMember,
+                                                HGroupObject, Spacing( 4 ),
+                                                        StartMember, ga_hide := KeyButton( &#x27;_Hide&#x27;, ID_HIDE ), EndMember,
+                                                        VarSpace( DEFAULT_WEIGHT ),
+                                                        StartMember, ga_quit := KeyButton( &#x27;_Quit&#x27;, ID_QUIT ), EndMember,
+                                                EndObject, FixMinHeight,
+                                        EndMember,
+                                EndObject,
+                EndObject
+
+                /*
+                **      Window OK?
+                **/
+                IF wn_window
+                        /*
+                        **      Add F1 as hotkey.
+                        **/
+                        IF AddHotkey( cm_broker, &#x27;f1&#x27;, CX_F1_PRESSED, 0 )
+                                /*
+                                **      Obtain broker signal mask.
+                                **/
+                                GetAttr( COMM_SIGMASK, cm_broker, {signal} )
+                                /*
+                                **      Activate the broker.
+                                **/
+                                EnableBroker( cm_broker )
+                                /*
+                                **      Open up the window.
+                                **/
+                                IF WindowOpen( wn_window )
+                                        /*
+                                        **      Obtain window sigmask.
+                                        **/
+                                        GetAttr( WINDOW_SIGMASK, wn_window, {winsig} )
+                                        /*
+                                        **      Wait for messages.
+                                        **/
+                                        WHILE running = TRUE
+                                                sigrec := Wait( signal OR winsig OR SIGBREAKF_CTRL_C )
+                                                /*
+                                                **      Broker signal?
+                                                **/
+                                                IF ( sigrec AND signal )
+                                                        /*
+                                                        **      Obtain the messages from the
+                                                        **      broker.
+                                                        **/
+                                                        WHILE ( MsgInfo( cm_broker, {type}, {id}, NIL ) &lt;&gt; CMMI_NOMORE )
+                                                                /*
+                                                                **      Evaluate message.
+                                                                **/
+                                                                SELECT type
+
+                                                                        CASE    CXM_IEVENT
+                                                                                SELECT id
+
+                                                                                        CASE    CX_F1_PRESSED
+                                                                                                IF WindowOpen( wn_window )
+                                                                                                   GetAttr( WINDOW_SIGMASK, wn_window, {winsig} )
+                                                                                                ENDIF
+                                                                                ENDSELECT
+
+                                                                        CASE    CXM_COMMAND
+                                                                                SELECT id
+
+                                                                                        CASE    CXCMD_KILL
+                                                                                                WriteF( &#x27;bye bye\n&#x27; )
+                                                                                                running := FALSE
+
+                                                                                        CASE    CXCMD_DISABLE
+                                                                                                WriteF( &#x27;broker disabled\n&#x27; )
+                                                                                                DisableBroker( cm_broker )
+
+                                                                                        CASE    CXCMD_ENABLE
+                                                                                                WriteF( &#x27;broker enabled\n&#x27; )
+                                                                                                EnableBroker( cm_broker )
+
+                                                                                        CASE    CXCMD_UNIQUE
+                                                                                                IF WindowOpen( wn_window )
+                                                                                                        GetAttr( WINDOW_SIGMASK, wn_window, {winsig} )
+                                                                                                ENDIF
+                                                                                        CASE    CXCMD_APPEAR
+                                                                                                  IF WindowOpen( wn_window )
+                                                                                                        GetAttr( WINDOW_SIGMASK, wn_window, {winsig} )
+                                                                                                  ENDIF
+
+                                                                                        CASE    CXCMD_DISAPPEAR
+                                                                                                WindowClose( wn_window )
+                                                                                                winsig := 0
+                                                                                ENDSELECT
+                                                                ENDSELECT
+                                                        ENDWHILE
+                                                ENDIF
+
+                                                /*
+                                                **      Window signal?
+                                                **/
+                                                IF ( sigrec AND winsig )
+                                                        WHILE ( wn_window AND (( rc := HandleEvent( wn_window )) &lt;&gt; WMHI_NOMORE ))
+                                                                SELECT rc
+
+                                                                        CASE    ID_HIDE
+                                                                                WindowClose( wn_window )
+                                                                                winsig := 0
+                                                                        CASE    WMHI_CLOSEWINDOW
+                                                                                /*
+                                                                                **      Hide the window.
+                                                                                **/
+                                                                                WindowClose( wn_window )
+                                                                                winsig := 0
+
+                                                                        CASE    ID_QUIT
+                                                                                /*
+                                                                                **      The end.
+                                                                                **/
+                                                                                running := FALSE
+                                                                ENDSELECT
+                                                        ENDWHILE
+                                                ENDIF
+
+                                                /*
+                                                **      CTRL+C?
+                                                **/
+                                                IF ( sigrec AND SIGBREAKF_CTRL_C )
+                                                        running := FALSE
+                                                ENDIF
+                                        ENDWHILE
+                                ELSE
+                                        WriteF( &#x27;unable to open the window\n&#x27; )
+                                ENDIF
+                        ELSE
+                                WriteF( &#x27;unable to add the hotkey\n&#x27; )
+                        ENDIF
+                        DisposeObject( wn_window )
+                ELSE
+                        WriteF( &#x27;unable to create a window object\n&#x27; )
+                ENDIF
+                DisposeObject( cm_broker )
+        ELSE
+            WriteF( &#x27;unable to create a commodity object\n&#x27; )
+        ENDIF
+        CloseLibrary(bguibase)
+    ELSE
+        WriteF(&#x27;Could not open the bgui.library\n&#x27;)
+    ENDIF
+ENDPROC
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

@@ -1,0 +1,239 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>CleanModuleCache_shared.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-portable.html">PortablE</a> &rsaquo; CleanModuleCache_shared.e</div><h1>File: <code>CleanModuleCache_shared.e</code></h1><p class="meta">213 lines · project <a href="../examples/pkg-portable.html"><code>PortablE</code></a></p><p class="pathctx">PortablE/PortablE/Examples/std/Shell/CleanModuleCache_shared.e</p><p class="prose">CleanModuleCache_shared.e 13.08.2022 by Christopher Steven Handley.</p><h2>Source</h2><pre class="code">/* CleanModuleCache_shared.e 13.08.2022 by Christopher Steven Handley.
+*/
+/*
+	This contains code used by both PortablE &amp; CleanModuleCache.
+*/
+OPT PREPROCESS
+MODULE &#x27;std/pShell&#x27;, &#x27;std/cPath_Dir&#x27;, &#x27;std/cPath_shared&#x27;
+
+PRIVATE
+CONST DEBUG = FALSE
+PUBLIC
+
+PROC cleanModuleCacheCompletely(warningOrigin:ARRAY OF CHAR)
+	DEF lastCleanedDirPath:OWNS STRING, cleanFilesNext:BOOL, cacheBasePath:OWNS STRING
+	
+	cacheBasePath := NEW &#x27;PEmodules:/PE/cache/&#x27;
+	
+	lastCleanedDirPath := NILS
+	cleanFilesNext     := FALSE
+	REPEAT
+		lastCleanedDirPath, cleanFilesNext := cleanModuleCacheFolder(PASS lastCleanedDirPath, cleanFilesNext, cacheBasePath, warningOrigin)
+		IF lastCleanedDirPath THEN IF StrCmpPath(lastCleanedDirPath, cacheBasePath) THEN END lastCleanedDirPath
+	UNTIL (lastCleanedDirPath = NILS) OR CtrlC()
+FINALLY
+	END lastCleanedDirPath, cacheBasePath
+ENDPROC
+
+PROC cleanModuleCacheFolder(lastCleanedDirPath:NULL OWNS STRING, cleanFilesNext:BOOL, cacheBasePath:STRING, warningOrigin:ARRAY OF CHAR) -&gt;RETURNS lastCleanedDirPath:OWNS STRING, cleanFilesNext:BOOL
+	DEF cacheBasePathLen, skipCleaningFiles
+	DEF lastActualDirPath:OWNS STRING, pos
+	DEF dir:OWNS PTR TO cDir, list:OWNS PTR TO cDirEntryList, entry:ARRAY OF CHAR
+	DEF firstSubDir:ARRAY OF CHAR, actualPath:OWNS STRING, temp:OWNS STRING, temp2:OWNS STRING
+	DEF lastSubDir:OWNS STRING, nextSubDir:ARRAY OF CHAR
+	
+	cacheBasePathLen := EstrLen(cacheBasePath)
+	
+	-&gt;convert loaded path to corresponding actual path (and sanity-checks it)
+	IF lastCleanedDirPath
+		IF StrCmpPath(lastCleanedDirPath, cacheBasePath, cacheBasePathLen) = FALSE
+			-&gt;(lastCleanedDirPath is corrupt)
+			IF DEBUG THEN Print(&#x27;DEBUG NOTE\s: Saved state &quot;\s&quot; was not inside &quot;\s&quot;.\n&#x27;, warningOrigin, lastCleanedDirPath, cacheBasePath)
+			END lastCleanedDirPath
+		ELSE
+			-&gt;(lastCleanedDirPath is inside cacheBasePath)
+			pos := InStr(lastCleanedDirPath, &#x27;/&#x27;, cacheBasePathLen)
+			IF pos = -1
+				-&gt;(lastCleanedDirPath is corrupt)
+				IF DEBUG THEN Print(&#x27;DEBUG NOTE\s: Saved state &quot;\s&quot; was missing (drive name and) slash after &quot;\s&quot;.\n&#x27;, warningOrigin, lastCleanedDirPath, cacheBasePath)
+				END lastCleanedDirPath
+			ELSE
+				-&gt;(path appears valid) so convert to corresponding actual path
+				NEW lastActualDirPath[EstrLen(lastCleanedDirPath) - cacheBasePathLen + 1]
+				IF StrCmp(lastCleanedDirPath, &#x27;_/&#x27;, STRLEN, cacheBasePathLen) = FALSE
+					-&gt;(common case)
+					StrCopy(lastActualDirPath, lastCleanedDirPath, pos-cacheBasePathLen, cacheBasePathLen)
+				ELSE
+					-&gt;(the drive name was stored as an underscore) so the real drive name was empty
+					StrCopy(lastActualDirPath, &#x27;&#x27;)
+				ENDIF
+				StrAdd(lastActualDirPath, &#x27;:&#x27;)
+				StrAdd(lastActualDirPath, lastCleanedDirPath, ALL, pos)
+				IF DEBUG THEN Print(&#x27;DEBUG NOTE\s: Converted saved state &quot;\s&quot; to lastActualDirPath=&quot;\s&quot;\n&#x27;, warningOrigin, lastCleanedDirPath, lastActualDirPath)
+				
+				-&gt;check actual path still exists (and delete all contained cached files if not)
+				-&gt;optimisation: IF ExistsPath(lastActualDirPath) = FALSE THEN DeleteDirPath(lastCleanedDirPath)
+			ENDIF
+		ENDIF
+		
+		IF lastCleanedDirPath = NILS THEN Print(&#x27;WARNING\s: Saved state was corrupt, so restarting cache cleaning from beginning.\n&#x27;, warningOrigin)
+	ENDIF
+	
+	-&gt;carry on cleaning from where left off
+	IF lastCleanedDirPath = NILS
+		-&gt;(no indication of where we last finished cleaning) so clean from beginning
+		-&gt;CreateDirs(cacheBasePath)
+		lastCleanedDirPath := StrJoin(cacheBasePath)
+		cleanFilesNext := TRUE
+	ENDIF
+	skipCleaningFiles := IF StrCmpPath(lastCleanedDirPath, cacheBasePath) THEN 2 /*ignore any files in root folder*/ ELSE 0
+	
+	NEW dir.new()
+	IF cleanFilesNext
+		IF dir.open(lastCleanedDirPath) = FALSE
+			cleanFilesNext := FALSE
+			IF ExistsPath(lastCleanedDirPath, /*fileOrDir*/ TRUE) THEN Print(&#x27;WARNING\s: Failed to open &quot;\s&quot; because \s in \s.\n&#x27;, warningOrigin, lastCleanedDirPath, dir.infoFailureReason(), dir.infoFailureOrigin())
+			IF DEBUG THEN Print(&#x27;DEBUG NOTE\s: Failed to open lastCleanedDirPath=&quot;\s&quot;, so set cleanFilesNext=FALSE.\n&#x27;, warningOrigin, lastCleanedDirPath)
+		ENDIF
+	ENDIF
+	IF cleanFilesNext
+		-&gt;(path is a new one to clean) so scan it&#x27;s contents &amp; clean any cache files that no-longer have a matching actual source file
+		firstSubDir := NILA
+		list := dir.makeEntryList() ; dir.close()
+		IF list.gotoFirst(/*any0file1dir2*/ skipCleaningFiles)
+			REPEAT
+				entry := list.infoName()
+				IF IsDir(entry)
+					-&gt;(entry is dir) so store the first dir seen
+					IF firstSubDir = NILA THEN firstSubDir := entry
+				ELSE
+					-&gt;(entry is file) so check there is a corresponding actual source file &amp; delete it if not
+					IF skipCleaningFiles&lt;&gt;0 THEN Throw(&quot;BUG&quot;, &#x27;portablE.cleanModuleCache(); skipCleaningFiles&lt;&gt;0&#x27;)
+					
+					-&gt;convert cache filename to actual source filepath (e.g. &quot;dos_CPP_AmigaOS4.pem&quot; to &quot;dos.e&quot;)
+					pos := StrLen(entry)
+					WHILE pos-- &gt; 0 ; ENDWHILE IF entry[pos] = &quot;.&quot;
+					WHILE pos-- &gt; 0 ; ENDWHILE IF entry[pos] = &quot;_&quot;
+					WHILE pos-- &gt; 0 ; ENDWHILE IF entry[pos] = &quot;_&quot;
+					IF pos &lt;= 0
+						Print(&#x27;WARNING\s: Cleaner found invalid cache file &quot;\s\s&quot;.\n&#x27;, warningOrigin, temp:=ExportPath(temp2:=StrJoin(lastCleanedDirPath,entry)) ) ; END temp,temp2
+					ELSE
+						-&gt;convert to actual source filepath
+						NEW actualPath[EstrLen(lastActualDirPath) + pos + 2]
+						StrCopy(actualPath, lastActualDirPath)
+						StrAdd( actualPath, entry, pos)
+						StrAdd( actualPath, &#x27;.e&#x27;)
+						IF DEBUG THEN Print(&#x27;DEBUG NOTE\s: Converted cache file &quot;\s\s&quot; to actualPath=&quot;\s&quot;\n&#x27;, warningOrigin, lastActualDirPath, entry, actualPath)
+						
+						-&gt;delete entry if source filepath no-longer exists
+						IF ExistsPath(actualPath) = FALSE
+							temp := StrJoin(lastCleanedDirPath, entry)
+							IF DeletePath(temp) = FALSE THEN Print(&#x27;WARNING\s: Failed to clear cache file &quot;\s&quot;.\n&#x27;, warningOrigin, temp2:=ExportPath(temp)) ; END temp2
+							END temp
+						ENDIF
+						
+						-&gt;delete .pem corresponding obsolete file (if any)
+						IF StrCmpPath(entry, &#x27;.pem&#x27;, ALL, StrLen(entry)-STRLEN)
+							-&gt;(is a .pem cache file)
+							NEW temp[EstrLen(lastActualDirPath) + StrLen(entry)]
+							StrCopy(temp, lastActualDirPath)
+							StrAdd( temp, entry)
+							IF ExistsPath(temp)
+								IF DeletePath(temp) = FALSE THEN Print(&#x27;WARNING\s: Failed to clear obsolete cache file &quot;\s&quot;.\n&#x27;, warningOrigin, temp2:=ExportPath(temp)) ; END temp2
+							ENDIF
+							END temp
+						ENDIF
+						
+						END actualPath
+					ENDIF
+				ENDIF
+			UNTIL list.gotoNext(/*any0file1dir2*/ skipCleaningFiles) = FALSE
+		ENDIF
+		
+		IF firstSubDir
+			-&gt;(found a sub-folder) so scan that upon next call
+			temp := StrJoin(lastCleanedDirPath, firstSubDir)
+			END lastCleanedDirPath
+			lastCleanedDirPath := PASS temp
+			cleanFilesNext := TRUE
+		ELSE
+			-&gt;(no sub-folders)
+			cleanFilesNext := FALSE
+		ENDIF
+		END list
+	ELSE
+		-&gt;(cleaned all files in folder) so find next sibling cache folder to scan
+		IF lastCleanedDirPath
+			IF lastActualDirPath = NILS
+				-&gt;(lastCleanedDirPath was reset to cacheBasePath) so no valid lastActualDirPath to check
+			ELSE IF ExistsPath(lastActualDirPath) = FALSE
+				IF DeletePath(lastCleanedDirPath) = FALSE THEN Print(&#x27;WARNING\s: Failed to clear cache dir &quot;\s&quot; (was probably not empty as expected).\n&#x27;, warningOrigin, temp2:=ExportPath(lastCleanedDirPath)) ; END temp2
+			ENDIF
+		ENDIF
+		-&gt;(cleanFilesNext = FALSE)
+		-&gt;REPEAT
+			REPEAT
+				temp := ExtractSubPath(lastCleanedDirPath)
+				IF dir.open(temp) = FALSE
+					-&gt;(parent folder does not exist)
+					END lastCleanedDirPath ; lastCleanedDirPath := PASS temp
+				ENDIF
+			UNTIL (temp &lt;&gt; NILA) OR (EstrLen(lastCleanedDirPath) &lt;= cacheBasePathLen)
+			
+			IF temp = NILA
+				Print(&#x27;WARNING\s: Aborted cleaning as could not find cache folder &quot;\s&quot;.\n&#x27;, warningOrigin, temp:=ExportPath(cacheBasePath)) ; END temp
+				cleanFilesNext := TRUE
+			ELSE
+				-&gt;(found parent folder) so look for next sibling folder
+				lastSubDir := ExtractName(lastCleanedDirPath)
+				END lastCleanedDirPath ; lastCleanedDirPath := PASS temp
+				
+				list := dir.makeEntryList() ; dir.close()
+				IF list.gotoFirst(/*any0file1dir2*/ 2)
+					WHILE nextSubDir = NILA
+						entry := list.infoName()
+						IF OstrCmpPath(lastSubDir, entry) &gt; 0 THEN nextSubDir := entry
+					ENDWHILE IF list.gotoNext(/*any0file1dir2*/ 2) = FALSE
+				ENDIF
+				END lastSubDir
+				
+				IF nextSubDir
+					-&gt;(found next sibling folder) so use it
+					temp := StrJoin(lastCleanedDirPath, nextSubDir)
+					END lastCleanedDirPath ; lastCleanedDirPath := PASS temp
+					cleanFilesNext := TRUE
+				ELSE
+					-&gt;(no sibling folder) so loop back around to check parent folder...
+					IF StrCmpPath(lastCleanedDirPath, cacheBasePath)
+						-&gt;(...except reached root folder) so restart from beginning to avoid error
+						END lastCleanedDirPath
+					ENDIF
+				ENDIF
+				END list	-&gt;owns string pointed to by nextSubDir
+			ENDIF
+		-&gt;UNTIL cleanFilesNext	-&gt;optional
+	ENDIF
+FINALLY
+	IF exception THEN END lastCleanedDirPath
+	END lastActualDirPath
+	END dir, list
+	END actualPath, temp, temp2
+	END lastSubDir
+ENDPROC lastCleanedDirPath, cleanFilesNext
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

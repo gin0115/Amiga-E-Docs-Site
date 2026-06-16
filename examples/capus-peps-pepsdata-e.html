@@ -1,0 +1,638 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>PepsData.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-capus.html">capus</a> &rsaquo; PepsData.e</div><h1>File: <code>PepsData.e</code></h1><p class="meta">612 lines · project <a href="../examples/pkg-capus.html"><code>capus</code></a></p><p class="pathctx">capus/Peps/PepsData.e</p><h2>Source</h2><pre class="code">PROC p_OpenLibraries() HANDLE /*&quot;p_OpenLibraries()&quot;*/
+/*===============================================================================
+ = Para         : NONE.
+ = Return       : ER_NONE if ok,else the error.
+ = Description  : Open libraries.
+ ==============================================================================*/
+    IF (intuitionbase:=OpenLibrary(&#x27;intuition.library&#x27;,37))=NIL THEN Raise(ER_INTUITIONLIB)
+    IF (gadtoolsbase:=OpenLibrary(&#x27;gadtools.library&#x27;,37))=NIL THEN Raise(ER_GADTOOLSLIB)
+    IF (gfxbase:=OpenLibrary(&#x27;graphics.library&#x27;,37))=NIL THEN Raise(ER_GRAPHICSLIB)
+    IF (rexxsysbase:=OpenLibrary(&#x27;rexxsyslib.library&#x27;,36))=NIL THEN Raise(ER_REXXSYSLIBLIB)
+    IF (reqtoolsbase:=OpenLibrary(&#x27;reqtools.library&#x27;,38))=NIL THEN Raise(ER_REQTOOLSLIB)
+    Raise(ER_NONE)
+EXCEPT
+    RETURN exception
+ENDPROC
+PROC p_CloseLibraries()  /*&quot;p_CloseLibraries()&quot;*/
+/*===============================================================================
+ = Para         : NONE
+ = Return       : NONE
+ = Description  : CLose libraries.
+ ==============================================================================*/
+    IF reqtoolsbase THEN CloseLibrary(reqtoolsbase)
+    IF rexxsysbase THEN CloseLibrary(rexxsysbase)
+    IF gfxbase THEN CloseLibrary(gfxbase)
+    IF gadtoolsbase THEN CloseLibrary(gadtoolsbase)
+    IF intuitionbase THEN CloseLibrary(intuitionbase)
+ENDPROC
+PROC p_SetUpScreen() HANDLE /*&quot;p_SetUpScreen()&quot;*/
+/*===============================================================================
+ = Para         : NONE.
+ = Return       : ER_NONE if ok,else the error.
+ = Description  : Lock wb or open the screen.
+ ==============================================================================*/
+    IF StrCmp(pubscreenname,&#x27;Workbench&#x27;,9)
+        NOP
+    ELSE
+        IF (screen:=OpenScreenTagList(NIL,
+                                      [SA_TOP,0,
+                                       SA_DEPTH,2,
+                                       SA_FONT,tattr,
+                                       SA_DISPLAYID,typescreen,
+                                       SA_PUBNAME,pubscreenname,
+                                       SA_TITLE,&#x27;Peps v0.1 © 1994 NasGûl&#x27;,
+                                       SA_PUBSIG,IF (screensig:=AllocSignal(-1))=NIL THEN Raise(ER_SCREENSIG) ELSE screensig,
+                                       SA_AUTOSCROLL,TRUE,
+                                       SA_TYPE,CUSTOMSCREEN+PUBLICSCREEN,
+                                       SA_OVERSCAN,OSCAN_TEXT,
+                                       SA_PENS,[0,1,1,2,1,3,1,0,2,1,2,1]:INT,
+                                       SA_DETAILPEN,2,
+                                       SA_BLOCKPEN,1,
+                                       0,0]))=NIL THEN Raise(ER_OPENSCREEN)
+        PubScreenStatus(screen,0)
+        IF screenbydefault THEN SetDefaultPubScreen(pubscreenname)
+        IF screenshanghai THEN SetPubScreenModes(SHANGHAI)
+    ENDIF
+    IF (screen:=LockPubScreen(pubscreenname))=NIL
+        IF (screen:=LockPubScreen(&#x27;Workbench&#x27;))=NIL THEN Raise(ER_LOCKSCREEN)
+    ENDIF
+    IF (visual:=GetVisualInfoA(screen,NIL))=NIL THEN Raise(ER_VISUAL)
+    offy:=screen.wbortop+Int(screen.rastport+58)+1
+    Raise(ER_NONE)
+EXCEPT
+    RETURN exception
+ENDPROC
+PROC p_SetDownScreen() /*&quot;p_SetDownScreen()&quot;*/
+/*===============================================================================
+ = Para         : NONE
+ = Return       : NONE
+ = Description  : Unlock screnn,clse screen if screen open,wait all windows
+ =                in screen to be closed.
+ ==============================================================================*/
+    dWriteF([&#x27;p_SetDownScreen()\n&#x27;],0)
+    IF StrCmp(pubscreenname,&#x27;Workbench&#x27;,9)
+        IF visual THEN FreeVisualInfo(visual)
+        IF screen THEN UnlockPubScreen(NIL,screen)
+    ELSE
+        IF visual THEN FreeVisualInfo(visual)
+        IF screen THEN UnlockPubScreen(NIL,screen)
+        IF screen.firstwindow&lt;&gt;0
+            Wait(Shl(1,screensig))
+        ENDIF
+        IF screensig&lt;&gt;-1 THEN FreeSignal(screensig)
+        IF screen THEN CloseScreen(screen)
+        IF screenbydefault THEN SetDefaultPubScreen(NIL)
+    ENDIF
+    dWriteF([&#x27;p_SetDownScreen() Ok\n&#x27;],0)
+ENDPROC
+PROC p_InitppWindow() HANDLE /*&quot;p_InitppWindow()&quot;*/
+/*===============================================================================
+ = Para         : NONE
+ = Return       : ER_NONE if ok,else the error.
+ = Description  : build gadgets list.
+ ==============================================================================*/
+    dWriteF([&#x27;p_InitppWindow()\n&#x27;],0)
+    IF nomenu=FALSE
+        IF (menu:=CreateMenusA(save_list_chip,NIL))=NIL THEN Raise(ER_MENUS)
+        IF LayoutMenusA(menu,visual,NIL)=FALSE THEN Raise(ER_MENUS)
+    ENDIF
+    IF (pp_glist:=CreateContext({pp_glist}))=NIL THEN Raise(ER_CONTEXT)
+    IF (g_source:=CreateGadgetA(TEXT_KIND,pp_glist,[80,17,321,12,&#x27;ESource&#x27;,tattr,0,1,visual,0]:newgadget,[GTTX_BORDER,TRUE,GTTX_TEXT,esource,GTTX_COPYTEXT,FALSE,GT_UNDERSCORE,&quot;_&quot;,TAG_DONE,0]))=NIL THEN Raise(ER_GADGET)
+    IF (g_filelist:=CreateGadgetA(LISTVIEW_KIND,g_source,[38,40,254,33,&#x27;File(s).&#x27;,tattr,1,2,visual,0]:newgadget,[GTLV_SHOWSELECTED,NIL,GTLV_LABELS,-1,GT_UNDERSCORE,&quot;_&quot;,TAG_DONE,0]))=NIL THEN Raise(ER_GADGET)
+    IF (g_proclist:=CreateGadgetA(LISTVIEW_KIND,g_filelist,[37,78,254,41,&#x27;Proc(s).&#x27;,tattr,2,2,visual,0]:newgadget,[GA_RELVERIFY,TRUE,GTLV_READONLY,TRUE,GTLV_LABELS,-1,GT_UNDERSCORE,&quot;_&quot;,TAG_DONE,0]))=NIL THEN Raise(ER_GADGET)
+    IF (g_errorslist:=CreateGadgetA(LISTVIEW_KIND,g_proclist,[39,121,253,81,&#x27;Error(s).&#x27;,tattr,3,2,visual,0]:newgadget,[GA_RELVERIFY,TRUE,GTLV_READONLY,TRUE,GTLV_LABELS,-1,GT_UNDERSCORE,&quot;_&quot;,TAG_DONE,0]))=NIL THEN Raise(ER_GADGET)
+    Raise(ER_NONE)
+EXCEPT
+    dWriteF([&#x27;p_InitppWindow()  Retour:\d\n&#x27;],[exception])
+    RETURN exception
+ENDPROC
+PROC p_RenderppWindow() /*&quot;p_RenderppWindow()&quot;*/
+/*===============================================================================
+ = Para         : NONE
+ = Return       : NONE
+ = Description  : redraw bevelbox,clean listview if list is empty.
+ ==============================================================================*/
+    dWriteF([&#x27;p_RenderppWindow()\n&#x27;],0)
+    IF (p_EmptyList(myb.pmodulelist))&lt;&gt;-1
+        Gt_SetGadgetAttrsA(g_filelist,pp_window,NIL,[GTLV_LABELS,myb.pmodulelist,TAG_DONE,0])
+    ELSE
+        Gt_SetGadgetAttrsA(g_filelist,pp_window,NIL,[GTLV_LABELS,emptylist,TAG_DONE,0])
+    ENDIF
+    DrawBevelBoxA(pp_window.rport,9,13,401,20,[GT_VISUALINFO,visual,TAG_DONE,0])
+    DrawBevelBoxA(pp_window.rport,9,35,401,167,[GT_VISUALINFO,visual,TAG_DONE,0])
+    RefreshGList(g_source,pp_window,NIL,-1)
+    Gt_RefreshWindow(pp_window,NIL)
+    dWriteF([&#x27;p_RenderppWindow() Ok.\n&#x27;],0)
+ENDPROC
+PROC p_OpenppWindow() HANDLE /*&quot;p_OpenppWindow()&quot;*/
+/*===============================================================================
+ = Para         : NONE
+ = Return       : ER_NONE if ok,else the error.
+ = Description  : Open window.
+ ==============================================================================*/
+    dWriteF([&#x27;p_OpenppWindow()\n&#x27;],0)
+    IF (pp_window:=OpenWindowTagList(NIL,
+                      [WA_LEFT,347,
+                       WA_TOP,0,
+                       WA_WIDTH,419,
+                       WA_HEIGHT,206,
+                       WA_IDCMP,$400278+IDCMP_REFRESHWINDOW+IDCMP_MENUPICK,
+                       WA_FLAGS,$102E+WFLG_HASZOOM,
+                       WA_GADGETS,pp_glist,
+                       WA_TITLE,&#x27;Peps v0.1 © 1994 NasGûl&#x27;,
+                       WA_ZOOM,[347,0,419,11]:INT,
+                       WA_PUBSCREENNAME,pubscreenname,
+                       WA_PUBSCREEN,screen,
+                       WA_CUSTOMSCREEN,screen,
+                       WA_BLOCKPEN,2,
+                       WA_DETAILPEN,1,
+                       WA_SCREENTITLE,&#x27;Made With GadToolsBox v2.0 © 1991-1993&#x27;,
+                       TAG_DONE]))=NIL THEN Raise(ER_WINDOW)
+    IF nomenu=FALSE
+        IF SetMenuStrip(pp_window,menu)=FALSE THEN Raise(ER_MENUS)
+    ENDIF
+    p_RenderppWindow()
+    Raise(ER_NONE)
+EXCEPT
+    dWriteF([&#x27;p_OpenppWindow() Retour:\d\n&#x27;],[exception])
+    RETURN exception
+ENDPROC
+PROC p_RemppWindow() /*&quot;p_RemppWindow()&quot;*/
+/*===============================================================================
+ = Para         : NONE
+ = Return       : NONE
+ = Description  : Free gadgetlist and close window.
+ ==============================================================================*/
+    IF nomenu=FALSE
+        IF pp_window THEN ClearMenuStrip(pp_window)
+    ENDIF
+    IF pp_window THEN CloseWindow(pp_window)
+    IF pp_glist THEN FreeGadgets(pp_glist)
+    IF nomenu=FALSE
+        IF menu THEN FreeMenus(menu)
+    ENDIF
+ENDPROC
+PROC p_StartCli() HANDLE /*&quot;p_StartCli()&quot;*/
+/*===============================================================================
+ = Para         : NONE
+ = Return       : ER_NONE if ok,else the error.
+ = Description  : Parsing Cli Arguments.
+ ==============================================================================*/
+    DEF myargs:PTR TO LONG,rdargs=NIL,h,pos
+    DEF edname[80]:STRING,edopt[80]:STRING
+    DEF temp,clock
+    myargs:=[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]
+    temp:=&#x27;ESource,&#x27;+
+          &#x27;EC/K,&#x27;+
+          &#x27;PS=PubScreenName/K,&#x27;+
+          &#x27;TF=TempFile/K,&#x27;+
+          &#x27;AP=ArexxPortName/K,&#x27;+
+          &#x27;EN=ExecName/K,&#x27;+
+          &#x27;ED=EditorName/K,&#x27;+
+          &#x27;EP=EditorPortName/K,&#x27;+
+          &#x27;ER=ErrorArexxScriptName/K,&#x27;+
+          &#x27;MF=MenuFile/K,&#x27;+
+          &#x27;DT=DelTemp/S,&#x27;+
+          &#x27;JE=JustEC/S,&#x27;+
+          &#x27;IC=InsComment/S,&#x27;+
+          &#x27;Hires/S,&#x27;+
+          &#x27;DF=PubScreenByDef/S,&#x27;+
+          &#x27;SG=PubScreenShanghai/S&#x27;
+    IF ReadArgs(temp,myargs,NIL)
+    IF myargs[0] /* ESOURCE */
+        StrCopy(esource,myargs[0],ALL)
+        IF FileLength(esource)=-1 THEN Raise(ER_NOFILE)
+        IF (pos:=InStr(esource,&#x27;:&#x27;,0))&lt;&gt;-1 THEN Raise(ER_SAMEDIR)
+        IF (pos:=InStr(esource,&#x27;/&#x27;,0))&lt;&gt;-1 THEN Raise(ER_SAMEDIR)
+    ELSE
+        Raise(ER_NOFILE)
+    ENDIF
+    IF myargs[1] /* ECOPT */
+        StrCopy(ec,myargs[1],ALL)
+    ELSE
+        StrCopy(ec,&#x27;-e&#x27;,ALL)
+    ENDIF
+    IF myargs[2] /* PUBSCREENNAME */
+        StrCopy(pubscreenname,myargs[2],ALL)
+    ELSE
+        StrCopy(pubscreenname,&#x27;Workbench&#x27;,ALL)
+    ENDIF
+    IF myargs[3] /* TEMPFILE */
+        StrCopy(tempfile,myargs[3],ALL)
+        pos:=InStr(tempfile,&#x27;.e&#x27;,0)
+        IF pos=-1 THEN StrAdd(tempfile,&#x27;.e&#x27;,ALL)
+        IF h:=Open(tempfile,1006)
+        Close(h)
+        ELSE
+        Raise(ER_TEMPNOVALID)
+        ENDIF
+    ELSE
+        StrCopy(tempfile,&#x27;T:PepsMain.e&#x27;,ALL)
+    ENDIF
+    pos:=InStr(tempfile,&#x27;.e&#x27;,ALL)
+    MidStr(ecsource,tempfile,0,pos)
+    IF myargs[4] /* AREXXPORTNAME */
+        StrCopy(prgportname,myargs[4],ALL)
+    ELSE
+        StrCopy(prgportname,&#x27;PepsPort&#x27;,ALL)
+    ENDIF
+    IF myargs[5] /* EXECNAME */
+        StrCopy(execname,myargs[5],ALL)
+    ELSE
+        pos:=InStr(esource,&#x27;.e&#x27;,0)
+        MidStr(execname,esource,0,pos)
+    ENDIF
+    IF h:=Open(execname,1006)
+        Close(h)
+        DeleteFile(execname)
+    ELSE
+        Raise(ER_EXENOVALID)
+    ENDIF
+    IF myargs[6] /* EDITORNAME */
+        pos:=InStr(myargs[6],&#x27;[]&#x27;,0)
+        IF pos&lt;&gt;-1
+        MidStr(edname,myargs[6],0,pos)
+        MidStr(edopt,myargs[6],pos+3,ALL)
+        StringF(editorcommand,&#x27;\s \s \s&#x27;,edname,esource,edopt)
+        ELSE
+        StringF(editorcommand,&#x27;\s \s&#x27;,myargs[6],esource)
+        ENDIF
+    ELSE
+        StringF(editorcommand,&#x27;ED \s&#x27;,esource)
+    ENDIF
+    IF myargs[7] /* EDITORPORTNAME */
+        StrCopy(edarexxportname,myargs[7],ALL)
+    ELSE
+        StrCopy(edarexxportname,&#x27;&#x27;,ALL)
+    ENDIF
+    IF myargs[8] /* ERRORAREXXSCRIPTNAME */
+        StrCopy(erscriptname,myargs[8],ALL)
+        arexxer:=TRUE
+    ELSE
+        StrCopy(erscriptname,&#x27;PepsError&#x27;,ALL)
+        arexxer:=TRUE
+    ENDIF
+    IF myargs[9] /* MENUFILE */
+        IF FileLength(myargs[9])&lt;&gt;-1
+            StrCopy(menufile,myargs[9],ALL)
+        ELSE
+            StrCopy(menufile,&#x27;peps.Menus&#x27;,ALL)
+        ENDIF
+    ELSE
+        nomenu:=TRUE
+    ENDIF
+    /* BOLL ARGS */
+    IF myargs[10] THEN b_deletetemp:=TRUE
+    IF myargs[11] THEN compilandexit:=TRUE
+    IF myargs[12] THEN insertcomment:=TRUE
+    IF myargs[13] THEN typescreen:=HIRES_KEY
+    IF myargs[14] THEN screenbydefault:=TRUE
+    IF myargs[15] THEN screenshanghai:=TRUE
+    ELSE
+    Raise(ER_BADARGS)
+    ENDIF
+    /*
+    WriteF(&#x27;Source   :\s\n&#x27;,esource)
+    WriteF(&#x27;EC opt   :\s\n&#x27;,ec)
+    WriteF(&#x27;PubScr   :\s\n&#x27;,pubscreenname)
+    WriteF(&#x27;TempFile :\s\n&#x27;,tempfile)
+    IF b_deletetemp THEN WriteF(&#x27;DelTemp.\n&#x27;) ELSE WriteF(&#x27;No DelTemp.\n&#x27;)
+    WriteF(&#x27;PortName :\s\n&#x27;,prgportname)
+    WriteF(&#x27;ExecName :\s\n&#x27;,execname)
+    */
+    IF clock:=Lock(&#x27;&#x27;,-2)
+    NameFromLock(clock,currentdir,256)
+    AddPart(currentdir,&#x27;&#x27;,256)
+    UnLock(clock)
+    ENDIF
+    Raise(ER_NONE)
+EXCEPT
+    IF rdargs THEN FreeArgs(rdargs)
+    RETURN exception
+ENDPROC
+PROC p_OpenConsole() HANDLE /*&quot;p_OpenConsole()&quot;*/
+/*===============================================================================
+ = Para         : NONE
+ = Return       : ER_NONE if ok,else the error.
+ = Description  : Open the Output console.
+ ==============================================================================*/
+    StringF(myconout,&#x27;Con:0/0/640/80/PepsOut/Auto/Wiat/Close/Screen \s&#x27;,pubscreenname)
+    IF (myout:=Open(myconout,1006))=NIL THEN Raise(ER_CONOUT)
+    Raise(ER_NONE)
+EXCEPT
+    RETURN exception
+ENDPROC
+PROC p_CloseConsole() /*&quot;p_CloseConsole()&quot;*/
+/*===============================================================================
+ = Para         : NONE
+ = Return       : NONE
+ = Description  : Close the output console.
+ ==============================================================================*/
+    IF myout THEN Close(myout)
+ENDPROC
+PROC p_CreateArexxPort(nom,pri) HANDLE /*&quot;p_CreateArexxPort(nom,pri)&quot;*/
+/*===============================================================================
+ = Para         : name (STRING),pri (NUM).
+ = Return       : the address of the port if ok,else NIL.
+ = Description  : Create a public port.
+ ==============================================================================*/
+    DEF dat_port:PTR TO ln
+    IF FindPort(nom)&lt;&gt;0 THEN Raise(ER_PORTEXIST)
+    arexxport:=CreateMsgPort()
+    IF arexxport=0
+    Raise(ER_CREATEPORT)
+    ENDIF
+    dat_port:=arexxport.ln
+    dat_port.name:=nom
+    dat_port.pri:=pri
+    dat_port.type:=NT_MSGPORT
+    arexxport.flags:=PA_SIGNAL
+    IF nom&lt;&gt;NIL
+    AddPort(arexxport)
+    ENDIF
+    Raise(ER_NONE)
+EXCEPT
+    RETURN exception
+ENDPROC
+PROC p_DeleteArexxPort(adr_port:PTR TO mp) /*&quot;p_DeleteArexxPort(adr_port:PTR TO mp)&quot;*/
+/*===============================================================================
+ = Para         : Address of port.
+ = Return       : NONE
+ = Description  : Remove a public port.
+ ==============================================================================*/
+    DEF data_port:PTR TO ln
+    data_port:=adr_port.ln
+    IF data_port.name&lt;&gt;NIL THEN RemPort(adr_port)
+    IF adr_port THEN DeleteMsgPort(adr_port)
+ENDPROC
+PROC p_InitPeps() HANDLE /*&quot;p_InitPeps()&quot;*/
+/*===============================================================================
+ = Para         : NONE
+ = Return       : ER_NONE if ok,else the error.
+ = Description  : Init the eubase structure.
+ ==============================================================================*/
+    IF (myb:=New(SIZEOF eubase))=NIL THEN Raise(ER_MEM)
+    myb.pmodulelist:=p_InitList()
+    myb.proclist:=p_InitList()
+    myb.infolist:=p_InitList()
+    emptylist:=p_InitList()
+    IF ((myb.pmodulelist=0) OR
+        (myb.proclist=0) OR (myb.infolist=0) OR (emptylist=0)) THEN Raise(ER_MEM)
+    p_AjouteNode(emptylist,&#x27; &#x27;,0)
+    Raise(ER_NONE)
+EXCEPT
+    RETURN exception
+ENDPROC
+PROC p_RemPeps() /*&quot;p_RemPeps()&quot;*/
+/*===============================================================================
+ = Para         : NONE
+ = Return       : NONE
+ = Description  : Remove the eubase structure.
+ ==============================================================================*/
+    IF myb.pmodulelist THEN p_CleanPmoduleList(myb.pmodulelist)
+    IF myb.proclist THEN p_RemoveList(myb.proclist)
+    IF myb.infolist THEN p_RemoveList(myb.infolist)
+    IF emptylist THEN p_RemoveList(emptylist)
+ENDPROC
+PROC p_RemoveList(ptr_list:PTR TO lh) /*&quot;p_RemoveList(ptr_list:PTR TO lh)&quot;*/
+/*===============================================================================
+ = Para         : Address of list.
+ = Return       : NONE.
+ = Description  : p_CleanList() and dispose the list.
+ ==============================================================================*/
+    DEF r_list:PTR TO lh
+    r_list:=p_CleanList(ptr_list)
+    IF r_list THEN Dispose(r_list)
+ENDPROC
+PROC p_InitList() HANDLE /*&quot;p_InitList()&quot;*/
+/*===============================================================================
+ = Para         : NONE
+ = Return       : address of the new list if ok,else NIL.
+ = Description  : Initialise a list.
+ ==============================================================================*/
+    DEF i_list:PTR TO lh
+    i_list:=New(SIZEOF lh)
+    i_list.tail:=0
+    i_list.head:=i_list.tail
+    i_list.tailpred:=i_list.head
+    i_list.type:=0
+    i_list.pad:=0
+    IF i_list THEN Raise(i_list) ELSE Raise(NIL)
+EXCEPT
+    RETURN exception
+ENDPROC
+PROC p_GetNumNode(ptr_list:PTR TO lh,adr_node) /*&quot;p_GetNumNode(ptr_list:PTR TO lh,adr_node)&quot;*/
+/*===============================================================================
+ = Para         : address of list,address of node
+ = Return       : the number of the node if ok else -1.
+ = Description  : Find the number of a node.
+ ==============================================================================*/
+    DEF g_node:PTR TO ln
+    DEF count=0
+    g_node:=ptr_list.head
+    WHILE g_node
+        IF g_node=adr_node THEN RETURN count
+        INC count
+        g_node:=g_node.succ
+    ENDWHILE
+    RETURN NIL
+ENDPROC
+PROC p_GetAdrNode(ptr_list:PTR TO lh,num_node) /*&quot;p_GetAdrNode(ptr_list:PTR TO lh,num_node)&quot;*/
+/*==============================================================================
+ = Para         : address of list,number&#x27;s node.
+ = Return       : address of node or NIL.
+ = Description  : Find the address of a node.
+ ==============================================================================*/
+    DEF g_node:PTR TO ln
+    DEF count=0
+    g_node:=ptr_list.head
+    WHILE g_node
+        IF count=num_node THEN RETURN g_node
+        INC count
+        g_node:=g_node.succ
+    ENDWHILE
+    RETURN NIL
+ENDPROC
+PROC p_EmptyList(ptr_list:PTR TO lh) /*&quot;p_EmptyList(ptr_list:PTR TO lh)&quot;*/
+/*===============================================================================
+ = Para         : address of list.
+ = Return       : TRUE if list is empty,else address of list.
+ = Description  : Look if a list is empty.
+ ==============================================================================*/
+    DEF count=0
+    DEF e_node:PTR TO ln
+    e_node:=ptr_list.head
+    WHILE e_node
+        IF e_node.succ&lt;&gt;0 THEN INC count
+        e_node:=e_node.succ
+    ENDWHILE
+    IF count=0 THEN RETURN TRUE ELSE RETURN ptr_list
+ENDPROC
+PROC p_CleanList(ptr_list:PTR TO lh) /*&quot;p_CleanList(ptr_list:PTR TO lh)&quot;*/
+/*===============================================================================
+ = Para         : address of list
+ = Return       : address of clean list
+ = Description  : Remove all nodes in the list.
+ ==============================================================================*/
+    DEF c_node:PTR TO ln
+    c_node:=ptr_list.head
+    WHILE c_node
+        IF c_node.succ&lt;&gt;0
+            IF c_node.name THEN DisposeLink(c_node.name)
+        ENDIF
+        IF c_node.succ=0 THEN RemTail(ptr_list)
+        IF c_node.pred=0 THEN RemHead(ptr_list)
+        IF (c_node.succ&lt;&gt;0) AND (c_node.pred&lt;&gt;0) THEN Remove(c_node)
+        c_node:=c_node.succ
+    ENDWHILE
+    ptr_list.tail:=0
+    ptr_list.head:=ptr_list.tail
+    ptr_list.tailpred:=ptr_list.head
+    ptr_list.type:=0
+    ptr_list.pad:=0
+    RETURN ptr_list
+ENDPROC
+PROC p_AjouteNode(ptr_list:PTR TO lh,node_name,adr) HANDLE /*&quot;p_AjouteNode(ptr_list:PTR TO lh,node_name,adr)&quot;*/
+/*===============================================================================
+ = Para         : address of list,the name of a node,adr to copy node if adr&lt;&gt;0.
+ = Return       : the number of the new selected node in the list.
+ = Description  : Add a node and return the new current node (for LISTVIEW_KIND).
+ ===============================================================================*/
+    DEF a_node:PTR TO ln
+    DEF nn=NIL
+    a_node:=New(SIZEOF ln)
+    a_node.succ:=0
+    a_node.name:=String(EstrLen(node_name))
+    StrCopy(a_node.name,node_name,ALL)
+    IF adr&lt;&gt;0  /* Copy the node in the structure) */
+        CopyMem(a_node,adr,SIZEOF ln)
+        AddTail(ptr_list,adr)
+        nn:=p_GetNumNode(ptr_list,adr)
+    ELSE
+        AddTail(ptr_list,a_node)
+        nn:=p_GetNumNode(ptr_list,a_node)
+    ENDIF
+    IF nn=0
+        IF adr=0 THEN ptr_list.head:=a_node ELSE ptr_list.head:=adr
+        a_node.pred:=0
+    ENDIF
+    IF adr&lt;&gt;0 THEN Dispose(a_node) /* node is copied,free it */
+    Raise(nn)
+EXCEPT
+    RETURN exception
+ENDPROC
+PROC p_AjouteInfoNode(ptr_list:PTR TO lh,node_name) HANDLE /*&quot;p_AjouteInfoNode(ptr_list:PTR TO lh,node_name)&quot;*/
+/*===============================================================================
+ = Para         : address of list,the name of a node.
+ = Return       : the number of the new selected node in the list.
+ = Description  : Add a node and return the new current node (for LISTVIEW_KIND).
+ =                and refresh the window.
+ ==============================================================================*/
+    DEF a_node:PTR TO ln
+    DEF nn=NIL
+    Gt_SetGadgetAttrsA(g_errorslist,pp_window,NIL,[GTLV_LABELS,-1,TAG_DONE,0])
+    a_node:=New(SIZEOF ln)
+    a_node.succ:=0
+    a_node.name:=String(EstrLen(node_name))
+    StrCopy(a_node.name,node_name,ALL)
+    AddTail(ptr_list,a_node)
+    nn:=p_GetNumNode(ptr_list,a_node)
+    IF nn=0
+        ptr_list.head:=a_node
+        a_node.pred:=0
+    ENDIF
+    Gt_SetGadgetAttrsA(g_errorslist,pp_window,NIL,[GTLV_TOP,nn,GTLV_LABELS,p_EmptyList(myb.infolist),TAG_DONE,0])
+    Raise(nn)
+EXCEPT
+    RETURN exception
+ENDPROC
+PROC p_CleanPmoduleList(ptr_list:PTR TO lh) /*&quot;p_CleanPmoduleList(ptr_list:PTR TO lh)&quot;*/
+/*===============================================================================
+ = Para         : address of list
+ = Return       : NONE
+ = Description  : Clean the eubase.pmoduleslist (all filenode and procnode are deleted).
+ ===============================================================================*/
+    DEF w_fnode:PTR TO ln
+    DEF w_pnode:PTR TO ln
+    DEF w_filenode:PTR TO filenode
+    DEF w_procnode:PTR TO procnode
+    DEF pivlist:PTR TO lh
+    w_filenode:=ptr_list.head
+    WHILE w_filenode
+        w_fnode:=w_filenode
+        IF w_fnode.succ&lt;&gt;0
+            IF w_fnode.name THEN DisposeLink(w_fnode.name)
+            IF p_EmptyList(w_filenode.deflist)&lt;&gt;-1 THEN p_CleanList(w_filenode.deflist)
+            IF p_EmptyList(w_filenode.proclist)&lt;&gt;-1
+                pivlist:=w_filenode.proclist
+                w_procnode:=pivlist.head
+                WHILE w_procnode
+                    w_pnode:=w_procnode
+                    IF w_pnode.succ&lt;&gt;0
+                        IF w_pnode.name THEN DisposeLink(w_pnode.name)
+                        IF w_procnode.buffer THEN Dispose(w_procnode.buffer)
+                        IF w_procnode THEN Dispose(w_procnode)
+                        IF w_pnode.succ=0 THEN RemTail(w_filenode.proclist)
+                        IF w_pnode.pred=0 THEN RemHead(w_filenode.proclist)
+                        IF (w_pnode.succ&lt;&gt;0) AND (w_pnode.pred&lt;&gt;0) THEN Remove(w_pnode)
+                    ENDIF
+                    w_procnode:=w_pnode.succ
+                ENDWHILE
+            ENDIF
+            IF w_filenode THEN Dispose(w_filenode)
+            IF w_fnode.succ=0 THEN RemTail(ptr_list)
+            IF w_fnode.pred=0 THEN RemHead(ptr_list)
+            IF (w_pnode.succ&lt;&gt;0) AND (w_pnode.pred&lt;&gt;0) THEN Remove(w_pnode)
+        ENDIF
+        w_filenode:=w_fnode.succ
+    ENDWHILE
+    ptr_list.tail:=0
+    ptr_list.head:=ptr_list.tail
+    ptr_list.tailpred:=ptr_list.head
+    ptr_list.type:=0
+    ptr_list.pad:=0
+ENDPROC
+PROC p_CleanAllList() /*&quot;p_CleanAllList()&quot;*/
+/*===============================================================================
+ = Para         : NONE.
+ = Return       : NONE.
+ = Description  : Lock listview and clen all list.
+ ==============================================================================*/
+    Gt_SetGadgetAttrsA(g_proclist,pp_window,NIL,[GTLV_LABELS,-1,TAG_DONE,0])
+    Gt_SetGadgetAttrsA(g_filelist,pp_window,NIL,[GTLV_LABELS,-1,TAG_DONE,0])
+    Gt_SetGadgetAttrsA(g_errorslist,pp_window,NIL,[GTLV_LABELS,-1,TAG_DONE,0])
+    p_CleanList(myb.proclist)
+    p_CleanList(myb.infolist)
+    p_CleanPmoduleList(myb.pmodulelist)
+    Gt_SetGadgetAttrsA(g_proclist,pp_window,NIL,[GTLV_LABELS,emptylist,TAG_DONE,0])
+    Gt_SetGadgetAttrsA(g_filelist,pp_window,NIL,[GTLV_LABELS,emptylist,TAG_DONE,0])
+    Gt_SetGadgetAttrsA(g_errorslist,pp_window,NIL,[GTLV_LABELS,emptylist,TAG_DONE,0])
+ENDPROC
+
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

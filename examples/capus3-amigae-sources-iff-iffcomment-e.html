@@ -1,0 +1,220 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>IFFComment.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-capus3.html">capus3</a> &rsaquo; IFFComment.e</div><h1>File: <code>IFFComment.e</code></h1><p class="meta">194 lines · project <a href="../examples/pkg-capus3.html"><code>capus3</code></a></p><p class="pathctx">capus3/AmigaE/Sources/IFF/IFFComment.e</p><p class="prose">&gt; EDEVHEADER</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/iffparse.html">iffparse</a></li><li><a href="../modules/iffparse.html">libraries/iffparse</a></li></ul></div><h2>Source</h2><pre class="code">-&gt;&gt; EDEVHEADER
+/*= © NasGûl =========================
+ ESOURCE IFFComment.e
+ EDIR    Workbench:AmigaE/Sources/IFF
+ ECOPT   ERRLINE
+ EXENAME IFFComment
+ MAKE    EC
+ AUTHOR  NasGûl
+ TYPE    EXEDOS
+ =====================================*/
+-&gt;&lt;
+-&gt;&gt; ©/DISTRIBUTION/UTILISATION
+/*=====================================
+
+ - TOUTE UTILISATION COMMERCIALE DES CES SOURCES EST
+   INTERDITE SANS MON AUTORISATION.
+
+ - TOUTE DISTRIBUTION DOIT ETRE FAITES EN TOTALITE (EXECUTABLES/MODULES E/SOURCES E).
+
+ !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+ !! TOUTE INCLUSION SUR UN CD-ROM EST INTERDITE SANS MON AUTORISATION.!!
+ !! SEULES LES DISTRIBUTIONS DE FRED FISH ET AMINET CDROM SONT AUTO-  !!
+ !! RISES A DISTRIBUER CES PROGRAMMES/SOURCES.                        !!
+ !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+=====================================*/
+-&gt;&lt;
+-&gt;&gt; MODULES
+
+MODULE &#x27;libraries/iffparse&#x27;
+MODULE &#x27;iffparse&#x27;
+
+-&gt;&lt;
+-&gt;&gt; DEFINITIONS GLOBALES
+
+ENUM READ_ANNO,CHECK_ANNO
+
+DEF objsource[256]:STRING
+DEF comment[256]:STRING
+DEF chunkname[5]:STRING
+
+-&gt;&lt;
+-&gt;&gt; main()
+PROC main()
+    DEF myargs:PTR TO LONG,rdargs=NIL
+    myargs:=[0,0,0,0]
+    VOID &#x27;$VER: IFFComment 1.0 (16.11.95) © NasGûl&#x27;
+    IF iffparsebase:=OpenLibrary(&#x27;iffparse.library&#x27;,0)
+        IF rdargs:=ReadArgs(&#x27;Fichier/A,ID=ChunkID/k,R=ReadComment/S,Comment/F&#x27;,myargs,NIL)
+            IF myargs[0] THEN StrCopy(objsource,myargs[0],ALL)
+            IF myargs[1]
+                StrCopy(chunkname,myargs[1],4)
+            ELSE
+                JUMP fin
+            ENDIF
+            IF myargs[2] THEN readComment(READ_ANNO)
+            IF myargs[3]
+                StrCopy(comment,myargs[3],ALL)
+                IF Even(EstrLen(comment)) THEN NOP ELSE StrAdd(comment,&#x27; &#x27;,1)
+                IF Not(myargs[2]) THEN writeComment()
+            ENDIF
+            fin:
+            IF rdargs THEN FreeArgs(rdargs)
+        ELSE
+            WriteF(&#x27;Bad Args\n&#x27;)
+        ENDIF
+        CloseLibrary(iffparsebase)
+    ELSE
+        WriteF(&#x27;iffparse.library ?.\n&#x27;)
+    ENDIF
+ENDPROC
+-&gt;&lt;
+-&gt;&gt; writeComment()
+PROC writeComment()
+    DEF fh,buffer,read,len,fs,adr,lencom,test
+    lencom:=EstrLen(comment)
+    len:=FileLength(objsource)
+    test:=readComment(CHECK_ANNO)
+    IF test=FALSE
+        IF len&lt;&gt;-1
+            IF buffer:=New(len)
+                IF fh:=Open(objsource,OLDFILE)
+                    read:=Read(fh,buffer,len)
+                    IF fh THEN Close(fh)
+                    IF read=len
+                        IF fs:=Open(objsource,1006)
+                            adr:=buffer
+                            read:=adr+4
+                            ^read:=(len-8)+lencom+8
+                            read:=Write(fs,buffer,len)
+                            IF read=len
+                                read:=Write(fs,[Long(chunkname)]:LONG,4)
+                                IF read=4
+                                    Write(fs,[lencom]:LONG,4)
+                                    Write(fs,comment,lencom)
+                                ELSE
+                                    WriteF(&#x27;probl\n&#x27;)
+                                ENDIF
+                            ENDIF
+                            IF fs THEN Close(fs)
+                        ENDIF
+                    ELSE
+                        WriteF(&#x27;probl\n&#x27;)
+                    ENDIF
+                ENDIF
+                IF buffer THEN Dispose(buffer)
+            ENDIF
+        ENDIF
+    ELSE
+        WriteF(&#x27;\s a déjà un commentaire.\n&#x27;,objsource)
+    ENDIF
+ENDPROC
+-&gt;&lt;
+-&gt;&gt; readComment(act)
+PROC readComment(act)
+    DEF iff=NIL:PTR TO iffhandle
+    DEF error
+    DEF h,i
+    DEF curchunk:PTR TO contextnode
+    DEF anno,ret=FALSE,rlen,buffer
+    IF iff:=AllocIFF()
+        IF h:=Open(objsource,1005)
+            iff.stream:=h
+            InitIFFasDOS(iff)
+            error:=OpenIFF(iff,IFFF_READ)
+            IF checkIFFError(error)
+                WHILE 1
+                    error:=ParseIFF(iff,IFFPARSE_RAWSTEP)
+                    IF checkIFFError(error)
+                        curchunk:=CurrentChunk(iff)
+                        IF (error=0) OR  (error=IFFERR_EOC)
+                            anno:=curchunk.id
+                            IF (anno=Long(chunkname))
+                                IF act=READ_ANNO
+                                    IF error=0
+                                        -&gt;WriteF(&#x27;ID :$\h Depth:\d\n&#x27;,curchunk.id,iff.depth)
+                                        -&gt;WriteF(&#x27;Type:\h Size:\d\n&#x27;,curchunk.type,curchunk.size)
+                                        -&gt;WriteF(&#x27;Scan: \h\n&#x27;,curchunk.scan)
+                                        IF buffer:=New(curchunk.size)
+                                            rlen:=ReadChunkBytes(iff,buffer,curchunk.size)
+                                            WriteF(&#x27;&lt;&lt;\s&gt;&gt; \s\n&#x27;,objsource,buffer)
+                                            Dispose(buffer)
+                                        ENDIF
+                                    ENDIF
+                                ELSEIF act=CHECK_ANNO
+                                    ret:=TRUE
+                                ENDIF
+                            ENDIF
+                        ENDIF
+                    ELSE
+                        -&gt;WriteF(&#x27;error :\d\n&#x27;,error)
+                        JUMP ex
+                    ENDIF
+                ENDWHILE
+                ex:
+                CloseIFF(iff)
+            ENDIF
+            CloseIFF(iff)
+            IF iff.stream THEN Close(iff.stream)
+        ENDIF
+        FreeIFF(iff)
+    ELSE
+        WriteF(&#x27;AllocIFF() Failed.\n&#x27;)
+    ENDIF
+    RETURN ret
+ENDPROC
+-&gt;&lt;
+-&gt;&gt; checkIFFError(er)
+PROC checkIFFError(er)
+    SELECT er
+        CASE 0;          RETURN TRUE
+        CASE IFFERR_EOF; RETURN FALSE
+        CASE IFFERR_EOC; RETURN TRUE
+        CASE IFFERR_NOMEM
+            WriteF(&#x27;IFFERR_NOMEM\n&#x27;)
+            RETURN FALSE
+        CASE IFFERR_MANGLED
+            WriteF(&#x27;IFFERR_MANGLED\n&#x27;)
+            RETURN FALSE
+        CASE IFFERR_SYNTAX
+            WriteF(&#x27;IFFERR_SYNTAX\n&#x27;)
+            RETURN FALSE
+        CASE IFFERR_NOTIFF
+            WriteF(&#x27;IFFERR_NOTIFF\n&#x27;)
+            RETURN FALSE
+        CASE IFFERR_SEEK
+            WriteF(&#x27;IFFERR_SEEK\n&#x27;)
+            RETURN FALSE
+    ENDSELECT
+ENDPROC
+-&gt;&lt;
+
+
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

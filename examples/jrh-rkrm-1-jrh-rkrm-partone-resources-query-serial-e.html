@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Query_Serial.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-jrh-rkrm-1.html">JRH-RKRM-1</a> &rsaquo; Query_Serial.e</div><h1>File: <code>Query_Serial.e</code></h1><p class="meta">61 lines · project <a href="../examples/pkg-jrh-rkrm-1.html"><code>JRH-RKRM-1</code></a></p><p class="pathctx">JRH-RKRM-1/JRH-RKRM-PartOne/Resources/Query_Serial.e</p><p class="prose">Query_Serial.e - Try to open the <a href="../modules/serial.html">serial</a> <a href="../modules/device.html">device</a> and if unsuccessful, return the name of the owner.</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/io.html">amigalib/io</a></li></ul></div><h2>Source</h2><pre class="code">-&gt; Query_Serial.e - Try to open the serial device and if unsuccessful,
+-&gt;                  return the name of the owner.
+
+OPT PREPROCESS  -&gt; E-Note: we are using the NAME macros
+
+-&gt; E-Note: E does not (as of v3.1a) support Resources in the conventional way
+MODULE &#x27;amigalib/io&#x27;,
+       &#x27;amigalib/ports&#x27;,
+       &#x27;other/misc&#x27;,
+       &#x27;devices/serial&#x27;,
+       &#x27;dos/dos&#x27;,
+       &#x27;exec/io&#x27;,
+       &#x27;resources/misc&#x27;
+
+ENUM ERR_NONE, ERR_CRIO, ERR_PORT
+
+CONST UNIT_NUMBER=0
+
+DEF serialMP=NIL, serialIO=NIL:PTR TO ioextser
+
+PROC main() HANDLE
+  DEF status,  -&gt; Return value of SDCMD_QUERY
+      user     -&gt; Name of serial port owner if not us
+
+  IF NIL=(serialMP:=createPort(NIL, NIL)) THEN Raise(ERR_PORT)
+  IF NIL=(serialIO:=createExtIO(serialMP, SIZEOF ioextser)) THEN Raise(ERR_CRIO)
+  IF OpenDevice(SERIALNAME, UNIT_NUMBER, serialIO, 0)
+    WriteF(&#x27;\n\s did not open&#x27;, SERIALNAME)
+
+    miscbase:=OpenResource(MISCNAME)
+
+    -&gt; Find out who has the serial device
+    IF NIL=(user:=allocMiscResource(MR_SERIALPORT, &#x27;Us&#x27;))
+      WriteF(&#x27;\n&#x27;)
+      freeMiscResource(MR_SERIALPORT)
+    ELSE
+      WriteF(&#x27; because \s owns it\n\n&#x27;, user)
+    ENDIF
+  ELSE
+    serialIO.iostd.command:=SDCMD_QUERY
+    SendIO(serialIO)  -&gt; Execute query
+
+    status:=serialIO.status  -&gt; Store returned status
+
+    WriteF(&#x27;\t The serial port status is \h\n&#x27;, status)
+
+    AbortIO(serialIO)
+    WaitIO(serialIO)
+
+    CloseDevice(serialIO)
+  ENDIF
+
+EXCEPT DO
+  IF serialIO THEN deleteExtIO(serialIO)
+  IF serialMP THEN deletePort(serialMP)
+  SELECT exception
+  CASE ERR_CRIO;  WriteF(&#x27;Can&#x27;&#x27;t create IO request\n&#x27;)
+  CASE ERR_PORT;  WriteF(&#x27;Can&#x27;&#x27;t create message port\n&#x27;)
+  ENDSELECT
+ENDPROC IF exception&lt;&gt;ERR_NONE THEN RETURN_FAIL ELSE RETURN_OK
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

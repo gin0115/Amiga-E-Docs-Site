@@ -1,0 +1,158 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Quadrate.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-aepd36.html">AEPD36</a> &rsaquo; Quadrate.e</div><h1>File: <code>Quadrate.e</code></h1><p class="meta">132 lines · project <a href="../examples/pkg-aepd36.html"><code>AEPD36</code></a></p><p class="pathctx">AEPD36/EPD36/Programme/gideon/Programme/Quadrate.e</p><p class="prose">-- Programm: Quadrate -- * * -- Autor : Daniel Kasmeroglu -- * * -- -- * * -- Dieses Programm ist eine Version des Programms _Plasma2.AMOS -- * * -- geschrieben von &quot;Mike Stevens&quot;. Dabei wird eines meiner Module -- * * -- benutzt, um die Farbrotationen durchzuführen. --</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/screens.html">intuition/screens</a></li></ul></div><h2>Source</h2><pre class="code">/* -- Programm: Quadrate                                              -- *
+ * -- Autor   : Daniel Kasmeroglu                                     -- *
+ * --                                                                 -- *
+ * -- Dieses Programm ist eine Version des Programms _Plasma2.AMOS    -- *
+ * -- geschrieben von &quot;Mike Stevens&quot;. Dabei wird eines meiner Module  -- *
+ * -- benutzt, um die Farbrotationen durchzuführen.                   -- */
+
+
+MODULE &#x27;intuition/screens&#x27;, 
+       &#x27;nukes/colora&#x27;         -&gt; spezielles Modul
+
+
+-&gt; Funktionen um mittels &quot;colora&quot; Farben zu setzen
+PROC fun_r(index) IS index
+PROC fun_g(index) IS IF index &gt; 15 THEN 31-index ELSE index
+PROC fun_b(index) IS $8
+
+
+PROC main()
+DEF ma_screen : PTR TO screen  
+DEF ma_colora : PTR TO colora  -&gt; &quot;colora&quot; ist ein Objekt
+DEF ma_rport
+
+  ma_screen := OpenScreenTagList(NIL,
+  [SA_WIDTH,                     320,   -&gt; Normaler Low-Resolution-Screen
+   SA_HEIGHT,                    256,   -&gt; mit 32 Farben
+   SA_DEPTH,                       5,
+   SA_DISPLAYID,                  $0,
+   NIL,                          NIL])
+
+  IF ma_screen = NIL THEN RETURN 5      -&gt; Pech gehabt
+  ma_rport := SetStdRast(ma_screen.rastport)
+
+  SetRast(stdrast,0)  -&gt; Titelbalken löschen
+ 
+  -&gt; Initialisierung unde Erzeugung des Objektes, wobei der Bildschirm
+  -&gt; der Parameter ist ( probierts mal mit der Workbench )
+  NEW ma_colora.col_InitColora(ma_screen) 
+
+  -&gt; Farben setzen mit Hilfe von Funktionen
+  ma_colora.col_SetCols({fun_r},{fun_g},{fun_b}) -&gt; Farben setzen
+
+  -&gt; Zellen konstruieren
+  zellstarter(20,00,200,200,7,1,31)
+
+  -&gt; 10 Farb-Zyklen werden komplett durchlaufen wobei zwischen den
+  -&gt; Zyklen 1/50 s lang gewartet wird.
+  ma_colora.col_Shift(10,COL_ZYKLUS,1)
+
+  END ma_colora               -&gt; &quot;col_FreeCols()&quot; wird von &quot;end()&quot; aufgerufen
+
+  -&gt; alles rückgängig machen
+  SetStdRast(ma_rport)   
+  CloseScreen(ma_screen)
+
+ENDPROC
+
+
+PROC zellstarter(left,top,width,height,iterations,col_min,col_max)
+
+/* -- Diese Prozedur tut nichts weiter als die Berechnung der ersten  -- *
+ * -- &quot;Oberzelle&quot;, die dann durch den rekursiven Aufruf gefüllt wird. -- */
+
+DEF awidth,aheight,fwidth,fheight,rate
+
+  -&gt; in diesem Abschnitt werden die Ausmaße der &quot;Oberzelle&quot; festgelegt
+  awidth  := 2
+  aheight := 2
+  fwidth  := 1
+  fheight := 1
+
+  REPEAT
+    fwidth := fwidth * awidth
+  UNTIL fwidth &gt;= width
+
+  REPEAT
+    fheight := fheight * aheight
+  UNTIL fheight &gt;= height
+
+  rate := Div(col_max-col_min,iterations)
+
+  -&gt; Die Show kann beginnen
+  zelle(left,top,fwidth,fheight,awidth,aheight,iterations,col_min,col_max,rate)
+
+ENDPROC
+
+
+PROC zelle(left,top,fwid,fhgt,awid,ahgt,iter,mincl,maxcl,rate)
+DEF cwid,chgt,y,x,pls_cellclr,ex,ey,cx,cy
+
+  IF iter &lt; 1 THEN RETURN   -&gt; Abbruchbedingung
+
+  cwid := Max(1,fwid/awid)  -&gt; Ausmaße einer &quot;Zelle&quot; berechnen
+  chgt := Max(1,fhgt/ahgt)  
+
+  -&gt; Größe einer Zelle entspricht einem Pixel (oder Strich), was
+  -&gt; bedeutet, daß weitere Iterationen keinen Sinn machen
+  IF (cwid = 1) OR (chgt = 1) THEN iter := 1
+
+  ey := ahgt-1  -&gt; muß nicht sein, vereinfacht und beschleunigt die
+  ex := awid-1  -&gt; Berechnungen etwas
+
+  FOR y:=0 TO ey
+
+    cy := top + (y*chgt) -&gt; Berechnung der Y-Koordinate
+
+    FOR x:=0 TO ex
+
+      cx := left + (x*cwid) -&gt; Berechnung der X-Koordinate
+
+      -&gt; Farbe dieser Zelle wird gelesen und verändert
+      pls_cellclr := ReadPixel(stdrast,cx,cy)
+      pls_cellclr := pls_cellclr + Rnd(rate * 2) - rate
+
+      -&gt; die Farbe muß im erlaubten Farbbereich liegen und eine
+      -&gt; &quot;Rotation&quot; durchführen
+      IF pls_cellclr &lt; mincl THEN pls_cellclr := maxcl
+      IF pls_cellclr &gt; maxcl THEN pls_cellclr := mincl
+   
+      -&gt; Farbe setzen und Zelle zeichnen
+      SetAPen(stdrast,pls_cellclr)
+      RectFill(stdrast,cx,cy,cx+cwid-1,cy+chgt-1)
+
+      -&gt; Aufruf der gleichen Prozedur, wobei die &quot;Zelle&quot; zur &quot;Oberzelle&quot;
+      -&gt; wird und in dieser &quot;Oberzelle&quot; neue Zellen gezeichnet werden
+      zelle(cx,cy,cwid,chgt,awid,ahgt,iter-1,mincl,maxcl,rate)
+
+    ENDFOR
+  ENDFOR
+
+ENDPROC
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>rbf.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-aepd25.html">AEPD25</a> &rsaquo; rbf.e</div><h1>File: <code>rbf.e</code></h1><p class="meta">93 lines · project <a href="../examples/pkg-aepd25.html"><code>AEPD25</code></a></p><p class="pathctx">AEPD25/EPD25/Amiga_E-Programme/JRH-RKRM-PartOne/Exec_Library/Interrupts/rbf.e</p><h2>Source</h2><pre class="code">tered, so you can&#x27;t get away with just using a
+  -&gt;         constant value in the above static list...
+  notifymsg.methodid:=OM_NOTIFY
+
+  -&gt; If the RKMMOD_CurrVal changes, we want everyone to know about it.
+  -&gt; Theoretically, the class is supposed to send itself a OM_NOTIFY message.
+  -&gt; Because this class lets its superclass handle the OM_NOTIFY message, it
+  -&gt; skips the middleman and sends the OM_NOTIFY directly to its superclass.
+  doSuperMethodA(cl, o, notifymsg)
+ENDPROC
+  ‹976 bytes of embedded binary/non-text data elided›
+  ‹94 bytes of embedded binary/non-text data elided›
+  ‹45 bytes of embedded binary/non-text data elided›
+  ‹91 bytes of embedded binary/non-text data elided›
+  ‹29 bytes of embedded binary/non-text data elided›
+  ‹50 bytes of embedded binary/non-text data elided›
+  ‹70 bytes of embedded binary/non-text data elided›
+  ‹178 bytes of embedded binary/non-text data elided›
+ëEs$%Û[{Kcwiæ®ÊüWþ@`0name) THEN Raise(ERR_BITS)
+  -&gt; Got them both
+  WriteF(&#x27;serial hardware allocated\n&#x27;)
+
+  -&gt; Allocate a signal bit for the interrupt handler to signal us.
+  signr:=AllocSignal(-1)
+
+  rbfint:=NewM(SIZEOF is, MEMF_PUBLIC OR MEMF_CLEAR)
+  rbfdata:=NewM(SIZEOF rbfData, MEMF_PUBLIC OR MEMF_CLEAR)
+  rbfdata.task:=FindTask(NIL)   -&gt; Init rbfdata object
+  rbfdata.signal:=Shl(1, signr)
+
+  rbfint.ln.type:=NT_INTERRUPT  -&gt; Init interrupt node.
+  -&gt; E-Note: copy *safely* to rbfdata.name
+  AstrCopy(rbfdata.name, allocname, NAMESIZE)
+  rbfint.ln.name:=rbfdata.name
+  rbfint.data:=rbfdata
+  rbfint.code:=eCodeIntHandler({rbfHandler})
+  IF rbfint.code=NIL THEN Raise(ERR_ECODE)
+
+  -&gt; Save state of RBF and interrupt disable it.
+  priorenable:=custom.intenar AND INTF_RBF
+  custom.intena:=INTF_RBF
+  IF priorint:=SetIntVector(INTB_RBF, rbfint)
+    WriteF(&#x27;replaced the \s RBF interrupt handler\n&#x27;, priorint.ln.name)
+  ENDIF
+
+  WriteF(&#x27;enabling RBF interrupt\n&#x27;)
+  custom.intena:=INTF_SETCLR OR INTF_RBF
+
+  WriteF(&#x27;waiting for buffer to fill up. Use CTRL-C to break\n&#x27;)
+  signal:=Wait(Shl(1, signr) OR SIGBREAKF_CTRL_C)
+
+  IF signal AND SIGBREAKF_CTRL_C THEN WriteF(&#x27;&gt;break&lt;\n&#x27;)
+  WriteF(&#x27;Character buffer contains:\n\s\n&#x27;, rbfdata.charBuffer)
+
+  custom.intena:=INTF_RBF  -&gt; Restore previous handler.
+  SetIntVector(INTB_RBF, priorint)  -&gt; Enable it if it was enabled before.
+  IF priorenable THEN custom.intena:=INTF_SETCLR OR INTF_RBF
+
+EXCEPT DO
+  -&gt; E-Note: these next two aren&#x27;t really necessary
+  IF rbfdata THEN Dispose(rbfdata)
+  IF rbfint THEN Dispose(rbfint)
+  IF signr&lt;&gt;-1 THEN FreeSignal(signr)
+  -&gt; Release serial hardware
+  IF bitsuser=NIL THEN freeMiscResource(MR_SERIALBITS)
+  IF portuser=NIL THEN freeMiscResource(MR_SERIALPORT)
+  -&gt; There is no &#x27;CloseResource()&#x27; function
+  SELECT exception
+  CASE ERR_BITS;   WriteF(&#x27;Serial control already allocated by \s\n&#x27;, bitsuser)
+  CASE ERR_ECODE;  WriteF(&#x27;Ran out of memory in eCodeIntHandler()\n&#x27;)
+  CASE ERR_PORT;   WriteF(&#x27;Serial hardware already allocated by \s\n&#x27;, portuser)
+  CASE ERR_SIG;    WriteF(&#x27;Can&#x27;&#x27;t allocate signal\n&#x27;)
+  CASE &quot;MEM&quot;;      WriteF(&#x27;Ran out of memory\n&#x27;)
+  ENDSELECT
+ENDPROC
+
+-&gt; Note - This simple handler just receives one buffer full of serial
+-&gt; input data, signals main, then ignores all subsequent serial data.
+
+-&gt; E-Note: we could use Assembly, but we&#x27;ll show how to use an E PROC
+-&gt; E-Note: you get rbfint.data as first arg, interrupt flags as second
+PROC rbfHandler(data:PTR TO rbfData, intflags)
+  DEF input
+  IF data.bufferCount&lt;BUFFERSIZE
+    input:=custom.serdatr
+    data.charBuffer[data.bufferCount]:=input AND $FF
+    data.flagBuffer[data.bufferCount]:=Shr(input, 8) AND $FF
+    data.bufferCount:=data.bufferCount+1
+    IF data.bufferCount=BUFFERSIZE THEN Signal(data.task, data.signal)
+  ENDIF
+  custom.intreq:=INTF_RBF
+ENDPROC
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

@@ -1,0 +1,217 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>cCharset.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-portable.html">PortablE</a> &rsaquo; cCharset.e</div><h1>File: <code>cCharset.e</code></h1><p class="meta">191 lines · project <a href="../examples/pkg-portable.html"><code>PortablE</code></a></p><p class="pathctx">PortablE/PortablE/PEmodules/targetShared/Amiga/CSH/cCharset.e</p><p class="prose">cCharset.e 30-05-2016 Amiga-specific implementation.</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/diskfont.html">diskfont</a></li><li><a href="../modules/dos.html">dos</a></li><li><a href="../modules/keymap.html">keymap</a></li></ul></div><h2>Source</h2><pre class="code">/* cCharset.e 30-05-2016
+	Amiga-specific implementation.
+*/
+
+OPT PREPROCESS, POINTER
+OPT NATIVE		-&gt;for MorphOS
+MODULE &#x27;dos&#x27;, &#x27;locale&#x27;, &#x27;exec&#x27;
+MODULE &#x27;diskfont&#x27;	-&gt;for AmigaOS4
+MODULE &#x27;keymap&#x27;		-&gt;for MorphOS
+
+PRIVATE
+CONST DEBUG = FALSE
+PUBLIC
+
+PROC infoSystemCharset() RETURNS charset:ARRAY OF CHAR IS cachedCharset
+
+PROC new()
+	cachedCharset := infoSystemCharset_dynamic()
+ENDPROC
+
+PRIVATE
+-&gt;NOTE: Amiga implementation inspired by &quot;init.c&quot; from codesets.library, as well as other suggestions.
+PROC infoSystemCharset_dynamic() RETURNS charset:ARRAY OF CHAR
+	DEF table:ARRAY OF mapping, defaultLocale:PTR TO locale
+	DEF i, row:PTR TO mapping, language:OWNS STRING
+	#ifdef pe_TargetOS_AmigaOS4
+	DEF codeset
+	#endif
+	
+	-&gt;language from Locale:Catalogs  (and other sources)
+	-&gt;charset  from Locale:Languages (or &quot;init.c&quot; when multi-choice)
+	-&gt;oldCode  from &quot;init.c&quot; from codesets.library
+	-&gt;newCode  from http://en.wikipedia.org/wiki/ISO_3166-1_alpha-3
+	table := [
+	-&gt;	language      langLen  charset        oldCode    newCode     (country)
+		&#x27;bosanski&#x27;,   STRLEN,  &#x27;ISO-8859-2&#x27;,  &quot;BA\0\0&quot;,  &quot;BIH\0&quot;,	-&gt;Bosnia
+		&#x27;català&#x27;,     STRLEN,  &#x27;ISO-8859-15&#x27;, &quot;E\0\0\0&quot;, &quot;ESP\0&quot;,	-&gt;Catalan language, same codes as Spain
+		&#x27;czech&#x27;,      STRLEN,  &#x27;ISO-8859-2&#x27;,  &quot;CZ\0\0&quot;,  &quot;CZE\0&quot;,	-&gt;Czech Republic
+		&#x27;dansk&#x27;,      STRLEN,  &#x27;ISO-8859-15&#x27;, &quot;DK\0\0&quot;,  &quot;DNK\0&quot;,	-&gt;Denmark
+		&#x27;deutsch&#x27;,    STRLEN,  &#x27;ISO-8859-15&#x27;, &quot;D\0\0\0&quot;, &quot;DEU\0&quot;,	-&gt;Germany
+		&#x27;english&#x27;,    STRLEN,  &#x27;ISO-8859-15&#x27;, &quot;GB\0\0&quot;,  &quot;GBR\0&quot;,	-&gt;United Kingdom
+		&#x27;esperanto&#x27;,  STRLEN,  &#x27;ISO-8859-3&#x27;,  0,         0,			-&gt;Esperanto language
+		&#x27;eesti&#x27;,      STRLEN,  &#x27;ISO-8859-15&#x27;, &quot;EE\0\0&quot;,  &quot;EST\0&quot;,	-&gt;Estonia
+		&#x27;èe¹tina&#x27;,    STRLEN,  &#x27;ISO-8859-2&#x27;,  &quot;CZ\0\0&quot;,  &quot;CZE\0&quot;,	-&gt;Czech Republic (in MorphOS 2.0)
+		&#x27;español&#x27;,    STRLEN,  &#x27;ISO-8859-15&#x27;, &quot;E\0\0\0&quot;, &quot;ESP\0&quot;,	-&gt;Spain
+		&#x27;français&#x27;,   STRLEN,  &#x27;ISO-8859-15&#x27;, &quot;F\0\0\0&quot;, &quot;FRA\0&quot;,	-&gt;France
+		&#x27;gaeilge&#x27;,    STRLEN,  &#x27;ISO-8859-15&#x27;, 0,         0,			-&gt;Irish language
+		&#x27;galego&#x27;,     STRLEN,  &#x27;ISO-8859-15&#x27;, &quot;E\0\0\0&quot;, &quot;ESP\0&quot;,	-&gt;Galician language, same codes as Spain
+		&#x27;greek&#x27;,      STRLEN,  &#x27;ISO-8859-7&#x27;,  &quot;GR\0\0&quot;,  &quot;GRC\0&quot;,	-&gt;Greece
+		&#x27;hrvatski&#x27;,   STRLEN,  &#x27;ISO-8859-2&#x27;,  &quot;HR\0\0&quot;,  &quot;HRV\0&quot;,	-&gt;Croatia
+		&#x27;italiano&#x27;,   STRLEN,  &#x27;ISO-8859-15&#x27;, &quot;I\0\0\0&quot;, &quot;ITA\0&quot;,	-&gt;Italy
+		&#x27;lietuvi&#x27;,    STRLEN,  &#x27;ISO-8859-13&#x27;, &quot;LT\0\0&quot;,  &quot;LTU\0&quot;,	-&gt;Lithuania
+		&#x27;magyar&#x27;,     STRLEN,  &#x27;ISO-8859-2&#x27;,  &quot;HU\0\0&quot;,  &quot;HUN\0&quot;,	-&gt;Hungary
+		&#x27;nederlands&#x27;, STRLEN,  &#x27;ISO-8859-15&#x27;, &quot;NL\0\0&quot;,  &quot;NLD\0&quot;,	-&gt;Netherlands
+		&#x27;norsk&#x27;,      STRLEN,  &#x27;ISO-8859-15&#x27;, &quot;N\0\0\0&quot;, &quot;NOR\0&quot;,	-&gt;Norway
+		&#x27;polski&#x27;,     STRLEN,  &#x27;ISO-8859-2&#x27;,  &quot;PL\0\0&quot;,  &quot;POL\0&quot;,	-&gt;Poland
+		&#x27;português&#x27;,  STRLEN,  &#x27;ISO-8859-15&#x27;, &quot;PT\0\0&quot;,  &quot;PRT\0&quot;,	-&gt;Portugal
+		&#x27;russian&#x27;,    STRLEN,  &#x27;Amiga-1251&#x27;,  &quot;RU\0\0&quot;,  &quot;RUS\0&quot;,	-&gt;Russian Federation
+		&#x27;slovak&#x27;,     STRLEN,  &#x27;ISO-8859-2&#x27;,  &quot;SK\0\0&quot;,  &quot;SVK\0&quot;,	-&gt;Slovakia
+		&#x27;slovensko&#x27;,  STRLEN,  &#x27;ISO-8859-2&#x27;,  &quot;SI\0\0&quot;,  &quot;SVN\0&quot;,	-&gt;Slovenia
+		&#x27;srpski&#x27;,     STRLEN,  &#x27;ISO-8859-2&#x27;,  &quot;RS\0\0&quot;,  &quot;SRB\0&quot;,	-&gt;Serbia
+		&#x27;suomi&#x27;,      STRLEN,  &#x27;ISO-8859-1&#x27;,  &quot;FIN\0&quot;,   &quot;FIN\0&quot;,	-&gt;Finland
+		&#x27;svenska&#x27;,    STRLEN,  &#x27;ISO-8859-15&#x27;, &quot;S\0\0\0&quot;, &quot;SWE\0&quot;,	-&gt;Sweden
+		&#x27;türkçe&#x27;,     STRLEN,  &#x27;ISO-8859-9&#x27;,  &quot;TR\0\0&quot;,  &quot;TUR\0&quot;,	-&gt;Turkey
+		NILA,         0,       NILA,          0,         0
+	]:mapping
+	
+	-&gt;try the default locale&#x27;s codeset, needs AmigaOS4 procedures, suggested by broadblues on amigans.net
+	-&gt;NOTE: This seems to work better than other guesses below.
+	#ifdef pe_TargetOS_AmigaOS4
+		IF localebase := OpenLibrary(&#x27;locale.library&#x27;, 0)
+			IF diskfontbase := OpenLibrary(&#x27;diskfont.library&#x27;, 0)
+				IF defaultLocale := OpenLocale(NILA)
+					codeset := defaultLocale.codeset
+					IF codeset = 0 THEN codeset := 4	-&gt;CodeSet specifies the code set required by this locale. Before V50, this value was always 0. Since V50, this is the IANA charset number (see L:CharSets/character-sets). For compatibility, 0 should be handled as equal to 4, both meaning ISO-8859-1 Latin1.
+					charset := ObtainCharsetInfo(DFCS_NUMBER, codeset, DFCS_MIMENAME) !!ARRAY OF CHAR	-&gt;OS4-specific
+					CloseLocale(defaultLocale)
+				ENDIF
+				CloseLibrary(diskfontbase)
+			ENDIF
+			CloseLibrary(localebase)
+			IF DEBUG ; IF charset ; Print(&#x27;infoSystemCharset(); locale.codeset; charset = &quot;\s&quot;\n&#x27;, charset) ; charset := NILA ; ENDIF ; ENDIF
+			IF charset THEN RETURN
+		ENDIF
+	#endif
+	
+	-&gt;try system default charset for AmigaOS4, suggested by tboeckel on amigans.net
+	#ifdef pe_TargetOS_AmigaOS4
+		IF diskfontbase := OpenLibrary(&#x27;diskfont.library&#x27;, 0)
+			charset := ObtainCharsetInfo(DFCS_NUMBER, GetDiskFontCtrl(DFCTRL_CHARSET), DFCS_MIMENAME) !!ARRAY OF CHAR	-&gt;OS4-specific
+			IF DEBUG ; IF charset ; Print(&#x27;infoSystemCharset(); diskfont; charset = &quot;\s&quot;\n&#x27;, charset) ; charset := NILA ; ENDIF ; ENDIF
+			CloseLibrary(diskfontbase)
+		ENDIF
+		IF charset THEN RETURN
+	#endif
+	
+	-&gt;try keymap for MorphOS v2.x or later, inspired by &quot;init.c&quot; from codesets.library
+	#ifdef pe_TargetOS_MorphOS
+		IF keymapbase := OpenLibrary(&#x27;keymap.library&#x27;, 51)
+			IF (keymapbase.revision &gt;= 4) OR (keymapbase.version &gt; 51)
+				{
+				//handle AmiDevCpp with ancient MOS includes
+				#ifndef GetKeyMapCodepage
+				#define GetKeyMapCodepage(__p0) LP1(78, CONST_STRPTR , GetKeyMapCodepage, CONST struct KeyMap *, __p0, a0, , KEYMAP_BASE_NAME, 0, 0, 0, 0, 0, 0)
+				#endif
+				}
+				charset := NATIVE {GetKeyMapCodepage(} NIL {)} ENDNATIVE !!CONST_STRPTR
+				CloseLibrary(keymapbase)
+				IF DEBUG ; IF charset ; Print(&#x27;infoSystemCharset(); keymap; charset = &quot;\s&quot;\n&#x27;, charset) ; charset := NILA ; ENDIF ; ENDIF
+				IF charset THEN RETURN
+			ENDIF
+		ENDIF
+	#endif
+	
+	-&gt;try two local env variables
+	END newCharset
+	NEW newCharset[100]
+	
+	IF GetVar(&#x27;CodePage&#x27;, newCharset, StrMax(newCharset), 0) &gt;= 0
+		charset := newCharset
+		IF DEBUG ; IF charset ; Print(&#x27;infoSystemCharset(); CodePage var; charset = &quot;\s&quot;\n&#x27;, charset) ; charset := NILA ; ENDIF ; ENDIF
+		IF NOT DEBUG THEN RETURN
+		
+	ELSE IF GetVar(&#x27;Charset&#x27;, newCharset, StrMax(newCharset), 0) &gt;= 0
+		charset := newCharset
+		IF DEBUG ; IF charset ; Print(&#x27;infoSystemCharset(); Charset var; charset = &quot;\s&quot;\n&#x27;, charset) ; charset := NILA ; ENDIF ; ENDIF
+		IF NOT DEBUG THEN RETURN
+	ENDIF
+	
+	END newCharset
+	
+	-&gt;guess using the default locale&#x27;s country code
+	IF localebase := OpenLibrary(&#x27;locale.library&#x27;, 0)
+		IF defaultLocale := OpenLocale(NILA)
+			i := 0
+			REPEAT
+				row := table[i++]
+				IF row.language THEN IF (row.oldCode = defaultLocale.countrycode) OR (row.newCode = defaultLocale.countrycode) THEN charset := row.charset
+			UNTIL (charset &lt;&gt; NILA) OR (row.language = NILA)
+			CloseLocale(defaultLocale)
+		ENDIF
+		CloseLibrary(localebase)
+		IF DEBUG ; IF charset ; Print(&#x27;infoSystemCharset(); locale.countrycode; charset = &quot;\s&quot;\n&#x27;, charset) ; charset := NILA ; ENDIF ; ENDIF
+		IF charset THEN RETURN
+	ENDIF
+	
+	-&gt;guess using the default locale&#x27;s language
+	IF localebase := OpenLibrary(&#x27;locale.library&#x27;, 0)
+		IF defaultLocale := OpenLocale(NILA)
+			i := 0
+			REPEAT
+				row := table[i++]
+				IF row.language THEN IF StrCmpNoCase(defaultLocale.languagename, row.language, row.langLen) THEN charset := row.charset	-&gt;matches e.g. &quot;english&quot; to &quot;english.language&quot;
+			UNTIL (charset &lt;&gt; NILA) OR (row.language = NILA)
+			CloseLocale(defaultLocale)
+		ENDIF
+		CloseLibrary(localebase)
+		IF DEBUG ; IF charset ; Print(&#x27;infoSystemCharset(); locale.languagename; charset = &quot;\s&quot;\n&#x27;, charset) ; charset := NILA ; ENDIF ; ENDIF
+		IF charset THEN RETURN
+	ENDIF
+	
+	-&gt;guess using the Language env variable
+	NEW language[100]
+	IF GetVar(&#x27;Language&#x27;, language, StrMax(language), 0) &gt;= 0
+		i := 0
+		REPEAT
+			row := table[i++]
+			IF row.language THEN IF StrCmpNoCase(language, row.language) THEN charset := row.charset
+		UNTIL (charset &lt;&gt; NILA) OR (row.language = NILA)
+	ENDIF
+	IF DEBUG ; IF charset ; Print(&#x27;infoSystemCharset(); Language var; charset = &quot;\s&quot;\n&#x27;, charset) ; charset := NILA ; ENDIF ; ENDIF
+	END language
+	IF charset THEN RETURN
+	
+	-&gt;fall-back to the charset originally used by AmigaDOS (1.x), according to Wikipedia
+	charset := &#x27;ISO-8859-1&#x27;
+FINALLY
+	IF exception THEN END newCharset
+ENDPROC
+
+DEF cachedCharset:ARRAY OF CHAR, newCharset:OWNS STRING
+
+OBJECT mapping
+	language:ARRAY OF CHAR	-&gt;language name used by catalogue files
+	langLen
+	charset:ARRAY OF CHAR
+	oldCode:QUAD			-&gt;Old .country files used a mixture of car license plate codes and Alpha-3 names
+	newCode:QUAD			-&gt;New .country files use ISO-3166 Alpha-3 names
+ENDOBJECT
+PUBLIC
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

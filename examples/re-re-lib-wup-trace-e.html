@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>trace.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-re.html">RE</a> &rsaquo; trace.e</div><h1>File: <code>trace.e</code></h1><p class="meta">93 lines · project <a href="../examples/pkg-re.html"><code>RE</code></a></p><p class="pathctx">RE/RE/lib/WUP/trace.e</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/dos.html">dos</a></li></ul></div><h2>Source</h2><pre class="code">/*
+
+*/
+OPT NOHEAD,NOEXE,CPU=&#x27;WUP&#x27;
+
+MODULE
+        &#x27;dos&#x27;,
+        &#x27;dos/dos&#x27;,
+        &#x27;exec&#x27;,
+        &#x27;exec/memory&#x27;
+
+DEF source:PTR TO LONG,tcon,disabled
+
+IMPORT DEF PowerPCBase -&gt;necessary if OPT NOHEAD
+
+PROC TraceLine(curs:PTR TO CHAR,str=0,lst=0:PTR TO LONG,file=0,end=0)
+  DEF p,n=0,tlist[10]:ARRAY OF LONG,tconstr[10]:STRING
+
+  IF disabled THEN RETURN
+  IF end
+    IF source THEN FreeMem(source-8,source[-1]+4+4+1)
+    IF tcon THEN Close(tcon)
+    RETURN
+  ENDIF
+  IFN source
+    IFN source:=loadfile(file) THEN RETURN
+    tcon:=Open(&#x27;con:0/11/640/80/RE debug output&#x27;,1006)
+  ENDIF
+
+  curs += source
+  p:=curs
+  FPutC(tcon,12) -&gt;CLS = FF
+  -&gt;go back 1 line
+  WHILE curs[]&lt;&gt;&quot;\n&quot; DO curs--
+  curs--
+  WHILE curs[]&lt;&gt;&quot;\n&quot; DO curs--
+  curs++
+  -&gt;print 3 lines
+  WHILE curs[]&lt;&gt;&quot;\n&quot; DO FPutC(tcon,curs[]++)
+  FPutC(tcon,&quot;\n&quot;)
+  curs++
+  WHILE curs[]&lt;&gt;&quot;\n&quot;
+    IF curs=p THEN FPuts(tcon,&#x27;&gt;&gt;&gt;&#x27;)
+    FPutC(tcon,curs[])
+    curs++
+  ENDWHILE
+  FPutC(tcon,&quot;\n&quot;)
+  curs++
+  WHILE curs[]&lt;&gt;&quot;\n&quot; DO FPutC(tcon,curs[]++)
+
+  FPuts(tcon,&#x27;\n--------&#x27;) ; FPuts(tcon,StringF(tconstr,&#x27;$\h&#x27;,tcon)) ; FPutC(tcon,&quot;\n&quot;)
+  -&gt;copy vars
+  WHILE (lst[n]&lt;&gt;0) AND (n&lt;10)
+    tlist[n] := ^lst[n]
+    n++
+  ENDWHILE
+  VFPrintF(tcon,str,tlist)
+
+  -&gt;WHILE FGetC(tcon)&lt;&gt;&quot;\n&quot; ; ENDWHILE-&gt;wait for a return
+  n:=TRUE
+  WHILE n
+    p:=FGetC(tcon)
+    IF p=&quot;\n&quot;
+      n:=FALSE
+    ELSEIF p=$1b
+      TraceLine(0,0,0,0,TRUE) -&gt;free mem
+      disabled := TRUE
+      n:=FALSE
+    ENDIF
+  ENDWHILE
+    
+ENDPROC
+
+PROC loadfile(filename)(LONG,LONG)
+  DEF file=0,filelen=0,mem=0:PTR TO LONG
+
+  IF file:=Open(filename,OLDFILE)
+    filelen:=FileLength(filename)
+
+    IF mem := AllocMem(filelen+4+4+1,MEMF_PUBLIC)
+      mem[]++:=file ; mem[]++:=filelen
+      IF Read(file,mem,filelen)&lt;&gt;filelen
+        FreeMem(mem-8,mem[-1]+4+4+1)
+        mem:=0
+        SetIoErr(310) -&gt;random number!
+      ENDIF
+    ELSE
+      SetIoErr(ERROR_NO_FREE_STORE)
+    ENDIF
+    Close(file)
+  ENDIF
+ENDPROC mem
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

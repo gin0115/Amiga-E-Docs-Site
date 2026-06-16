@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>arexx.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-amigae30a-fr.html">amigae30a_fr</a> &rsaquo; arexx.e</div><h1>File: <code>arexx.e</code></h1><p class="meta">74 lines · project <a href="../examples/pkg-amigae30a-fr.html"><code>amigae30a_fr</code></a></p><p class="pathctx">amigae30a_fr/AmigaE30f/Sources/Tools/Arexx/arexx.e</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/ports.html">exec/ports</a></li></ul></div><h2>Source</h2><pre class="code">OPT MODULE
+
+MODULE &#x27;exec/ports&#x27;, &#x27;exec/nodes&#x27;, &#x27;rexx/storage&#x27;, &#x27;rexxsyslib&#x27;
+
+RAISE &quot;MEM&quot; IF CreateArgstring()=NIL
+
+DEF rexxsysbase
+
+EXPORT PROC rx_OpenPort(portname)
+  DEF port:PTR TO mp,sig,exc=0
+  NEW port
+  Forbid()
+  IF FindPort(portname)
+    exc:=&quot;DOUB&quot;
+  ELSE
+    port.sigtask:=FindTask(0)
+    port.flags:=PA_SIGNAL
+    port::ln.name:=portname
+    port::ln.type:=NT_MSGPORT
+    IF (sig:=AllocSignal(-1))=NIL
+      exc:=&quot;SIG&quot;
+    ELSE
+      port.sigbit:=sig
+      AddPort(port)
+    ENDIF
+  ENDIF
+  Permit()
+  IF exc THEN Raise(exc)
+ENDPROC port,Shl(1,sig)
+
+EXPORT PROC rx_ClosePort(port:PTR TO mp)
+  IF port
+    FreeSignal(port.sigbit)
+    RemPort(port)
+    Dispose(port)
+  ENDIF
+ENDPROC
+
+EXPORT PROC rx_GetMsg(port)
+  DEF mes:PTR TO rexxmsg
+  IF mes:=GetMsg(port)
+    rexxsysbase:=mes.libbase
+    RETURN mes,Long(mes.args)
+  ENDIF
+ENDPROC NIL,NIL
+
+EXPORT PROC rx_ReplyMsg(mes:PTR TO rexxmsg,rc=0,resultstring=NIL)
+  mes.result1:=rc
+  mes.result2:=NIL
+  IF mes.action AND RXFF_RESULT AND (rc=0) AND (resultstring&lt;&gt;NIL)
+    mes.result2:=CreateArgstring(resultstring,StrLen(resultstring))
+  ENDIF
+  ReplyMsg(mes)
+ENDPROC
+
+EXPORT PROC rx_HandleAll(interpret_proc,portname) HANDLE
+  DEF port=NIL,sig,quit=FALSE,mes,s,rc,rs
+  port,sig:=rx_OpenPort(portname)
+  REPEAT
+    Wait(sig)
+    REPEAT
+      mes,s:=rx_GetMsg(port)
+      IF mes 
+        quit,rc,rs:=interpret_proc(s)
+        rx_ReplyMsg(mes,rc,rs)
+      ENDIF
+    UNTIL (mes=NIL) OR (quit=TRUE)
+  UNTIL quit
+  Raise()
+EXCEPT
+  rx_ClosePort(port)
+  IF exception THEN ReThrow()
+ENDPROC
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

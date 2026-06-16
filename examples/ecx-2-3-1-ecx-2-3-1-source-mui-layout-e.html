@@ -1,0 +1,259 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Layout.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-ecx-2-3-1.html">ECX_2.3.1</a> &rsaquo; Layout.e</div><h1>File: <code>Layout.e</code></h1><p class="meta">233 lines · project <a href="../examples/pkg-ecx-2-3-1.html"><code>ECX_2.3.1</code></a></p><p class="pathctx">ECX_2.3.1/ecx-2.3.1/source/MUI/Layout.e</p><p class="prose">** Original C Code written by Stefan Stuntz ** ** Translation into E by Klaus Becker ** ** All comments are from the C-Source</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/muimaster.html">muimaster</a></li><li><a href="../modules/installhook.html">tools/installhook</a></li></ul></div><h2>Source</h2><pre class="code">/*
+**  Original C Code written by Stefan Stuntz
+**
+**  Translation into E by Klaus Becker
+**
+**  All comments are from the C-Source
+*/
+
+OPT PREPROCESS
+
+MODULE &#x27;tools/installhook&#x27;,  &#x27;mui/muicustomclass&#x27;, &#x27;amigalib/boopsi&#x27;
+MODULE &#x27;muimaster&#x27;,&#x27;libraries/mui&#x27;,&#x27;libraries/muip&#x27;,
+       &#x27;intuition/classes&#x27;,&#x27;intuition/classusr&#x27;,
+       &#x27;intuition/screens&#x27;,&#x27;intuition/intuition&#x27;,
+       &#x27;utility/hooks&#x27;,&#x27;utility/tagitem&#x27;,&#x27;utility&#x27;,
+       &#x27;exec/lists&#x27;
+
+
+CONST ID_REWARD = 1
+DEF lastnum =-1
+
+/*
+** Custom layout function.
+** Perform several actions according to the messages lm_Type
+** field. Note that you must return MUILM_UNKNOWN if you do
+** not implement a specific lm_Type.
+*/
+
+PROC layoutFunc(h:PTR TO hook,obj:PTR TO object,lm:PTR TO mui_layoutmsg)
+  DEF type,cstate:PTR TO object,child:PTR TO object,maxminwidth=0,maxminheight=0,
+      mw,mh,l,t
+  type:=lm.lm_type
+  SELECT type
+    CASE MUILM_MINMAX
+      /*
+      ** MinMax calculation function. When this is called,
+      ** the children of your group have already been asked
+      ** about their min/max dimension so you can use their
+      ** dimensions to calculate yours.
+      **
+      ** In this example, we make our minimum size twice as
+      ** big as the biggest child in our group.
+      */
+
+      cstate := lm.lm_children.head
+
+      /* find out biggest widths &amp; heights of our children */
+
+      WHILE (child := NextObject({cstate}))
+        IF ( (maxminwidth &lt;MUI_MAXMAX) AND (_minwidth(child) &gt; maxminwidth)) THEN maxminwidth  := _minwidth(child)
+        IF ( (maxminheight&lt;MUI_MAXMAX) AND (_minheight(child) &gt; maxminheight)) THEN maxminheight := _minheight(child)
+      ENDWHILE
+
+      /* set the result fields in the message */
+
+      lm.lm_minmax.minwidth  := 2*maxminwidth
+      lm.lm_minmax.minheight := 2*maxminheight
+      lm.lm_minmax.defwidth  := 4*maxminwidth
+      lm.lm_minmax.defheight := 4*maxminheight
+      lm.lm_minmax.maxwidth  := MUI_MAXMAX
+      lm.lm_minmax.maxheight := MUI_MAXMAX
+
+      RETURN (0)
+
+    CASE MUILM_LAYOUT
+      /*
+      ** Layout function. Here, we have to call MUI_Layout() for each
+      ** our children. MUI wants us to place them in a rectangle
+      ** defined by (0,0,lm-&gt;lm_Layout.Width-1,lm-&gt;lm_Layout.Height-1)
+      ** You are free to put the children anywhere in this rectangle.
+      **
+      ** If you are a virtual group, you may also extend
+      ** the given dimensions and place your children anywhere. Be sure
+      ** to return the dimensions you need in lm-&gt;lm_Layout.Width and
+      ** lm-&gt;lm_Layout.Height in this case.
+      **
+      ** Return TRUE if everything went ok, FALSE on error.
+      ** Note: Errors during layout are not easy to handle for MUI.
+      **       Better avoid them!
+      */
+
+      cstate := lm.lm_children.head
+
+      WHILE (child := NextObject({cstate}))
+        mw := _minwidth(child)
+        mh := _minheight(child)
+        l  := Rnd(lm.lm_layout.width - mw)
+        t  := Rnd(lm.lm_layout.height - mh)
+
+        IF (Mui_Layout(child,l,t,mw,mh,0))=NIL THEN
+          RETURN (FALSE)
+      ENDWHILE
+
+      RETURN (MUI_TRUE)
+  ENDSELECT
+ENDPROC (MUILM_UNKNOWN)
+
+
+PROC pressFunc(h, app:PTR TO object,num:PTR TO LONG)
+ lastnum++
+ IF (lastnum&lt;&gt;num[])
+   DisplayBeep(0)
+   lastnum := -1
+ ELSEIF (lastnum=7)
+   doMethodA(app,[MUIM_Application_ReturnID,ID_REWARD])
+   lastnum := -1
+ ENDIF
+ENDPROC
+
+PROC main() HANDLE
+  DEF app,window,signals,running=TRUE,i,result
+  DEF b[8]:ARRAY OF LONG,yeah,b0,b1,b2,b3,b4,b5,b6,b7
+  DEF layoutHook:hook
+  DEF pressHook:hook
+
+  installhook(layoutHook,{layoutFunc})
+  installhook(pressHook,{pressFunc})
+
+  IF (muimasterbase:=OpenLibrary(MUIMASTER_NAME,MUIMASTER_VMIN))=NIL THEN
+    Raise(&#x27;Failed to open muimaster.library&#x27;)
+
+  #ifdef __AMIGAOS4__
+   IF (muimasteriface := GetInterface(muimasterbase, &#x27;main&#x27;, 1, NIL)) = NIL THEN
+    Raise(&#x27;failed to open muimaster.interface&#x27;)
+  #endif
+
+  randomize() -&gt; I use a randomize-routine by (C) Martin F. Combs
+
+  app := ApplicationObject,
+    MUIA_Application_Title      , &#x27;Layout&#x27;,
+    MUIA_Application_Version    , &#x27;$VER: Layout 13.56 (30.01.96)&#x27;,
+    MUIA_Application_Copyright  , &#x27;©1993, Stefan Stuntz&#x27;,
+    MUIA_Application_Author     , &#x27;Stefan Stuntz &amp; Klaus Becker&#x27;,
+    MUIA_Application_Description, &#x27;Demonstrate custom layout hooks.&#x27;,
+    MUIA_Application_Base       , &#x27;Layout&#x27;,
+    SubWindow, window := WindowObject,
+      MUIA_Window_Title, &#x27;Custom Layout&#x27;,
+      MUIA_Window_ID   , &quot;CLS3&quot;,
+      WindowContents, VGroup,
+        Child, TextObject,
+          TextFrame,
+          MUIA_Background, MUII_TextBack,
+          MUIA_Text_Contents, &#x27;\ecDemonstration of a custom layout hook.\nSince it\as usually no good idea to have overlapping\nobjects, your hooks should be more sophisticated.&#x27;,
+        End,
+        Child, VGroup,
+          GroupFrame,
+          MUIA_Group_LayoutHook,layoutHook,
+          Child, b0 := SimpleButton(&#x27;Click&#x27;),
+          Child, b1 := SimpleButton(&#x27;me&#x27;),
+          Child, b2 := SimpleButton(&#x27;in&#x27;),
+          Child, b3 := SimpleButton(&#x27;correct&#x27;),
+          Child, b4 := SimpleButton(&#x27;sequence&#x27;),
+          Child, b5 := SimpleButton(&#x27;to&#x27;),
+          Child, b6 := SimpleButton(&#x27;be&#x27;),
+          Child, b7 := SimpleButton(&#x27;rewarded!&#x27;),
+          Child, yeah := SimpleButton(&#x27;Yeah!\nYou did it!\nClick to quit!&#x27;),
+        End,
+      End,
+    End,
+  End
+
+  IF (app=NIL) THEN
+    Raise(&#x27;Failed to create Application.&#x27;)
+
+  doMethodA(window,[MUIM_Notify,MUIA_Window_CloseRequest,MUI_TRUE,
+    app,2,MUIM_Application_ReturnID,MUIV_Application_ReturnID_Quit])
+
+  doMethodA(yeah,[MUIM_Notify,MUIA_Pressed,FALSE,
+    app,2,MUIM_Application_ReturnID,MUIV_Application_ReturnID_Quit])
+  b[0]:=b0
+  b[1]:=b1
+  b[2]:=b2
+  b[3]:=b3
+  b[4]:=b4
+  b[5]:=b5
+  b[6]:=b6
+  b[7]:=b7
+
+  FOR i:=0 TO 7
+    doMethodA(b[i],[MUIM_Notify,MUIA_Pressed,FALSE,
+      app,3,MUIM_CallHook,pressHook,i])
+  ENDFOR
+  set(yeah,MUIA_ShowMe,FALSE)
+
+
+/*
+** Input loop...
+*/
+
+  set(window,MUIA_Window_Open,MUI_TRUE)
+
+  WHILE (running)
+    result:=doMethodA(app,[MUIM_Application_Input,{signals}])
+    SELECT result
+      CASE MUIV_Application_ReturnID_Quit
+        running := FALSE
+      CASE ID_REWARD
+        set(yeah,MUIA_ShowMe,MUI_TRUE)
+    ENDSELECT
+    IF (running AND signals) THEN Wait(signals)
+  ENDWHILE
+
+  set(window,MUIA_Window_Open,FALSE)
+
+/*
+** Shut down...
+*/
+
+EXCEPT DO
+  IF app THEN Mui_DisposeObject(app)    /* dispose all objects. */
+  #ifdef __AMIGAOS4__
+   DropInterface(muimasteriface)
+   #endif
+   IF muimasterbase THEN CloseLibrary(muimasterbase)
+  IF exception THEN WriteF(&#x27;\s\n&#x27;,exception)
+ENDPROC
+
+/*
+**  randomize
+**      by
+**  Martin F. Combs
+**
+*/
+
+PROC randomize()
+DEF i, currentsecs, currentmicros, seed
+  CurrentTime({currentsecs},{currentmicros})
+  seed:=-currentmicros
+  FOR i:=0 TO currentsecs AND $FF DO seed:=RndQ(seed)
+  IF seed&lt;0 THEN Rnd(seed) ELSE Rnd(-seed)
+ENDPROC seed
+
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

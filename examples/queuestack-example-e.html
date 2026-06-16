@@ -1,0 +1,302 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>example.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-queuestack.html">queuestack</a> &rsaquo; example.e</div><h1>File: <code>example.e</code></h1><p class="meta">276 lines · project <a href="../examples/pkg-queuestack.html"><code>queuestack</code></a></p><p class="pathctx">queuestack/example.e</p><h2>Source</h2><pre class="code">OPT PREPROCESS
+MODULE &#x27;*queuestack&#x27;
+
+#define SIGNALS
+
+#ifdef SIGNALS
+MODULE &#x27;other/signal&#x27;
+#endif
+
+OBJECT test1
+ a
+ENDOBJECT
+
+OBJECT test2 OF test1
+ b
+ENDOBJECT
+
+OBJECT test3 OF test2
+ c
+ENDOBJECT
+
+
+DEF queuestack_ctrlc
+
+RAISE &quot;^C&quot; IF CtrlC() = TRUE
+
+PROC speak() OF test1
+ WriteF(&#x27;I&#x27;&#x27;m from test1!\n&#x27;)
+ENDPROC
+
+PROC speak() OF test2
+ WriteF(&#x27;I&#x27;&#x27;m from test2 of test1!\n&#x27;)
+ENDPROC
+
+PROC speak() OF test3
+ WriteF(&#x27;I&#x27;&#x27;m from test3 of test2 of test1!\n&#x27;)
+ENDPROC 
+
+PROC isEven(i) IS Even(i)
+
+PROC print(i)
+ WriteF(&#x27;item = \d\n&#x27;,i)
+ RETURN i
+ENDPROC
+
+PROC write(i)
+ WriteF(&#x27;-&gt; \s\n&#x27;,i)
+ENDPROC
+
+PROC isNegative(i) IS i&lt;0
+
+PROC subtractFour(i) IS i - 4
+
+#ifdef SIGNALS
+PROC pause() HANDLE
+ WriteF(&#x27;&lt;Press ^D to continue&gt;&#x27;)
+ WHILE ctrlD() = NIL
+ CtrlC()
+ ENDWHILE
+ WriteF(&#x27;\n&#x27;)
+EXCEPT
+ WriteF(&#x27;\n&#x27;)
+ Raise(exception)
+ENDPROC
+#endif
+
+#ifndef SIGNALS
+PROC pause() HANDLE
+ WriteF(&#x27;Press ^C to continue&gt;&#x27;)
+ LOOP
+  CtrlC()
+ ENDLOOP
+EXCEPT
+ WriteF(&#x27;\n&#x27;)
+ENDPROC
+#endif
+
+PROC eh(i,j)
+ RETURN i+j
+ENDPROC
+
+PROC main() HANDLE
+ DEF in:PTR TO queuestack,i,j=0,out:PTR TO queuestack,one:PTR TO test1,
+     two:PTR TO test2,three:PTR TO test3,moo:PTR TO test1
+
+ NEW in.new()
+ NEW out.new()
+ NEW one
+ NEW two
+ NEW three
+
+ queuestack_ctrlc:=TRUE -&gt; Turn on CtrlC() ability in queuestacks.
+
+ WriteF(&#x27;note: There are four general possible combinations of use.\n&#x27;)
+ WriteF(&#x27;They&#x27;&#x27;ll influence whether queuestack acts as a queue or a stack.\n&#x27;)
+ WriteF(&#x27;#1: addFirst/getFirst\n&#x27;)
+ WriteF(&#x27;addFirsting...\n&#x27;)
+ FOR i:=5 TO 10
+  in.addFirst(i)
+  WriteF(&#x27;value = \d\n&#x27;,i)
+  CtrlC()
+ ENDFOR
+ WriteF(&#x27;getFirsting...\n&#x27;)
+ WHILE in.getSize()
+  WriteF(&#x27;value = \d\n&#x27;,in.getFirst())
+  CtrlC()
+ ENDWHILE
+ pause()
+ WriteF(&#x27;#2: addFirst/getLast\n&#x27;)
+ WriteF(&#x27;addFirsting...\n&#x27;)
+ FOR i:=5 TO 10
+  in.addFirst(i)
+  WriteF(&#x27;value = \d\n&#x27;,i)
+  CtrlC()
+ ENDFOR
+ WriteF(&#x27;getLasting...\n&#x27;)
+ WHILE in.getSize()
+  WriteF(&#x27;value = \d\n&#x27;,in.getLast())
+  CtrlC()
+ ENDWHILE
+ pause()
+ WriteF(&#x27;#3: addLast/getFirst\n&#x27;)
+ WriteF(&#x27;addLasting...\n&#x27;)
+ FOR i:=5 TO 10
+  in.addLast(i)
+  WriteF(&#x27;value = \d\n&#x27;,i)
+  CtrlC()
+ ENDFOR
+ WriteF(&#x27;getFirsting...\n&#x27;)
+ WHILE in.getSize()
+  WriteF(&#x27;value = \d\n&#x27;,in.getFirst())
+  CtrlC()
+ ENDWHILE
+ pause()
+ WriteF(&#x27;#4: addLast/getLast\n&#x27;)
+ WriteF(&#x27;addLasting...\n&#x27;)
+ FOR i:=5 TO 10
+  in.addLast(i)
+  WriteF(&#x27;value = \d\n&#x27;,i)
+  CtrlC()
+ ENDFOR
+ WriteF(&#x27;getLasting...\n&#x27;)
+ WHILE in.getSize()
+  WriteF(&#x27;value = \d\n&#x27;,in.getLast())
+  CtrlC()
+ ENDWHILE
+ pause()
+ WriteF(&#x27;Of course, one could do an alternating weirdness...\n&#x27;)
+ WriteF(&#x27;input:\n&#x27;)
+ j:=FALSE
+ FOR i:=10 TO 20
+  IF j
+   in.addFirst(i)
+   j:=FALSE
+  ELSE
+   in.addLast(i)
+   j:=TRUE
+  ENDIF
+  WriteF(&#x27;value = \d\n&#x27;,i)
+  CtrlC()
+ ENDFOR
+ WriteF(&#x27;output:\n&#x27;)
+ in.do({print})
+ WriteF(&#x27;deallocation:\n&#x27;)
+ END in
+ NEW in.new()
+ out.new()
+ pause()
+ WriteF(&#x27;addFirstQS example:\n&#x27;)
+ FOR i:=1 TO 5
+  in.addLast(i)
+  out.addLast(i+20)
+ ENDFOR
+ in.addFirstQS(out)
+ WriteF(&#x27;in:\n&#x27;)
+ in.do({print})
+ WriteF(&#x27;out:\n(should get nothing)\n&#x27;)
+ out.do({print})
+ in.new()
+ out.new()
+ pause()
+ WriteF(&#x27;addLastQS example:\n&#x27;)
+ FOR i:=1 TO 5
+  in.addLast(i)
+  out.addLast(i+20)
+ ENDFOR
+ in.addLastQS(out)
+ WriteF(&#x27;in:\n&#x27;)
+ in.do({print})
+ WriteF(&#x27;out:\n(should get nothing)\n&#x27;)
+ out.do({print})
+ pause()
+ WriteF(&#x27;Now for something twisted..\n&#x27;)
+ in.inject({eh},10)
+ out.addFirstQS(in)
+ out.do({print})
+ END in
+ END out
+ pause()
+ WriteF(&#x27;We need some numbers first....\n&#x27;)
+ NEW in.new()
+ FOR i:=1 TO 10
+  in.addLast(i)
+  WriteF(&#x27;entered \d.\n&#x27;,i)
+ ENDFOR
+ WriteF(&#x27;Make a new list of even numbers from the old list we just made.\n&#x27;)
+ out:=in.select({isEven})
+ out.do({print})
+ END out
+ pause()
+ WriteF(&#x27;Another one...of odd numbers.\n&#x27;)
+ out:=in.rejectBackwards({isEven})
+ out.doBackwards({print})
+ END in
+ pause()
+ WriteF(&#x27;Subtract four from the above:\n&#x27;)
+ in:=out.collect({subtractFour})
+ in.doBackwards({print})
+ pause()
+ WriteF(&#x27;True or False: all of the above negative?\n&#x27;)
+ IF in.conform({isNegative}) THEN WriteF(&#x27;True\n&#x27;) ELSE WriteF(&#x27;False\n&#x27;)
+ WriteF(&#x27;True or False: any of the above negative?\n&#x27;)
+ IF in.detect({isNegative}) THEN WriteF(&#x27;True\n&#x27;) ELSE WriteF(&#x27;False\n&#x27;)
+ WriteF(&#x27;The first value found that is negative is \d.\n&#x27;,in.detectBackwards({isNegative}))
+ pause()
+ WriteF(&#x27;Hmmmm... Let&#x27;&#x27;s do something peculiar...\n&#x27;)
+ END out
+ END in
+ NEW out.new()
+ WriteF(&#x27;We&#x27;&#x27;ll make a list from 1 to 5, then add each element to the other\n&#x27;)
+ WriteF(&#x27;as we traverse the queuestack. The last element should be the sum\n&#x27;)
+ WriteF(&#x27;of all the elements.\n&#x27;)
+ FOR i:=1 TO 5
+  out.addLast(i)
+ ENDFOR
+ out.inject({eh})
+ out.do({print})
+ pause()
+ 
+ WriteF(&#x27;But wait.. there&#x27;&#x27;s MORE!\n&#x27;)
+ WriteF(&#x27;Let&#x27;&#x27;s watch queuestack turn a list into a queuestack!\n&#x27;)
+ NEW in.new()
+ in.asQueueStack([&#x27;This is the way we wash the weasel,&#x27;,
+ 		  &#x27;We wash the weasel,&#x27;,
+		  &#x27;We wash the weasel,&#x27;,
+		  &#x27;This is the way we wash the weasel,&#x27;,
+		  &#x27;So early in the evening.&#x27;,0])
+
+ in.do({write})
+ WriteF(&#x27;\nIsn&#x27;&#x27;t that amazing?\n&#x27;)
+ pause()
+ WriteF(&#x27;It should be possible to convert it back to a regular list again:\n\n&#x27;)
+ j:=in.asList()
+ FOR i:=0 TO ListLen(j)-1
+  WriteF(&#x27;\s\n&#x27;,ListItem(j,i))
+ ENDFOR
+ pause()
+ WriteF(&#x27;Lastly, let&#x27;&#x27;s look at a polymorphic example.\n&#x27;)
+ WriteF(&#x27;Three different objects derived from test1 will be entered into the\n&#x27;)
+ WriteF(&#x27;QueueStack... all of them have their own &#x27;&#x27;speak()&#x27;&#x27; method.\n&#x27;)
+ WriteF(&#x27;Let&#x27;&#x27;s read what they have to say.\n\n&#x27;)
+ END out
+ NEW out.new()
+ out.addFirst(one)
+ out.addFirst(two)
+ out.addFirst(three)
+ WHILE out.getSize()
+  moo:=out.getLast()
+  moo.speak()
+ ENDWHILE
+ WriteF(&#x27;\nEnd of example.\n&#x27;)
+EXCEPT
+ IF exception = &quot;^C&quot; THEN WriteF(&#x27;*** Break\n&#x27;)
+ IF exception = &quot;GURU&quot; THEN WriteF(&#x27;Guru.\n&#x27;)
+ENDPROC
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

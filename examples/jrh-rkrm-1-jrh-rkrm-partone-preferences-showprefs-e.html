@@ -1,0 +1,164 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>showprefs.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-jrh-rkrm-1.html">JRH-RKRM-1</a> &rsaquo; showprefs.e</div><h1>File: <code>showprefs.e</code></h1><p class="meta">138 lines · project <a href="../examples/pkg-jrh-rkrm-1.html"><code>JRH-RKRM-1</code></a></p><p class="pathctx">JRH-RKRM-1/JRH-RKRM-PartOne/Preferences/showprefs.e</p><p class="prose">showprefs.e - Parse and show some info from an IFF Preferences file E-Note: ignore the rubbish (in the C version) about <a href="../modules/startup.html">startup</a> code</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/iffparse.html">iffparse</a></li></ul></div><h2>Source</h2><pre class="code">-&gt; showprefs.e - Parse and show some info from an IFF Preferences file
+-&gt; E-Note: ignore the rubbish (in the C version) about startup code
+
+MODULE &#x27;iffparse&#x27;,
+       &#x27;devices/timer&#x27;,
+       &#x27;dos/dos&#x27;,
+       &#x27;graphics/text&#x27;,
+       &#x27;libraries/iffparse&#x27;,
+       &#x27;prefs/font&#x27;,
+       &#x27;prefs/icontrol&#x27;,
+       &#x27;prefs/input&#x27;,
+       &#x27;prefs/overscan&#x27;,
+       &#x27;prefs/printergfx&#x27;,
+       &#x27;prefs/printertxt&#x27;,
+       &#x27;prefs/prefhdr&#x27;,
+       &#x27;prefs/screenmode&#x27;,
+       &#x27;prefs/serial&#x27;
+
+ENUM ERR_NONE, ERR_IFF, ERR_LIB, ERR_OPEN, ERR_RDARGS, TOTAL_ERRS
+
+-&gt; E-Note: the use of exceptions is carefully balanced
+RAISE ERR_IFF    IF AllocIFF()=NIL,
+      ERR_LIB    IF OpenLibrary()=NIL,
+      ERR_OPEN   IF Open()=NIL,
+      ERR_RDARGS IF ReadArgs()=NIL
+
+PROC main() HANDLE
+  DEF readargs=NIL, rargs[2]:ARRAY OF LONG, iffhandle=NIL:PTR TO iffhandle,
+      filename=NIL, error, rc=RETURN_OK, iffErrTxt:PTR TO LONG
+
+  iffparsebase:=OpenLibrary(&#x27;iffparse.library&#x27;, 37)
+
+  readargs:=ReadArgs(&#x27;FILE/A&#x27;, rargs, NIL)
+  IF filename:=rargs[0]
+    -&gt; Allocate an IFF handle
+    iffhandle:=AllocIFF()
+    -&gt; Open the file for reading
+    iffhandle.stream:=Open(filename, OLDFILE)
+    -&gt; Initialise the iff handle
+    InitIFFasDOS(iffhandle)
+    IF (error:=OpenIFF(iffhandle, IFFF_READ))=0
+      PropChunk(iffhandle, ID_PREF, ID_PRHD)
+
+      PropChunk(iffhandle, ID_PREF, ID_FONT)
+      PropChunk(iffhandle, ID_PREF, ID_ICTL)
+      PropChunk(iffhandle, ID_PREF, ID_INPT)
+      PropChunk(iffhandle, ID_PREF, ID_OSCN)
+      PropChunk(iffhandle, ID_PREF, ID_PGFX)
+      PropChunk(iffhandle, ID_PREF, ID_PTXT)
+      PropChunk(iffhandle, ID_PREF, ID_SCRM)
+      PropChunk(iffhandle, ID_PREF, ID_SERL)
+
+      -&gt; E-Note: handle the funny loop more cleanly using a separate procedure
+      REPEAT
+      UNTIL error:=parse(iffhandle)
+    ENDIF
+    CloseIFF(iffhandle)
+    IF error&lt;&gt;IFFERR_EOF
+      iffErrTxt:=[&#x27;EOF&#x27;, &#x27;EOC&#x27;, &#x27;no lexical scope&#x27;, &#x27;insufficient memory&#x27;,
+                  &#x27;stream read error&#x27;,&#x27;stream write error&#x27;,&#x27;stream seek error&#x27;,
+                  &#x27;file corrupt&#x27;, &#x27;IFF syntax error&#x27;, &#x27;not an IFF file&#x27;,
+                  &#x27;required call-back hook missing&#x27;, NIL]
+      WriteF(&#x27;\s: \s\n&#x27;, rargs[], iffErrTxt[-error-1])
+      rc:=RETURN_FAIL
+    ENDIF
+  ENDIF
+EXCEPT DO
+  SELECT TOTAL_ERRS OF exception
+  CASE ERR_OPEN, ERR_RDARGS
+    error:=IoErr()
+    SetIoErr(error)
+    IF error
+      rc:=RETURN_FAIL
+      PrintFault(error, IF filename THEN filename ELSE &#x27;&#x27;)
+    ENDIF
+  CASE ERR_IFF; WriteF(&#x27;Can&#x27;&#x27;t allocate IFF handle\n&#x27;)
+  CASE ERR_LIB; WriteF(&#x27;Can&#x27;&#x27;t open iffparse.library\n&#x27;)
+  ENDSELECT
+  IF iffhandle THEN FreeIFF(iffhandle)
+  IF readargs THEN FreeArgs(readargs)
+  IF iffparsebase THEN CloseLibrary(iffparsebase)
+ENDPROC rc
+
+-&gt; E-Note: handle the funny loop more cleanly using a separate procedure
+PROC parse(iffhandle)
+  DEF ifferror, sp:PTR TO storedproperty, hdrsp, cnode:PTR TO contextnode
+  IF ifferror:=ParseIFF(iffhandle, IFFPARSE_STEP)
+    RETURN IF ifferror=IFFERR_EOC THEN 0 ELSE ifferror
+  ENDIF
+
+  -&gt; Do nothing if this is a PrefHeader chunk; we&#x27;ll pop it later when there
+  -&gt; is a pref chunk.
+  IF cnode:=CurrentChunk(iffhandle)
+    IF (cnode.id=ID_PRHD) OR (cnode.id=ID_FORM) THEN RETURN 0
+  ENDIF
+
+  -&gt; Get the preferences header, stored previously
+  hdrsp:=FindProp(iffhandle, ID_PREF, ID_PRHD)
+
+  IF sp:=FindProp(iffhandle, ID_PREF, ID_FONT)
+    WriteF(&#x27;FrontPen:  \d\n&#x27;, sp.data::fontprefs.frontpen)
+    WriteF(&#x27;BackPen:   \d\n&#x27;, sp.data::fontprefs.backpen)
+    WriteF(&#x27;Font:      \s\n&#x27;, sp.data::fontprefs.name)
+    WriteF(&#x27;YSize:     \d\n&#x27;, sp.data::fontprefs.textattr.ysize)
+    WriteF(&#x27;Style:     \d\n&#x27;, sp.data::fontprefs.textattr.style)
+    WriteF(&#x27;Flags:     \d\n&#x27;, sp.data::fontprefs.textattr.flags)
+  ELSEIF sp:=FindProp(iffhandle, ID_PREF, ID_ICTL)
+    WriteF(&#x27;TimeOut:   \d\n&#x27;, sp.data::icontrolprefs.timeout)
+    WriteF(&#x27;MetaDrag:  \d\n&#x27;, sp.data::icontrolprefs.metadrag)
+    WriteF(&#x27;WBtoFront: \d\n&#x27;, sp.data::icontrolprefs.wbtofront)
+    WriteF(&#x27;FrontToBack: \d\n&#x27;, sp.data::icontrolprefs.fronttoback)
+    WriteF(&#x27;ReqTrue:   \d\n&#x27;, sp.data::icontrolprefs.reqtrue)
+    WriteF(&#x27;ReqFalse:  \d\n&#x27;, sp.data::icontrolprefs.reqfalse)
+    -&gt; Etc.
+  ELSEIF sp:=FindProp(iffhandle, ID_PREF, ID_INPT)
+    WriteF(&#x27;PointerTicks:      \d\n&#x27;, sp.data::inputprefs.pointerticks)
+    WriteF(&#x27;DoubleClick/Secs:  \d\n&#x27;, sp.data::inputprefs.doubleclick.secs)
+    WriteF(&#x27;DoubleClick/Micro: \d\n&#x27;, sp.data::inputprefs.doubleclick.micro)
+    -&gt; Etc.
+  ELSEIF sp:=FindProp(iffhandle, ID_PREF, ID_OSCN)
+    WriteF(&#x27;DisplayID: $\h\n&#x27;, sp.data::overscanprefs.displayid)
+    -&gt; Etc.
+  ELSEIF sp:=FindProp(iffhandle, ID_PREF, ID_PGFX)
+    WriteF(&#x27;Aspect:    \d\n&#x27;, sp.data::printergfxprefs.aspect)
+    -&gt; Etc.
+  ELSEIF sp:=FindProp(iffhandle, ID_PREF, ID_PTXT)
+    WriteF(&#x27;Driver:    \s\n&#x27;, sp.data::printertxtprefs.driver)
+    -&gt; Etc.
+  ELSEIF sp:=FindProp(iffhandle, ID_PREF, ID_SCRM)
+    WriteF(&#x27;DisplayID: $\h\n&#x27;, sp.data::screenmodeprefs.displayid)
+    -&gt; Etc.
+  ELSEIF sp:=FindProp(iffhandle, ID_PREF, ID_SERL)
+    WriteF(&#x27;BaudRate:  \d\n&#x27;, sp.data::serialprefs.baudrate)
+    -&gt; Etc.
+  ENDIF
+  RETURN 0
+ENDPROC
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

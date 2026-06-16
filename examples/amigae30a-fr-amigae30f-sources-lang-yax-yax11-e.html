@@ -1,0 +1,657 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Yax11.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-amigae30a-fr.html">amigae30a_fr</a> &rsaquo; Yax11.e</div><h1>File: <code>Yax11.e</code></h1><p class="meta">631 lines · project <a href="../examples/pkg-amigae30a-fr.html"><code>amigae30a_fr</code></a></p><p class="pathctx">amigae30a_fr/AmigaE30f/Sources/Lang/Yax/Yax11.e</p><p class="prose">Interpréteur YAX (Yet Another Instruction Code Set) v1.0 Langage procédural/fonctionnel simple avec une syntaxe proche du <a href="../modules/lisp.html">lisp</a>. Dévore de préférence les sources avec <a href="../modules/extension.html">extension</a> .yax au dîner. Traduction : Olivier ANH (BUGSS)</p><h2>Source</h2><pre class="code">/* Interpréteur YAX (Yet Another Instruction Code Set) v1.0
+   Langage procédural/fonctionnel simple avec une syntaxe proche du lisp.
+   Dévore de préférence les sources avec extension .yax au dîner.
+   Traduction : Olivier ANH (BUGSS)
+*/
+
+
+OPT STACK=25000     /* il y aura de grosse récursions */
+
+OBJECT var          /* c&#x27;est là que l&#x27;on stocke les valeurs runtime */
+  type:INT
+  name:LONG
+  value:LONG
+ENDOBJECT
+
+/* codes intermediaires */
+ENUM ENDSOURCE,VALUE,ISTRING,IDENT,LBRACKET,RBRACKET
+
+/* mots clefs */
+ENUM FWRITE=100,FADD,FEQ,FUNEQ,FSUB,FMUL,FDIV,FAND,FORX,FNOT,FIF,FDO,
+     FSELECT,FSET,FFOR,FWHILE,FUNTIL,FDEFUN,FLAMBDA,FAPPLY,FREADINT,
+     FARRAY,FGREATER,FSMALLER,FLOCATE,FCLS,FDUMP,FWINDOW,FTELL,FTOLD,
+     FSEE,FSEEN,FSTRING,FREAD,FGET,FPUT,FFILELEN,FLINE,FPLOT,FBOX,
+     FMOUSEX,FMOUSEY,FMOUSE,FTEXT,LAST
+
+CONST KEYWORDSIZE=8,
+      NRKEYWORDS=LAST-99,
+      IDENTNAMESPACE=30000,
+      VARSTACKSPACE=50000,
+      MAXARGS=5,
+      ERLEN=60
+
+/* erreurs */
+ENUM ER_WORKSPACE=1,ER_BUF,ER_GARBAGE,ER_SYNTAX,ER_EXPKEYWORD,ER_EXPRBRACKET,
+     ER_EXPEXP,ER_QUOTE,ER_COMMENT,ER_INFILE,ER_SOURCEMEM,ER_EXPIDENT,
+     ER_ARGS,ER_TYPE,ER_EXPLBRACKET,ER_STACK,ER_ALLOC,ER_ARRAY,ER_FILE,
+     ER_GFXWIN,ER_VALUES
+
+/* types de variables */
+ENUM TINTEGER=1,TSTRING,TFUNC,TARRAY
+
+DEF source,slen,erpos=NIL,
+    ilen,ibuf,ipos:PTR TO INT,p:PTR TO INT,idents,
+    name[100]:STRING,wfile,
+    inputbuf[100]:STRING,winspec[100]:STRING,
+    vartop,varbottom,vars,rec,globvar,
+    infile,outfile,oldout,oldin,stdin,gfxwindow=0
+
+PROC main()
+  WriteF(&#x27;&#x27;); stdin:=stdout
+  loadsource()
+  ilen:=Mul(slen,4)+1000       /* a besoin de l&#x27;espace nécessaire */
+  ibuf:=New(ilen+10)
+  idents:=String(IDENTNAMESPACE)
+  vars:=New(VARSTACKSPACE)
+  vartop:=vars; varbottom:=vars
+  IF (ibuf=NIL) OR (idents=NIL) OR (vars=NIL)
+    error(ER_WORKSPACE)
+  ELSE
+    lexanalyse()               /* traduit au format intermédiaire */
+    p:=ibuf
+    WHILE p[]&lt;&gt;ENDSOURCE DO eval()       /* lance le code */
+  ENDIF
+  error(0)
+ENDPROC
+
+PROC lexanalyse()
+  DEF pos,end,c,count,ident[50]:STRING,pos2,keypos,a,nr,ident2[50]:STRING
+  pos:=source; end:=pos+slen; ipos:=ibuf; erpos:=pos
+  StrCopy(idents,&#x27; &#x27;,1)
+  loop:
+  c:=pos[]++
+  IF c&gt;96                          /* un identificateur */
+    pos2:=pos-1
+    WHILE pos[]++&gt;96 DO NOP; DEC pos
+    StrCopy(ident,pos2,pos-pos2)
+    StrCopy(ident2,ident,ALL)
+    StrAdd(ident,&#x27;..............&#x27;,ALL)
+    keypos:={keywords}
+    nr:=0
+    FOR a:=1 TO NRKEYWORDS         /* cherche le mot clef */
+      IF StrCmp(ident,keypos,KEYWORDSIZE)
+        nr:=99+a
+        JUMP found
+      ENDIF
+      keypos:=keypos+KEYWORDSIZE
+    ENDFOR
+    found:
+    IF nr&gt;0                        /* mot clef */
+      iword(nr)
+    ELSE                           /* propre identificateur */
+      iword(IDENT)
+      StrCopy(ident,&#x27; &#x27;,1)
+      StrAdd(ident,ident2,ALL)
+      StrAdd(ident,&#x27; &#x27;,1)
+      pos2:=InStr(idents,ident,0)
+      IF pos2=-1
+        ilong(EstrLen(idents)+idents)
+        StrAdd(idents,ident2,ALL)
+        StrAdd(idents,&#x27; &#x27;,1)
+        IF EstrLen(idents)=StrMax(idents) THEN error(ER_WORKSPACE)
+      ELSE
+        ilong(pos2+idents+1)
+      ENDIF
+    ENDIF
+  ELSE
+    SELECT c                       /* autre chose */
+      CASE &quot; &quot;
+        IF pos&lt;end THEN JUMP loop
+      CASE &quot;(&quot;
+        iword(LBRACKET)
+        erpos:=pos-1
+        ilong(erpos)
+      CASE &quot;)&quot;; iword(RBRACKET)
+      CASE &quot;+&quot;; iword(FADD)
+      CASE &quot;-&quot;
+        IF pos[]=&quot; &quot;
+          iword(FSUB)
+        ELSE
+          iword(VALUE)
+          ilong(-Val(pos,{c}))
+          IF c=0 THEN error(ER_GARBAGE) ELSE pos:=pos+c
+        ENDIF
+      CASE &quot;*&quot;; iword(FMUL)
+      CASE &quot;/&quot;
+        IF pos[]&lt;&gt;&quot;*&quot;
+          iword(FDIV)
+        ELSE                       /* commentaire (comme celui-ci) */
+          INC pos
+          WHILE pos-1&lt;end
+            INC count
+            IF (pos[]++=&quot;*&quot;) AND (pos[]=&quot;/&quot;) THEN JUMP out
+          ENDWHILE
+          error(ER_COMMENT)
+          out:
+          INC pos
+        ENDIF
+      CASE &quot;=&quot;
+        iword(FEQ)
+      CASE &quot;?&quot;
+        iword(FUNEQ)
+      CASE &quot;&#x27;&quot;                     /* constante  de chaine de caractères */
+        iword(ISTRING)
+        count:=0; pos2:=pos
+        WHILE pos[]++&lt;&gt;&quot;&#x27;&quot;
+          INC count
+          IF pos=end THEN error(ER_QUOTE)
+        ENDWHILE
+        iword(count)
+        ilong(pos2)                /* adresse caractère */
+      CASE 10
+        IF pos&lt;end THEN JUMP loop
+      CASE 0
+        pos:=end
+      CASE 9
+        IF pos&lt;end THEN JUMP loop
+      DEFAULT
+        iword(VALUE)
+        ilong(Val(pos--,{c}))
+        IF c=0 THEN error(ER_GARBAGE) ELSE pos:=pos+c
+    ENDSELECT
+  ENDIF
+  IF pos&lt;end THEN JUMP loop
+  iword(ENDSOURCE)
+ENDPROC
+
+PROC checkstop()
+  IF FreeStack()&lt;1000 THEN error(ER_STACK)
+  IF CtrlC() THEN error(-1)
+ENDPROC
+
+PROC eval()                        /* fonction principale d&#x27;évaluation de la récursion */
+  DEF r=0,i,ins,p2,x:PTR TO LONG,a,adr:PTR TO var
+  checkstop()
+  i:=p[]++
+  SELECT i
+    CASE VALUE
+      r:=^p++
+    CASE IDENT
+      r:=varvalue(^p++,TINTEGER)
+    CASE LBRACKET
+      erpos:=^p++
+      ins:=p[]++
+      IF ins=IDENT
+        adr:=findvar(^p++)
+        IF adr.type=TFUNC
+          r:=dofunc(adr.value)
+        ELSE
+          IF adr.type&lt;&gt;TARRAY THEN error(ER_TYPE)
+          x:=adr.value
+          a:=eval()
+          IF (a&lt;0) OR (a&gt;x[]) THEN error(ER_ARRAY)
+          r:=x[a+1]
+        ENDIF
+      ELSE
+        IF ins&lt;100 THEN error(ER_EXPKEYWORD)
+        SELECT ins
+          CASE FWRITE                /* sortie de la constante chaine + expressions */
+            x:=TRUE
+            WHILE p[]&lt;&gt;RBRACKET
+              IF p[]=ISTRING
+                Write(stdout,Long(p+4),p[1])
+                IF (p[1]=0) AND (p[4]=RBRACKET) THEN x:=FALSE
+                p:=p+8
+              ELSEIF p[]=IDENT
+                IF (Int(findvar(Long(p+2)))=TSTRING)
+                  WriteF(&#x27;\s&#x27;,eatstring())
+                ELSE
+                  WriteF(&#x27;\d&#x27;,eval())
+                ENDIF
+              ELSE
+                WriteF(&#x27;\d&#x27;,eval())
+              ENDIF
+            ENDWHILE
+            IF x THEN WriteF(&#x27;\n&#x27;)
+          CASE FEQ
+            r:=TRUE
+            x:=eval()
+            WHILE p[]&lt;&gt;RBRACKET DO IF x&lt;&gt;eval() THEN r:=FALSE
+          CASE FUNEQ; r:=eval()&lt;&gt;eval()
+          CASE FGREATER; r:=eval()&gt;eval()
+          CASE FSMALLER; r:=eval()&lt;eval()
+          CASE FADD; r:=eval(); WHILE p[]&lt;&gt;RBRACKET DO r:=r+eval()
+          CASE FSUB; r:=eval(); WHILE p[]&lt;&gt;RBRACKET DO r:=r-eval()
+          CASE FMUL; r:=eval(); WHILE p[]&lt;&gt;RBRACKET DO r:=Mul(r,eval())
+          CASE FDIV; r:=eval(); WHILE p[]&lt;&gt;RBRACKET DO r:=Div(r,eval())
+          CASE FAND; r:=eval(); WHILE p[]&lt;&gt;RBRACKET DO r:=r AND eval()
+          CASE FORX; r:=eval(); WHILE p[]&lt;&gt;RBRACKET DO r:=r OR eval()
+          CASE FNOT; r:=Not(eval())
+          CASE FIF
+            IF eval()
+              r:=eval()
+              IF p[]&lt;&gt;RBRACKET THEN skip()
+            ELSE
+              skip()
+              IF p[]&lt;&gt;RBRACKET THEN r:=eval()
+            ENDIF
+          CASE FDO; WHILE p[]&lt;&gt;RBRACKET DO r:=eval()
+          CASE FSELECT
+            x:=eval()
+            WHILE p[]&lt;&gt;RBRACKET DO IF x=eval() THEN r:=eval() ELSE skip()
+          CASE FSET
+            IF p[]=LBRACKET
+              p:=p+2
+              erpos:=^p++
+              x:=varvalue(eatident(),TARRAY)
+              a:=eval()
+              IF (a&lt;0) OR (a&gt;x[0]) THEN error(ER_ARRAY)
+              IF p[]++&lt;&gt;RBRACKET THEN error(ER_EXPRBRACKET)
+              x[a+1]:=eval()
+            ELSE
+              x:=eatident()
+              IF (p[]=LBRACKET) AND (p[3]=FLAMBDA)
+                p:=p+8
+                adr:=findvar(x)
+                letvar(adr,p,TFUNC)
+                WHILE p[]&lt;&gt;RBRACKET DO skip()
+                p:=p+2
+              ELSE
+                r:=eval()
+                x:=findvar(x)
+                letvar(x,r,TINTEGER)
+              ENDIF
+            ENDIF
+          CASE FFOR
+            x:=eatident()
+            r:=eval()
+            adr:=findvar(x)
+            x:=eval()
+            p2:=p
+            IF r&gt;x               /* descend */
+              FOR a:=r TO x STEP -1
+                p:=p2
+                letvar(adr,a,TINTEGER)
+                WHILE p[]&lt;&gt;RBRACKET DO eval()
+              ENDFOR
+            ELSE
+              FOR a:=r TO x
+                p:=p2
+                letvar(adr,a,TINTEGER)
+                WHILE p[]&lt;&gt;RBRACKET DO eval()
+              ENDFOR
+            ENDIF
+            r:=0
+          CASE FWHILE
+            p2:=p
+            WHILE eval()
+              WHILE p[]&lt;&gt;RBRACKET DO eval()
+              p:=p2
+            ENDWHILE
+            WHILE p[]&lt;&gt;RBRACKET DO skip()
+            r:=0
+          CASE FUNTIL
+            p2:=p
+            WHILE eval()=FALSE
+              WHILE p[]&lt;&gt;RBRACKET DO eval()
+              p:=p2
+            ENDWHILE
+            WHILE p[]&lt;&gt;RBRACKET DO skip()
+            r:=0
+          CASE FDEFUN
+            x:=eatident()
+            adr:=findvar(x)
+            letvar(adr,p,TFUNC)
+            WHILE p[]&lt;&gt;RBRACKET DO skip()
+          CASE FLAMBDA; error(ER_SYNTAX)
+          CASE FAPPLY
+            IF p[]&lt;&gt;IDENT
+              IF (p[]&lt;&gt;LBRACKET) OR (p[3]&lt;&gt;FLAMBDA) THEN error(ER_EXPIDENT)
+              p:=p+8; adr:=p
+              WHILE p[]&lt;&gt;RBRACKET DO skip()
+              p:=p+2
+              r:=dofunc(adr)
+            ELSE
+              p:=p+2
+              r:=dofunc(varvalue(^p++,TFUNC))
+            ENDIF
+          CASE FREADINT
+            IF ReadStr(stdin,inputbuf)=-1
+              r:=0
+            ELSE
+              r:=Val(inputbuf,{x})
+            ENDIF
+          CASE FARRAY
+            adr:=findvar(eatident())
+            a:=eval()
+            x:=New(Mul(a,4)+8)
+            IF x=NIL THEN error(ER_ALLOC)
+            letvar(adr,x,TARRAY)
+            x[0]:=a
+          CASE FLOCATE; WriteF(&#x27;\e[\d;\dH&#x27;,eval(),eval())
+          CASE FCLS; Out(stdout,12)
+          CASE FDUMP
+            adr:=varbottom
+            WriteF(&#x27;\n&#x27;)
+            WHILE adr&lt;vartop
+              a:=adr.name
+              x:=a
+              WHILE Char(x)&lt;&gt;&quot; &quot; DO INC x
+              Write(stdout,a,x-a)
+              x:=adr.type
+              SELECT x
+                CASE TINTEGER; WriteF(&#x27; = \d (int)\n&#x27;,adr.value)
+                CASE TSTRING;  WriteF(&#x27; = &quot;\s&quot; (string)\n&#x27;,adr.value)
+                CASE TFUNC;    WriteF(&#x27; (function)\n&#x27;)
+                CASE TARRAY;   WriteF(&#x27;[\d] (array)\n&#x27;,Long(adr.value))
+              ENDSELECT
+              adr:=adr+SIZEOF var
+            ENDWHILE
+            WriteF(&#x27;\n&#x27;)
+          CASE FWINDOW
+            StringF(winspec,&#x27;CON:\d/\d/\d/\d/&#x27;,eval(),eval(),eval(),eval())
+            x:=eatstring()
+            StrAdd(winspec,x,ALL)
+            wfile:=Open(winspec,1006)
+            IF wfile=NIL THEN error(ER_FILE)
+            IF conout&lt;&gt;NIL THEN Close(conout)
+            stdout:=wfile
+            conout:=stdout
+            stdin:=stdout
+            adr:=OpenWorkBench()
+            Forbid()
+            a:=NIL
+            IF adr&lt;&gt;NIL
+              adr:=Long(adr+4)
+              WHILE (adr&lt;&gt;NIL) AND (a=NIL)
+                IF StrCmp(x,Long(adr+32),ALL) THEN a:=adr
+                adr:=^adr
+              ENDWHILE
+            ENDIF
+            Permit()
+            IF a THEN gfxwindow:=a
+          CASE FTELL
+            IF outfile&lt;&gt;NIL THEN Close(outfile)
+            outfile:=NIL
+            outfile:=Open(eatstring(),1006)
+            IF outfile=NIL THEN error(ER_FILE)
+            oldout:=stdout
+            stdout:=outfile
+          CASE FTOLD
+            IF outfile&lt;&gt;NIL THEN Close(outfile)
+            outfile:=NIL
+            stdout:=oldout
+          CASE FSEE
+            IF infile&lt;&gt;NIL THEN Close(infile)
+            infile:=NIL
+            infile:=Open(eatstring(),1005)
+            IF infile=NIL THEN error(ER_FILE)
+            oldin:=stdin
+            stdin:=infile
+          CASE FSEEN
+            IF infile&lt;&gt;NIL THEN Close(infile)
+            infile:=NIL
+            stdin:=oldin
+          CASE FSTRING
+            adr:=String(250)
+            IF adr=NIL THEN error(ER_ALLOC)
+            letvar(findvar(eatident()),adr,TSTRING)
+          CASE FREAD
+            x:=varvalue(eatident(),TSTRING)
+            r:=ReadStr(stdin,x)
+          CASE FGET; r:=Inp(stdin)
+          CASE FPUT; r:=eval(); IF r&lt;&gt;-1 THEN Out(stdout,r)
+          CASE FFILELEN
+            r:=FileLength(eatstring())
+            IF r=-1 THEN r:=0
+          CASE FLINE; getrast(); Line(eval(),eval(),eval(),eval(),eval())
+          CASE FPLOT; getrast(); Plot(eval(),eval(),eval())
+          CASE FBOX
+            getrast()
+            a:=eval(); x:=eval(); p2:=eval(); r:=eval()
+            IF (a&gt;p2) OR (x&gt;r) THEN error(ER_VALUES)
+            Box(a,x,p2,r,eval())
+            r:=0
+          CASE FMOUSEX; r:=MouseX(getwin())
+          CASE FMOUSEY; r:=MouseY(getwin())
+          CASE FMOUSE; r:=Mouse()
+          CASE FTEXT
+            adr:=getrast()
+            a:=eval(); x:=eval()
+            Colour(eval(),eval())
+            TextF(a,x,eatstring())
+        ENDSELECT
+      ENDIF
+      IF p[]++&lt;&gt;RBRACKET THEN error(ER_EXPRBRACKET)
+    DEFAULT
+      IF (i=RBRACKET) OR (i=ISTRING) THEN error(ER_EXPEXP) ELSE error(ER_SYNTAX)
+  ENDSELECT
+ENDPROC r
+
+PROC getwin()
+  IF gfxwindow=NIL THEN error(ER_GFXWIN)
+ENDPROC gfxwindow
+
+PROC getrast()
+  DEF r
+  IF gfxwindow=NIL THEN error(ER_GFXWIN)
+  r:=Long(gfxwindow+50)
+  SetStdRast(r)
+ENDPROC r
+
+PROC eatstring()
+  DEF adr,x
+  IF p[]=ISTRING
+    p:=p+2; x:=p[]++; adr:=^p++
+    adr[x]:=0
+  ELSE
+    adr:=varvalue(eatident(),TSTRING)
+  ENDIF
+ENDPROC adr
+
+PROC eatident()
+  IF p[]++&lt;&gt;IDENT THEN error(ER_EXPIDENT)
+ENDPROC ^p++
+
+PROC dofunc(lcode)
+  DEF args[MAXARGS]:ARRAY OF LONG,a=0,oldvarb,oldvart,oldp,x,r=0,olderpos
+  checkstop()
+  WHILE p[]&lt;&gt;RBRACKET
+    IF a=MAXARGS THEN error(ER_ARGS)
+    args[a]:=eval()
+    INC a
+  ENDWHILE
+  IF rec=0 THEN globvar:=vartop
+  oldvarb:=varbottom; varbottom:=vartop; oldvart:=vartop;
+  oldp:=p; p:=lcode; olderpos:=erpos; INC rec
+  IF p[]++&lt;&gt;LBRACKET THEN error(ER_EXPLBRACKET)
+  erpos:=^p++
+  WHILE p[]&lt;&gt;RBRACKET
+    IF a=0 THEN error(ER_ARGS)
+    x:=findvar(eatident())
+    letvar(x,args[]++,TINTEGER)
+    DEC a
+  ENDWHILE
+  IF a&lt;&gt;0 THEN error(ER_ARGS)
+  p:=p+2
+  WHILE p[]&lt;&gt;RBRACKET DO r:=eval()
+  varbottom:=oldvarb; vartop:=oldvart; p:=oldp; erpos:=olderpos; DEC rec
+ENDPROC r
+
+PROC findvar(id)
+  DEF loc=0:PTR TO var,a:PTR TO var
+  IF vartop&lt;&gt;varbottom
+    a:=varbottom                     /* vérifie les variables locales */
+    WHILE (a&lt;vartop) AND (loc=0)
+      IF a.name=id THEN loc:=a
+      a:=a+SIZEOF var
+    ENDWHILE
+  ENDIF
+  IF loc=0
+    IF (rec&gt;0) AND (globvar&gt;vars)    /* vérifie les variables globales */
+      a:=vars
+      WHILE (a&lt;globvar) AND (loc=0)
+        IF a.name=id THEN loc:=a
+        a:=a+SIZEOF var
+      ENDWHILE
+    ENDIF
+    IF loc=0                         /* crée de nouvelle variable dynamique */
+      loc:=vartop
+      vartop:=vartop+SIZEOF var
+      IF vars+VARSTACKSPACE&lt;vartop THEN error(ER_WORKSPACE)
+      loc.type:=TINTEGER
+      loc.name:=id
+      loc.value:=0
+    ENDIF
+  ENDIF
+ENDPROC loc
+
+PROC letvar(adr:PTR TO var,value,type)
+  IF (adr.type&lt;&gt;type) AND (adr.type&lt;&gt;TINTEGER) THEN error(ER_TYPE)
+  checkstop()
+  adr.type:=type
+  adr.value:=value
+ENDPROC
+
+PROC varvalue(id,type)
+  DEF adr:PTR TO var
+  checkstop()
+  adr:=findvar(id)
+  IF adr.type&lt;&gt;type THEN error(ER_TYPE)
+ENDPROC adr.value
+
+PROC skip()                        /* saute *une* expression */
+  DEF deep=0,i
+  REPEAT
+    i:=p[]++
+    IF (i=VALUE) OR (i=LBRACKET) OR (i=IDENT) THEN p:=p+4
+    IF i=ISTRING THEN p:=p+6
+    IF i=LBRACKET THEN INC deep
+    IF i=RBRACKET THEN IF deep=0 THEN error(ER_EXPEXP) ELSE DEC deep
+    IF i=ENDSOURCE THEN error(ER_EXPRBRACKET)
+  UNTIL deep=0
+ENDPROC
+
+PROC iword(x)
+  IF ibuf+ilen&gt;ipos THEN ipos[]++:=x ELSE error(ER_BUF)
+ENDPROC
+
+PROC ilong(x)
+  IF ibuf+ilen&gt;ipos THEN ^ipos++:=x ELSE error(ER_BUF)
+ENDPROC
+
+PROC loadsource()
+  DEF suxxes=FALSE,handle,read
+  IF StrCmp(arg,&#x27;?&#x27;,ALL) OR StrCmp(arg,&#x27;&#x27;,ALL)
+    WriteF(&#x27;USAGE: Yax &lt;source&gt; (extensio par défaut &quot;.yax&quot;)\n&#x27;)
+    error(0)
+  ELSE
+    StrCopy(name,arg,ALL)
+    StrAdd(name,&#x27;.yax&#x27;,4)
+    slen:=FileLength(name)
+    handle:=Open(name,1005)
+    IF (handle=NIL) OR (slen=-1)
+      error(ER_INFILE)
+    ELSE
+      source:=New(slen+10)
+      IF source=NIL
+        error(ER_SOURCEMEM)
+      ELSE
+        read:=Read(handle,source,slen)
+        Close(handle)
+        IF read=slen
+          suxxes:=TRUE
+          source[slen]:=0
+        ELSE
+          error(ER_INFILE)
+        ENDIF
+      ENDIF
+    ENDIF
+  ENDIF
+ENDPROC
+
+PROC error(nr)
+  DEF erstr[ERLEN]:STRING,a
+  IF outfile&lt;&gt;NIL
+    IF stdout=outfile THEN stdout:=oldout
+    Close(outfile)
+  ENDIF
+  IF infile&lt;&gt;NIL
+    IF stdin=infile THEN stdin:=oldin
+    Close(infile)
+  ENDIF
+  WriteF(&#x27;\n&#x27;)
+  IF nr&gt;0
+    WriteF(&#x27;ERROR: &#x27;)
+    SELECT nr
+      CASE ER_WORKSPACE;   WriteF(&#x27;Ne peut allouer de la mémoire pour l\aespace de travaille !\n&#x27;)
+      CASE ER_BUF;         WriteF(&#x27;Dépacement mémoire des buffers !\n&#x27;)
+      CASE ER_GARBAGE;     WriteF(&#x27;Poubelle en ligne \n&#x27;)
+      CASE ER_SYNTAX;      WriteF(&#x27;Votre syntaxe pose problême\n&#x27;)
+      CASE ER_EXPKEYWORD;  WriteF(&#x27;Manque un mot clef\n&#x27;)
+      CASE ER_EXPRBRACKET; WriteF(&#x27;Manque un crochet droit ]\n&#x27;)
+      CASE ER_EXPEXP;      WriteF(&#x27;Manque une expression évaluable\n&#x27;)
+      CASE ER_QUOTE;       WriteF(&#x27;Manque l&#x27;&#x27;apostrophe\a\n&#x27;)
+      CASE ER_COMMENT;     WriteF(&#x27;Manque &quot;*/&quot;\n&#x27;)
+      CASE ER_SOURCEMEM;   WriteF(&#x27;Pas de mémoire pour le source !\n&#x27;)
+      CASE ER_INFILE;      WriteF(&#x27;Ne peut ouvrir le fichier &quot;\s&quot;.\n&#x27;,name)
+      CASE ER_EXPIDENT;    WriteF(&#x27;Manque l&#x27;&#x27;identificateur\n&#x27;)
+      CASE ER_ARGS;        WriteF(&#x27;Nombre illégal d&#x27;&#x27;arguments\n&#x27;)
+      CASE ER_TYPE;        WriteF(&#x27;Mauvais type de variable/expression\n&#x27;)
+      CASE ER_EXPLBRACKET; WriteF(&#x27;Manque le crochet gauche [\n&#x27;)
+      CASE ER_STACK;       WriteF(&#x27;Limite du dépacement mémoire : \d récusions\n&#x27;,rec)
+      CASE ER_ALLOC;       WriteF(&#x27;N&#x27;&#x27;a put faire une allocation dynamique !\n&#x27;)
+      CASE ER_ARRAY;       WriteF(&#x27;Index de tableau hors norme\n&#x27;)
+      CASE ER_FILE;        WriteF(&#x27;Erreur de fichier\n&#x27;)
+      CASE ER_GFXWIN;      WriteF(&#x27;N&#x27;&#x27;est pas une fenêtre-utilisateur pour les graphiques\n&#x27;)
+      CASE ER_VALUES;      WriteF(&#x27;Valeur(s) illégale(s)\n&#x27;)
+    ENDSELECT
+    IF erpos&lt;&gt;NIL
+      StrCopy(erstr,erpos,ALL)
+      FOR a:=0 TO ERLEN-1 DO IF erstr[a]=10 THEN erstr[a]:=32
+      WriteF(&#x27;NEARBY: \s\n&#x27;,erstr)
+    ENDIF
+  ELSEIF nr=-1
+    WriteF(&#x27;*** Programme terminé.\n&#x27;)
+  ENDIF
+  IF conout&lt;&gt;NIL THEN WriteF(&#x27;Pressez &lt;return&gt; pour continuer...\n&#x27;)
+  CleanUp(0)
+ENDPROC
+
+keywords:
+CHAR &#x27;write...&#x27;, &#x27;add.....&#x27;, &#x27;eq......&#x27;, &#x27;uneq....&#x27;, &#x27;sub.....&#x27;,
+     &#x27;mul.....&#x27;, &#x27;div.....&#x27;, &#x27;and.....&#x27;, &#x27;or......&#x27;, &#x27;not.....&#x27;,
+     &#x27;if......&#x27;, &#x27;do......&#x27;, &#x27;select..&#x27;, &#x27;set.....&#x27;, &#x27;for.....&#x27;,
+     &#x27;while...&#x27;, &#x27;until...&#x27;, &#x27;defun...&#x27;, &#x27;lambda..&#x27;, &#x27;apply...&#x27;,
+     &#x27;readint.&#x27;, &#x27;array...&#x27;, &#x27;greater.&#x27;, &#x27;smaller.&#x27;, &#x27;locate..&#x27;,
+     &#x27;cls.....&#x27;, &#x27;dump....&#x27;, &#x27;window..&#x27;, &#x27;tell....&#x27;, &#x27;told....&#x27;,
+     &#x27;see.....&#x27;, &#x27;seen....&#x27;, &#x27;string..&#x27;, &#x27;read....&#x27;, &#x27;get.....&#x27;,
+     &#x27;put.....&#x27;, &#x27;filelen.&#x27;, &#x27;line....&#x27;, &#x27;plot....&#x27;, &#x27;box.....&#x27;,
+     &#x27;mousex..&#x27;, &#x27;mousey..&#x27;, &#x27;mouse...&#x27;, &#x27;text....&#x27;
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

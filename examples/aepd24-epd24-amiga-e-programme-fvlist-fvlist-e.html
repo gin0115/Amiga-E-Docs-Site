@@ -1,0 +1,159 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>FVList.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-aepd24.html">AEPD24</a> &rsaquo; FVList.e</div><h1>File: <code>FVList.e</code></h1><p class="meta">133 lines · project <a href="../examples/pkg-aepd24.html"><code>AEPD24</code></a></p><p class="pathctx">AEPD24/EPD24/Amiga_E-Programme/FVList/FVList.e</p><p class="prose">FVlist: a <a href="../modules/class.html">class</a> for handling linked-list-stuff with that little extra This kind of linked list has a member <a href="../modules/pointer.html">pointer</a> to the root of the list, and this root has a <a href="../modules/pointer.html">pointer</a> to the tail, so that: -the root can be reached from every node in one single action (speed) -the tail can be reached from the root,</p><h2>Source</h2><pre class="code">/* FVlist: a class for handling linked-list-stuff with that little extra
+
+This kind of linked list has a member pointer to the root of the list,
+and this root has a pointer to the tail, so that:
+-the root can be reached from every node in one single action (speed)
+-the tail can be reached from the root, so that adding a node to this
+list (which is always handled with it&#x27;s root-element) is also quite
+fast.
+
+I hear you saying: &#x27;why no normal double-linked list?&#x27;, and you&#x27;re
+right, except for speed.
+Maybe you don&#x27;t give a damn, but I think it&#x27;s rather handy...
+
+Oh yes, the Disclaimer:
+&#x27;Use it, but don&#x27;t blame me if it blows up your dog or eats
+your socks (no good idea anyway :) or some other thing.&#x27;
+
+Hope you like it.  If you find any bugs (prey there aren&#x27;t any),
+please let me know immediately.
+Also, tell me what you use it for.
+
+Frank Verheyen
+The RedHaired Barbarian
+--- Nudge Nudge. Say no more ---
+    (Monty Python)
+
+(EMAIL) hi910097@Beta.Ufsia.ac.be
+
+Wouter can include this into his next E-release if it&#x27;s any good.
+
+*/
+/*--------------------------------------------------------------------------*/
+OPT MODULE
+
+EXPORT OBJECT fvnode					-&gt; a node
+	PRIVATE parent:PTR TO fvnode
+	PRIVATE child:PTR TO fvnode
+	PRIVATE root:PTR TO fvnode
+ENDOBJECT
+
+EXPORT OBJECT fvlist OF fvnode			-&gt; the rootnode, the list&#x27;s handle
+	PRIVATE tail:PTR TO fvnode
+ENDOBJECT
+/*--------------------------------------------------------------------------*/
+EXPORT PROC make(dummy) OF fvlist			-&gt; constructor
+	self.parent := NIL
+	self.child := NIL
+	self.root := self
+	self.tail := NIL
+ENDPROC
+/*--------------------------------------------------------------------------*/
+EXPORT PROC make(r:PTR TO fvlist) OF fvnode	-&gt; constructor
+     DEF n:PTR TO fvnode
+
+	IF (n := r.tail)
+		n.child := self
+		self.parent := n
+	ENDIF
+	IF r.child=NIL
+		r.child := self
+		self.parent := r
+	ENDIF
+	r.tail := self						-&gt; nodes are added at the tail anyway
+	self.root := r
+	self.child := NIL
+ENDPROC
+/*--------------------------------------------------------------------------*/
+EXPORT PROC show() OF fvnode IS WriteF(&#x27;Node:\n\taddress=\h\n\tparent=\h\n\tchild=\h\n\troot=\h\n-------------------\n&#x27;,self,self.parent,self.child,self.root)
+/*--------------------------------------------------------------------------*/
+EXPORT PROC show() OF fvlist
+	DEF n:PTR TO fvnode
+	WriteF(&#x27;Root:\n\taddress=\h\n\tparent=\h\n\tchild=\h\n\troot=\h\n\ttail=\h\n-------------------\n&#x27;,self,self.parent,self.child,self.root,self.tail)
+	IF (n := self.child)
+		WHILE n
+			n.show()
+			n := n.child
+		ENDWHILE
+	ELSE
+		WriteF(&#x27;Empty list, no children linked\n-------------------\n&#x27;)
+	ENDIF
+ENDPROC
+/*--------------------------------------------------------------------------*/
+EXPORT PROC giveRoot() OF fvnode IS self.root
+/*--------------------------------------------------------------------------*/
+EXPORT PROC giveChild() OF fvnode IS self.child
+/*--------------------------------------------------------------------------*/
+EXPORT PROC giveParent() OF fvnode IS self.parent
+/*--------------------------------------------------------------------------*/
+EXPORT PROC giveTail() OF fvnode IS self.root::fvlist.tail
+/*--------------------------------------------------------------------------*/
+EXPORT PROC giveTail() OF fvlist IS self.tail
+/*--------------------------------------------------------------------------*/
+/* this rather funny construction of ENDing a self is a solution to be able to
+ implement the delete() (fvnode cannot have an end() destructor, at least not
+ a recursive one).  Think about it :) */
+
+EXPORT PROC free() OF fvnode				-&gt; free nodes after and including self
+	DEF n:PTR TO fvnode,r:PTR TO fvlist,p:PTR TO fvnode
+	IF (n := self.child) THEN n.free()		-&gt; recursively free list of children
+
+ 	p := self.parent
+ 	p.child := NIL						-&gt; amputation of parent
+ 	r := self.root
+	r.tail := p						-&gt; update root&#x27;s tail
+-&gt; 	PrintF(&#x27;freeing \h\n&#x27;,self)			-&gt; for debugging purposes
+	END self
+ENDPROC
+/*--------------------------------------------------------------------------*/
+EXPORT PROC end() OF fvlist
+	DEF n:PTR TO fvnode
+	IF (n := self.child)
+		n.free()
+	ENDIF
+-&gt;	PrintF(&#x27;freeing root \h\n&#x27;,self)		-&gt; for debugging purposes
+ENDPROC
+/*--------------------------------------------------------------------------*/
+EXPORT PROC delete() OF fvnode
+	DEF	p:PTR TO fvnode,
+		c:PTR TO fvnode,
+		r:PTR TO fvlist
+	p := self.parent
+	c := self.child
+	r := self.root
+	IF p THEN p.child := c
+	IF c
+		c.parent := p
+	ELSE
+		IF r THEN r.tail := p
+	ENDIF
+	END self
+ENDPROC
+/*------------------------------ that&#x27;s it folks ---------------------------*/
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

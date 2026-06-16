@@ -1,0 +1,963 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>sampleio.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-audiostream-sr.html">audiostream_sr</a> &rsaquo; sampleio.e</div><h1>File: <code>sampleio.e</code></h1><p class="meta">937 lines · project <a href="../examples/pkg-audiostream-sr.html"><code>audiostream_sr</code></a></p><p class="pathctx">audiostream_sr/AudioSTREAM/sampleio.e</p><p class="prose">AudioSTREAM Professional (c) 1997 Immortal SYSTEMS Source codes for version 1.0 ================================================= Source: <a href="../modules/sampleio.html">sampleio</a>.e Description: sample import and export stuff Contains: sample i/o Version: 1.0 --------------------------------------------------------------------</p><h2>Source</h2><pre class="code">/*
+
+      AudioSTREAM Professional
+      (c) 1997 Immortal SYSTEMS
+
+      Source codes for version 1.0
+
+      =================================================
+
+      Source:     sampleio.e
+      Description:    sample import and export stuff
+      Contains:   sample i/o
+      Version:    1.0
+ --------------------------------------------------------------------
+*/
+
+
+OPT MODULE
+OPT PREPROCESS
+OPT EXPORT
+
+#define SIO_OK          0
+#define SIO_CANTOPEN    1
+#define SIO_READERROR   2
+#define SIO_NOMEM       3
+#define SIO_FILEPROBLEM 4
+#define SIO_WRITEERROR  5
+
+-&gt; sample encoding types
+
+CONST SENC_PCM8=$2000,SENC_PCM16=$4000,SENC_OTHER=$6000,SENC_UNKNOWN=0
+CONST SENC_PCM8S=$3000,SENC_PCM16S=$5000
+
+MODULE &#x27;*common&#x27;,&#x27;exec/memory&#x27;,&#x27;*global&#x27;,&#x27;dos/dos&#x27;,&#x27;libraries/mui&#x27;
+
+OBJECT obj_siodata
+      slot,name,buf,frames,type,stereo,rate
+      length -&gt;save only =buffer length
+ENDOBJECT
+
+-&gt; chunk object for saving
+
+OBJECT obj_form
+      id,chunksize,form
+ENDOBJECT
+
+OBJECT obj_comm
+      id,chunksize
+      channels:INT
+      frames
+      samplesize:INT
+      rate[10]:ARRAY
+ENDOBJECT
+
+OBJECT obj_ssnd
+      id,chunksize
+      unused,unused2
+ENDOBJECT
+
+
+           DEF memflag
+           DEF siodata:PTR TO obj_siodata
+
+
+-&gt; SAMPLE I/O SUPPORT (general routines)
+
+PROC fillsiodata(slot,name,buf,frames,type,stereo,rate)
+      siodata.slot:=slot;siodata.name:=name
+      siodata.buf:=buf;siodata.frames:=frames
+      siodata.type:=type;siodata.stereo:=stereo
+      siodata.rate:=rate
+      /*CDEBUG(FILLSIO: siodata \h,siodata)
+      CDEBUG(FILLSIO: rate \d,rate)*/
+ENDPROC
+
+PROC findid(buf,id,max)
+      DEF i
+
+      FOR i:=0 TO max-2 STEP 2 DO EXIT Long(buf+i)=id
+      IF Long(buf+i)&lt;&gt;id THEN i:=-1
+ENDPROC i
+
+
+PROC fucke(s)
+      siodata:=s
+ENDPROC
+
+
+PROC wavecopy(src,dest,siz,type,stereo) -&gt; WAVE reading support
+
+      CDEBUG(WAVECOPY: size \d,siz)
+      IF siz=0 THEN RETURN
+      IF type
+            IF stereo
+                  MOVE.L src,A0
+                  MOVE.L dest,A1
+                  MOVEQ.L #0,D0
+            wvcp2:MOVE.B (A0)+,D1
+                  MOVE.B (A0)+,(A1)+
+                  MOVE.B D1,(A1)+
+                  MOVE.B (A0)+,D1
+                  MOVE.B (A0)+,(A1)+
+                  MOVE.B D1,(A1)+
+                  ADDQ.L #4,D0
+                  CMP.L siz,D0
+                  BNE wvcp2
+            ELSE
+                  MOVE.L src,A0
+                  MOVE.L dest,A1
+                  MOVEQ.L #0,D0
+            wvcp1:MOVE.B (A0)+,D1
+                  MOVE.B (A0)+,(A1)+
+                  MOVE.B D1,(A1)+
+                  ADDQ.L #2,D0
+                  CMP.L siz,D0
+                  BNE wvcp1
+
+            ENDIF
+      ELSE
+                  MOVE.L src,A0   -&gt; unsigned2signed
+                  MOVE.L dest,A1
+                  MOVEQ.L #0,D0
+            wvcp3:MOVE.B (A0)+,D1
+                  SUB.B #$80,D1
+                  MOVE.B D1,(A1)+
+                  ADDQ.L #1,D0
+                  CMP.L siz,D0
+                  BNE wvcp3
+
+      ENDIF
+ENDPROC
+
+PROC signed2unsigned(begin,end) -&gt; 8bit only
+
+      IF (end-begin)=0 THEN RETURN
+
+            MOVE.L begin,A0
+            MOVE.L end,A1
+s2uloop:    SUB.B #$80,(A0)+
+            CMPA.L A1,A0
+            BNE s2uloop
+ENDPROC
+
+
+PROC swapbyteorder(begin,end,stereo) -&gt;16bit only
+      IF (end-begin)=0 THEN RETURN
+
+      IF stereo
+            MOVE.L begin,A0
+            MOVE.L end,A1
+swploop1:   MOVE.B 1(A0),D0
+            MOVE.B (A0),1(A0)
+            MOVE.B D0,(A0)
+            ADDQ.L #2,A0
+            MOVE.B 1(A0),D0
+            MOVE.B (A0),1(A0)
+            MOVE.B D0,(A0)
+            ADDQ.L #2,A0
+            CMPA.L A1,A0
+            BNE swploop1
+
+      ELSE
+            MOVE.L begin,A0
+            MOVE.L end,A1
+swploop2:   MOVE.B 1(A0),D0
+            MOVE.B (A0),1(A0)
+            MOVE.B D0,(A0)
+            ADDQ.L #2,A0
+            CMPA.L A1,A0
+            BNE swploop2
+      ENDIF
+ENDPROC
+
+PROC readle16(addr) IS Char(addr)+Shl(Char(addr+1),8)
+
+PROC readle24(addr) IS Char(addr)+Shl(Char(addr+1),8)+Shl(Char(addr+2),16)
+
+PROC readle32(addr) IS Char(addr)+Shl(Char(addr+1),8)+Shl(Char(addr+2),16)+Shl(Char(addr+3),24)
+
+
+
+PROC alloccache(filesize) -&gt; will attempt to allocate file cache
+      DEF temp,size
+
+      IF filesize&gt;524288
+            size:=524288  -&gt; 0.5MB max,32K min
+      ELSE
+            size:=filesize
+      ENDIF
+
+      temp:=AllocVec(size,MEMF_PUBLIC)
+      WHILE (temp=0) AND (size&gt;65536)
+            size:=size-32768
+            temp:=AllocVec(size,MEMF_PUBLIC)
+      ENDWHILE
+      IF temp
+            CDEBUG(SIO: Cache allocated \d bytes,size)
+      ELSE
+            CDEBUG(SIO: Cache allocation failed,0)
+      ENDIF
+
+ENDPROC temp,size
+
+
+
+PROC dontusecache(area1,area2)
+      DEF ta1,ta2
+      -&gt; returns true if one are is of public memory
+      ta1:=TypeOfMem(area1)
+      ta2:=TypeOfMem(area2)
+
+ENDPROC ((ta1 AND MEMF_PUBLIC)=MEMF_PUBLIC) OR ((ta2 AND MEMF_PUBLIC)=MEMF_PUBLIC)
+
+
+
+
+
+PROC copymemcache(src,dest,size) -&gt; VMM optimized copymem
+      DEF cache,cachesize,bytes,srctype,desttype,remaining,psize
+
+      IF dontusecache(src,dest)
+            CDEBUG(COPYMEM: Caching not used,0)
+            CopyMem(src,dest,size)
+            RETURN
+      ENDIF
+
+      CDEBUG(COPYMEM: Trying to use cache for VM2VM transfer,0)
+
+      cache,cachesize:=alloccache(size)
+      IF cache=NIL
+            CDEBUG(COPYMEM: Out of public memory,0)
+            CopyMem(src,dest,size)
+            RETURN
+      ENDIF
+
+      bytes:=0
+
+      CopyMem(src,cache,cachesize)
+      CopyMem(cache,dest,cachesize)
+      bytes:=bytes+cachesize;src:=src+cachesize;dest:=dest+cachesize
+      WHILE bytes&lt;size
+            remaining:=size-bytes
+            IF remaining&gt;cachesize THEN psize:=cachesize ELSE psize:=remaining
+            CopyMem(src,cache,psize)
+            CopyMem(cache,dest,psize)
+            bytes:=bytes+psize;src:=src+psize;dest:=dest+psize
+      ENDWHILE
+      FreeVec(cache)
+ENDPROC
+
+
+
+-&gt; SAMPLE IMPORT
+
+
+
+
+PROC loadaiff(slot,name,len,fh) HANDLE
+      DEF buf,buf2,frames,bread,b:PTR TO CHAR
+      DEF type,stereo,cache,cachesize,rcode,temp,hsiz
+      DEF compos,res,chan,ssndpos,length,offset,flg,rate
+
+
+      CDEBUG(SLOAD: AIFF loader used,0)
+
+      buf:=0;cache:=0
+      temp:=AllocVec(4096,MEMF_PUBLIC OR MEMF_CLEAR OR MEMF_REVERSE)
+      IF temp=NIL THEN Raise(&quot;NMEM&quot;)
+      Seek(fh,0,OFFSET_BEGINNING)
+      IF len&lt;4096 THEN hsiz:=len ELSE hsiz:=4096
+      b:=Read(fh,temp,hsiz)
+      IF b=-1 THEN Raise(&quot;RERR&quot;)
+      compos:=findid(temp,&quot;COMM&quot;,hsiz)
+      IF compos=-1 THEN Raise(&quot;FPRO&quot;) -&gt; file format problem
+      chan:=Char(temp+compos+9);res:=Char(temp+compos+15)
+      frames:=Long(temp+compos+10);rate:=ext2long(temp+compos+16)
+      ssndpos:=findid(temp,&quot;SSND&quot;,hsiz)
+      IF ssndpos=-1 THEN Raise(&quot;FPRO&quot;) -&gt; file format problem
+      length:=Long(temp+ssndpos+4)-8
+      offset:=ssndpos+16
+      flg:=FALSE
+      IF chan=1
+            IF res=8
+                  type:=FALSE
+                  stereo:=FALSE
+                  flg:=TRUE
+            ELSEIF res=16
+                  type:=MUI_TRUE
+                  stereo:=FALSE
+                  flg:=TRUE
+            ENDIF
+      ELSEIF chan=2
+            IF res=8
+                  type:=FALSE
+                  stereo:=MUI_TRUE
+                  flg:=TRUE
+            ELSEIF res=16
+                  type:=MUI_TRUE
+                  stereo:=MUI_TRUE
+                  flg:=TRUE
+            ENDIF
+      ENDIF
+      CDEBUG(AIFF: Sample resolution \dbit,res)
+      CDEBUG(AIFF: Channels \d,chan)
+      CDEBUG(AIFF: Frames \d,frames)
+      CDEBUG(AIFF: Length \d,length)
+      CDEBUG(AIFF: Rate \dHz,rate)
+      IF flg=FALSE THEN Raise(&quot;FPRO&quot;)
+
+
+      buf:=AllocVec(length,memflag)
+      IF buf=NIL THEN Raise(&quot;NMEM&quot;)
+      cache,cachesize:=alloccache(length)
+      IF cache=NIL THEN Raise(&quot;NMEM&quot;)
+
+      percent(&#x27;Loading AIFF sample&#x27;)
+      buf2:=buf;bread:=0
+      Seek(fh,offset,OFFSET_BEGINNING)
+
+      b:=Read(fh,cache,cachesize)
+      IF b=-1 THEN Raise(&quot;RERR&quot;)
+      CopyMem(cache,buf2,b);buf2:=buf2+b
+      bread:=bread+b
+      percent(&#x27;Loading AIFF sample&#x27;,bread,length)
+      WHILE bread&lt;length
+            EXIT b=0
+            b:=Read(fh,cache,cachesize)
+            IF b=-1 THEN Raise(&quot;RERR&quot;)
+            CopyMem(cache,buf2,b);buf2:=buf2+b
+            bread:=bread+b
+            percent(&#x27;Loading AIFF sample&#x27;,bread,length)
+      ENDWHILE
+      IF bread&lt;length THEN logit(&#x27;WARNING: Sample is incomplete!&#x27;)
+      fillsiodata(slot,name,buf,frames,type,stereo,rate)
+
+      rcode:=SIO_OK
+      EXCEPT DO
+            SELECT exception
+                  CASE &quot;NMEM&quot;
+                        IF buf THEN FreeVec(buf)
+                        rcode:=SIO_NOMEM
+                  CASE &quot;RERR&quot;
+                        IF buf THEN FreeVec(buf)
+                        rcode:=SIO_READERROR
+                  CASE &quot;FPRO&quot;
+                        IF buf THEN FreeVec(buf)
+                        rcode:=SIO_FILEPROBLEM
+            ENDSELECT
+      IF cache THEN FreeVec(cache)
+      IF temp THEN FreeVec(temp)
+      sidle()
+ENDPROC rcode
+
+
+PROC loadwave(slot,name,len,fh) HANDLE
+      DEF buf,buf2,frames,bread,b:PTR TO CHAR
+      DEF type,stereo,cache,cachesize,rcode,temp,hsiz,blk
+      DEF compos,res,chan,ssndpos,length,offset,flg,rate
+
+
+      CDEBUG(SLOAD: WAVE loader used,0)
+
+      buf:=0;cache:=0
+      temp:=AllocVec(4096,MEMF_PUBLIC OR MEMF_CLEAR OR MEMF_REVERSE)
+      IF temp=NIL THEN Raise(&quot;NMEM&quot;)
+      Seek(fh,0,OFFSET_BEGINNING)
+      IF len&lt;4096 THEN hsiz:=len ELSE hsiz:=4096
+      b:=Read(fh,temp,hsiz)
+      IF b=-1 THEN Raise(&quot;RERR&quot;)
+      compos:=findid(temp,&quot;fmt &quot;,hsiz) -&gt; find fmt chunk
+      IF compos=-1 THEN Raise(&quot;FPRO&quot;) -&gt; file format problem
+      IF readle16(temp+compos+8)&lt;&gt;1 THEN Raise(&quot;FPRO&quot;) -&gt; compression not supported
+      chan:=readle16(temp+compos+10);res:=readle16(temp+compos+22)
+      rate:=readle32(temp+compos+12)
+      blk:=readle16(temp+compos+20)
+      ssndpos:=findid(temp,&quot;data&quot;,hsiz)
+      IF ssndpos=-1 THEN Raise(&quot;FPRO&quot;) -&gt; file format problem
+      length:=readle32(temp+ssndpos+4)
+      frames:=Div(length,blk)
+      offset:=ssndpos+8
+      flg:=FALSE
+      IF chan=1
+            IF res=8
+                  type:=FALSE
+                  stereo:=FALSE
+                  flg:=TRUE
+            ELSEIF res=16
+                  type:=MUI_TRUE
+                  stereo:=FALSE
+                  flg:=TRUE
+            ENDIF
+      ELSEIF chan=2
+            IF res=8
+                  type:=FALSE
+                  stereo:=MUI_TRUE
+                  flg:=TRUE
+            ELSEIF res=16
+                  type:=MUI_TRUE
+                  stereo:=MUI_TRUE
+                  flg:=TRUE
+            ENDIF
+      ENDIF
+      CDEBUG(WAVE: Sample resolution \dbit,res)
+      CDEBUG(WAVE: Channels \d,chan)
+      CDEBUG(WAVE: Frames \d,frames)
+      CDEBUG(WAVE: Length \d,length)
+      CDEBUG(WAVE: Rate \dHz,rate)
+      IF flg=FALSE THEN Raise(&quot;FPRO&quot;)
+
+
+      buf:=AllocVec(length,memflag)
+      IF buf=NIL THEN Raise(&quot;NMEM&quot;)
+      cache,cachesize:=alloccache(length)
+      IF cache=NIL THEN Raise(&quot;NMEM&quot;)
+
+      percent(&#x27;Loading WAVE sample&#x27;)
+      buf2:=buf;bread:=0
+      Seek(fh,offset,OFFSET_BEGINNING)
+
+      b:=Read(fh,cache,cachesize)
+      IF b=-1 THEN Raise(&quot;RERR&quot;)
+      wavecopy(cache,buf2,b,type,stereo);buf2:=buf2+b
+      bread:=bread+b
+      percent(&#x27;Loading WAVE sample&#x27;,bread,length)
+      WHILE bread&lt;length
+            EXIT b=0
+            b:=Read(fh,cache,cachesize)
+            IF b=-1 THEN Raise(&quot;RERR&quot;)
+            wavecopy(cache,buf2,b,type,stereo);buf2:=buf2+b
+            bread:=bread+b
+            percent(&#x27;Loading WAVE sample&#x27;,bread,length)
+      ENDWHILE
+      IF bread&lt;length THEN logit(&#x27;WARNING: Sample is incomplete!&#x27;)
+      fillsiodata(slot,name,buf,frames,type,stereo,rate)
+
+      rcode:=SIO_OK
+      EXCEPT DO
+            SELECT exception
+                  CASE &quot;NMEM&quot;
+                        IF buf THEN FreeVec(buf)
+                        rcode:=SIO_NOMEM
+                  CASE &quot;RERR&quot;
+                        IF buf THEN FreeVec(buf)
+                        rcode:=SIO_READERROR
+                  CASE &quot;FPRO&quot;
+                        IF buf THEN FreeVec(buf)
+                        rcode:=SIO_FILEPROBLEM
+            ENDSELECT
+      IF cache THEN FreeVec(cache)
+      IF temp THEN FreeVec(temp)
+      sidle()
+ENDPROC rcode
+
+
+
+
+
+
+PROC loadmaud(slot,name,len,fh) HANDLE
+      DEF buf,buf2,frames,bread,b:PTR TO CHAR
+      DEF type,stereo,cache,cachesize,rcode,temp,hsiz
+      DEF compos,res,chan,ssndpos,length,offset,flg,rate
+
+
+      CDEBUG(SLOAD: MAUD loader used,0)
+
+      buf:=0;cache:=0
+      temp:=AllocVec(4096,MEMF_PUBLIC OR MEMF_CLEAR OR MEMF_REVERSE)
+      IF temp=NIL THEN Raise(&quot;NMEM&quot;)
+      Seek(fh,0,OFFSET_BEGINNING)
+      IF len&lt;4096 THEN hsiz:=len ELSE hsiz:=4096
+      b:=Read(fh,temp,hsiz)
+      IF b=-1 THEN Raise(&quot;RERR&quot;)
+      compos:=findid(temp,&quot;MHDR&quot;,hsiz)
+      IF compos=-1 THEN Raise(&quot;FPRO&quot;) -&gt; file format problem
+      chan:=Int(temp+compos+$18);res:=Int(temp+compos+$0c)
+      frames:=Long(temp+compos+8);rate:=Long(temp+compos+$10)
+      IF chan&gt;1 THEN frames:=Div(frames,chan)
+      ssndpos:=findid(temp,&quot;MDAT&quot;,hsiz)
+      IF ssndpos=-1 THEN Raise(&quot;FPRO&quot;) -&gt; file format problem
+      length:=Long(temp+ssndpos+4)
+      offset:=ssndpos+8
+      flg:=FALSE
+      IF chan=1
+            IF res=8
+                  type:=FALSE
+                  stereo:=FALSE
+                  flg:=TRUE
+            ELSEIF res=16
+                  type:=MUI_TRUE
+                  stereo:=FALSE
+                  flg:=TRUE
+            ENDIF
+      ELSEIF chan=2
+            IF res=8
+                  type:=FALSE
+                  stereo:=MUI_TRUE
+                  flg:=TRUE
+            ELSEIF res=16
+                  type:=MUI_TRUE
+                  stereo:=MUI_TRUE
+                  flg:=TRUE
+            ENDIF
+      ENDIF
+      CDEBUG(MAUD: Sample resolution \dbit,res)
+      CDEBUG(MAUD: Channels \d,chan)
+      CDEBUG(MAUD: Frames \d,frames)
+      CDEBUG(MAUD: Length \d,length)
+      CDEBUG(MAUD: Rate \dHz,rate)
+      IF flg=FALSE THEN Raise(&quot;FPRO&quot;)
+
+
+      buf:=AllocVec(length,memflag)
+      IF buf=NIL THEN Raise(&quot;NMEM&quot;)
+      cache,cachesize:=alloccache(length)
+      IF cache=NIL THEN Raise(&quot;NMEM&quot;)
+
+      percent(&#x27;Loading MAUD sample&#x27;)
+      buf2:=buf;bread:=0
+      Seek(fh,offset,OFFSET_BEGINNING)
+
+      b:=Read(fh,cache,cachesize)
+      IF b=-1 THEN Raise(&quot;RERR&quot;)
+      CopyMem(cache,buf2,b);buf2:=buf2+b
+      bread:=bread+b
+      percent(&#x27;Loading MAUD sample&#x27;,bread,length)
+      WHILE bread&lt;length
+            EXIT b=0
+            b:=Read(fh,cache,cachesize)
+            IF b=-1 THEN Raise(&quot;RERR&quot;)
+            CopyMem(cache,buf2,b);buf2:=buf2+b
+            bread:=bread+b
+            percent(&#x27;Loading MAUD sample&#x27;,bread,length)
+      ENDWHILE
+      IF res=8 THEN signed2unsigned(buf,buf+length) -&gt; 8bit mauds are unsigned
+      IF bread&lt;length THEN logit(&#x27;WARNING: Sample is incomplete!&#x27;)
+      fillsiodata(slot,name,buf,frames,type,stereo,rate)
+
+      rcode:=SIO_OK
+      EXCEPT DO
+            SELECT exception
+                  CASE &quot;NMEM&quot;
+                        IF buf THEN FreeVec(buf)
+                        rcode:=SIO_NOMEM
+                  CASE &quot;RERR&quot;
+                        IF buf THEN FreeVec(buf)
+                        rcode:=SIO_READERROR
+                  CASE &quot;FPRO&quot;
+                        IF buf THEN FreeVec(buf)
+                        rcode:=SIO_FILEPROBLEM
+            ENDSELECT
+      IF cache THEN FreeVec(cache)
+      IF temp THEN FreeVec(temp)
+      sidle()
+ENDPROC rcode
+
+
+PROC load8svx(slot,name,len,fh) HANDLE -&gt; Stereo samples not supported yet!
+      DEF buf,buf2,frames,bread,b:PTR TO CHAR
+      DEF type,stereo,cache,cachesize,rcode,temp,hsiz
+      DEF compos,ssndpos,length,offset,flg,rate
+
+
+      CDEBUG(SLOAD: 8SVX loader used,0)
+
+      buf:=0;cache:=0
+      temp:=AllocVec(4096,MEMF_PUBLIC OR MEMF_CLEAR OR MEMF_REVERSE)
+      IF temp=NIL THEN Raise(&quot;NMEM&quot;)
+      Seek(fh,0,OFFSET_BEGINNING)
+      IF len&lt;4096 THEN hsiz:=len ELSE hsiz:=4096
+      b:=Read(fh,temp,hsiz)
+      IF b=-1 THEN Raise(&quot;RERR&quot;)
+      compos:=findid(temp,&quot;VHDR&quot;,hsiz)
+      IF compos=-1 THEN Raise(&quot;FPRO&quot;) -&gt; file format problem
+      rate:=Int(temp+compos+$14)
+      IF rate&lt;0 THEN rate:=rate AND $7FFFFFFF
+      ssndpos:=findid(temp,&quot;BODY&quot;,hsiz)
+      IF ssndpos=-1 THEN Raise(&quot;FPRO&quot;) -&gt; file format problem
+      length:=Long(temp+ssndpos+4);frames:=length
+      offset:=ssndpos+8
+      flg:=FALSE
+
+      type:=FALSE
+      stereo:=FALSE
+      flg:=TRUE
+
+      CDEBUG(8SVX: Frames \d,frames)
+      CDEBUG(8SVX: Length \d,length)
+      CDEBUG(8SVX: Rate \dHz,rate)
+
+      IF flg=FALSE THEN Raise(&quot;FPRO&quot;)
+
+
+      buf:=AllocVec(length,memflag)
+      IF buf=NIL THEN Raise(&quot;NMEM&quot;)
+      cache,cachesize:=alloccache(length)
+      IF cache=NIL THEN Raise(&quot;NMEM&quot;)
+
+      percent(&#x27;Loading 8SVX sample&#x27;)
+      buf2:=buf;bread:=0
+      Seek(fh,offset,OFFSET_BEGINNING)
+
+      b:=Read(fh,cache,cachesize)
+      IF b=-1 THEN Raise(&quot;RERR&quot;)
+      CopyMem(cache,buf2,b);buf2:=buf2+b
+      bread:=bread+b
+      percent(&#x27;Loading 8SVX sample&#x27;,bread,length)
+      WHILE bread&lt;length
+            EXIT b=0
+            b:=Read(fh,cache,cachesize)
+            IF b=-1 THEN Raise(&quot;RERR&quot;)
+            CopyMem(cache,buf2,b);buf2:=buf2+b
+            bread:=bread+b
+            percent(&#x27;Loading 8SVX sample&#x27;,bread,length)
+      ENDWHILE
+      IF bread&lt;length THEN logit(&#x27;WARNING: Sample is incomplete!&#x27;)
+      fillsiodata(slot,name,buf,frames,type,stereo,rate)
+
+      rcode:=SIO_OK
+      EXCEPT DO
+            SELECT exception
+                  CASE &quot;NMEM&quot;
+                        IF buf THEN FreeVec(buf)
+                        rcode:=SIO_NOMEM
+                  CASE &quot;RERR&quot;
+                        IF buf THEN FreeVec(buf)
+                        rcode:=SIO_READERROR
+                  CASE &quot;FPRO&quot;
+                        IF buf THEN FreeVec(buf)
+                        rcode:=SIO_FILEPROBLEM
+            ENDSELECT
+      IF cache THEN FreeVec(cache)
+      IF temp THEN FreeVec(temp)
+      sidle()
+ENDPROC rcode
+
+
+PROC load16sv(slot,name,len,fh) HANDLE -&gt; Stereo samples not supported yet!
+      DEF buf,buf2,frames,bread,b:PTR TO CHAR
+      DEF type,stereo,cache,cachesize,rcode,temp,hsiz
+      DEF compos,ssndpos,length,offset,flg,rate
+
+
+      CDEBUG(SLOAD: 16SV loader used,0)
+
+      buf:=0;cache:=0
+      temp:=AllocVec(4096,MEMF_PUBLIC OR MEMF_CLEAR OR MEMF_REVERSE)
+      IF temp=NIL THEN Raise(&quot;NMEM&quot;)
+      Seek(fh,0,OFFSET_BEGINNING)
+      IF len&lt;4096 THEN hsiz:=len ELSE hsiz:=4096
+      b:=Read(fh,temp,hsiz)
+      IF b=-1 THEN Raise(&quot;RERR&quot;)
+      compos:=findid(temp,&quot;VHDR&quot;,hsiz)
+      IF compos=-1 THEN Raise(&quot;FPRO&quot;) -&gt; file format problem
+      IF Char(temp+compos+$17) THEN Raise(&quot;FPRO&quot;)
+      frames:=Long(temp+compos+8);rate:=Int(temp+compos+$14)
+      IF rate&lt;0 THEN rate:=rate AND $7FFFFFFF
+      ssndpos:=findid(temp,&quot;BODY&quot;,hsiz)
+      IF ssndpos=-1 THEN Raise(&quot;FPRO&quot;) -&gt; file format problem
+      length:=Long(temp+ssndpos+4)
+      offset:=ssndpos+8
+      flg:=FALSE
+
+      type:=MUI_TRUE
+      stereo:=FALSE
+      flg:=TRUE
+
+      CDEBUG(16SV: Frames \d,frames)
+      CDEBUG(16SV: Length \d,length)
+      CDEBUG(16SV: Rate \dHz,rate)
+
+      IF flg=FALSE THEN Raise(&quot;FPRO&quot;)
+
+
+      buf:=AllocVec(length,memflag)
+      IF buf=NIL THEN Raise(&quot;NMEM&quot;)
+      cache,cachesize:=alloccache(length)
+      IF cache=NIL THEN Raise(&quot;NMEM&quot;)
+
+      percent(&#x27;Loading 16SV sample&#x27;)
+      buf2:=buf;bread:=0
+      Seek(fh,offset,OFFSET_BEGINNING)
+
+      b:=Read(fh,cache,cachesize)
+      IF b=-1 THEN Raise(&quot;RERR&quot;)
+      CopyMem(cache,buf2,b);buf2:=buf2+b
+      bread:=bread+b
+      percent(&#x27;Loading 16SV sample&#x27;,bread,length)
+      WHILE bread&lt;length
+            EXIT b=0
+            b:=Read(fh,cache,cachesize)
+            IF b=-1 THEN Raise(&quot;RERR&quot;)
+            CopyMem(cache,buf2,b);buf2:=buf2+b
+            bread:=bread+b
+            percent(&#x27;Loading 16SV sample&#x27;,bread,length)
+      ENDWHILE
+      IF bread&lt;length THEN logit(&#x27;WARNING: Sample is incomplete!&#x27;)
+      fillsiodata(slot,name,buf,frames,type,stereo,rate)
+
+      rcode:=SIO_OK
+      EXCEPT DO
+            SELECT exception
+                  CASE &quot;NMEM&quot;
+                        IF buf THEN FreeVec(buf)
+                        rcode:=SIO_NOMEM
+                  CASE &quot;RERR&quot;
+                        IF buf THEN FreeVec(buf)
+                        rcode:=SIO_READERROR
+                  CASE &quot;FPRO&quot;
+                        IF buf THEN FreeVec(buf)
+                        rcode:=SIO_FILEPROBLEM
+            ENDSELECT
+      IF cache THEN FreeVec(cache)
+      IF temp THEN FreeVec(temp)
+      sidle()
+ENDPROC rcode
+
+PROC loadmpeg(slot,name,len,fh)
+ENDPROC
+
+
+PROC loadraw(slot,name,len,fh,senc,offset) HANDLE
+      DEF buf,buf2,frames,bread,b:PTR TO CHAR
+      DEF type,stereo,cache,cachesize,rcode
+
+      -&gt; NO HEADER
+      len:=len-offset
+      SELECT senc
+            CASE SENC_PCM8
+                  frames:=len
+                  type:=FALSE
+                  stereo:=FALSE
+            CASE SENC_PCM16
+                  frames:=Shr(len,1)
+                  type:=MUI_TRUE
+                  stereo:=FALSE
+            CASE SENC_PCM8S
+                  frames:=Shr(len,1)
+                  type:=FALSE
+                  stereo:=MUI_TRUE
+            CASE SENC_PCM16S
+                  frames:=Shr(len,2)
+                  type:=MUI_TRUE
+                  stereo:=MUI_TRUE
+      ENDSELECT
+
+      buf:=0;cache:=0
+      buf:=AllocVec(len,memflag)
+      IF buf=NIL THEN Raise(&quot;NMEM&quot;)
+      cache,cachesize:=alloccache(len)
+      IF cache=NIL THEN Raise(&quot;NMEM&quot;)
+
+      percent(&#x27;Loading RAW sample&#x27;)
+      buf2:=buf;bread:=0
+      Seek(fh,offset,OFFSET_BEGINNING)
+
+      b:=Read(fh,cache,cachesize)
+      IF b=-1 THEN Raise(&quot;RERR&quot;)
+      CopyMem(cache,buf2,b);buf2:=buf2+b
+      bread:=bread+b
+      percent(&#x27;Loading RAW sample&#x27;,bread,len)
+      WHILE bread&lt;len
+            EXIT b=0
+            b:=Read(fh,cache,cachesize)
+            IF b=-1 THEN Raise(&quot;RERR&quot;)
+            CopyMem(cache,buf2,b);buf2:=buf2+b
+            bread:=bread+b
+            percent(&#x27;Loading RAW sample&#x27;,bread,len)
+      ENDWHILE
+      IF bread&lt;len THEN logit(&#x27;Sample is incomplete!&#x27;)
+      fillsiodata(slot,name,buf,frames,type,stereo,44100)
+
+      rcode:=SIO_OK
+      EXCEPT DO
+            SELECT exception
+                  CASE &quot;NMEM&quot;
+                        IF buf THEN FreeVec(buf)
+                        rcode:=SIO_NOMEM
+                  CASE &quot;RERR&quot;
+                        IF buf THEN FreeVec(buf)
+                        rcode:=SIO_READERROR
+            ENDSELECT
+      IF cache THEN FreeVec(cache)
+      sidle()
+ENDPROC rcode
+
+
+
+
+-&gt; SAMPLE EXPORT
+
+
+
+PROC savemaud(slot,fh)
+      errimp()
+ENDPROC
+
+PROC savewave(slot,fh)
+      errimp()
+ENDPROC
+
+PROC save8svx(slot,fh)
+      errimp()
+ENDPROC
+
+PROC saveraw(slot,fh) HANDLE
+      DEF buf,buf2,bwritten,len,b,r,bb
+      DEF cache,cachesize,rcode
+
+      -&gt; NO HEADER
+      len:=siodata.length
+      buf:=siodata.buf
+
+      cache,cachesize:=alloccache(len)
+      IF cache=NIL THEN Raise(&quot;NMEM&quot;)
+
+      percent(&#x27;Saving RAW sample&#x27;)
+      buf2:=buf;bwritten:=0;b:=len
+      Seek(fh,0,OFFSET_BEGINNING)
+
+      IF b&lt;cachesize THEN bb:=b ELSE bb:=cachesize
+      CopyMem(buf2,cache,bb);buf2:=buf2+bb;b:=b-bb
+      r:=Write(fh,cache,bb)
+      IF r=-1 THEN Raise(&quot;RERR&quot;)
+      
+      bwritten:=bwritten+bb
+      percent(&#x27;Saving RAW sample&#x27;,bwritten,len)
+      WHILE bwritten&lt;len
+            IF b&lt;cachesize THEN bb:=b ELSE bb:=cachesize
+            EXIT bb=0
+            CopyMem(buf2,cache,bb);buf2:=buf2+bb;b:=b-bb
+            r:=Write(fh,cache,bb)
+            IF r=-1 THEN Raise(&quot;WERR&quot;)
+            
+            bwritten:=bwritten+bb
+            percent(&#x27;Saving RAW sample&#x27;,bwritten,len)
+      ENDWHILE
+
+      rcode:=SIO_OK
+      EXCEPT DO
+            SELECT exception
+                  CASE &quot;NMEM&quot;
+                        IF buf THEN FreeVec(buf)
+                        rcode:=SIO_NOMEM
+                  CASE &quot;WERR&quot;
+                        IF buf THEN FreeVec(buf)
+                        rcode:=SIO_WRITEERROR
+            ENDSELECT
+      IF cache THEN FreeVec(cache)
+      sidle()
+ENDPROC
+
+/*OBJECT obj_form
+      id,chunksize,form
+ENDOBJECT
+
+OBJECT obj_comm
+      id,chunksize
+      channels:INT
+      frames
+      samplesize:INT
+      rate[10]:ARRAY
+ENDOBJECT
+
+OBJECT obj_ssnd
+      id,chunksize
+      unused,unused2
+ENDOBJECT
+
+ */
+
+
+PROC saveaiff(slot,fh) HANDLE
+      DEF buf,buf2,bwritten,len,b,r,bb
+      DEF cache,cachesize,rcode
+
+      DEF form:obj_form,comm:obj_comm,ssnd:obj_ssnd
+
+      -&gt; Header setup
+      ssnd.id:=&quot;SSND&quot;;ssnd.chunksize:=siodata.length+8
+      ssnd.unused:=0;ssnd.unused2:=0
+      comm.id:=&quot;COMM&quot;;comm.frames:=siodata.frames
+      comm.chunksize:=(SIZEOF obj_comm)-8
+      long2ext(comm.rate,siodata.rate)
+      IF siodata.stereo THEN comm.channels:=2 ELSE comm.channels:=1
+      IF siodata.type THEN comm.samplesize:=16 ELSE comm.samplesize:=8
+      form.id:=&quot;FORM&quot;;form.form:=&quot;AIFF&quot;
+      form.chunksize:=ssnd.chunksize+12+SIZEOF obj_comm
+      -&gt; Write header
+      Seek(fh,0,OFFSET_BEGINNING)
+      Write(fh,form,SIZEOF obj_form)
+      Write(fh,comm,SIZEOF obj_comm)
+      Write(fh,ssnd,SIZEOF obj_ssnd)
+
+      -&gt; Write other
+      len:=siodata.length
+      buf:=siodata.buf
+
+      cache,cachesize:=alloccache(len)
+      IF cache=NIL THEN Raise(&quot;NMEM&quot;)
+
+      percent(&#x27;Saving AIFF sample&#x27;)
+      buf2:=buf;bwritten:=0;b:=len
+
+      IF b&lt;cachesize THEN bb:=b ELSE bb:=cachesize
+      CopyMem(buf2,cache,bb);buf2:=buf2+bb;b:=b-bb
+      r:=Write(fh,cache,bb)
+      IF r=-1 THEN Raise(&quot;RERR&quot;)
+      bwritten:=bwritten+bb
+      percent(&#x27;Saving AIFF sample&#x27;,bwritten,len)
+
+      WHILE bwritten&lt;len
+            IF b&lt;cachesize THEN bb:=b ELSE bb:=cachesize
+            EXIT bb=0
+            CopyMem(buf2,cache,bb);buf2:=buf2+bb;b:=b-bb
+            r:=Write(fh,cache,bb)
+            IF r=-1 THEN Raise(&quot;WERR&quot;)
+
+            bwritten:=bwritten+bb
+            percent(&#x27;Saving AIFF sample&#x27;,bwritten,len)
+      ENDWHILE
+
+      rcode:=SIO_OK
+      EXCEPT DO
+            SELECT exception
+                  CASE &quot;NMEM&quot;
+                        IF buf THEN FreeVec(buf)
+                        rcode:=SIO_NOMEM
+                  CASE &quot;WERR&quot;
+                        IF buf THEN FreeVec(buf)
+                        rcode:=SIO_WRITEERROR
+            ENDSELECT
+      IF cache THEN FreeVec(cache)
+      sidle()
+ENDPROC
+
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

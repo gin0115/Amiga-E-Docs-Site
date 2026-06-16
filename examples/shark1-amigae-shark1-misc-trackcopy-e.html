@@ -1,0 +1,157 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>trackcopy.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-shark1.html">Shark1</a> &rsaquo; trackcopy.e</div><h1>File: <code>trackcopy.e</code></h1><p class="meta">131 lines · project <a href="../examples/pkg-shark1.html"><code>Shark1</code></a></p><p class="pathctx">Shark1/AmigaE/Shark1/Misc/trackcopy.e</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/types.html">exec/types</a></li></ul></div><h2>Source</h2><pre class="code">OPT PREPROCESS
+
+MODULE &#x27;exec/types&#x27;,&#x27;exec/nodes&#x27;,&#x27;exec/ports&#x27;,&#x27;exec/memory&#x27;,&#x27;devices/trackdisk&#x27;,&#x27;dos/dosextens&#x27;,&#x27;amigalib/io&#x27;,
+	&#x27;exec/io&#x27;,&#x27;amigalib/ports&#x27;
+
+#define	TRACK_SIZE	(NUMSECS * TD_SECTOR)
+
+PROC mDiskBusy(drive,onflag:PTR TO LONG)
+DEF pk:PTR TO standardpacket,tsk:PTR TO process
+
+    tsk:=FindTask(NIL);
+    IF pk:=AllocMem(SIZEOF standardpacket,MEMF_PUBLIC+MEMF_CLEAR)
+        pk.msg.ln.name:=pk.pkt
+
+        pk.pkt.link:=pk.msg
+        pk.pkt.port:=tsk.msgport
+        pk.pkt.type:=ACTION_INHIBIT
+	IF onflag THEN pk.pkt.arg1:=-1 ELSE pk.pkt.arg1:=0
+
+        PutMsg(DeviceProc(drive),pk);
+        WaitPort(tsk.msgport);
+        GetMsg(tsk.msgport);
+        FreeMem(pk,SIZEOF standardpacket);
+    ENDIF
+ENDPROC
+
+PROC mMotorOff(disk:PTR TO ioexttd)
+    disk.iostd.length:=0;
+    disk.iostd.command:=TD_MOTOR;
+    DoIO(disk);
+ENDPROC
+
+PROC mMotorOn(disk:PTR TO ioexttd)
+    disk.iostd.length:=1;
+    disk.iostd.command:=TD_MOTOR;
+    DoIO(disk);
+ENDPROC
+
+PROC mReadTrack(disk:PTR TO ioexttd,buffer,track)
+DEF errnr=0
+
+    disk.iostd.length:=TRACK_SIZE;
+    disk.iostd.data:=buffer;
+    disk.iostd.command:=CMD_READ;
+    disk.iostd.offset:=(TRACK_SIZE * track);
+    DoIO(disk);
+    IF disk.iostd.error THEN errnr:=disk.iostd.error
+    RETURN errnr
+ENDPROC
+
+PROC mWriteTrack(disk:PTR TO ioexttd,buffer,track)
+DEF errnr=0
+
+    disk.iostd.length:=TRACK_SIZE;
+    disk.iostd.data:=buffer;
+    disk.iostd.command:=TD_FORMAT;
+    disk.iostd.offset:=(TRACK_SIZE * track);
+    DoIO(disk);
+    IF disk.iostd.error THEN errnr:=disk.iostd.error
+    RETURN errnr
+ENDPROC
+
+PROC mFindNumTracks(disk:PTR TO ioexttd)
+    disk.iostd.command:=TD_GETNUMTRACKS;
+    DoIO(disk);
+    RETURN disk.iostd.actual
+ENDPROC
+
+/***********************888
+VOID Do_Copy(struct IOExtTD *diskreq0,struct IOExtTD *diskreq1)
+{
+UBYTE *buffer;
+SHORT track;
+SHORT All_OK;
+SHORT NumTracks;
+
+    if (buffer=AllocMem(TRACK_SIZE,MEMF_CHIP|MEMF_PUBLIC))
+    {
+        printf(&quot; Starting Motors\r&quot;);
+        Motor_On(diskreq0);
+        Motor_On(diskreq1);
+        All_OK=TRUE;
+
+        NumTracks=FindNumTracks(diskreq0);
+
+        for (track=0;(track&lt;NumTracks) &amp;&amp; All_OK;track++)
+        {
+            printf(&quot; Reading track %d\r&quot;,track);
+
+            if (All_OK=Read_Track(diskreq0,buffer,track))
+            {
+                printf(&quot; Writing track %d\r&quot;,track);
+
+                All_OK=Write_Track(diskreq1,buffer,track);
+            }
+        }
+        if (All_OK) printf(&quot; * Copy complete *&quot;);
+        printf(&quot;\n&quot;);
+        Motor_Off(diskreq0);
+        Motor_Off(diskreq1);
+        FreeMem(buffer,TRACK_SIZE);
+    }
+    else printf(&quot;No memory for track buffer...\n&quot;);
+}
+****************************/
+PROC mDoOpenDevice(diskreq0:PTR TO ioexttd,unit)
+DEF str[512]:STRING
+    StringF(str,&#x27;DF\d:&#x27;,unit)
+    IF (!OpenDevice(TD_NAME,unit,diskreq0,0)) THEN mDiskBusy(str,TRUE);
+ENDPROC
+PROC main()
+DEF diskreq0:PTR TO ioexttd
+DEF diskport:PTR TO mp
+        IF diskport:=createPort(0,0)
+            IF diskreq0:=createExtIO(diskport,SIZEOF ioexttd)
+                    mDoOpenDevice(diskreq0,0);
+			mMotorOn(diskreq0)
+			Delay(50)		    
+			mMotorOff(diskreq0)
+		    mDiskBusy(&#x27;DF0:&#x27;,FALSE)
+		    CloseDevice(diskreq0)
+            ELSE
+            WriteF(&#x27;Out of memory\n&#x27;)
+            deleteExtIO(diskreq0);
+            ENDIF
+         ELSE
+	 WriteF(&#x27;Can&#x27;&#x27;t create port\n&#x27;);
+            deletePort(diskport);
+	ENDIF
+ENDPROC
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

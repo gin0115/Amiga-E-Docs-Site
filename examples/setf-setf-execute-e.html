@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>setf.Execute.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-setf.html">SetF</a> &rsaquo; setf.Execute.e</div><h1>File: <code>setf.Execute.e</code></h1><p class="meta">94 lines · project <a href="../examples/pkg-setf.html"><code>SetF</code></a></p><p class="pathctx">SetF/setf.Execute.e</p><p class="prose">setf.<a href="../modules/dos.html#fn-execute">Execute</a>.e -- a program to <a href="../modules/monitor.html">monitor</a> calls to <a href="../modules/dos.html#fn-execute">Execute</a>()</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/dos.html">dos/dos</a></li></ul></div><h2>Source</h2><pre class="code">/* setf.Execute.e -- a program to monitor calls to Execute() */
+
+OPT OSVERSION=37
+
+MODULE &#x27;dos/dos&#x27;, &#x27;exec/ports&#x27;, &#x27;exec/tasks&#x27;, &#x27;exec/nodes&#x27;, &#x27;exec/memory&#x27;
+
+CONST OFFSET=$ff22  /* dosbase offset of Execute() */
+
+OBJECT mymsg
+  msg:mn
+  s, t
+ENDOBJECT
+
+DEF port:PTR TO mp
+
+PROC main()
+  DEF ps, us, loop, sig, oldf
+  IF port:=CreateMsgPort()
+    Forbid()     /* Don&#x27;t let anyone mess things up... */
+    IF oldf:=SetFunction(dosbase, OFFSET, {newf})
+      PutLong({patch}, oldf)
+      Permit()    /* Now we can let everyone else back in */
+      LEA store(PC), A0
+      MOVE.L A4, (A0)    /* Store the A4 register... */
+      ps:=Shl(1,port.sigbit)   /* Set up port and user signal bits */
+      us:=SIGBREAKF_CTRL_C
+      loop:=TRUE
+      WHILE loop
+        sig:=Wait(ps OR us)
+        IF sig AND ps
+          printmsgs()
+        ENDIF
+        IF sig AND us
+          loop:=FALSE
+        ENDIF
+      ENDWHILE
+      Forbid()   /* Paranoid... */
+      SetFunction(dosbase, OFFSET, oldf)
+    ENDIF
+    Permit()
+    printmsgs()   /* Make sure the port is empty */
+    DeleteMsgPort(port)
+  ENDIF
+ENDPROC
+
+/* Nicely (?) print the messages out... */
+PROC printmsgs()
+  DEF msg:PTR TO mymsg
+  WHILE msg:=GetMsg(port)
+    WriteF(&#x27;Task \l\s[25] Execute()ed &quot;\s&quot;\n&#x27;,
+           IF msg.t THEN msg.t ELSE &#x27;*unnamed*&#x27;,
+           IF msg.s THEN msg.s ELSE &#x27;&#x27;)
+    ReplyMsg(msg)
+    DisposeLink(msg.t)
+    DisposeLink(msg.s)
+    Dispose(msg)
+  ENDWHILE
+ENDPROC
+
+/* Send a message to the patching process */
+PROC sendmsg()
+  DEF m:PTR TO mymsg, s, tsk:tc, l:ln
+  MOVE.L D1, s
+  /* Allocate a new message */
+  m:=New(SIZEOF mymsg)
+  IF s
+    m.s:=String(StrLen(s))
+    StrCopy(m.s, s, ALL)
+  ENDIF
+  tsk:=FindTask(NIL)   /* Find out who we are */
+  m.t:=NIL
+  IF tsk
+    l:=tsk.ln
+    IF l AND l.name
+      m.t:=String(StrLen(l.name))
+      StrCopy(m.t, l.name, ALL)
+    ENDIF
+  ENDIF
+  PutMsg(port, m)
+ENDPROC
+
+/* Place to store A4 register */
+store:  LONG 0
+patch:  LONG 0
+
+/* The new routine which will replace the original library function */
+newf:
+  MOVEM.L D0-D7/A0-A6, -(A7)
+  LEA store(PC), A0
+  MOVE.L (A0), A4 /* Reinstate the A4 register so we can use E code */
+  sendmsg()
+  MOVEM.L (A7)+, D0-D7/A0-A6
+  MOVE.L patch(PC), -(A7)
+  RTS</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

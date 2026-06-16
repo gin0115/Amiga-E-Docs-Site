@@ -1,0 +1,2565 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>mmv.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-aepd46.html">AEPD46</a> &rsaquo; mmv.e</div><h1>File: <code>mmv.e</code></h1><p class="meta">2539 lines · project <a href="../examples/pkg-aepd46.html"><code>AEPD46</code></a></p><p class="pathctx">AEPD46/EPD46/Programme/MMV/Source/mmv.e</p><p class="prose">** :Program. MMV - MuskiModuleVerwaltung ** :Version. 1.01, 05.07.1996 ** ** :Contents. Dateiverwaltung für Soundmodule ** :Author. Sebastian Erbert ** :Address. Grünstraße 11, 12555 Berlin, GERMANY ** :Phone. +49 -(0)30 / 6561635 ** :E-Mail. SEBluebird@aol.com ** :Copyright. FreeWare ** ** :Compile</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/easygui.html">tools/easygui</a></li></ul></div><h2>Source</h2><pre class="code">
+   /* 
+   **  :Program.       MMV - MuskiModuleVerwaltung
+   **  :Version.       1.01, 05.07.1996
+   **
+   **  :Contents.      Dateiverwaltung für Soundmodule
+   **  :Author.        Sebastian Erbert
+   **  :Address.       Grünstraße 11, 12555 Berlin, GERMANY
+   **  :Phone.         +49 -(0)30 / 6561635
+   **  :E-Mail.        SEBluebird@aol.com
+   **  :Copyright.     FreeWare
+   **
+   **  :Compiler.      EC 3.2e
+   **  :Ecdemo.        &#x27;#define&#x27; bemängelt,  Programm zu groß
+   **  :Imports.       nichts besonderes
+   **
+   **  :Support.       - reqtools.library von Nico Francois
+   **                  - crm.library von Thomas Schwarz
+   **                  - EasyGUI von Wouter van Oortmerssen
+   **                  - &#x27;qickSort&#x27; aus TurboPascal (von Ian Lin),
+   **                    umgesetzt nach E (bzw. Assembler) - PD
+   **
+   **  :Bugs.          keine, jedenfalls soweit ich es weiß
+   **
+   **  :History.       - frühere unveröffentliche MaxonPascal Version
+   **                  ----------------------------------------------
+   **                  - V1.00 erste fertige Programmversion
+   **                  -------------------------------------
+   **                  - V1.01 Fehlerbereinigung und kleinere Erweiterungen
+   **                  - Fehler in Sortierroutine beseitigt
+   **                  - Fehler Laderoutine für Modules beseitigt
+   **                  - größere Auswahl beim sortieren
+   **                  - erweiterte Prefixerkennung bei der Datenübernahme
+   **                    vom Eagleplayer
+   **
+   **  :Remark.        - ab V37, besser V39
+   **                  - gadtools.library und reqtools.library (V38) nötig
+   **                  - rexxsys.library und crm.library (demo) nötig
+   **                  - mindestens 640x256 Screen, 1MB Ram stark empfohlen
+   */
+
+
+-&gt;  der Versionsstring ist ganz unten
+-&gt;  Datum in der PROC about() auch drin
+-&gt;  der Zeiger &#x27;aktfeld&#x27; muß immer (!) auf den angezeigten Datensatz zeigen
+
+OPT   OSVERSION=37
+OPT   PREPROCESS
+OPT   LARGE
+OPT   REG=5
+
+
+#define VERSION       &#x27;MusikModuleVerwaltung V1.01&#x27;
+#define AREXXPORTNAME &#x27;MMV_REXX&#x27;
+#define MMV_HEADER    &#x27;MMV_DATA&#x27;
+#define STATUS_NODATA &#x27;Noch kein Datensatz vorhanden.&#x27;
+
+MODULE  &#x27;tools/EasyGUI&#x27;,&#x27;dos/dos&#x27;,
+        &#x27;gadtools&#x27;,&#x27;libraries/gadtools&#x27;,
+        &#x27;reqtools&#x27;,&#x27;libraries/reqtools&#x27;,
+        &#x27;intuition/intuition&#x27;,&#x27;intuition/screens&#x27;,
+        &#x27;exec/memory&#x27;,&#x27;exec/tasks&#x27;,&#x27;exec/nodes&#x27;,&#x27;exec/ports&#x27;,
+        &#x27;exec/tasks&#x27;,&#x27;exec/io&#x27;,&#x27;graphics/text&#x27;,&#x27;graphics/view&#x27;,
+        &#x27;crm&#x27;,&#x27;libraries/crm&#x27;,&#x27;utility/tagitem&#x27;,
+        &#x27;rexxsyslib&#x27;,&#x27;rexx/storage&#x27;,&#x27;support/rexxcsupport&#x27;,
+        &#x27;icon&#x27;,&#x27;wb&#x27;,&#x27;workbench/workbench&#x27;,&#x27;workbench/startup&#x27;,
+        &#x27;protracker&#x27;,&#x27;devices/audio&#x27;,&#x27;graphics/gfxbase&#x27;
+
+RAISE   &quot;MEM&quot;  IF CreatePool()=NIL,
+        &quot;PORT&quot; IF CreateMsgPort()=NIL
+
+CONST   DATGR=424,                    /* Größe des Object &#x27;datei&#x27; */
+        SAVEDATGR=424-12,             /* Größe der zu speichernden Daten */
+        MAXLONG=$7FFFFFFF,            /* größter ganzzaliger positiver Wert */
+        PUDDLESIZE=102400,            /* 100KB pro alloziiertem Poolblock */
+        THRESHOLD=102200,
+        ERR_TEMPLATE= 20,             /* Error - Codes für Crm.library */
+        ERR_NOLIB   = 19,
+        ERR_STRUCT  = 18,
+        ERR_LOCK   = 17,
+        ERR_NOFIBMEM= 16,
+        ERR_NOFMEM  = 15,
+        ERR_READ   = 14,
+        ERR_CRUNCHFAIL=13,
+        ERR_WRITE    = 12,
+        ERR_FILE   = 11
+
+        OBJECT datei
+          name[72]:     ARRAY OF CHAR;     /*  Offset:   0 */
+          format[72]:   ARRAY OF CHAR;     /*  Offset:  72 */
+          prefix[24]:   ARRAY OF CHAR;     /*  Offset: 144 */
+          author[52]:   ARRAY OF CHAR;     /*  Offset: 168 */
+          dauer[32]:    ARRAY OF CHAR;     /*  Offset: 220 */
+          laenge:       LONG;              /*  Offset: 252 */
+          songdatasize: LONG;              /*  Offset: 256 */
+          samples:      LONG;              /*  Offset: 260 */
+          samplessize:  LONG;              /*  Offset: 264 */
+          pfad[72]:     ARRAY OF CHAR;     /*  Offset: 268 */
+          bemerkung[72]:ARRAY OF CHAR;     /*  Offset: 340 */
+          nummer:       LONG;              /*  Offset: 412 */
+          links:        PTR TO datei;      /*  Offset: 416 */
+          rechts:       PTR TO datei;      /*  Offset: 420 */
+        ENDOBJECT;                         /*  Size: 424 */
+
+DEF     aktfeld=NIL:  PTR TO datei,       /* Hauptzeiger des Datenfeldes */
+        helpfeld=NIL: PTR TO datei,       /* Hilfszeiger des Datenfeldes */
+        aport=NIL:    PTR TO mp,          /* unser ARexx-Port */
+        uport=NIL:    PTR TO mp,          /* unser Userport */
+        task:         PTR TO tc,          /* unser Task */
+        appwin=NIL:   PTR TO appwindow,   /* unser AppWindow */
+        guigads=NIL,                      /* List mit Argumenten für guiinit */
+        guimenu=NIL,                      /* List mit Argumenten für guiinit */
+        gh=NIL:       PTR TO guihandle,   /* Zeiger auf das EasyGuiHandle */
+        result=-1,                        /* Ergebnis der Wait-Funktion */
+        pubscreen=NIL:PTR TO screen,      /* möglich Screen für unser Window */
+        info=0,                           /* info für GuiHandle */
+        anzahl=0:     LONG,               /* aktuelle Datensatzanzahl */
+        mask:         LONG,               /* Signalmaske für Wait */
+        sig:          LONG,               /* Ergebnis der Funktion Wait */
+        pool=NIL:     PTR TO LONG,        /* Zeiger auf den Poolheader */
+        modbuffer=NIL:PTR TO LONG,        /* Zeiger auf den Speicher eines event. geladenen Mods */
+        play=0,                           /* Spielstatus */
+        saveok=TRUE,                      /* Verlust verändert Daten testen */
+        datareading=FALSE,                /* Datenübernahme über EaglePlayer ausgeschaltet */
+        savename[200]:STRING,             /* Name des Datenfiles */
+        g_str[200]:   STRING,             /* globaler String */
+        g_var=0,                          /* globale Variable */
+        sgad_name[72]:STRING,             /* Zeiger für die Stringgadgets */
+        sgad_format[72]:STRING,
+        sgad_prefix[24]:STRING,
+        sgad_author[52]:STRING,
+        sgad_dauer[32]:STRING,
+        sgad_pfad[72]:STRING,
+        sgad_bemerkung[72]:STRING,
+        destport[31]: STRING,             /* Zielport für ARexx */
+        cmdstr[91]:   STRING,             /* ARexx Kommando */
+        gad_anzahl,                       /* Quasizeiger auf die Gadgets */
+        gad_name,
+        gad_format,
+        gad_prefix,
+        gad_author,
+        gad_dauer,
+        gad_laenge,
+        gad_slaenge,
+        gad_samples,
+        gad_ssize,
+        gad_pfad,
+        gad_bemerkung,
+        gad_nummer,
+        gad_status
+
+PROC main() HANDLE
+
+  IF (reqtoolsbase:=OpenLibrary(&#x27;reqtools.library&#x27;,38))=NIL THEN Raise(&quot;RT&quot;);
+  IF (rexxsysbase:=OpenLibrary(&#x27;rexxsyslib.library&#x27;,36))=NIL THEN Raise(&quot;LIB&quot;);
+  -&gt; gadtoolsbase ist NIL, wird aber von EasyGUI geöffnet
+  aport:=CreateMsgPort();
+  aport.ln.name:=AREXXPORTNAME;
+  uport:=CreateMsgPort();
+  uport.ln.name:=&#x27;MMV&#x27;;
+  AddPort(uport);
+  AddPort(aport);
+  task:=FindTask(NIL);
+  IF task THEN task.ln.name:=&#x27;MMV&#x27;;
+  ScreenToFront(pubscreen);
+  StrCopy(savename,&#x27;SYS:Kein Name&#x27;);
+  StrCopy(destport,&#x27;rexx_EP&#x27;);
+  StrCopy(cmdstr,&#x27;NextModule&#x27;);
+
+  guigads:=[EQROWS,
+     [COLS,
+      [EQROWS,[SBUTTON,{quit},&#x27;Ende&#x27;],    [SBUTTON,{more},&#x27;Erweitern&#x27;]],
+      [EQROWS,[SBUTTON,{load},&#x27;Laden&#x27;],   [SBUTTON,{insert},&#x27;Einfügen&#x27;]],
+      [EQROWS,[SBUTTON,{save},&#x27;Sichern&#x27;], [SBUTTON,{delete},&#x27;Löschen&#x27;]],
+      [EQROWS,[SBUTTON,{grafik},&#x27;Grafik&#x27;],[SBUTTON,{compare},&#x27;Vergleich&#x27;]],
+      [EQROWS,[SBUTTON,{allsize},&#x27;Länge&#x27;],[SBUTTON,{search},&#x27;Suchen&#x27;]],
+      [EQROWS,[SBUTTON,{print},&#x27;Drucken&#x27;],[SBUTTON,{sort},&#x27;Sortieren&#x27;]]
+     ],
+     [BAR],
+     [COLS,
+      [COLS,
+       gad_anzahl:=[TEXT,&#x27;0&#x27;,&#x27;Anzahl:&#x27;,TRUE,6]
+      ],
+      [EQCOLS,
+       [BUTTON,{cursorMaxLeft},&#x27;|&lt;&#x27;],
+       [BUTTON,{cursorTLeft},&#x27;&lt;&lt;&lt;&#x27;],
+       [BUTTON,{cursorDLeft},&#x27;&lt;&lt;&#x27;],
+       [BUTTON,{cursorLeft},&#x27;&lt;&#x27;],
+       [BUTTON,{cursorRight},&#x27;&gt;&#x27;],
+       [BUTTON,{cursorDRight},&#x27;&gt;&gt;&#x27;],
+       [BUTTON,{cursorTRight},&#x27;&gt;&gt;&gt;&#x27;],
+       [BUTTON,{cursorMaxRight},&#x27;&gt;|&#x27;]
+      ]
+     ],
+     [BAR],
+     [COLS,
+      [BUTTON,{nothing},&#x27;NAME:&#x27;],
+      gad_name:=[STR,{newName},NIL,sgad_name,70,6],
+      [BUTTON,{nothing},&#x27;FORMAT:&#x27;],
+      gad_format:=[STR,{newFormat},NIL,sgad_format,70,4]
+     ],
+     [COLS,
+      [BUTTON,{nothing},&#x27;PREFIX:&#x27;],
+      gad_prefix:=[STR,{newPrefix},NIL,sgad_prefix,22,3],
+      [BUTTON,{nothing},&#x27;AUTOR:&#x27;],
+      gad_author:=[STR,{newAuthor},NIL,sgad_author,50,5],
+      [BUTTON,{nothing},&#x27;DAUER:&#x27;],
+      gad_dauer:=[STR,{newDauer},NIL,sgad_dauer,30,3]
+     ],
+     [COLS,
+      [BUTTON,{nothing},&#x27;GRÖßE:&#x27;],
+      gad_laenge:=[INTEGER,{newLaenge},NIL,0,4],
+      [BUTTON,{nothing},&#x27;SONGGRÖßE:&#x27;],
+      gad_slaenge:=[INTEGER,{newSLaenge},NIL,0,4],
+      [BUTTON,{nothing},&#x27;SAMPLES:&#x27;],
+      gad_samples:=[INTEGER,{newSamples},NIL,0,3]
+     ],
+     [COLS,
+      [BUTTON,{nothing},&#x27;SAMPLESSIZE:&#x27;],
+      gad_ssize:=[INTEGER,{newSSize},NIL,0,2],
+      [BUTTON,{nothing},&#x27;PFAD:&#x27;],
+      gad_pfad:=[STR,{newPfad},NIL,sgad_pfad,70,6]
+     ],
+     [COLS,
+      [BUTTON,{nothing},&#x27;BEMERKUNG:&#x27;],
+      gad_bemerkung:=[STR,{newBemerkung},NIL,sgad_bemerkung,70,9],
+      [BUTTON,{nothing},&#x27;NUMMER:&#x27;],
+      gad_nummer:=[INTEGER,{newNummer},NIL,0,2]
+     ],
+     [BAR],
+     [COLS,
+      gad_status:=[TEXT,&#x27;Willkommen zu MMV!&#x27;,&#x27;STATUS: &#x27;,TRUE,2]
+     ]
+   ];
+
+   guimenu:=[1,0,&#x27;Projekt&#x27;,   0,0,0,0,
+    2,0,&#x27;Über&#x27;,               &#x27;ü&#x27;,0,0,{about},
+    2,0,NM_BARLABEL,          0,0,0,0,
+    2,0,&#x27;Laden...&#x27;,           &#x27;l&#x27;,0,0,{load},
+    2,0,&#x27;Anladen...&#x27;,         &#x27;n&#x27;,0,0,{loadOn},
+    2,0,&#x27;Sichern&#x27;,            &#x27;s&#x27;,0,0,{save},
+    2,0,&#x27;Sichern als...&#x27;,     &#x27;a&#x27;,0,0,{saveAs},
+    2,0,&#x27;Sichern von bis...&#x27;, &#x27;v&#x27;,0,0,{saveFromTo},
+    2,0,&#x27;Gepackt sichern...&#x27;, &#x27;p&#x27;,0,0,{savePacked},
+    2,0,&#x27;Iconisieren&#x27;,        &#x27;i&#x27;,0,0,{doIconfy},
+    2,0,NM_BARLABEL,          0,0,0,0,
+    2,0,&#x27;Datei löschen...&#x27;,   &#x27;d&#x27;,0,0,{deleteFile},
+    2,0,NM_BARLABEL,          0,0,0,0,
+    2,0,&#x27;Beenden&#x27;,            &#x27;q&#x27;,0,0,{quit},
+    1,0,&#x27;Spezial&#x27;,            0,0,0,0,
+    2,0,&#x27;Externer Vergleich&#x27;, &#x27;x&#x27;,0,0,{xcompare},
+    2,0,NM_BARLABEL,          0,0,0,0,
+    2,0,&#x27;Farbpalette&#x27;,        &#x27;f&#x27;,0,0,{palette},
+    2,0,&#x27;Taskpriorität&#x27;,      0,0,0,{taskPri},
+    2,0,NM_BARLABEL,          0,0,0,0,
+    2,0,&#x27;autom. Datenübernahme&#x27;,0,CHECKIT,0,{switch},
+    2,0,&#x27;Eagleplayer auslesen&#x27;,&#x27;e&#x27;,0,0,{getInfos},
+    2,0,NM_BARLABEL,          0,0,0,0,
+    2,0,&#x27;Kaltstart&#x27;,          &#x27;k&#x27;,0,0,{coldReboot},
+    1,0,&#x27;Musik&#x27;,              0,0,0,0,
+    2,0,&#x27;Laden...&#x27;,           0,0,0,{loadMod},
+    2,0,&#x27;Auswerfen&#x27;,          0,0,0,{ejectMod},
+    2,0,&#x27;Abspielen&#x27;,          0,0,0,{playMod},
+    2,0,&#x27;Stoppen&#x27;,            0,0,0,{stopMod},
+    2,0,NM_BARLABEL,          0,0,0,0,
+    2,0,&#x27;aus Pfad spielen&#x27;,   0,0,0,{playPfad},
+    1,0,&#x27;ARexx&#x27;,              0,0,0,0,
+    2,0,&#x27;Port/Kommando...&#x27;,   0,0,0,{newAPort},
+    2,0,&#x27;Ausführen&#x27;,          0,0,0,{doARexx},
+    2,0,NM_BARLABEL,          0,0,0,0,
+    2,0,&#x27;Script ausführen...&#x27;,0,0,0,{doScript},
+    0,0,0,0,0,0,0]:newmenu;
+
+    IF (gh:=guiinit(VERSION,guigads,info,pubscreen,NIL,guimenu))=NIL THEN Raise(&quot;WIN&quot;);
+
+    SetWindowTitles(gh.wnd,TRUE,savename);
+    -&gt;IF (appwin:=AddAppWindowA(0,NIL,gh.wnd,uport,NIL))=NIL THEN showStatus(&#x27;Konnte kein AppWindow bekommen.&#x27;);
+    about();
+
+    WHILE result&lt;0
+      mask:=Shl(1,aport.sigbit)
+      mask:=(mask) OR (gh.sig) OR (Shl(1,uport.sigbit));
+      sig:=Wait(mask);
+      IF (sig) AND (Shl(1,aport.sigbit))
+        handleRexxMsg();
+      ELSEIF (sig) AND (gh.sig)
+        result:=guimessage(gh);
+      ELSEIF (sig) AND (Shl(1,uport.sigbit))
+        handleMsg();
+      ENDIF
+    ENDWHILE
+
+
+EXCEPT DO
+
+  IF (wbmessage=NIL)  -&gt; von der Shell gestartet
+    SELECT exception
+      CASE &quot;RT&quot;;   PrintF(&#x27;Konnte &quot;reqtools.library&quot; V38 nicht öffnen.\n&#x27;);
+      CASE &quot;LIB&quot;;  PrintF(&#x27;Konnte Library nicht öffnen.\n&#x27;);
+      CASE &quot;MEM&quot;;  PrintF(&#x27;Kein Speicher mehr.\n&#x27;);
+      CASE &quot;WIN&quot;;  PrintF(&#x27;Konnte kein Fenster öffnen.\n&#x27;);
+      CASE &quot;PORT&quot;; PrintF(&#x27;Konnte keine MsgPort kreieren.\n&#x27;);
+      CASE &quot;GT&quot;;   PrintF(&#x27;Konnte &quot;gadtools.library&quot; nicht öffnen.\n&#x27;);
+      CASE &quot;GUI&quot;;  PrintF(&#x27;Eine Design-Funktion schlug fehl.\n&#x27;);
+      CASE &quot;bigg&quot;; PrintF(&#x27;Der Screen ist zu klein.\n&#x27;);
+      CASE &quot;Egui&quot;; PrintF(&#x27;Konnte das Design nicht erstellen.\n&#x27;);
+    ENDSELECT;
+  ELSE
+    SELECT exception  -&gt; von der WB gestartet
+      CASE &quot;RT&quot;;   EasyRequestArgs(NIL,[SIZEOF easystruct,0,&#x27;MMV- Meldung&#x27;,&#x27;Konnte &quot;reqtools.library V38&quot; nicht öffnen.&#x27;,&#x27;Okay&#x27;],0,NIL);
+      CASE &quot;LIB&quot;;  EasyRequestArgs(NIL,[SIZEOF easystruct,0,&#x27;MMV- Meldung&#x27;,&#x27;Konnte Library nicht öffnen.&#x27;,&#x27;Okay&#x27;],0,NIL);
+      CASE &quot;MEM&quot;;  EasyRequestArgs(NIL,[SIZEOF easystruct,0,&#x27;MMV- Meldung&#x27;,&#x27;Nicht genug Speicher frei.&#x27;,&#x27;Okay&#x27;],0,NIL);
+      CASE &quot;WIN&quot;;  EasyRequestArgs(NIL,[SIZEOF easystruct,0,&#x27;MMV- Meldung&#x27;,&#x27;Konnte kein Fenster öffnen.&#x27;,&#x27;Okay&#x27;],0,NIL);
+      CASE &quot;PORT&quot;; EasyRequestArgs(NIL,[SIZEOF easystruct,0,&#x27;MMV- Meldung&#x27;,&#x27;Konnte keinen MsgPort kreieren.&#x27;,&#x27;Okay&#x27;],0,NIL);
+      CASE &quot;GT&quot;;   EasyRequestArgs(NIL,[SIZEOF easystruct,0,&#x27;MMV- Meldung&#x27;,&#x27;Konnte &quot;gadtools.library&quot; nicht öffnen.&#x27;,&#x27;Okay&#x27;],0,NIL);
+      CASE &quot;GUI&quot;;  EasyRequestArgs(NIL,[SIZEOF easystruct,0,&#x27;MMV- Meldung&#x27;,&#x27;Eine Design-Funktion schlug fehl.&#x27;,&#x27;Okay&#x27;],0,NIL);
+      CASE &quot;bigg&quot;; EasyRequestArgs(NIL,[SIZEOF easystruct,0,&#x27;MMV- Meldung&#x27;,&#x27;Der Screen ist zu klein.&#x27;,&#x27;Okay&#x27;],0,NIL);
+      CASE &quot;Egui&quot;; EasyRequestArgs(NIL,[SIZEOF easystruct,0,&#x27;MMV- Meldung&#x27;,&#x27;Konnte das Design nicht erstellen.&#x27;,&#x27;Okay&#x27;],0,NIL);
+    ENDSELECT;
+  ENDIF
+
+  IF appwin THEN RemoveAppWindow(appwin);
+  IF gh THEN cleangui(gh);
+  IF pool THEN DeletePool(pool);
+  IF play THEN Mt_StopInt();
+  IF modbuffer THEN FreeVec(modbuffer);
+  IF uport
+    RemPort(uport);
+    DeleteMsgPort(uport);
+  ENDIF
+  IF aport
+    RemPort(aport);
+    DeleteMsgPort(aport);
+  ENDIF
+  IF ptbase THEN CloseLibrary(ptbase);
+  IF reqtoolsbase THEN CloseLibrary(reqtoolsbase);
+  IF rexxsysbase THEN CloseLibrary(rexxsysbase);
+  ReThrow();
+
+ENDPROC;
+
+/*----- Beendet das Program nach vorheriger Abfrage  ----------------*/
+PROC quit();
+ DEF wahl
+
+  IF saveok
+    IF RtEZRequestA(&#x27;Wirklich beenden ?&#x27;,&#x27; JA |NEIN&#x27;, NIL, NIL,
+                    [RTEZ_FLAGS,EZREQF_CENTERTEXT,
+                     RTEZ_REQTITLE,&#x27;MMV - Ende&#x27;,
+                     RTEZ_DEFAULTRESPONSE,1,
+                     RT_WINDOW,gh.wnd,
+                     RT_WAITPOINTER,TRUE,
+                     RT_LOCKWINDOW,TRUE,
+                     RT_SCREEN,pubscreen,
+                     RT_REQPOS,REQPOS_POINTER,
+                     TAG_DONE])=REQ_OK THEN Raise(&#x27;quit&#x27;);
+  ELSE
+    wahl:=RtEZRequestA(&#x27;Daten noch nicht gesichert.\n&#x27;+
+                       &#x27;Wollen Sie erst speichern unter\n&#x27;+
+                       &#x27;&#x27;&#x27;%s&#x27;&#x27; ?&#x27;,&#x27; JA |Zurück|NEIN&#x27;, NIL, [savename],
+                       [RTEZ_FLAGS,EZREQF_CENTERTEXT,
+                        RTEZ_REQTITLE,&#x27;MMV - Ende&#x27;,
+                        RTEZ_DEFAULTRESPONSE,1,
+                        RT_WINDOW,gh.wnd,
+                        RT_WAITPOINTER,TRUE,
+                        RT_LOCKWINDOW,TRUE,
+                        RT_SCREEN,pubscreen,
+                        RT_REQPOS,REQPOS_POINTER,
+                        TAG_DONE]);
+    SELECT wahl
+      CASE REQ_OK;  save();
+                    Raise(&#x27;quit&#x27;);
+
+      CASE 2;       showStatus(&#x27;Willkommen zurück.&#x27;);
+
+      CASE 0;       Raise(&#x27;quit&#x27;);
+    ENDSELECT
+  ENDIF
+ENDPROC
+/*-------------------------------------------------------------------*/
+
+/*-----  Speicher für Element anfordern  ----------------------------*/
+PROC fNewFeld() IS AllocPooled(pool,DATGR);
+/*-------------------------------------------------------------------*/
+
+/*-----  Speicher für Element freigeben -----------------------------*/
+PROC fDisposeFeld(memptr) IS FreePooled(pool,memptr,DATGR);
+/*-------------------------------------------------------------------*/
+
+/*-----  Text im Statusfeld anzeeigen  ------------------------------*/
+PROC showStatus(s) IS settext(gh,gad_status,s);
+/*-------------------------------------------------------------------*/
+
+/*-----  das erste Feldelement finden  ----------------------------  */
+PROC findFirstNode(datenfeld: PTR TO datei);
+
+  IF datenfeld&lt;&gt;NIL THEN WHILE datenfeld.links&lt;&gt;NIL DO datenfeld:=datenfeld.links;
+ENDPROC datenfeld;
+/*-------------------------------------------------------------------*/
+
+/*-----  ein Feldelement mit einer bestimmten Nummer suchen  --------*/
+PROC setDataPointer(zahl: LONG, datenfeld: PTR TO datei);
+ DEF dummy: PTR TO datei;
+
+   dummy:=datenfeld;
+   IF datenfeld.rechts&lt;&gt;NIL
+    REPEAT
+     IF datenfeld.nummer&lt;&gt;zahl THEN datenfeld:=datenfeld.rechts;
+    UNTIL (datenfeld.rechts=NIL) OR (datenfeld.nummer=zahl);
+   ENDIF
+   IF datenfeld.nummer&lt;&gt;zahl
+    datenfeld:=dummy.links;
+    REPEAT
+     IF datenfeld.nummer&lt;&gt;zahl THEN datenfeld:=datenfeld.links;
+    UNTIL (datenfeld.links=NIL) OR (datenfeld.nummer=zahl);
+   ENDIF
+ENDPROC datenfeld;
+
+/*-----  zeigt ein kleines Inforequester  --------------------------*/
+PROC about();
+  RtEZRequestA(VERSION+&#x27;\n© Copyright 1996 Sebastian Erbert\n&#x27;+
+              &#x27;-------------------------\n&#x27;+
+              &#x27;Geschrieben mit Amiga-E V3.2e\n&#x27;+
+              &#x27;GUI erstellt mit EasyGUI © W. v. Oortmerssen\n&#x27;+
+              &#x27;reqtools.library © Nico Francois\n&#x27;+
+              &#x27;crm.library © Thomas Schwarz\n&#x27;+
+              &#x27;protracker.library © Psilocybe Software\n&#x27;+
+              &#x27;Compiliert: 05.07.1996\n&#x27;+
+              &#x27;-------------------------\n&#x27;+
+              &#x27;ARexx:  &#x27;+AREXXPORTNAME,
+              &#x27;  OK  &#x27;, NIL, NIL, [RTEZ_FLAGS,EZREQF_CENTERTEXT,
+                                   RTEZ_REQTITLE,&#x27;MMV - About&#x27;,
+                                   RTEZ_DEFAULTRESPONSE,1,
+                                   RT_WINDOW,gh.wnd,
+                                   RT_WAITPOINTER,TRUE,
+                                   RT_LOCKWINDOW,TRUE,
+                                   RT_SCREEN,pubscreen,
+                                   RT_REQPOS,REQPOS_POINTER,
+                                   TAG_DONE]);
+ENDPROC;
+/*-------------------------------------------------------------------*/
+
+/*-----  zeigt die aktuelle Datenanzahl an  -------------------------*/
+PROC showAnzahl(wert) IS settext(gh,gad_anzahl,longToStr(wert));
+/*-------------------------------------------------------------------*/
+
+/*----- zeigt das gewünschte Element an  ----------------------------*/
+PROC showElement(nummer);
+
+  IF checkData()
+    IF nummer&gt;anzahl THEN nummer:=anzahl;
+    IF nummer&lt;=0 THEN nummer:=1;
+    IF aktfeld.nummer&lt;&gt;nummer THEN aktfeld:=setDataPointer(nummer,aktfeld);
+    setstr(gh,gad_name,aktfeld.name);
+    setstr(gh,gad_format,aktfeld.format);
+    setstr(gh,gad_prefix,aktfeld.prefix);
+    setstr(gh,gad_author,aktfeld.author);
+    setstr(gh,gad_dauer,aktfeld.dauer);
+    setinteger(gh,gad_laenge,aktfeld.laenge);
+    setinteger(gh,gad_slaenge,aktfeld.songdatasize);
+    setinteger(gh,gad_samples,aktfeld.samples);
+    setinteger(gh,gad_ssize,aktfeld.samplessize);
+    setstr(gh,gad_pfad,aktfeld.pfad);
+    setstr(gh,gad_bemerkung,aktfeld.bemerkung);
+    setinteger(gh,gad_nummer,aktfeld.nummer);
+  ELSE
+    showStatus(STATUS_NODATA);
+  ENDIF
+ENDPROC;
+/*-------------------------------------------------------------------*/
+
+/*----- bewirkt einen Kaltstart des Rechners  -----------------------*/
+PROC coldReboot();
+
+  IF RtEZRequestA(&#x27;Rechner wirklich neu starten ?&#x27;,&#x27;  JA  |NEIN&#x27;,NIL,NIL,
+                  [RTEZ_REQTITLE,&#x27;MMV - Neustart&#x27;,
+                   RT_WINDOW,gh.wnd,
+                   RT_WAITPOINTER,TRUE,
+                   RT_LOCKWINDOW,TRUE,
+                   TAG_DONE]) THEN ColdReboot();
+
+ENDPROC;
+/*-------------------------------------------------------------------*/
+
+/*-----  lädt neu Daten dazu  ---------------------------------------*/
+PROC loadOn();
+ DEF oldstatus
+
+  oldstatus:=saveok;
+  saveok:=TRUE;
+  load(1);      -&gt; alte Daten nicht löschen
+  saveok:=oldstatus;
+ENDPROC
+/*-------------------------------------------------------------------*/
+
+/*-----  entpackt die Daten  ----------------------------------------*/
+PROC depackfile();    -&gt; MMV-Header steht nach Entpacken am Ende
+ DEF addr=NIL,filehandle=0,oldsize=0,newsize=0,pdata=NIL,unpdata=NIL,
+     datenkopf=NIL:PTR TO dataheader
+
+ IF (crmbase:=OpenLibrary(&#x27;CrM.library&#x27;,CRMVERSION))
+  RtSetWaitPointer(gh.wnd);
+  oldsize:=FileLength(savename);
+  IF (pdata:=AllocVec(oldsize,MEMF_CLEAR))&lt;&gt;NIL
+    IF (filehandle:=Open(savename,MODE_OLDFILE))
+      Read(filehandle,pdata,oldsize);
+      Close(filehandle);
+      datenkopf:=pdata;
+      newsize:=datenkopf.originallen+datenkopf.minsecdist;
+      IF (unpdata:=AllocVec(newsize,MEMF_CLEAR))
+        showStatus(&#x27;Entpacke die Datei...&#x27;);
+        addr:=CmDecrunch((pdata+14),unpdata,datenkopf);
+        IF addr
+          IF StrCmp(unpdata+newsize-8,&#x27;MMV&#x27;,3)
+            makeData(addr,Div((newsize-8),SAVEDATGR));
+            FreeVec(addr);
+            showStatus(&#x27;Fertig.&#x27;);
+            showElement(anzahl);
+          ELSE
+            showStatus(&#x27;Keine MMV-Datei.&#x27;);
+          ENDIF
+        ELSE
+          showStatus(&#x27;Fehler beim Entpacken.&#x27;);
+        ENDIF
+      ELSE
+        showStatus(&#x27;Zu wenig Speicher frei.&#x27;);
+      ENDIF
+    ELSE
+      showStatus(&#x27;Fehler beim Öffnen der Datei&#x27;);
+    ENDIF
+    FreeVec(pdata);
+  ELSE
+    showStatus(&#x27;Zu wenig Speicher.&#x27;);
+  ENDIF
+  CloseLibrary(crmbase);
+  ClearPointer(gh.wnd);
+ ELSE
+  showStatus(&#x27;Konnte &quot;CrM.library V2&quot; nicht öffnen.&#x27;);
+ ENDIF
+ENDPROC;
+/*-------------------------------------------------------------------*/
+
+/*-----  ermittelt einen neuen Datennamen ---------------------------*/
+PROC getFilename(titel,check=TRUE);
+ DEF ss[200]:STRING,es,s[80]:STRING,erg=TRUE,ret,ts[200]:STRING,
+     filereq:PTR TO rtfilerequester,filehandle,wahl
+
+  StrCopy(ts,savename);
+  IF titel=NIL
+    titel:=String(25);
+    StrCopy(titel,&#x27;MMV - Filerequester&#x27;);
+  ENDIF
+  filereq:=RtAllocRequestA(RT_FILEREQ,NIL);
+  IF filereq
+    es:=PathPart(ts);
+    StrCopy(s,ts,EstrLen(savename)-StrLen(es));
+    RtChangeReqAttrA(filereq,[RTFI_DIR,s,TAG_DONE]);
+    StrCopy(s,FilePart(ts));
+    ret:=RtFileRequestA(filereq,s,titel,
+                       [RT_WINDOW,gh.wnd,
+                        RT_WAITPOINTER,TRUE,
+                        RT_LOCKWINDOW,TRUE,
+                        TAG_DONE]);
+    IF ret
+      StrCopy(ss,filereq.dir);
+      AddPart(ss,s,200)   -&gt; ss ist kein E-String mehr
+      StrCopy(ts,ss);
+      IF check
+        filehandle:=Lock(ts,SHARED_LOCK);
+        IF filehandle&lt;&gt;0
+          wahl:=RtEZRequestA(&#x27;Datei &#x27;&#x27;%s&#x27;&#x27; existiert schon.\n&#x27;+
+                                  &#x27;Wollen Sie ersetzen ?&#x27;,
+                                  &#x27;  JA  |Neuer Name...| NEIN &#x27;,NIL,[ts],
+                                  [RTEZ_REQTITLE,&#x27;MMV - Achtung&#x27;,
+                                   RTEZ_FLAGS,EZREQF_NORETURNKEY OR EZREQF_CENTERTEXT,
+                                   RT_WINDOW,gh.wnd,
+                                   RT_WAITPOINTER,TRUE,
+                                   RT_LOCKWINDOW,TRUE,
+                                   TAG_DONE]);
+          UnLock(filehandle);
+          IF wahl=0 THEN erg:=FALSE;
+          IF wahl=1 THEN StrCopy(savename,ts);
+          IF wahl=2 THEN getFilename(titel);
+        ENDIF
+      ENDIF
+    StrCopy(savename,ts);
+    ELSE
+      erg:=FALSE;
+    ENDIF
+  ELSE
+    erg:=FALSE;
+  ENDIF
+ENDPROC erg;
+/*-------------------------------------------------------------------*/
+
+/*-----  erstellt die doppelt verkettete Liste  ---------------------*/
+PROC makeData(wo:PTR TO LONG,wieviel);
+ DEF x
+
+  IF pool=NIL THEN pool:=CreatePool(MEMF_CLEAR,PUDDLESIZE,THRESHOLD);
+  helpfeld:=fNewFeld();
+  IF helpfeld
+    CopyMemQuick(wo,helpfeld,SAVEDATGR);
+    INC anzahl;
+    helpfeld.nummer:=anzahl;
+    helpfeld.rechts:=NIL;
+    helpfeld.links:=aktfeld;
+    IF aktfeld&lt;&gt;NIL THEN aktfeld.rechts:=helpfeld;
+    aktfeld:=helpfeld;
+  ELSE
+    DisplayBeep(NIL);
+    showStatus(&#x27;Kein Speicher mehr.&#x27;);
+  ENDIF
+  IF helpfeld
+    FOR x:=2 TO wieviel
+      helpfeld:=fNewFeld();
+      IF helpfeld
+        CopyMemQuick(wo:=wo+SAVEDATGR,helpfeld,SAVEDATGR);
+        INC anzahl;
+        helpfeld.nummer:=anzahl;
+        helpfeld.rechts:=NIL;
+        helpfeld.links:=aktfeld;
+        aktfeld.rechts:=helpfeld;
+        aktfeld:=helpfeld;
+      ELSE
+        showStatus(&#x27;Kein Speicher mehr.&#x27;);
+      ENDIF
+    ENDFOR
+    IF aktfeld&lt;&gt;NIL
+      showAnzahl(anzahl);
+      saveok:=TRUE;
+    ENDIF
+  ENDIF
+ENDPROC;
+/*-------------------------------------------------------------------*/
+
+/*-----  lädt neue Daten  -------------------------------------------*/
+PROC load(info);
+ DEF ret,filereq: PTR TO rtfilerequester, x=0, filehandle,
+      ss[200]: STRING, s[80]:STRING, es, oldname[200]: STRING,
+      header[6]:STRING, buffer, y, z
+
+  IF saveok=FALSE
+    x:=RtEZRequestA(&#x27;Achtung, die vorhandenen Daten gehen verloren.\n&#x27;+
+                    &#x27;Wollen Sie erst speichern unter\n &#x27;&#x27;%s&#x27;&#x27; ?&#x27;,
+                    &#x27; JA |Zurück|NEIN&#x27;, NIL, [savename],
+                    [RTEZ_REQTITLE,&#x27;MMV - Laden&#x27;,
+                     RTEZ_FLAGS,EZREQF_CENTERTEXT,
+                     RT_WINDOW,gh.wnd,
+                     RT_WAITPOINTER,TRUE,
+                     RT_LOCKWINDOW,TRUE,
+                     TAG_DONE]);
+    IF x=1 THEN save();
+  ENDIF
+
+  IF (saveok) OR (x=0)
+    filereq:=RtAllocRequestA(RT_FILEREQ,NIL);
+    IF filereq
+      StrCopy(oldname,savename);
+      es:=PathPart(savename);
+      StrCopy(s,savename,EstrLen(savename)-StrLen(es));
+      RtChangeReqAttrA(filereq,[RTFI_DIR,s,TAG_DONE]);
+      StrCopy(s,FilePart(savename));
+      ret:=RtFileRequestA(filereq,s,&#x27;MMV - Laden&#x27;,
+                         [RT_WINDOW,gh.wnd,
+                          RT_WAITPOINTER,TRUE,
+                          RT_LOCKWINDOW,TRUE,
+                          TAG_DONE]);
+      IF ret
+        StrCopy(ss,filereq.dir);
+        AddPart(ss,s,200)   -&gt; ss ist kein E-String mehr
+        StrCopy(savename,ss);
+        filehandle:=Open(savename,MODE_OLDFILE);
+        IF filehandle
+          Fgets(filehandle,header,5);
+          Close(filehandle);
+          IF StrCmp(header,&#x27;CrM2&#x27;,4)
+            IF (aktfeld) AND (info=0)
+              showStatus(&#x27;Lösche alte Daten...&#x27;);
+              DeletePool(pool);
+              pool:=NIL;  -&gt; ce la very importante (zu deutsch: oberwichtig)
+              anzahl:=0;
+              aktfeld:=NIL;
+            ENDIF
+            depackfile();
+          ELSEIF StrCmp(header,&#x27;MMV&#x27;,3)
+            IF (aktfeld) AND (info=0)
+              showStatus(&#x27;Lösche alte Daten...&#x27;);
+              DeletePool(pool);
+                pool:=NIL;  -&gt; ce la very importante (zu deutsch: oberwichtig)
+                anzahl:=0;
+                aktfeld:=NIL;
+            ENDIF
+            x:=FileLength(savename);
+            IF (buffer:=AllocVec(x+x+(((x-8)/412)*12),MEMF_CLEAR))
+              FreeVec(buffer);
+              buffer:=AllocVec(x-8,MEMF_CLEAR);
+              filehandle:=Open(savename,MODE_OLDFILE);
+              showStatus(&#x27;Lese Daten...&#x27;);
+              Seek(filehandle,8,OFFSET_BEGINNING);  -&gt; nicht den Header mitlesen
+              Read(filehandle,buffer,x-8);
+              RtSetWaitPointer(gh.wnd);
+              showStatus(&#x27;Bereite Daten auf...&#x27;);
+              makeData(buffer,Div((x-8),SAVEDATGR));
+              showElement(aktfeld.nummer);
+              showStatus(&#x27;Fertig.&#x27;);
+              ClearPointer(gh.wnd);
+              FreeVec(buffer);
+            ELSEIF (buffer:=AllocVec(10300,MEMF_CLEAR))
+              RtSetWaitPointer(gh.wnd);
+              filehandle:=Open(savename,MODE_OLDFILE);
+              showStatus(&#x27;Lese Daten...&#x27;);
+              Seek(filehandle,8,OFFSET_BEGINNING);  -&gt; nicht den Header mitlesen
+              x:=Div(x-8,SAVEDATGR);
+              showStatus(&#x27;Bereite Daten auf...&#x27;);
+              FOR z:=1 TO Div(x,25)
+                Read(filehandle,buffer,10300);
+                makeData(buffer,25);
+              ENDFOR
+              showElement(aktfeld.nummer);
+              showStatus(&#x27;Fertig.&#x27;);
+              IF Mod(x,25)&lt;&gt;0
+                y:=Div(x,25)*25;
+                x:=x-y;
+                Read(filehandle,buffer,x*SAVEDATGR);
+                makeData(buffer,x);
+              ENDIF
+              ClearPointer(gh.wnd);
+            ELSE
+              showStatus(&#x27;Zu wenig Speicher zum Laden und Aufbereiten.&#x27;);
+            ENDIF
+            Close(filehandle);
+          ELSE
+            showStatus(&#x27;Keine MMV-Datei.&#x27;);
+          ENDIF
+        ELSE
+          showStatus(&#x27;Konnte Datei nicht öffnen.&#x27;);
+          StrCopy(savename,oldname);
+        ENDIF
+      ELSE
+        showStatus(&#x27;Laden abgebrochen.&#x27;);
+      ENDIF
+      RtFreeRequest(filereq);
+    ELSE
+      showStatus(&#x27;Kein Speicher für Filerequester.&#x27;);
+    ENDIF
+  ENDIF
+  SetWindowTitles(gh.wnd,TRUE,savename);
+ENDPROC;
+/*-------------------------------------------------------------------*/
+
+/*-----  sichert die Daten in dem in &#x27;savename&#x27; enthaltenden Namen ab*/
+PROC save();
+ DEF erg=DOSTRUE,size,buffer=NIL: PTR TO LONG,x,y,filehandle
+
+  IF (aktfeld) AND (anzahl&gt;0)
+    helpfeld:=aktfeld;
+    showStatus(&#x27;Aufbereitung der Daten...&#x27;);
+    aktfeld:=findFirstNode(aktfeld);
+    size:=Mul(anzahl,SAVEDATGR);  -&gt; nur die wichtigen Daten
+    IF (buffer:=AllocVec(size,MEMF_CLEAR))
+      FOR x:=0 TO anzahl-1
+        CopyMemQuick(aktfeld,x*SAVEDATGR+buffer,SAVEDATGR);
+        aktfeld:=aktfeld.rechts;
+      ENDFOR
+      aktfeld:=helpfeld;
+      -&gt; die Nummern und Verkettungszeiger brauchen nicht abgespeichert werden
+
+      filehandle:=Open(savename,MODE_NEWFILE);
+      erg:=IoErr();   -&gt; wenn Null, dann kein Fehler
+      IF (erg=ERROR_OBJECT_EXISTS) OR (erg=0) THEN erg:=DOSTRUE;   -&gt; überschreiben einfach machen
+      IF filehandle
+        Fputs(filehandle,MMV_HEADER);
+        Seek(filehandle,0,OFFSET_END);
+        IF Write(filehandle,buffer,size)&lt;&gt;size THEN showStatus(&#x27;Fehler beim Schreiben der Daten.&#x27;);
+        Close(filehandle);
+        saveok:=TRUE;
+        showStatus(&#x27;Datei abgespeichert.&#x27;);
+      ELSE
+        erg:=DOSFALSE;
+      ENDIF
+    ELSEIF (buffer:=AllocVec(10300,MEMF_CLEAR))
+      showStatus(&#x27;Aufbereitung und Speicherung...&#x27;);
+      size:=Div(anzahl,25);
+      filehandle:=Open(savename,MODE_NEWFILE);
+      erg:=IoErr();
+      IF (erg=ERROR_OBJECT_EXISTS) OR (erg=0) THEN erg:=DOSTRUE;
+      IF filehandle
+        Fputs(filehandle,MMV_HEADER);
+        Seek(filehandle,0,OFFSET_END);
+        FOR x:=1 TO size
+          FOR y:=0 TO 24
+            CopyMemQuick(aktfeld,buffer+(y*SAVEDATGR),SAVEDATGR);
+            aktfeld:=aktfeld.rechts;
+          ENDFOR
+          IF Write(filehandle,buffer,10300)&lt;&gt;10300 THEN showStatus(&#x27;Fehler beim Schreiben der Daten.&#x27;);
+        ENDFOR
+        x:=-1;
+        IF Mod(anzahl,25)&lt;&gt;0
+          REPEAT
+            INC x;
+            CopyMemQuick(aktfeld,buffer+(x*SAVEDATGR),SAVEDATGR);
+            IF Write(filehandle,buffer,SAVEDATGR)&lt;&gt;SAVEDATGR THEN showStatus(&#x27;Fehler beim Schreiben der Daten.&#x27;);
+            aktfeld:=aktfeld.rechts;
+          UNTIL aktfeld=NIL;
+        ENDIF
+        Close(filehandle);
+        saveok:=TRUE;
+        showStatus(&#x27;Datei abgespeichert.&#x27;);
+      ELSE
+        erg:=DOSFALSE;
+      ENDIF
+    ELSE
+      erg:=DOSFALSE;
+    ENDIF
+    FreeVec(buffer);
+    aktfeld:=helpfeld;
+  ELSE
+    showStatus(STATUS_NODATA);
+  ENDIF
+ENDPROC erg;
+/*-------------------------------------------------------------------*/
+
+/*-----  fragt nach einem Namen und ruft &#x27;save()&#x27; auf  --------------*/
+PROC saveAs();
+  IF checkData()
+    IF getFilename(&#x27;MMV - Speichern&#x27;)
+      save();
+      SetWindowTitles(gh.wnd,TRUE,savename);
+    ELSE
+      showStatus(&#x27;Filerequester abgebrochen.&#x27;);
+    ENDIF
+  ELSE
+    showStatus(STATUS_NODATA);
+  ENDIF
+ENDPROC;
+/*-------------------------------------------------------------------*/
+
+/*-----  speichert nur bestimmte Daten ab  --------------------------*/
+PROC saveFromTo();
+ DEF von=1,bis,x,filehandle,buffer,menge
+
+  IF (checkData()) AND (anzahl&gt;2)
+    IF getFilename(&#x27;MMV - Speichern&#x27;)
+
+      IF RtGetLongA({von},&#x27;MMV - Speichern&#x27;, NIL,[RT_WINDOW,gh.wnd,
+                                           RT_WAITPOINTER,TRUE,
+                                         RT_LOCKWINDOW,TRUE,
+                                         RTGL_FLAGS,GSREQF_CENTERTEXT,
+                                         RTGL_MIN, 1,
+                                         RTGL_MAX, anzahl-1,
+                                         TAG_DONE])
+        bis:=anzahl;
+        IF RtGetLongA({bis},&#x27;MMV - Speichern&#x27;, NIL,[RT_WINDOW,gh.wnd,
+                                         RT_WAITPOINTER,TRUE,
+                                         RT_LOCKWINDOW,TRUE,
+                                         RTGL_FLAGS,GSREQF_CENTERTEXT,
+                                         RTGL_MIN, von,
+                                         RTGL_MAX, anzahl,
+                                         TAG_DONE])
+          IF (buffer:=AllocVec(menge:=Mul(bis-von+1,SAVEDATGR),MEMF_CLEAR))&lt;&gt;NIL
+            helpfeld:=aktfeld;
+            aktfeld:=setDataPointer(von,aktfeld);
+            FOR x:=von TO bis
+              CopyMemQuick(aktfeld,(x-von)*SAVEDATGR+buffer,SAVEDATGR);
+              aktfeld:=aktfeld.rechts;
+            ENDFOR
+            aktfeld:=helpfeld;
+            filehandle:=Open(savename,MODE_NEWFILE);
+            IF filehandle
+              Fputs(filehandle,MMV_HEADER);
+              Seek(filehandle,0,OFFSET_END);
+              IF Write(filehandle,buffer,menge)&lt;&gt;menge THEN showStatus(&#x27;Fehler beim Schreiben der Daten.&#x27;);
+              Close(filehandle);
+              showStatus(&#x27;Datei abgespeichert.&#x27;);
+            ELSE
+              showStatus(&#x27;Fehler beim Speichern.&#x27;);
+            ENDIF
+            FreeVec(buffer);
+          ELSE
+            showStatus(&#x27;Nicht genug Speicher für Datensicherung.&#x27;);
+          ENDIF
+        ELSE
+          showStatus(&#x27;Abgebrochen.&#x27;);
+        ENDIF
+      ELSE
+        showStatus(&#x27;Abgebrochen.&#x27;);
+      ENDIF
+    ELSE
+      showStatus(&#x27;Abgebrochen.&#x27;);
+    ENDIF
+  ELSE
+    showStatus(&#x27;Zu wenig Daten vorhanden.&#x27;);
+  ENDIF
+  SetWindowTitles(gh.wnd,TRUE,savename);
+ENDPROC;
+/*-------------------------------------------------------------------*/
+
+/*-----  speichert die Daten gepackt ab  ----------------------------*/
+PROC savePacked();
+ DEF size,buffer,x,cinfo:PTR TO crunchstruct,datenkopf,crunlen,
+     filehandle
+
+ IF (crmbase:=OpenLibrary(&#x27;CrM.library&#x27;,CRMVERSION))
+  IF checkData()
+    IF getFilename(&#x27;MMV - Speichern&#x27;)
+      SetWindowTitles(gh.wnd,TRUE,savename);
+      helpfeld:=aktfeld;
+      RtSetWaitPointer(gh.wnd);
+      size:=Mul(anzahl,SAVEDATGR);
+      size:=size+8;   -&gt; Platz für den MMV-Header
+      IF (buffer:=AllocVec(size,MEMF_CLEAR))
+        aktfeld:=findFirstNode(aktfeld);
+        FOR x:=0 TO anzahl-1
+          CopyMemQuick(aktfeld,x*SAVEDATGR+buffer,SAVEDATGR);
+          aktfeld:=aktfeld.rechts;
+        ENDFOR
+        CopyMemQuick(MMV_HEADER,buffer+size-8,8);
+        aktfeld:=helpfeld;
+        cinfo:=CmProcessCrunchStructA(NIL,CM_ALLOCSTRUCT,
+                                     [CMCS_ALGO,CM_LZH OR CMF_LEDFLASH,
+                                      CMCS_OFFSET,$7FFE,
+                                      CMCS_HUFFSIZE,16,
+                                      TAG_DONE]);
+
+        IF (cinfo&lt;&gt;NIL) AND (datenkopf:=AllocPooled(pool,SIZEOF dataheader))
+          datenkopf:=AllocPooled(pool,SIZEOF dataheader);
+          cinfo.src:=buffer;
+          cinfo.srclen:=size;
+          cinfo.dest:=buffer;
+          cinfo.destlen:=size;
+          cinfo.datahdr:=datenkopf;
+          showStatus(&#x27;Packe die Daten...&#x27;);
+          crunlen:=CmCrunchData(cinfo);
+          SELECT crunlen
+            CASE ERR_TEMPLATE;   showStatus(&#x27;Wrong Arguments !&#x27;);
+            CASE ERR_NOLIB;      showStatus(&#x27;Could not open Library !&#x27;);
+            CASE ERR_STRUCT;     showStatus(&#x27;Could not allocate Struct !&#x27;);
+            CASE ERR_LOCK;       showStatus(&#x27;File not found !&#x27;);
+            CASE ERR_NOFIBMEM;   showStatus(&#x27;Zu wenig Speicher!&#x27;);
+            CASE ERR_NOFMEM;     showStatus(&#x27;Zu wenig Speicher!&#x27;);
+            CASE ERR_READ;       showStatus(&#x27;Error while Reading !&#x27;);
+            CASE ERR_CRUNCHFAIL; showStatus(&#x27;Fehler. Packen abgebrochen!&#x27;);
+            CASE ERR_WRITE;      showStatus(&#x27;Error while Writing !&#x27;);
+            CASE ERR_FILE;       showStatus(&#x27;Dest File open Failed !&#x27;);
+            DEFAULT;             showStatus(&#x27;Packen beendet.&#x27;);
+          ENDSELECT
+          IF filehandle:=Open(savename,MODE_NEWFILE);
+            IF Write(filehandle,datenkopf,SIZEOF dataheader)&lt;&gt;(SIZEOF dataheader) THEN showStatus(&#x27;Fehler beim Schreiben der Daten.&#x27;);
+            IF Write(filehandle,buffer,crunlen)&lt;&gt;crunlen THEN showStatus(&#x27;Fehler beim Schreiben der Daten.&#x27;);
+            Close(filehandle);
+            showStatus(&#x27;Datei abgespeichert.&#x27;);
+          ELSE
+            showStatus(&#x27;Fehler beim Schreiben des Datenkopfes.&#x27;);
+          ENDIF
+          FreePooled(pool,datenkopf,SIZEOF dataheader);
+          CmProcessCrunchStructA(cinfo,CM_FREESTRUCT,NIL);
+        ELSE
+          showStatus(&#x27;Speichermangel beim Vorbereiten für das Packen.&#x27;);
+        ENDIF
+        FreeVec(buffer);
+      ELSE
+        showStatus(&#x27;Nicht genügend Speicher vorhanden.&#x27;);
+      ENDIF
+      ClearPointer(gh.wnd);
+    ELSE
+      showStatus(&#x27;Filerequester abgebrochen.&#x27;);
+    ENDIF
+  ELSE
+    showStatus(STATUS_NODATA);
+  ENDIF
+  CloseLibrary(crmbase);
+ ELSE
+  showStatus(&#x27;Konnte &quot;CrM.library V2&quot; nicht öffnen.&#x27;);
+ ENDIF
+ENDPROC;
+/*-------------------------------------------------------------------*/
+
+/*-----  löscht eine ausgewählte Datei  -----------------------------*/
+PROC deleteFile();
+ DEF ret, filereq: PTR TO rtfilerequester,
+     s[80]: STRING, ss[200]: STRING, es
+
+  filereq:=RtAllocRequestA(RT_FILEREQ,NIL);
+  IF filereq
+    es:=PathPart(savename);
+    StrCopy(s,savename,EstrLen(savename)-StrLen(es));
+    RtChangeReqAttrA(filereq,[RTFI_DIR,s,TAG_DONE]);
+    StrCopy(s,FilePart(savename));
+    ret:=RtFileRequestA(filereq,s,&#x27;MMV - Datei löschen&#x27;,
+                       [RT_WINDOW,gh.wnd,
+                        RT_WAITPOINTER,TRUE,
+                        RT_LOCKWINDOW,TRUE,
+                        RTFI_FLAGS,FREQF_SAVE,
+                        TAG_DONE]);
+    IF ret
+      StrCopy(ss,filereq.dir);
+      AddPart(ss,s,200);
+      DeleteFile(ss);
+      es:=IoErr();
+      IF es&lt;&gt;0 THEN showStatus(&#x27;Fehler beim löschen der Datei.&#x27;) ELSE showStatus(&#x27;Datei gelöscht.&#x27;);
+    ELSE
+      showStatus(&#x27;Abgebrochen.&#x27;);
+    ENDIF
+  ELSE
+    showStatus(&#x27;Kein Speicher für Filerequester.&#x27;);
+  ENDIF
+ENDPROC;
+/*-------------------------------------------------------------------*/
+
+/*-----  lädt ein Module  -------------------------------------------*/
+PROC loadMod();
+ DEF ret, filereq: PTR TO rtfilerequester,
+     s[80]: STRING, ss[200]: STRING, es,
+     size,handle
+
+ IF checkAudio()
+  IF (play) OR (modbuffer) THEN ejectMod();
+  filereq:=RtAllocRequestA(RT_FILEREQ,NIL);
+  IF filereq
+    es:=PathPart(savename);
+    StrCopy(s,savename,EstrLen(savename)-StrLen(es));
+    RtChangeReqAttrA(filereq,[RTFI_DIR,s,TAG_DONE]);
+    StrCopy(s,FilePart(savename));
+    ret:=RtFileRequestA(filereq,s,&#x27;MMV - MOD abspielen&#x27;,
+                       [RT_WINDOW,gh.wnd,
+                        RT_WAITPOINTER,TRUE,
+                        RT_LOCKWINDOW,TRUE,
+                        TAG_DONE]);
+    IF ret
+      StrCopy(ss,filereq.dir);
+      AddPart(ss,s,200);
+      size:=FileLength(ss);
+      IF (modbuffer:=AllocVec(size,MEMF_CHIP))
+        handle:=Open(ss,MODE_OLDFILE);
+        Read(handle,modbuffer,size);
+        Close(handle);
+        IF (Long(modbuffer+$438)=$4D2E4B2E)
+          showStatus(&#x27;ProTracker-Module geladen und abgespielt.&#x27;);
+          playMod();
+        ELSE
+          showStatus(&#x27;Kein ProTrackermodule.&#x27;);
+        ENDIF
+      ELSE
+        showStatus(&#x27;Konnte kein ChipRam für das Module bekommen.&#x27;);
+      ENDIF
+    ELSE
+      showStatus(&#x27;Abgebrochen.&#x27;);
+    ENDIF
+  ELSE
+    showStatus(&#x27;Kein Speicher für Filerequester.&#x27;);
+  ENDIF
+ ELSE
+  showStatus(&#x27;Audio-Kanäle sind schon belegt.&#x27;);
+ ENDIF
+ENDPROC;
+/*-------------------------------------------------------------------*/
+
+/*-----  Module aus Speicher entfernen  -----------------------------*/
+PROC ejectMod();
+
+  IF play THEN stopMod();
+  IF modbuffer
+    FreeVec(modbuffer);
+    modbuffer:=NIL;
+    IF ptbase THEN CloseLibrary(ptbase);
+    ptbase:=NIL;
+    showStatus(&#x27;Module aus dem Speicher entfernt.&#x27;);
+  ELSE
+    showStatus(&#x27;Kein Module geladen.&#x27;);
+  ENDIF
+ENDPROC;
+/*-------------------------------------------------------------------*/
+
+/*-----  stop den Sound  --------------------------------------------*/
+PROC stopMod()
+
+  IF play
+    Mt_StopInt();
+    play:=FALSE;
+    showStatus(&#x27;Module abspielen gestoppt.&#x27;);
+  ELSE
+    showStatus(&#x27;Kein Module abgespielt.&#x27;);
+  ENDIF
+ENDPROC;
+/*-------------------------------------------------------------------*/
+
+/*-----  spielt ein Module  -----------------------------------------*/
+PROC playMod();
+
+  IF play=FALSE
+    IF modbuffer
+      IF ptbase
+        play:=Mt_StartInt(modbuffer);
+      ELSE
+        IF (ptbase:=OpenLibrary(&#x27;protracker.library&#x27;,1))
+          IF Not(play:=Mt_StartInt(modbuffer))
+            CloseLibrary(ptbase);
+            ptbase:=NIL;
+          ENDIF
+        ELSE
+          showStatus(&#x27;Konnte &quot;protracker.library&quot; nicht öffnen.&#x27;);
+          ejectMod();
+        ENDIF
+      ENDIF
+    ELSE
+      showStatus(&#x27;Kein Module gleaden.&#x27;);
+    ENDIF
+  ELSE
+    showStatus(&#x27;Module wird schon abgespielt.&#x27;);
+  ENDIF
+ENDPROC;
+/*-------------------------------------------------------------------*/
+
+/*-----  lädt das Module dem Datenpfad  -----------------------------*/
+PROC playPfad();
+ DEF ss[200]: STRING,size,handle
+
+  IF (checkData())
+    IF (play) OR (modbuffer) THEN ejectMod();
+    IF checkAudio()
+      StrCopy(ss,aktfeld.pfad);
+      size:=FileLength(ss);
+      IF (modbuffer:=AllocVec(size,MEMF_CHIP))
+        handle:=Open(ss,MODE_OLDFILE);
+        IF handle
+          Read(handle,modbuffer,size);
+          Close(handle);
+          IF (Long(modbuffer+$438)=$4D2E4B2E)   -&gt;Kennng: &#x27;M.K.&#x27;
+            showStatus(&#x27;ProTracker-Module geladen und abgespielt.&#x27;);
+            playMod();
+          ELSE
+            showStatus(&#x27;Kein ProTrackermodule.&#x27;);
+          ENDIF
+        ELSE
+          showStatus(&#x27;Konnte nichts laden.&#x27;);
+        ENDIF
+      ELSE
+        showStatus(&#x27;Konnte kein ChipRam für das Module bekommen.&#x27;);
+      ENDIF
+    ELSE
+      showStatus(&#x27;Audio-Kanäle sind schon belegt.&#x27;);
+    ENDIF
+  ELSE
+    showStatus(STATUS_NODATA);
+  ENDIF
+ENDPROC;
+/*-------------------------------------------------------------------*/
+
+/*-----  vergleicht interne mir externen Daten  ---------------------*/
+PROC xcompare();
+ DEF oldanz,oldname[200]:STRING,first,actual,abort=FALSE,found=FALSE
+
+  IF checkData()
+    oldanz:=anzahl;
+    actual:=aktfeld;
+    StrCopy(oldname,savename);
+    loadOn();
+    anzahl:=oldanz;
+    StrCopy(savename,oldname);
+    SetWindowTitles(gh.wnd,TRUE,savename);
+    showAnzahl(anzahl);
+    showElement(actual);
+    RtSetWaitPointer(gh.wnd);
+    aktfeld:=findFirstNode(aktfeld)
+    first:=aktfeld;
+    helpfeld:=aktfeld;
+    WHILE (helpfeld&lt;&gt;NIL) AND (abort=FALSE)
+      REPEAT
+        aktfeld:=aktfeld.rechts;
+        IF (helpfeld.laenge=aktfeld.laenge) AND (helpfeld.nummer&lt;aktfeld.nummer)
+          IF RtEZRequestA(&#x27;Es wurden gleiche Modulelängen gefunden !\n&#x27;+
+                          &#x27;%s - %s\n%s - %s\n%s - %s\n%s - %s\n%s - %s\n&#x27;+
+                          &#x27;%ld - %ld\n%ld - %ld\n%ld - %ld\n%ld - %ld\n&#x27;+
+                          &#x27;%s - %s\n%s - %s\n%ld - ?\n&#x27;,
+                          &#x27;Weitersuchen|Abbrechen&#x27;,NIL,
+                          [helpfeld.name,aktfeld.name,
+                           helpfeld.format,aktfeld.format,
+                           helpfeld.prefix,aktfeld.prefix,
+                           helpfeld.author,aktfeld.author,
+                           helpfeld.dauer,aktfeld.dauer,
+                           helpfeld.laenge,aktfeld.laenge,
+                           helpfeld.songdatasize,aktfeld.songdatasize,
+                           helpfeld.samples,aktfeld.samples,
+                           helpfeld.samplessize,aktfeld.samplessize,
+                           helpfeld.pfad,aktfeld.pfad,
+                           helpfeld.bemerkung,aktfeld.bemerkung,
+                           helpfeld.nummer],
+                          [RTEZ_REQTITLE,&#x27;MMV - Vergleich&#x27;,
+                           RTEZ_FLAGS,EZREQF_CENTERTEXT,
+                           RT_WINDOW,gh.wnd,
+                           RT_WAITPOINTER,TRUE,
+                           RT_LOCKWINDOW,TRUE,
+                           TAG_DONE])=1 THEN abort:=FALSE ELSE abort:=TRUE;
+          found:=TRUE;
+          RtSetWaitPointer(gh.wnd);
+        ENDIF
+      UNTIL (aktfeld.rechts=NIL) OR (abort);
+      helpfeld:=helpfeld.rechts;
+      aktfeld:=first;
+    ENDWHILE
+    aktfeld:=actual;
+    IF (found) AND (abort=FALSE)
+      showStatus(&#x27;Nichts mehr gefunden.&#x27;);
+    ELSEIF (found) AND (abort)
+      showStatus(&#x27;Abgebrochen.&#x27;);
+    ELSE
+      showStatus(&#x27;Keine doppelten Modulelängen gefunden.&#x27;);
+    ENDIF
+    ClearPointer(gh.wnd);
+    helpfeld:=setDataPointer(anzahl,aktfeld);
+    helpfeld:=helpfeld.rechts;
+    helpfeld.links.rechts:=NIL;
+    WHILE helpfeld&lt;&gt;NIL
+      actual:=helpfeld.rechts;
+      fDisposeFeld(helpfeld);
+      helpfeld:=actual;
+    ENDWHILE
+  ELSE
+    showStatus(STATUS_NODATA);
+  ENDIF
+ENDPROC;
+/*-------------------------------------------------------------------*/
+
+/*-----  zeigt die Modulelängen grafisch an  ------------------------*/
+PROC grafik();
+ DEF gwin: PTR TO window,count=0,ys1,ys2,k,l=0,i,pen=1,
+     gbase: PTR TO gfxbase
+
+  IF checkData()
+    helpfeld:=aktfeld;
+    IF pubscreen
+      ys1:=pubscreen.font.ysize;
+    ELSE
+      pubscreen:=gh.wnd.wscreen;
+      ys1:=pubscreen.font.ysize;
+    ENDIF
+    gbase:=gfxbase;
+    ys2:=gbase.defaultfont.ysize;
+    gwin:=OpenWindowTagList(NIL,
+                           [WA_LEFT,0,
+                            WA_TOP,ys1+3,
+                            WA_WIDTH,640,
+                            WA_HEIGHT,Div(ys1,2)+Mul(3,ys2)+200+1+ys1+3,
+                            WA_FLAGS,WFLG_ACTIVATE OR WFLG_GIMMEZEROZERO OR WFLG_CLOSEGADGET OR WFLG_DRAGBAR,
+                            WA_TITLE,&#x27;Grafische Moduledarstellung&#x27;,
+                            WA_PUBSCREEN,pubscreen,
+                            WA_IDCMP,IDCMP_CLOSEWINDOW OR IDCMP_VANILLAKEY,
+                            TAG_DONE]);
+    IF gwin
+      RtSetWaitPointer(gh.wnd);
+      stdrast:=gwin.rport;
+      IF KickVersion(39)
+        pen:=ObtainBestPenA(pubscreen.viewport.colormap,0,0,0,
+                           [OBP_PRECISION,PRECISION_GUI,TAG_DONE]);
+        IF pen=l THEN l:=1;
+        Colour(pen,l)
+      ELSE
+        Colour(1,0)
+      ENDIF
+      FOR i:=1 TO 8
+        SELECT i
+          CASE 1; k:=0;       l:=10000;   TextF(015,200+ys2,&#x27;\s&#x27;,&#x27;0-10k&#x27;);
+          CASE 2; k:=10000;   l:=50000;   TextF(095,200+ys2,&#x27;\s&#x27;,&#x27;10-50k&#x27;);
+          CASE 3; k:=50000;   l:=100000;  TextF(175,200+ys2,&#x27;\s&#x27;,&#x27;50-100k&#x27;);
+          CASE 4; k:=100000;  l:=200000;  TextF(255,200+ys2,&#x27;\s&#x27;,&#x27;100-200k&#x27;);
+          CASE 5; k:=200000;  l:=400000;  TextF(335,200+ys2,&#x27;\s&#x27;,&#x27;200-400k&#x27;);
+          CASE 6; k:=400000;  l:=700000;  TextF(415,200+ys2,&#x27;\s&#x27;,&#x27;400-700k&#x27;);
+          CASE 7; k:=700000;  l:=1000000; TextF(495,200+ys2,&#x27;\s&#x27;,&#x27;700-1000k&#x27;);
+          CASE 8; k:=1000000; l:=MAXLONG; TextF(575,200+ys2,&#x27;\s&#x27;,&#x27;&gt;1000k&#x27;);
+        ENDSELECT;
+        aktfeld:=findFirstNode(aktfeld);
+        count:=0;
+        REPEAT
+          IF (aktfeld.laenge&gt;k) AND (aktfeld.laenge&lt;=l) THEN count++;
+          IF aktfeld.rechts&lt;&gt;NIL THEN aktfeld:=aktfeld.rechts;
+        UNTIL aktfeld.rechts=NIL;
+        IF (anzahl&gt;1) AND (aktfeld.laenge&gt;k) AND (aktfeld.laenge&lt;=l) THEN count++;
+        TextF((i-1)*80+15,200+ys2+ys2,&#x27;\d&#x27;,count);
+        TextF((i-1)*80+15,200+ys2+ys2+ys2,&#x27;\d%&#x27;,Div(Mul(count,100),anzahl));
+        RectFill(stdrast,(i-1)*80+15,200-(2*Div(Mul(count,100),anzahl)),(i-1)*80+65,200);
+      ENDFOR
+      WaitPort(gwin.userport);
+      WHILE (i:=GetMsg(gwin.userport)) DO ReplyMsg(i);
+      ClearPointer(gh.wnd);
+      stdrast:=gh.wnd.rport;
+      CloseWindow(gwin);
+      IF KickVersion(39) THEN ReleasePen(pubscreen.viewport.colormap,pen);
+      aktfeld:=helpfeld;
+    ELSE
+      showStatus(&#x27;Konnte kein Fenster öffnen.&#x27;);
+    ENDIF
+  ELSE
+    showStatus(STATUS_NODATA);
+  ENDIF
+ENDPROC;
+/*-------------------------------------------------------------------*/
+
+/*-----  schaut ob die Audiokanäle frei sind  -----------------------*/
+PROC checkAudio();
+ DEF status=FALSE,io: PTR TO ioaudio,ior: PTR TO io
+
+  IF play=FALSE
+    IF (io:=CreateIORequest(uport,SIZEOF ioaudio))
+      io.length:=4;
+      io.data:=[1,2,3,4]:CHAR;
+      ior:=io;
+      ior.command:=ADCMD_ALLOCATE;
+      IF (OpenDevice(&#x27;audio.device&#x27;,0,io,0))=0
+        status:=TRUE;
+        CloseDevice(io);
+      ENDIF
+      IF io THEN DeleteIORequest(io);
+    ELSE
+      showStatus(&#x27;Konnte keine IO-Struktur initialisieren.&#x27;);
+    ENDIF
+  ELSE
+    status:=TRUE;
+  ENDIF
+ENDPROC status;
+/*-------------------------------------------------------------------*/
+
+/*-----  druckt die Daten aus  --------------------------------------*/
+PROC print();
+ DEF kind, wahl, printerIO: PTR TO iostd, von=-1, bis=-1, x
+
+  IF checkData()
+    kind:=RtEZRequestA(&#x27;Tabellarisch der Standard ?&#x27;,&#x27;Tabelle|Standard|Abbruch&#x27;,
+                        NIL,NIL,[RTEZ_REQTITLE,&#x27;MMV - Drucken&#x27;,
+                                 RTEZ_FLAGS,EZREQF_CENTERTEXT,
+                                 RT_WINDOW,gh.wnd,
+                                 RT_WAITPOINTER,TRUE,
+                                 RT_LOCKWINDOW,TRUE,
+                                 TAG_DONE]);
+    IF kind&lt;&gt;0
+      wahl:=RtEZRequestA(&#x27;Element Nr.%ld drucken?&#x27;,&#x27;JA|Alles drucken|Von - bis drucken|Abbruch&#x27;,
+                         NIL,[aktfeld.nummer],[RTEZ_REQTITLE,&#x27;MMV - Drucken&#x27;,
+                              RTEZ_FLAGS,EZREQF_CENTERTEXT,
+                              RT_WINDOW,gh.wnd,
+                              RT_WAITPOINTER,TRUE,
+                              RT_LOCKWINDOW,TRUE,
+                              TAG_DONE]);
+      IF wahl&lt;&gt;0
+        IF (printerIO:=CreateIORequest(uport,SIZEOF iostd))
+          IF (OpenDevice(&#x27;printer.device&#x27;,0,printerIO,0))=0
+            printerIO.command:=CMD_WRITE;
+            printerIO.length:=-1;
+            SELECT 4 OF wahl
+              CASE 1
+                printIt(printerIO,aktfeld,kind,TRUE);
+                showStatus(&#x27;Fertig.&#x27;);
+              CASE 2
+                helpfeld:=setDataPointer(1,aktfeld);
+                printIt(printerIO,helpfeld,kind,TRUE)
+                helpfeld:=helpfeld.rechts;
+                WHILE helpfeld&lt;&gt;NIL
+                  printIt(printerIO,helpfeld,kind)
+                  helpfeld:=helpfeld.rechts;
+                ENDWHILE
+                showStatus(&#x27;Fertig.&#x27;);
+              CASE 3
+                von:=1;
+                IF RtGetLongA({von},&#x27;MMV - Drucken&#x27;, NIL,[RT_WINDOW,gh.wnd,
+                                           RT_WAITPOINTER,TRUE,
+                                           RT_LOCKWINDOW,TRUE,
+                                           RTGL_FLAGS,GSREQF_CENTERTEXT,
+                                           RTGL_MIN, 1,
+                                           RTGL_MAX, anzahl-1,
+                                           TAG_DONE])
+                  bis:=anzahl;
+                  IF RtGetLongA({bis},&#x27;MMV - Drucken&#x27;,NIL,[RT_WINDOW,gh.wnd,
+                                           RT_WAITPOINTER,TRUE,
+                                           RT_LOCKWINDOW,TRUE,
+                                           RTGL_FLAGS,GSREQF_CENTERTEXT,
+                                           RTGL_MIN, von,
+                                           RTGL_MAX, anzahl,
+                                           TAG_DONE])
+                    helpfeld:=setDataPointer(von,aktfeld);
+                    printIt(printerIO,helpfeld,kind,TRUE);
+                    helpfeld:=helpfeld.rechts;
+                    FOR x:=von+1 TO bis
+                      printIt(printerIO,helpfeld,kind);
+                      helpfeld:=helpfeld.rechts;
+                    ENDFOR
+                    showStatus(&#x27;Fertig.&#x27;);
+                  ELSE
+                    showStatus(&#x27;Abgebrochen.&#x27;);
+                  ENDIF
+                ELSE
+                  showStatus(&#x27;Abgebrochen.&#x27;);
+                ENDIF
+            ENDSELECT
+          ELSE
+            showStatus(&#x27;Konnte &quot;printer.device&quot; nicht öffnen.&#x27;);
+            DeleteIORequest(printerIO);
+            printerIO:=NIL;
+          ENDIF
+          IF printerIO&lt;&gt;NIL THEN CloseDevice(printerIO);
+          IF printerIO&lt;&gt;NIL THEN DeleteIORequest(printerIO);
+        ELSE
+          showStatus(&#x27;Konnte kein IO-Struktur alloziieren.&#x27;);
+        ENDIF
+      ELSE
+        showStatus(&#x27;Abgebrochen.&#x27;);
+      ENDIF
+    ELSE
+      showStatus(&#x27;Abgebrochen.&#x27;);
+    ENDIF
+  ELSE
+    showStatus(STATUS_NODATA);
+  ENDIF
+ENDPROC;
+/*-------------------------------------------------------------------*/
+
+/*-----  druckt ein Element direkt  ---------------------------------*/
+PROC printIt(output:PTR TO iostd,help:PTR TO datei,art,tabheader=FALSE);
+ DEF s[220]: STRING, t[85]:STRING
+
+  IF art=2
+    output.data:=s;
+    StrCopy(s,&#x27;\n   &#x27;,);
+    StrAdd(s,help.name);
+    StrAdd(s,&#x27;\n   &#x27;);
+    StrAdd(s,help.format);
+    StrAdd(s,&#x27;\n   &#x27;);
+    StrAdd(s,help.prefix);
+    StrAdd(s,&#x27;\n   &#x27;);
+    StrAdd(s,help.author);
+    StrAdd(s,&#x27;\n   &#x27;);
+    DoIO(output);
+    StrCopy(s,help.dauer);
+    StrAdd(s,&#x27;\n   &#x27;);
+    StrAdd(s,longToStr(help.laenge));
+    StrAdd(s,&#x27;\n   &#x27;);
+    StrAdd(s,longToStr(help.songdatasize));
+    StrAdd(s,&#x27;\n   &#x27;);
+    StrAdd(s,longToStr(help.samples));
+    StrAdd(s,&#x27;\n   &#x27;);
+    StrAdd(s,longToStr(help.samplessize));
+    StrAdd(s,&#x27;\n   &#x27;);
+    StrAdd(s,help.pfad);
+    StrAdd(s,&#x27;\n   &#x27;);
+    StrAdd(s,help.bemerkung);
+    StrAdd(s,&#x27;\n   &#x27;);
+    StrAdd(s,longToStr(help.nummer));
+    StrAdd(s,&#x27;\n&#x27;);
+    DoIO(output);
+   ELSE
+    IF tabheader
+      output.data:=t;
+      StrCopy(t,&#x27;\nName                           Format               Prefix Länge   Smp Nr.&#x27;);
+      DoIO(output);
+      StrCopy(t,&#x27;\n----------------------------------------------------------------------------\n&#x27;);
+      DoIO(output);
+    ENDIF
+    StrCopy(t,help.name,29);
+    StrAdd(t,&#x27; &#x27;,1);
+    IF EstrLen(t)&lt;30 THEN addSpaces(t,30);
+    StrAdd(t,help.format,20);
+    StrAdd(t,&#x27; &#x27;,1);
+    IF EstrLen(t)&lt;51 THEN addSpaces(t,51);
+    StrAdd(t,help.prefix,6);
+    StrAdd(t,&#x27; &#x27;,1);
+    IF EstrLen(t)&lt;58 THEN addSpaces(t,58);
+    StrAdd(t,longToStr(help.laenge),7);
+    StrAdd(t,&#x27; &#x27;,1);
+    IF EstrLen(t)&lt;67 THEN addSpaces(t,66);
+    StrAdd(t,longToStr(help.samples),3);
+    StrAdd(t,&#x27; &#x27;,1);
+    IF EstrLen(t)&lt;72 THEN addSpaces(t,70);
+    StrAdd(t,longToStr(help.nummer),5);
+    StrAdd(t,&#x27;\n&#x27;);
+    DoIO(output);
+   ENDIF
+ENDPROC;
+/*-------------------------------------------------------------------*/
+
+/*-----  fügt Spaces in einen E-String ein  -------------------------*/
+PROC addSpaces(s,num);
+ DEF x
+
+  FOR x:=EstrLen(s) TO num DO StrAdd(s,&#x27; &#x27;,1);
+ENDPROC;
+/*-------------------------------------------------------------------*/
+
+/*-----  ermittelt die Gesamtgröße aller Modulelängen  --------------*/
+PROC allsize();
+ DEF alles=0
+
+  IF checkData()
+    RtSetWaitPointer(gh.wnd);
+    helpfeld:=aktfeld;
+    aktfeld:=findFirstNode(aktfeld);
+    alles:=aktfeld.laenge;
+    WHILE aktfeld.rechts&lt;&gt;NIL
+      aktfeld:=aktfeld.rechts;
+      alles:=alles+aktfeld.laenge;
+    ENDWHILE
+    RtEZRequestA(&#x27;Die Gesamtlänge alles Modules\nbeträgt %ld Bytes.&#x27;,
+                 &#x27;OKAY&#x27;,NIL,[alles],
+                 [RTEZ_REQTITLE,&#x27;MMV - Gesamtgröße&#x27;,
+                  RTEZ_FLAGS,EZREQF_CENTERTEXT,
+                  RT_WINDOW,gh.wnd,
+                  RT_WAITPOINTER,TRUE,
+                  RT_LOCKWINDOW,TRUE,
+                  TAG_DONE]);
+    aktfeld:=helpfeld;
+    ClearPointer(gh.wnd);
+  ELSE
+    showStatus(STATUS_NODATA);
+  ENDIF
+ENDPROC;
+/*-------------------------------------------------------------------*/
+
+/*-----  sucht einen bestimmten Name oder eine best. Länge heraus  --*/
+PROC search();
+ DEF goon=TRUE, actual, wahl, name[80]:STRING, zahl=0
+
+  IF (aktfeld) AND (anzahl&gt;1)
+    RtSetWaitPointer(gh.wnd);
+    showStatus(&#x27; &#x27;);
+    wahl:=RtEZRequestA(&#x27;Wonach suchen?&#x27;,&#x27;Name|Länge|Abbruch&#x27;,NIL,NIL,
+                       [RTEZ_REQTITLE,&#x27;MMV - Suchen&#x27;,
+                       RT_WINDOW,gh.wnd,
+                       RT_WAITPOINTER,TRUE,
+                       RT_LOCKWINDOW,TRUE,
+                       TAG_DONE]);
+    actual:=aktfeld;
+    IF wahl=2
+      IF RtGetLongA({zahl},&#x27;MMV - Suchlänge&#x27;,NIL,[RT_WINDOW,gh.wnd,
+                                                  RT_WAITPOINTER,TRUE,
+                                                  RT_LOCKWINDOW,TRUE,
+                                                  TAG_DONE])
+
+        RtSetWaitPointer(gh.wnd);
+        aktfeld:=findFirstNode(aktfeld);
+        helpfeld:=aktfeld;
+        WHILE (aktfeld&lt;&gt;NIL) AND (goon)
+          IF aktfeld.laenge=zahl
+            IF RtEZRequestA(&#x27;Es wurde eine solche  Länge gefunden:\n&#x27;+
+                            &#x27;%s\n%s\n%s\n%s\n%s\n%ld\n%ld\n%ld\n%ld\n&#x27;+
+                            &#x27;%s\n%s\n%ld\n&#x27;,
+                            &#x27;Weitersuchen|Abbrechen&#x27;,NIL,
+                            [aktfeld.name,aktfeld.format,
+                             aktfeld.prefix,aktfeld.author,
+                             aktfeld.dauer,aktfeld.laenge,
+                             aktfeld.songdatasize,aktfeld.samples,
+                             aktfeld.samplessize,aktfeld.pfad,
+                             aktfeld.bemerkung,aktfeld.nummer],
+                            [RTEZ_REQTITLE,&#x27;MMV - Suchen&#x27;,
+                             RTEZ_FLAGS,EZREQF_CENTERTEXT,
+                             RT_WINDOW,gh.wnd,
+                             RT_WAITPOINTER,TRUE,
+                             RT_LOCKWINDOW,TRUE,
+                             TAG_DONE])=1 THEN goon:=TRUE ELSE goon:=FALSE;
+          ENDIF
+          aktfeld:=aktfeld.rechts;
+        ENDWHILE
+        IF goon=FALSE THEN showStatus(&#x27;Abgebrochen.&#x27;);
+      ELSE
+        showStatus(&#x27;Abgebrochen.&#x27;);
+      ENDIF
+    ELSEIF wahl=1
+      StrCopy(name,&#x27;&#x27;);
+      IF RtGetStringA(name,70,&#x27;MMV - Suchstring&#x27;,NIL,[RT_WINDOW,gh.wnd,
+                                                      RT_WAITPOINTER,TRUE,
+                                                      RT_LOCKWINDOW,TRUE,
+                                                      TAG_DONE])
+
+        RtSetWaitPointer(gh.wnd);
+        aktfeld:=findFirstNode(aktfeld);
+        helpfeld:=aktfeld;
+        WHILE (aktfeld&lt;&gt;NIL) AND (goon)
+          IF InStr(aktfeld.name,name)&lt;&gt;-1
+            IF RtEZRequestA(&#x27;Es wurde ein solcher Name gefunden:\n&#x27;+
+                            &#x27;%s\n%s\n%s\n%s\n%s\n%ld\n%ld\n%ld\n%ld\n&#x27;+
+                            &#x27;%s\n%s\n%ld\n&#x27;,
+                            &#x27;Weitersuchen|Abbrechen&#x27;,NIL,
+                            [aktfeld.name,aktfeld.format,
+                             aktfeld.prefix,aktfeld.author,
+                             aktfeld.dauer,aktfeld.laenge,
+                             aktfeld.songdatasize,aktfeld.samples,
+                             aktfeld.samplessize,aktfeld.pfad,
+                             aktfeld.bemerkung,aktfeld.nummer],
+                            [RTEZ_REQTITLE,&#x27;MMV - Suchen&#x27;,
+                             RTEZ_FLAGS,EZREQF_CENTERTEXT,
+                             RT_WINDOW,gh.wnd,
+                             RT_WAITPOINTER,TRUE,
+                             RT_LOCKWINDOW,TRUE,
+                             TAG_DONE])=1 THEN goon:=TRUE ELSE goon:=FALSE;
+          ENDIF
+          aktfeld:=aktfeld.rechts;
+        ENDWHILE
+        IF goon=FALSE THEN showStatus(&#x27;Abgebrochen.&#x27;);
+      ELSE
+        showStatus(&#x27;Abgebrochen.&#x27;);
+      ENDIF
+    ELSE
+      showStatus(&#x27;Abgebrochen.&#x27;);
+    ENDIF
+    aktfeld:=actual;
+    ClearPointer(gh.wnd);
+  ELSE
+    showStatus(&#x27;Nicht genügend Daten vorhanden.&#x27;);
+  ENDIF
+ENDPROC;
+/*-------------------------------------------------------------------*/
+
+/*-----  fügt dem Datenfeld ein neues Element hinzu  ----------------*/
+PROC more();
+
+  IF anzahl&gt;1 THEN aktfeld:=setDataPointer(anzahl,aktfeld);
+  IF pool=NIL THEN pool:=CreatePool(MEMF_CLEAR,PUDDLESIZE,THRESHOLD);
+  helpfeld:=fNewFeld();
+  IF helpfeld
+    showStatus(&#x27;Leeres Element erzeugt. Bitte neue Daten eintragen.&#x27;);
+    IF aktfeld&lt;&gt;NIL THEN aktfeld:=setDataPointer(anzahl,aktfeld);
+    helpfeld.links:=aktfeld;
+    helpfeld.rechts:=NIL;
+    IF helpfeld.links&lt;&gt;NIL THEN helpfeld.links.rechts:=helpfeld;
+    INC anzahl;
+    helpfeld.nummer:=anzahl;
+    aktfeld:=helpfeld;
+    helpfeld:=NIL;
+    showAnzahl(anzahl);
+    showElement(anzahl);
+    saveok:=FALSE;
+    ActivateGadget(findgadget(gh,gad_name),gh.wnd,NIL);
+  ELSE
+    showStatus(&#x27;Konnte kein leeres Element erzeugen.&#x27;);
+  ENDIF
+ENDPROC;
+/*-------------------------------------------------------------------*/
+
+/*-----  fügt ein neues Element an einer bestimmten Stelle ein  -----*/
+PROC insert();
+
+  IF checkData()
+    IF pool=NIL THEN pool:=CreatePool(MEMF_CLEAR,PUDDLESIZE,THRESHOLD);
+    helpfeld:=fNewFeld();
+    IF helpfeld
+      showStatus(&#x27;Leeres Element erzeugt. Bitte neue Daten eintragen.&#x27;);
+      helpfeld.nummer:=aktfeld.nummer;
+      helpfeld.links:=aktfeld.links;
+      IF helpfeld.links&lt;&gt;NIL THEN helpfeld.links.rechts:=helpfeld;
+      helpfeld.rechts:=aktfeld;
+      aktfeld.links:=helpfeld;
+      WHILE aktfeld.rechts&lt;&gt;NIL
+        aktfeld.nummer:=aktfeld.nummer+1;;
+        aktfeld:=aktfeld.rechts;
+      ENDWHILE;
+      aktfeld.nummer:=aktfeld.nummer+1;
+      INC anzahl;
+      aktfeld:=helpfeld;
+      helpfeld:=NIL;
+      showAnzahl(anzahl);
+      showElement(aktfeld.nummer);
+      saveok:=FALSE;
+    ELSE
+      showStatus(&#x27;Konnte kein leeres Element erzeugen.&#x27;);
+    ENDIF
+  ELSE
+    showStatus(STATUS_NODATA);
+  ENDIF
+ENDPROC;
+/*-------------------------------------------------------------------*/
+
+/*-----  löscht ein oder alle Datenelemente  ------------------------*/
+PROC delete();
+ DEF wahl
+
+  IF checkData()
+    wahl:=RtEZRequestA(&#x27;Element Nr. %ld löschen ?&#x27;,&#x27;  JA  |Alles Löschen|NEIN&#x27;,
+                        NIL,[aktfeld.nummer],
+                       [RTEZ_REQTITLE,&#x27;MMV - Löschen&#x27;,
+                        RT_WINDOW,gh.wnd,
+                        RT_WAITPOINTER,TRUE,
+                        RT_LOCKWINDOW,TRUE,
+                        TAG_DONE]);
+    IF wahl=2
+      IF RtEZRequestA(&#x27;Wirklich alles Löschen ?&#x27;,&#x27;  JA  |NEIN&#x27;,NIL,NIL,
+                      [RTEZ_REQTITLE,&#x27;MMV - Alles Löschen&#x27;,
+                       RT_WINDOW,gh.wnd,
+                       RT_WAITPOINTER,TRUE,
+                       RT_LOCKWINDOW,TRUE,
+                       TAG_DONE])
+        DeletePool(pool)
+        pool:=NIL;
+        aktfeld:=NIL;
+        anzahl:=0;
+        showAnzahl(0);
+        showAnzahl(anzahl);
+        saveok:=TRUE;
+        setstr(gh,gad_name,&#x27;&#x27;);
+        setstr(gh,gad_format,&#x27;&#x27;);
+        setstr(gh,gad_prefix,&#x27;&#x27;);
+        setstr(gh,gad_author,&#x27;&#x27;);
+        setstr(gh,gad_dauer,&#x27;&#x27;);
+        setinteger(gh,gad_laenge,0);
+        setinteger(gh,gad_slaenge,0);
+        setinteger(gh,gad_samples,0);
+        setinteger(gh,gad_ssize,0);
+        setstr(gh,gad_pfad,&#x27;&#x27;);
+        setstr(gh,gad_bemerkung,&#x27;&#x27;);
+        setinteger(gh,gad_nummer,0);
+        showStatus(&#x27;Alle Daten wurden gelöscht.&#x27;);
+      ELSE
+        showStatus(&#x27;Abgebrochen.&#x27;);
+      ENDIF
+    ELSEIF wahl=1
+      IF aktfeld.rechts=NIL
+        IF aktfeld.links&lt;&gt;NIL
+          helpfeld:=aktfeld.links;
+          helpfeld.rechts:=NIL;
+          fDisposeFeld(aktfeld);
+          aktfeld:=helpfeld;
+          anzahl--;
+          showAnzahl(anzahl);
+          showElement(aktfeld.nummer);
+        ELSE        -&gt; nur ein einziges Element zum löschen
+          fDisposeFeld(aktfeld);
+          anzahl:=0;
+          showAnzahl(0);
+          setstr(gh,gad_name,&#x27;&#x27;);
+          setstr(gh,gad_format,&#x27;&#x27;);
+          setstr(gh,gad_prefix,&#x27;&#x27;);
+          setstr(gh,gad_author,&#x27;&#x27;);
+          setstr(gh,gad_dauer,&#x27;&#x27;);
+          setinteger(gh,gad_laenge,0);
+          setinteger(gh,gad_slaenge,0);
+          setinteger(gh,gad_samples,0);
+          setinteger(gh,gad_ssize,0);
+          setstr(gh,gad_pfad,&#x27;&#x27;);
+          setstr(gh,gad_bemerkung,&#x27;&#x27;);
+          setinteger(gh,gad_nummer,0);
+          showStatus(&#x27;Alle Daten wurden gelöscht.&#x27;);
+        ENDIF
+      ELSEIF aktfeld.links&lt;&gt;NIL
+        helpfeld:=aktfeld.links;
+        helpfeld.rechts:=aktfeld.rechts;
+        aktfeld.rechts.links:=helpfeld;
+        fDisposeFeld(aktfeld);
+        aktfeld:=helpfeld.rechts;
+        aktfeld.nummer:=aktfeld.nummer-1;
+        WHILE aktfeld.rechts&lt;&gt;NIL
+          aktfeld:=aktfeld.rechts;
+          aktfeld.nummer:=aktfeld.nummer-1;
+        ENDWHILE
+        anzahl--;
+        showAnzahl(anzahl);
+        aktfeld:=helpfeld.rechts;
+        showElement(aktfeld.nummer);
+      ELSE
+        helpfeld:=aktfeld.rechts;
+        helpfeld.links:=NIL;
+        fDisposeFeld(aktfeld);
+        aktfeld.nummer:=aktfeld.nummer-1;
+        WHILE aktfeld.rechts&lt;&gt;NIL
+          aktfeld:=aktfeld.rechts;
+          aktfeld.nummer:=aktfeld.nummer-1;
+        ENDWHILE
+        anzahl--;
+        showAnzahl(anzahl);
+        aktfeld:=helpfeld;
+        showElement(aktfeld.nummer);
+      ENDIF
+      saveok:=FALSE;
+    ELSE
+      showStatus(&#x27;Abgebrochen.&#x27;);
+    ENDIF
+  ELSE
+    showStatus(STATUS_NODATA);
+  ENDIF
+ENDPROC;
+/*-------------------------------------------------------------------*/
+
+/*-----  vergleicht alle Daten miteinander (Element Länge)  ---------*/
+PROC compare();
+ DEF first,actual, found=FALSE, abort=FALSE
+
+  IF (aktfeld) AND (anzahl&gt;1)
+    RtSetWaitPointer(gh.wnd);
+    actual:=aktfeld;
+    aktfeld:=findFirstNode(aktfeld)
+    first:=aktfeld;
+    helpfeld:=aktfeld;
+    showStatus(&#x27; &#x27;);
+    WHILE (helpfeld&lt;&gt;NIL) AND (abort=FALSE)
+      REPEAT
+        aktfeld:=aktfeld.rechts;
+        IF (helpfeld.laenge=aktfeld.laenge) AND (helpfeld.nummer&lt;aktfeld.nummer)
+          IF RtEZRequestA(&#x27;Es wurden gleiche Modulelängen gefunden !\n&#x27;+
+                          &#x27;%s &lt;-&gt; %s\n%s &lt;-&gt; %s\n%s &lt;-&gt; %s\n%s &lt;-&gt; %s\n%s &lt;-&gt; %s\n&#x27;+
+                          &#x27;%ld &lt;-&gt; %ld\n%ld &lt;-&gt; %ld\n%ld &lt;-&gt; %ld\n%ld &lt;-&gt; %ld\n&#x27;+
+                          &#x27;%s &lt;-&gt; %s\n%s &lt;-&gt; %s\n%ld &lt;-&gt; %ld\n&#x27;,
+                          &#x27;Weitersuchen|Abbrechen&#x27;,NIL,
+                          [helpfeld.name,aktfeld.name,
+                           helpfeld.format,aktfeld.format,
+                           helpfeld.prefix,aktfeld.prefix,
+                           helpfeld.author,aktfeld.author,
+                           helpfeld.dauer,aktfeld.dauer,
+                           helpfeld.laenge,aktfeld.laenge,
+                           helpfeld.songdatasize,aktfeld.songdatasize,
+                           helpfeld.samples,aktfeld.samples,
+                           helpfeld.samplessize,aktfeld.samplessize,
+                           helpfeld.pfad,aktfeld.pfad,
+                           helpfeld.bemerkung,aktfeld.bemerkung,
+                           helpfeld.nummer,aktfeld.nummer],
+                          [RTEZ_REQTITLE,&#x27;MMV - Vergleich&#x27;,
+                           RTEZ_FLAGS,EZREQF_CENTERTEXT,
+                           RT_WINDOW,gh.wnd,
+                           RT_WAITPOINTER,TRUE,
+                           RT_LOCKWINDOW,TRUE,
+                           TAG_DONE])=1 THEN abort:=FALSE ELSE abort:=TRUE;
+          found:=TRUE;
+          RtSetWaitPointer(gh.wnd);
+        ENDIF
+      UNTIL (aktfeld.rechts=NIL) OR (abort);
+      helpfeld:=helpfeld.rechts;
+      aktfeld:=first;
+    ENDWHILE
+    aktfeld:=actual;
+    IF (found) AND (abort=FALSE)
+      showStatus(&#x27;Nichts mehr gefunden.&#x27;);
+    ELSEIF (found) AND (abort)
+      showStatus(&#x27;Abgebrochen.&#x27;);
+    ELSE
+      showStatus(&#x27;Keine doppelten Modulelängen gefunden.&#x27;);
+    ENDIF
+    ClearPointer(gh.wnd);
+  ELSE
+    showStatus(&#x27;Nicht genügend Daten vorhanden.&#x27;);
+  ENDIF
+ENDPROC;
+/*-------------------------------------------------------------------*/
+
+/*-----  sortieren der Daten nach &#x27;Name&#x27; oder &#x27;Länge&#x27;  --------------*/
+PROC sort();
+ DEF wahl,i,old
+
+  IF (aktfeld) AND (anzahl&gt;1)
+    wahl:=RtEZRequestA(&#x27;Wonach sortieren ?&#x27;,&#x27;Name|Format|Prefix|Größe|Samples|Abbruch&#x27;,NIL,NIL,
+                       [RTEZ_REQTITLE,&#x27;MMV - Sortieren&#x27;,
+                        RT_WINDOW,gh.wnd,
+                        RT_WAITPOINTER,TRUE,
+                        RT_LOCKWINDOW,TRUE,
+                        TAG_DONE]);
+    helpfeld:=aktfeld;
+    old:=aktfeld.nummer;
+    IF wahl=1
+      aktfeld:=findFirstNode(aktfeld);
+      RtSetWaitPointer(gh.wnd);
+      aktfeld:=quicksort(aktfeld,0);
+      IF aktfeld&lt;&gt;NIL
+        aktfeld.links:=NIL;
+        FOR i:=1 TO anzahl-1  -&gt; Wiederherstellung des rückwärtigen Verket-
+          aktfeld.rechts.links:=aktfeld;  -&gt; tungszeiger und des Element Nummer
+          aktfeld.nummer:=i;
+          aktfeld:=aktfeld.rechts;
+        ENDFOR
+        aktfeld.nummer:=anzahl;
+      ENDIF
+    ELSEIF wahl=2
+      aktfeld:=findFirstNode(aktfeld);
+      RtSetWaitPointer(gh.wnd);
+      aktfeld:=quicksort(aktfeld,72);
+      IF aktfeld&lt;&gt;NIL
+        aktfeld.links:=NIL;   -&gt; siehe oben
+        FOR i:=1 TO anzahl-1
+          aktfeld.rechts.links:=aktfeld;
+          aktfeld.nummer:=i;
+          aktfeld:=aktfeld.rechts;
+        ENDFOR
+        aktfeld.nummer:=anzahl;
+      ENDIF
+    ELSEIF wahl=3
+      aktfeld:=findFirstNode(aktfeld);
+      RtSetWaitPointer(gh.wnd);
+      aktfeld:=quicksort(aktfeld,144);
+      IF aktfeld&lt;&gt;NIL
+        aktfeld.links:=NIL;   -&gt; siehe oben
+        FOR i:=1 TO anzahl-1
+          aktfeld.rechts.links:=aktfeld;
+          aktfeld.nummer:=i;
+          aktfeld:=aktfeld.rechts;
+        ENDFOR
+        aktfeld.nummer:=anzahl;
+      ENDIF
+    ELSEIF wahl=4
+      aktfeld:=findFirstNode(aktfeld);
+      RtSetWaitPointer(gh.wnd);
+      aktfeld:=quicksort(aktfeld,252);
+      IF aktfeld&lt;&gt;NIL
+        aktfeld.links:=NIL;   -&gt; siehe oben
+        FOR i:=1 TO anzahl-1
+          aktfeld.rechts.links:=aktfeld;
+          aktfeld.nummer:=i;
+          aktfeld:=aktfeld.rechts;
+        ENDFOR
+        aktfeld.nummer:=anzahl;
+      ENDIF
+    ELSEIF wahl=5
+      aktfeld:=findFirstNode(aktfeld);
+      RtSetWaitPointer(gh.wnd);
+      aktfeld:=quicksort(aktfeld,260);
+      IF aktfeld&lt;&gt;NIL
+        aktfeld.links:=NIL;   -&gt; siehe oben
+        FOR i:=1 TO anzahl-1
+          aktfeld.rechts.links:=aktfeld;
+          aktfeld.nummer:=i;
+          aktfeld:=aktfeld.rechts;
+        ENDFOR
+        aktfeld.nummer:=anzahl;
+      ENDIF
+      showStatus(&#x27;Fertig.&#x27;);
+    ELSE
+      showStatus(&#x27;Abgebrochen.&#x27;);
+    ENDIF
+    ClearPointer(gh.wnd);
+    aktfeld:=helpfeld;
+    showElement(old);
+  ELSE
+    showStatus(&#x27;Nicht genügend Daten vorhanden.&#x27;);
+  ENDIF
+ENDPROC;
+/*-------------------------------------------------------------------*/
+
+/*-----  eigentliche Sortierroutine  --------------------------------*/
+PROC quicksort(p,wonach);
+ DEF l1:PTR TO datei,l2:PTR TO datei,n1:PTR TO datei,n2:PTR TO datei
+
+  l1:=p;
+  l2:=fNewFeld();
+  l2.rechts:=l1;
+  l1:=l1.rechts;
+  l2.rechts.rechts:=NIL;
+  WHILE l1&lt;&gt;NIL
+    n1:=l1;
+    l1:=l1.rechts;
+    n2:=l2;
+    SELECT wonach
+      CASE 0    -&gt; nach Name sortieren, Offset Null
+        loop1:
+          MOVE.L  n2,A3     -&gt;  n2 nach A3
+          TST.L   420(A3)   -&gt;  ist n2.rechts=NIL
+          BEQ.B   exit1     -&gt;  wenn ja, dann raus
+          MOVE.L  420(A3),A3-&gt;  n2.rechts nach A3
+          MOVE.L  n1,A0     -&gt;  n1 nach A0
+          MOVE.L  0(A3),D3  -&gt;  n2.rechts.länge nach D3
+          MOVE.L  0(A0),D0  -&gt;  n1.länge nach D0
+          CMP.L   D3,D0     -&gt;  n1.länge mit n2.rechts.länge vergleichen
+          BLE.B   exit1     -&gt;  wenn n1.länge&lt;=n2.rechts.länge dann raus
+          MOVE.L  A3,n2     -&gt;  n2:=n2.rechts
+          BRA.B   loop1     -&gt;  wieder in Schleife springen
+        exit1:
+      CASE 72    -&gt; nach Format sortieren
+        loop2:
+          MOVE.L  n2,A3     -&gt;  n2 nach A3
+          TST.L   420(A3)   -&gt;  ist n2.rechts=NIL
+          BEQ.B   exit2     -&gt;  wenn ja, dann raus
+          MOVE.L  420(A3),A3-&gt;  n2.rechts nach A3
+          MOVE.L  n1,A0     -&gt;  n1 nach A0
+          MOVE.L  72(A3),D3 -&gt;  n2.rechts.länge nach D3
+          MOVE.L  72(A0),D0 -&gt;  n1.länge nach D0
+          CMP.L   D3,D0     -&gt;  n1.länge mit n2.rechts.länge vergleichen
+          BLE.B   exit2     -&gt;  wenn n1.länge&lt;=n2.rechts.länge dann raus
+          MOVE.L  A3,n2     -&gt;  n2:=n2.rechts
+          BRA.B   loop2     -&gt;  wieder in Schleife springen
+        exit2:
+      CASE 144    -&gt; nach Prefix sortieren
+        loop3:
+          MOVE.L  n2,A3     -&gt;  n2 nach A3
+          TST.L   420(A3)   -&gt;  ist n2.rechts=NIL
+          BEQ.B   exit3     -&gt;  wenn ja, dann raus
+          MOVE.L  420(A3),A3-&gt;  n2.rechts nach A3
+          MOVE.L  n1,A0     -&gt;  n1 nach A0
+          MOVE.L  144(A3),D3-&gt;  n2.rechts.länge nach D3
+          MOVE.L  144(A0),D0-&gt;  n1.länge nach D0
+          CMP.L   D3,D0     -&gt;  n1.länge mit n2.rechts.länge vergleichen
+          BLE.B   exit3     -&gt;  wenn n1.länge&lt;=n2.rechts.länge dann raus
+          MOVE.L  A3,n2     -&gt;  n2:=n2.rechts
+          BRA.B   loop3     -&gt;  wieder in Schleife springen
+        exit3:
+      CASE 252  -&gt; nach Länge sortieren
+        loop4:
+          MOVE.L  n2,A3     -&gt;  n2 nach A3
+          TST.L   420(A3)   -&gt;  ist n2.rechts=NIL
+          BEQ.B   exit4     -&gt;  wenn ja, dann raus
+          MOVE.L  420(A3),A3-&gt;  n2.rechts nach A3
+          MOVE.L  n1,A0     -&gt;  n1 nach A0
+          MOVE.L  252(A3),D3-&gt;  n2.rechts.länge nach D3
+          MOVE.L  252(A0),D0-&gt;  n1.länge nach D0
+          CMP.L   D3,D0     -&gt;  n1.länge mit n2.rechts.länge vergleichen
+          BLE.B   exit4     -&gt;  wenn n1.länge&lt;=n2.rechts.länge dann raus
+          MOVE.L  A3,n2     -&gt;  n2:=n2.rechts
+          BRA.B   loop4     -&gt;  wieder in Schleife springen
+        exit4:
+      CASE 260    -&gt; nach Samples sortieren
+        loop5:
+          MOVE.L  n2,A3     -&gt;  n2 nach A3
+          TST.L   420(A3)   -&gt;  ist n2.rechts=NIL
+          BEQ.B   exit5     -&gt;  wenn ja, dann raus
+          MOVE.L  420(A3),A3-&gt;  n2.rechts nach A3
+          MOVE.L  n1,A0     -&gt;  n1 nach A0
+          MOVE.L  260(A3),D3-&gt;  n2.rechts.länge nach D3
+          MOVE.L  260(A0),D0-&gt;  n1.länge nach D0
+          CMP.L   D3,D0     -&gt;  n1.länge mit n2.rechts.länge vergleichen
+          BLE.B   exit5     -&gt;  wenn n1.länge&lt;=n2.rechts.länge dann raus
+          MOVE.L  A3,n2     -&gt;  n2:=n2.rechts
+          BRA.B   loop5     -&gt;  wieder in Schleife springen
+        exit5:
+    ENDSELECT;
+    n1.rechts:=n2.rechts;
+    n2.rechts:=n1;
+  ENDWHILE
+  l1:=l2.rechts;
+  Dispose(l2);
+  p:=l1;
+ENDPROC p;
+/*-------------------------------------------------------------------*/
+
+/*----- testet ab Daten vorhanden sind  -----------------------------*/
+PROC checkData();
+
+  IF (aktfeld) AND (anzahl&gt;0) THEN RETURN TRUE ELSE RETURN FALSE;
+ENDPROC;
+/*-------------------------------------------------------------------*/
+
+/*-----  Anzeige des ausgewählten Datensatzes  ----------------------*/
+PROC cursorMaxLeft() IS showElement(1);
+PROC cursorTLeft() IS IF checkData() THEN showElement(aktfeld.nummer-100) ELSE showStatus(STATUS_NODATA);
+PROC cursorDLeft() IS IF checkData() THEN showElement(aktfeld.nummer-10) ELSE showStatus(STATUS_NODATA);
+PROC cursorLeft() IS IF checkData() THEN showElement(aktfeld.nummer-1) ELSE showStatus(STATUS_NODATA);
+PROC cursorRight() IS IF checkData() THEN showElement(aktfeld.nummer+1) ELSE showStatus(STATUS_NODATA);
+PROC cursorDRight() IS IF checkData() THEN showElement(aktfeld.nummer+10) ELSE showStatus(STATUS_NODATA);
+PROC cursorTRight() IS IF checkData() THEN showElement(aktfeld.nummer+100) ELSE showStatus(STATUS_NODATA);
+PROC cursorMaxRight() IS showElement(anzahl);
+/*-------------------------------------------------------------------*/
+
+/*-------------------------------------------------------------------*/
+PROC nothing();
+
+
+ENDPROC;
+/*-------------------------------------------------------------------*/
+
+/*-------------------------------------------------------------------*/
+PROC newName();
+
+  IF checkData()
+    CopyMemQuick(sgad_name,aktfeld.name,72);
+    ActivateGadget(findgadget(gh,gad_format),gh.wnd,NIL);
+    saveok:=FALSE;
+  ELSE
+    DisplayBeep(NIL);
+    showStatus(STATUS_NODATA);
+  ENDIF
+ENDPROC;
+/*-------------------------------------------------------------------*/
+
+/*-------------------------------------------------------------------*/
+PROC newFormat();
+
+  IF (aktfeld) AND (anzahl&gt;0)
+    CopyMemQuick(sgad_format,aktfeld.format,72);
+    ActivateGadget(findgadget(gh,gad_prefix),gh.wnd,NIL);
+    saveok:=FALSE;
+  ELSE
+    DisplayBeep(NIL);
+    showStatus(STATUS_NODATA);
+  ENDIF
+ENDPROC;
+/*-------------------------------------------------------------------*/
+
+/*-------------------------------------------------------------------*/
+PROC newPrefix();
+
+  IF (aktfeld) AND (anzahl&gt;0)
+    CopyMemQuick(sgad_prefix,aktfeld.prefix,24);
+    ActivateGadget(findgadget(gh,gad_author),gh.wnd,NIL);
+    saveok:=FALSE;
+  ELSE
+    DisplayBeep(NIL);
+    showStatus(STATUS_NODATA);
+  ENDIF
+ENDPROC;
+/*-------------------------------------------------------------------*/
+
+/*-------------------------------------------------------------------*/
+PROC newAuthor();
+
+  IF (aktfeld) AND (anzahl&gt;0)
+    CopyMemQuick(sgad_author,aktfeld.author,52);
+    ActivateGadget(findgadget(gh,gad_dauer),gh.wnd,NIL);
+    saveok:=FALSE;
+  ELSE
+    DisplayBeep(NIL);
+    showStatus(STATUS_NODATA);
+  ENDIF
+ENDPROC;
+/*-------------------------------------------------------------------*/
+
+/*-------------------------------------------------------------------*/
+PROC newDauer();
+
+  IF (aktfeld) AND (anzahl&gt;0)
+    CopyMemQuick(sgad_dauer,aktfeld.dauer,32);
+    ActivateGadget(findgadget(gh,gad_laenge),gh.wnd,NIL);
+    saveok:=FALSE;
+  ELSE
+    DisplayBeep(NIL);
+    showStatus(STATUS_NODATA);
+  ENDIF
+ENDPROC;
+/*-------------------------------------------------------------------*/
+
+/*-------------------------------------------------------------------*/
+PROC newLaenge(info,value);
+
+  IF (aktfeld) AND (anzahl&gt;0)
+    aktfeld.laenge:=value;
+    ActivateGadget(findgadget(gh,gad_slaenge),gh.wnd,NIL);
+    saveok:=FALSE;
+  ELSE
+    DisplayBeep(NIL);
+    showStatus(STATUS_NODATA);
+  ENDIF
+ENDPROC;
+/*-------------------------------------------------------------------*/
+
+/*-------------------------------------------------------------------*/
+PROC newSLaenge(info,value);
+
+  IF (aktfeld) AND (anzahl&gt;0)
+    aktfeld.songdatasize:=value;
+    ActivateGadget(findgadget(gh,gad_samples),gh.wnd,NIL);
+    saveok:=FALSE;
+  ELSE
+    DisplayBeep(NIL);
+    showStatus(STATUS_NODATA);
+  ENDIF
+ENDPROC;
+/*-------------------------------------------------------------------*/
+
+/*-------------------------------------------------------------------*/
+PROC newSamples(info,value);
+
+  IF (aktfeld) AND (anzahl&gt;0)
+    aktfeld.samples:=value;
+    ActivateGadget(findgadget(gh,gad_ssize),gh.wnd,NIL);
+    saveok:=FALSE;
+  ELSE
+    DisplayBeep(NIL);
+    showStatus(STATUS_NODATA);
+  ENDIF
+ENDPROC;
+/*-------------------------------------------------------------------*/
+
+/*-------------------------------------------------------------------*/
+PROC newSSize(info,value);
+
+  IF (aktfeld) AND (anzahl&gt;0)
+    aktfeld.samplessize:=value;
+    ActivateGadget(findgadget(gh,gad_pfad),gh.wnd,NIL);
+    saveok:=FALSE;
+  ELSE
+    DisplayBeep(NIL);
+    showStatus(STATUS_NODATA);
+  ENDIF
+ENDPROC;
+/*-------------------------------------------------------------------*/
+
+/*-------------------------------------------------------------------*/
+PROC newPfad();
+
+  IF (aktfeld) AND (anzahl&gt;0)
+    CopyMemQuick(sgad_pfad,aktfeld.pfad,72);
+    ActivateGadget(findgadget(gh,gad_bemerkung),gh.wnd,NIL);
+    saveok:=FALSE;
+  ELSE
+    DisplayBeep(NIL);
+    showStatus(STATUS_NODATA);
+  ENDIF
+ENDPROC;
+/*-------------------------------------------------------------------*/
+
+/*-------------------------------------------------------------------*/
+PROC newBemerkung();
+
+  IF (aktfeld) AND (anzahl&gt;0)
+    CopyMemQuick(sgad_bemerkung,aktfeld.bemerkung,72);
+    showStatus(&#x27; &#x27;);
+    saveok:=FALSE;
+    IF aktfeld.rechts&lt;&gt;NIL
+      aktfeld:=aktfeld.rechts;
+      showElement(aktfeld.nummer);
+      ActivateGadget(findgadget(gh,gad_name),gh.wnd,NIL);
+    ENDIF
+  ELSE
+    DisplayBeep(NIL);
+    showStatus(STATUS_NODATA);
+  ENDIF
+ENDPROC;
+/*-------------------------------------------------------------------*/
+
+/*-------------------------------------------------------------------*/
+PROC newNummer(info,value);
+
+  IF (aktfeld) AND (anzahl&gt;0)
+    showElement(value);
+  ELSE
+    DisplayBeep(NIL);
+    showStatus(STATUS_NODATA);
+  ENDIF
+ENDPROC;
+/*-------------------------------------------------------------------*/
+
+/*-----  stellt ein Farbauswahlrequester zur Verfügung  -------------*/
+PROC palette() IS RtPaletteRequestA(&#x27;MMV - Palette&#x27;,NIL,[RT_WINDOW,gh.wnd,
+                                     RT_WAITPOINTER,TRUE,
+                                     RT_LOCKWINDOW,TRUE,
+                                     RT_REQPOS,REQPOS_POINTER,
+                                     TAG_DONE]);
+/*-------------------------------------------------------------------*/
+
+/*-----  setzt eine neue Taskpriorität  -----------------------------*/
+PROC taskPri();
+ DEF mytask:tc,pri
+
+  mytask:=FindTask(NIL);
+  pri:=mytask.ln.pri;
+  IF pri&gt;200 THEN pri:=pri-256;
+  IF RtGetLongA({pri},&#x27;MMV - Task&#x27;, NIL,[RT_WINDOW,gh.wnd,
+                                         RT_WAITPOINTER,TRUE,
+                                         RT_LOCKWINDOW,TRUE,
+                                         RTGL_FLAGS,GSREQF_CENTERTEXT,
+                                         RTGL_MIN,-15,
+                                         RTGL_MAX,15,
+                                         TAG_DONE]);
+    SetTaskPri(mytask,pri);
+   ENDIF
+ENDPROC;
+/*-------------------------------------------------------------------*/
+
+/*-----  führt einen ARexx-Script aus  ------------------------------*/
+PROC doScript();
+ DEF ret, filereq: PTR TO rtfilerequester,
+     s[200]: STRING, ss[200]: STRING, es
+
+  filereq:=RtAllocRequestA(RT_FILEREQ,NIL);
+  IF filereq
+    es:=PathPart(savename);
+    StrCopy(s,savename,EstrLen(savename)-StrLen(es));
+    RtChangeReqAttrA(filereq,[RTFI_DIR,s,TAG_DONE]);
+    StrCopy(s,FilePart(savename));
+    ret:=RtFileRequestA(filereq,s,&#x27;MMV - ARexx&#x27;,
+                       [RT_WINDOW,gh.wnd,
+                        RT_WAITPOINTER,TRUE,
+                        RT_LOCKWINDOW,TRUE,
+                        RTFI_FLAGS,FREQF_SAVE,
+                        TAG_DONE,0]);
+    IF ret
+      StrCopy(ss,filereq.dir);
+      AddPart(ss,s,200);
+      StrCopy(s,&#x27;c:rx &#x27;);
+      StrAdd(s,ss);
+      IF Execute(s,0,0)=DOSFALSE
+        StrCopy(s,&#x27;SYS:Rexxc/rx &#x27;);
+        StrAdd(s,ss);
+        IF Execute(s,0,0)=DOSFALSE
+          StrCopy(s,&#x27;Rexxc:rx &#x27;);
+          StrAdd(s,ss);
+        ENDIF
+      ENDIF
+    ELSE
+      showStatus(&#x27;Abgebrochen.&#x27;);
+    ENDIF
+  ELSE
+    showStatus(&#x27;Kein Speicher für Filerequester.&#x27;);
+  ENDIF
+ENDPROC;
+/*-------------------------------------------------------------------*/
+
+/*-----  ermittelt den neuen ARexx-Port  ----------------------------*/
+PROC newAPort();
+
+  IF RtGetStringA(destport,30,&#x27;MMV - ARexx&#x27;,NIL,[RT_WINDOW,gh.wnd,
+                                                 RT_WAITPOINTER,TRUE,
+                                                 RT_LOCKWINDOW,TRUE,
+                                                 RTGS_WIDTH,100,
+                                                 RTGS_FLAGS,GSREQF_CENTERTEXT,
+                                                 TAG_DONE]);
+    RtGetStringA(cmdstr,90,&#x27;MMV - ARexx&#x27;,NIL,[RT_WINDOW,gh.wnd,
+                                              RT_WAITPOINTER,TRUE,
+                                              RT_LOCKWINDOW,TRUE,
+                                              RTGS_WIDTH,100,
+                                              RTGS_FLAGS,GSREQF_CENTERTEXT,
+                                              TAG_DONE]);
+  ENDIF
+ENDPROC;
+/*-------------------------------------------------------------------*/
+
+/*-----  führt ARexx-Cmd aus  ---------------------------------------*/
+PROC doARexx() IS sendRexxMsg(destport,cmdstr,Shl(1,RXFB_NOIO));
+/*-------------------------------------------------------------------*/
+
+/*-----  sendet eine RexxMsg  ---------------------------------------*/
+PROC sendRexxMsg(hostname,command,flags=0);
+ DEF xport=NIL, rexxmsg=NIL:PTR TO rexxmsg, argstr=NIL
+
+  IF (rexxmsg:=CreateRexxMsg(aport,&#x27;rexx&#x27;,aport.ln.name))
+    IF (argstr:=CreateArgstring(command,StrLen(command)))
+      rexxmsg.mn.ln.type:=NT_MESSAGE;
+      rexxmsg.args[0]:=argstr;
+      rexxmsg.args[1]:=0;
+      rexxmsg.action:=RXCOMM OR flags;
+      IF (xport:=FindPort(hostname)) THEN PutMsg(xport,rexxmsg);
+      IF xport=NIL
+        DeleteArgstring(argstr);
+        DeleteRexxMsg(rexxmsg);
+        showStatus(&#x27;Konnte Zielport nicht finden.&#x27;);
+      ENDIF
+    ELSE
+      showStatus(&#x27;Konnte ArgString nicht alloziieren.&#x27;);
+      DeleteRexxMsg(rexxmsg);
+    ENDIF
+  ELSE
+    showStatus(&#x27;Konnte RexxMsg-Struktur nicht alloziieren.&#x27;);
+  ENDIF
+ENDPROC;
+/*-------------------------------------------------------------------*/
+
+/*-----  wertet die ARexx-Messages aus  -----------------------------*/
+PROC handleRexxMsg();
+ DEF rexxmsg:PTR TO rexxmsg,cmd:PTR TO CHAR
+
+  WHILE rexxmsg:=GetMsg(aport)
+    IF rexxmsg.mn.ln.type=NT_REPLYMSG
+      IF rexxmsg.result1=0
+        IF (g_var&lt;&gt;-1)
+          g_var:=rexxmsg.result2;
+        ELSE
+          StrCopy(g_str,rexxmsg.result2);
+        ENDIF
+      ENDIF
+      DeleteArgstring(rexxmsg.args[0]);
+      DeleteRexxMsg(rexxmsg);
+    ELSE
+      cmd:=TrimStr(rexxmsg.args[0]);
+      rexxmsg.result1:=0;
+      rexxmsg.result2:=0;
+      IF StrCmp(cmd,&#x27;ENDE&#x27;)
+        ReplyMsg(rexxmsg);
+        showStatus(&#x27;ARexx-Kommando erhalten.&#x27;);
+        quit();
+      ELSEIF StrCmp(cmd,&#x27;ENDE!&#x27;)
+        ReplyMsg(rexxmsg);
+        showStatus(&#x27;ARexx-Kommando erhalten.&#x27;);
+        Raise(&#x27;quit&#x27;);
+      ELSEIF StrCmp(cmd,&#x27;ICONFY&#x27;)
+        ReplyMsg(rexxmsg);
+        iconfy();
+      ELSEIF StrCmp(cmd,&#x27;SPEICHERN&#x27;)
+        ReplyMsg(rexxmsg);
+        save();
+      ELSEIF StrCmp(cmd,&#x27;ÜBER&#x27;)
+        ReplyMsg(rexxmsg);
+        about();
+      ELSE
+        ReplyMsg(rexxmsg);
+        showStatus(&#x27;Unbekanntes ARexx-Kommando erhalten.&#x27;);
+      ENDIF
+    ENDIF
+  ENDWHILE
+ENDPROC;
+/*-------------------------------------------------------------------*/
+
+/*-----  wertet die &#x27;normalen&#x27;-Messages aus  ------------------------*/
+PROC handleMsg();
+ DEF msg:PTR TO mn
+
+  WHILE (msg:=GetMsg(uport))
+    IF msg.ln.type=NT_REPLYMSG
+      FreeMem(msg,msg.length);
+      showStatus(&#x27;Antwort erhalten.&#x27;);
+    ELSE
+      showStatus(&#x27;Message erhalten.&#x27;);
+      ReplyMsg(msg);
+    ENDIF
+  ENDWHILE
+ENDPROC;
+/*-------------------------------------------------------------------*/
+
+/*-----  liest Daten über den Eagleplayer aus  ----------------------*/
+PROC getInfos();
+ DEF portstr[80]: STRING, comstr[80]:STRING, x, y
+
+    StrCopy(portstr,&#x27;rexx_EP&#x27;);
+    IF FindPort(portstr)
+      IF (datareading=FALSE) AND (checkData()=FALSE) THEN more();
+      IF datareading THEN more();
+
+      g_var:=-1;
+      sendRexxMsg(portstr,&#x27;status m son&#x27;,RXFF_RESULT);
+      WaitPort(aport);
+      handleRexxMsg();
+      IF g_var=-1 THEN StrCopy(sgad_name,g_str);
+      newName();
+
+      g_var:=0;
+      sendRexxMsg(portstr,&#x27;status m pnr&#x27;,RXFF_RESULT);
+      WaitPort(aport);
+      handleRexxMsg();
+
+      StrCopy(comstr,&#x27;status p &#x27;);
+      StrAdd(comstr,g_var);
+      StrAdd(comstr,&#x27; nam&#x27;);
+      g_var:=-1;
+      sendRexxMsg(portstr,comstr,RXFF_RESULT);
+      WaitPort(aport);
+      handleRexxMsg();
+      IF g_var=-1 THEN StrCopy(sgad_format,g_str);
+      LowerStr(g_str);
+      IF StrCmp(g_str,&#x27;protracker&#x27;)
+        StrCopy(sgad_prefix,&#x27;MOD&#x27;)
+      ELSEIF  StrCmp(g_str,&#x27;med&#x27;)
+        StrCopy(sgad_prefix,&#x27;MED&#x27;)
+      ELSEIF  StrCmp(g_str,&#x27;oktalyzer&#x27;)
+        StrCopy(sgad_prefix,&#x27;Ok&#x27;)
+      ELSEIF  StrCmp(g_str,&#x27;tfmx&#x27;,4)
+        StrCopy(sgad_prefix,&#x27;MDAT&#x27;)
+      ELSEIF  StrCmp(g_str,&#x27;prorunner&#x27;,9)
+        StrCopy(sgad_prefix,&#x27;PRU&#x27;)
+      ENDIF
+      newPrefix();
+      newFormat();
+
+      sendRexxMsg(portstr,&#x27;status m aut&#x27;,RXFF_RESULT);
+      WaitPort(aport);
+      handleRexxMsg();
+      IF g_var=-1 THEN StrCopy(sgad_author,g_str);
+      newAuthor();
+
+      sendRexxMsg(portstr,&#x27;status m dur&#x27;,RXFF_RESULT);
+      WaitPort(aport);
+      handleRexxMsg();
+      x:=Val(g_str);
+      y:=Div(x,60);
+      StrCopy(comstr,longToStr(y));
+      StrAdd(comstr,&#x27; : &#x27;);
+      y:=Mod(x,60);
+      IF y&lt;10 THEN StrAdd(comstr,&#x27;0&#x27;);
+      StrAdd(comstr,longToStr(y));
+      IF g_var=-1 THEN StrCopy(sgad_dauer,comstr);
+      newDauer();
+
+      sendRexxMsg(portstr,&#x27;status m siz&#x27;,RXFF_RESULT);
+      WaitPort(aport);
+      handleRexxMsg();
+      newLaenge(0,Val(g_str));
+
+      sendRexxMsg(portstr,&#x27;status m sam&#x27;,RXFF_RESULT);
+      WaitPort(aport);
+      handleRexxMsg();
+      newSamples(0,Val(g_str));
+
+      sendRexxMsg(portstr,&#x27;status m pat&#x27;,RXFF_RESULT);
+      WaitPort(aport);
+      handleRexxMsg();
+      IF g_var=-1 THEN StrCopy(sgad_pfad,g_str);
+      newPfad();
+
+
+
+      showElement(aktfeld.nummer);
+      saveok:=FALSE;
+      IF datareading THEN doARexx();
+      g_var:=0;
+    ELSE
+      showStatus(&#x27;Eagleplayer nicht aktiv.&#x27;);
+    ENDIF
+ENDPROC;
+/*-------------------------------------------------------------------*/
+
+/*-----  merkt sich ob der Menüpunkt abgehakt ist  ------------------*/
+PROC switch() IS IF datareading THEN datareading:=FALSE ELSE datareading:=TRUE;
+/*-------------------------------------------------------------------*/
+
+/*-----  veranlasst das Iconfizieren --------------------------------*/
+PROC doIconfy() IS sendRexxMsg(&#x27;MMV_REXX&#x27;,&#x27;ICONFY&#x27;);
+/*-------------------------------------------------------------------*/
+
+/*-----  wandelt das Fenster in ein AppIcon -------------------------*/
+PROC iconfy();
+ DEF stmess: PTR TO wbstartup, do=NIL:PTR TO diskobject,
+     appicon=NIL, appmsg: PTR TO appmessage, quit=FALSE
+
+  IF (iconbase:=OpenLibrary(&#x27;icon.library&#x27;,37))
+    IF (workbenchbase:=OpenLibrary(&#x27;workbench.library&#x27;,37))
+      IF (stmess:=wbmessage)
+        CurrentDir(stmess.arglist.lock);
+        do:=GetDiskObjectNew(stmess.arglist.name);
+      ELSE
+        do:=GetDefDiskObject(WBTOOL);
+      ENDIF
+      IF do
+        appicon:=AddAppIconA(0,0,&#x27;MMV&#x27;,uport,NIL,do,NIL)
+        IF appicon
+          cleangui(gh);
+          REPEAT
+            WaitPort(uport);
+            WHILE appmsg:=GetMsg(uport);
+              IF (appmsg.numargs=0) THEN quit:=TRUE;
+              ReplyMsg(appmsg);
+            ENDWHILE
+          UNTIL quit;
+          RemoveAppIcon(appicon);
+          IF (gh:=guiinit(VERSION,guigads,info,pubscreen,NIL,guimenu))=NIL THEN Raise(&quot;WIN&quot;);
+        ELSE
+          showStatus(&#x27;Konnte kein AppIcon bekommen.&#x27;);
+        ENDIF
+        FreeDiskObject(do);
+      ELSE
+        showStatus(&#x27;Konnte kein DiskObject bekommen.&#x27;);
+      ENDIF
+      CloseLibrary(workbenchbase);
+    ELSE
+      showStatus(&#x27;Konnte &quot;workbench.library&quot; V37 nicht öffnen.&#x27;);
+    ENDIF
+    CloseLibrary(iconbase);
+  ELSE
+    showStatus(&#x27;Konnte &quot;icon.library&quot; V37 nicht öffnen.&#x27;);
+  ENDIF
+ENDPROC;
+/*-------------------------------------------------------------------*/
+
+
+CHAR    &#x27;$VER: MMV - Version 1.01 05.07.1996 &#x27;,0
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

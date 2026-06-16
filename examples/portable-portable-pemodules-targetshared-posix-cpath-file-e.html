@@ -1,0 +1,963 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>cPath_File.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-portable.html">PortablE</a> &rsaquo; cPath_File.e</div><h1>File: <code>cPath_File.e</code></h1><p class="meta">937 lines · project <a href="../examples/pkg-portable.html"><code>PortablE</code></a></p><p class="pathctx">PortablE/PortablE/PEmodules/targetShared/POSIX/cPath_File.e</p><p class="prose">POSIX/cPath_File.e 15-10-2022 POSIX-specific <a href="../modules/classes.html">classes</a> &amp; procedures for portable file &amp; dir access. Developed in 2009,2010,2011,2012,2013,2022 by Christopher Steven Handley. Basically completed 18-04-2009, started 15-04-09.</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/fcntl.html">target/fcntl</a></li><li><a href="../modules/time.html">target/sys/time</a></li><li><a href="../modules/types.html">target/sys/types</a></li></ul></div><h2>Source</h2><pre class="code">/* POSIX/cPath_File.e 15-10-2022
+	POSIX-specific classes &amp; procedures for portable file &amp; dir access.
+	Developed in 2009,2010,2011,2012,2013,2022 by Christopher Steven Handley.
+	Basically completed 18-04-2009, started 15-04-09.
+*/
+
+OPT NATIVE, POINTER, INLINE, PREPROCESS
+PUBLIC MODULE &#x27;targetShared/cPath_FileBase&#x27;, &#x27;targetShared/POSIX/cPath_shared&#x27;
+MODULE &#x27;target/sys/types&#x27;, &#x27;target/sys/stat&#x27;, &#x27;target/errno&#x27;
+MODULE &#x27;target/sys/time&#x27;, &#x27;target/time&#x27;, &#x27;target/utime&#x27;
+MODULE &#x27;target/fcntl&#x27;, &#x27;target/dirent&#x27;
+MODULE &#x27;target/unistd&#x27;	-&gt;POSIX (non-Windows) module
+
+PRIVATE
+CONST DEBUG = FALSE
+
+-&gt;this is part of &lt;stdio.h&gt;, and theoretically also &lt;io.h&gt; under Windows.
+PROC rename(oldName:ARRAY OF CHAR, newName:ARRAY OF CHAR) IS NATIVE {rename( (const char*)} oldName {, (const char*)} newName {)} ENDNATIVE !!VALUE
+
+-&gt;throw an error rather than returning returning an error value
+PROC safeSeek(fileDesc, position:BIGVALUE, from=SEEK_SET) RETURNS newPosition:BIGVALUE
+	DEF seek
+	
+	SELECT SEEKMAX OF from
+	CASE SEEK_SET ; seek := {SEEK_SET}!!VALUE
+	CASE SEEK_END ; seek := {SEEK_END}!!VALUE
+	CASE SEEK_CUR ; seek := {SEEK_CUR}!!VALUE
+	DEFAULT ; Throw(&quot;EPU&quot;, &#x27;cPath; safeSeek(); from has illegal value&#x27;)
+	ENDSELECT
+	
+	newPosition := lseek64(fileDesc, position, seek)
+	IF newPosition = -1 THEN Throw(&quot;FILE&quot;, posixFailureReason(&#x27;cPath; safeSeek(); lseek64() failed&#x27;))
+ENDPROC
+
+CONST POSIXFAULTBUFFERSIZE = 512
+DEF posixFaultBuffer[POSIXFAULTBUFFERSIZE]:STRING
+
+-&gt;return string describing reason for posix failure, appended with the supplied explanation
+PROC posixFailureReason(explanation:ARRAY OF CHAR, param1=0, param2=0, param3=0) RETURNS reason:ARRAY OF CHAR
+	IF errno
+		StringF(posixFaultBuffer, explanation, param1, param2, param3)
+		IF explanation
+			StrAdd( posixFaultBuffer, &#x27;: &#x27;)
+			StrAdd( posixFaultBuffer, describeErrNo())
+		ENDIF
+		reason := posixFaultBuffer
+	ELSE
+		reason := explanation
+	ENDIF
+ENDPROC 
+
+PROC describeErrNo() RETURNS desc:ARRAY OF CHAR
+	SELECT 128 OF errno
+	CASE EPERM ; desc := &#x27;Operation not permitted&#x27;
+	CASE ENOENT ; desc := &#x27;No such file or directory&#x27;
+	CASE ESRCH ; desc := &#x27;No such process&#x27;
+	CASE EINTR ; desc := &#x27;Interrupted function call&#x27;
+	CASE EIO ; desc := &#x27;Input/output error&#x27;
+	CASE ENXIO ; desc := &#x27;No such device or address&#x27;
+	CASE E2BIG ; desc := &#x27;Arg list too long&#x27;
+	CASE ENOEXEC ; desc := &#x27;Exec format error&#x27;
+	CASE EBADF ; desc := &#x27;Bad file descriptor&#x27;
+	CASE ECHILD ; desc := &#x27;No child processes&#x27;
+	CASE EAGAIN ; desc := &#x27;Resource temporarily unavailable&#x27;
+	CASE ENOMEM ; desc := &#x27;Not enough space&#x27;
+	CASE EACCES ; desc := &#x27;Permission denied&#x27;
+	CASE EFAULT ; desc := &#x27;Bad address&#x27;
+	CASE EBUSY ; desc := &#x27;strerror reports &quot;Resource device&quot;&#x27;
+	CASE EEXIST ; desc := &#x27;File exists&#x27;
+	CASE EXDEV ; desc := &#x27;Improper link (cross-device link?)&#x27;
+	CASE ENODEV ; desc := &#x27;No such device&#x27;
+	CASE ENOTDIR ; desc := &#x27;Not a directory&#x27;
+	CASE EISDIR ; desc := &#x27;Is a directory&#x27;
+	CASE EINVAL ; desc := &#x27;Invalid argument&#x27;
+	CASE ENFILE ; desc := &#x27;Too many open files in system&#x27;
+	CASE EMFILE ; desc := &#x27;Too many open files&#x27;
+	CASE ENOTTY ; desc := &#x27;Inappropriate I/O control operation&#x27;
+	CASE EFBIG ; desc := &#x27;File too large&#x27;
+	CASE ENOSPC ; desc := &#x27;No space left on device&#x27;
+	CASE ESPIPE ; desc := &#x27;Invalid seek (seek on a pipe?)&#x27;
+	CASE EROFS ; desc := &#x27;Read-only file system&#x27;
+	CASE EMLINK ; desc := &#x27;Too many links&#x27;
+	CASE EPIPE ; desc := &#x27;Broken pipe&#x27;
+	CASE EDOM ; desc := &#x27;Domain error (math functions)&#x27;
+	CASE ERANGE ; desc := &#x27;Result too large (possibly too small)&#x27;
+	CASE EDEADLOCK ; desc := &#x27;Resource deadlock avoided&#x27;
+	CASE ENAMETOOLONG, 91 ; desc := &#x27;Filename too long&#x27;
+	CASE ENOLCK, 46 ; desc := &#x27;No locks available&#x27;
+	CASE ENOSYS, 88 ; desc := &#x27;Function not implemented&#x27;
+	CASE ENOTEMPTY, 90 ; desc := &#x27;Directory not empty&#x27;
+	CASE EILSEQ ; desc := &#x27;Illegal byte sequence&#x27;
+	DEFAULT ; desc := &#x27;Unknown error&#x27;
+	ENDSELECT
+ENDPROC
+
+PROC bigMax(a:BIGVALUE, b:BIGVALUE) IS IF a &gt; b THEN a ELSE b
+PROC bigMin(a:BIGVALUE, b:BIGVALUE) IS IF a &lt; b THEN a ELSE b
+
+PUBLIC
+
+
+/*****************************/ -&gt;cHostFile class has host OS implementation
+CLASS cHostFile OF cBaseFile PRIVATE
+	-&gt;failureOrigin:ARRAY OF CHAR
+	-&gt;failureReason:ARRAY OF CHAR
+	-&gt;readOnly:BOOL
+	padByte:BYTE
+	filePath    :OWNS STRING
+	hostFilePath:OWNS STRING
+	stat:_stat		-&gt;write-through cache of: mode bits &amp; time
+	fileDesc		-&gt;0 represents no open file, even though it is used by C for stdin
+	sizeInBytes :BIGVALUE	-&gt;cache of file size
+	position    :BIGVALUE	-&gt;current r/w position
+	hostPosition:BIGVALUE	-&gt;cache of hosts actual r/w position
+	forcedMode:MODE_T		-&gt;which mode bits had to be forced (set) to be opened
+	linkPath:OWNS STRING	-&gt;path of link, if any, returned by queryExtra()
+	linkIs0unknown1none2soft
+	setSizeQuickKludgeUnsupported:BOOL	-&gt;remembers that a setSizeQuick() kludge is not supported by the filingsystem (probably Amiga-hosted SAMBA) the current file is on
+ENDCLASS
+
+PROC new(padByte=0:BYTE) OF cHostFile
+	self.failureOrigin := NILA
+	self.failureReason := NILA
+	self.readOnly := FALSE
+	self.padByte := padByte
+	self.filePath := NILS
+	self.hostFilePath := NILS
+	-&gt;self.stat
+	self.fileDesc := 0
+	self.sizeInBytes := 0
+	self.position := 0
+	self.hostPosition := 0
+	self.forcedMode := 0
+	self.linkPath := NILS
+	-&gt;self.setSizeQuickKludgeUnsupported
+ENDPROC
+
+PROC end() OF cHostFile
+	IF self.fileDesc THEN self.close()
+	SUPER self.end()
+ENDPROC
+
+-&gt;opens a file for use, creating it if necessary IF in write mode
+-&gt;NOTE: Any previous file must have been closed, or an error will be raised.
+-&gt;NOTE: The file&#x27;s read/write position is at the start unless requested otherwise.
+-&gt;NOTE: readOnly=TRUE prevents *any* changes to the file.
+PROC open(filePath:ARRAY OF CHAR, readOnly=FALSE:BOOL, forceOpen=FALSE:BOOL, atPastEndNotStart=FALSE:BOOL) OF cHostFile RETURNS success:BOOL
+	DEF alreadyExisted:BOOL
+	
+	success := TRUE
+	alreadyExisted := TRUE
+	
+	-&gt;use check
+	IF self.fileDesc THEN Throw(&quot;EMU&quot;, &#x27;cHostFile.open(); a file is already open&#x27;)
+	IF filePath = NILA THEN Throw(&quot;EMU&quot;, &#x27;cHostFile.open(); filePath=NIL&#x27;)
+	IF InvalidFilePath(filePath) THEN Throw(&quot;EMU&quot;, &#x27;cHostFile.open(); filePath is invalid&#x27;)
+	
+	-&gt;store parameters
+	self.failureOrigin := NILA
+	self.failureReason := NILA
+	self.readOnly := readOnly
+	self.hostFilePath := ExportPath(filePath)
+	self.filePath     := StrJoin(filePath)
+	self.forcedMode := 0
+	self.linkPath := NILS
+	self.linkIs0unknown1none2soft := 0
+	self.setSizeQuickKludgeUnsupported := FALSE
+	
+	alreadyExisted := access(self.hostFilePath, 0) &lt;&gt; -1
+	
+	-&gt;examine file before opening, and deal with read/write protection
+	IF alreadyExisted
+		IF stat(self.hostFilePath, self.stat) = -1
+			self.failureReason := posixFailureReason(&#x27;error examining file&#x27;)
+			RETURN FALSE
+		ENDIF
+		
+		IF forceOpen
+			IF self.stat.mode AND S_IRUSR  = 0
+				-&gt;(file is read protected)
+				self.stat.mode := self.stat.mode OR S_IRUSR
+				IF chmod(self.hostFilePath, self.stat.mode) = -1
+					self.failureReason := posixFailureReason(&#x27;could not remove read protection&#x27;)
+					RETURN FALSE
+				ENDIF
+				self.forcedMode := self.forcedMode OR S_IRUSR
+			ENDIF
+			
+			IF (readOnly = FALSE) AND (self.stat.mode AND S_IWUSR = 0)
+				-&gt;(file is write protected)
+				self.stat.mode := self.stat.mode OR S_IWUSR
+				IF chmod(self.hostFilePath, self.stat.mode) = -1
+					self.failureReason := posixFailureReason(&#x27;could not remove write protection&#x27;)
+					RETURN FALSE
+				ENDIF
+				self.forcedMode := self.forcedMode OR S_IWUSR
+			ENDIF
+		ENDIF
+	ENDIF
+	
+	-&gt;open file as specified
+	self.fileDesc := open(self.hostFilePath, O_BINARY OR IF readOnly THEN O_RDONLY ELSE O_RDWR OR O_CREAT, (S_IWUSR OR S_IRUSR) #ifdef pe_TargetOS_Linux OR (S_IWGRP OR S_IRGRP) OR S_IROTH #endif)
+	IF self.fileDesc = -1
+		self.fileDesc := 0
+		self.failureReason := posixFailureReason(&#x27;error opening file&#x27;)
+		RETURN FALSE
+	ENDIF
+	
+	IF alreadyExisted = FALSE
+		IF fstat(self.fileDesc, self.stat) = -1
+			self.failureReason := posixFailureReason(&#x27;error examining file&#x27;)
+			RETURN FALSE
+		ENDIF
+	ENDIF
+	
+	/*
+	IF alreadyExisted = FALSE
+		-&gt;check created file has correct mode bits, since Windows/MingW tends to make them read-only!
+		IF self.stat.mode AND (S_IWUSR OR S_IRUSR) &lt;&gt; (S_IWUSR OR S_IRUSR)
+			self.stat.mode := self.stat.mode OR (S_IWUSR OR S_IRUSR)
+			chmod(self.hostFilePath, self.stat.mode)
+		ENDIF
+	ENDIF
+	*/
+	
+	self.sizeInBytes := _filelengthi64(self.fileDesc)
+	IF self.sizeInBytes = -1
+		self.failureReason := posixFailureReason(&#x27;error obtaining file size&#x27;)
+		RETURN FALSE
+	ENDIF
+	
+	self.position := IF atPastEndNotStart THEN self.sizeInBytes ELSE 0
+	IF lseek64(self.fileDesc, self.position, {SEEK_SET}!!VALUE) = - 1
+		self.failureReason := posixFailureReason(IF atPastEndNotStart THEN &#x27;error seeking to end of file&#x27; ELSE &#x27;error seeking to start of file&#x27;)
+		RETURN FALSE
+	ENDIF
+	self.hostPosition := self.position
+FINALLY
+	IF (success = FALSE) OR exception
+		-&gt;clean-up after a failure, returning the object &amp; the file itself to the state it had before open() was called
+		IF self.fileDesc
+			close(self.fileDesc)
+			self.fileDesc := 0
+		ENDIF
+		END self.hostFilePath
+		IF self.filePath
+			IF alreadyExisted OR readOnly = FALSE THEN DeletePath(self.filePath, TRUE)	-&gt;remove file if it didn&#x27;t exist before it was openeed
+			END self.filePath
+		ENDIF
+	ENDIF
+	
+	IF success = FALSE
+		self.failureOrigin := &#x27;cHostFile.open()&#x27;
+	ENDIF
+ENDPROC
+
+-&gt;close an open file
+PROC close() OF cHostFile
+	-&gt;use check
+	IF self.fileDesc = 0 THEN Throw(&quot;EMU&quot;, &#x27;cHostFile.close(); file not open&#x27;)
+	
+	close(self.fileDesc) ; self.fileDesc := 0
+	
+	IF self.forcedMode
+		-&gt;restore forced mode bits
+		self.stat.mode := self.stat.mode AND NOT self.forcedMode
+		chmod(self.hostFilePath, self.stat.mode)
+	ENDIF
+	
+	END self.filePath
+	END self.hostFilePath
+	
+	END self.linkPath
+ENDPROC
+
+-&gt;flushes any caches used for the file, whether they are provided by this class or the host OS
+-&gt;NOTE: In write mode, ensures all changes are commited to disk, without needing to close() file.
+-&gt;NOTE: In read mode, refreshes any caches, ensuring any changes to file will be seen.
+PROC flush() OF cHostFile
+	-&gt;use check
+	IF self.fileDesc = 0 THEN Throw(&quot;EMU&quot;, &#x27;cHostFile.flush(); file not open&#x27;)
+	
+	-&gt;flush writes
+	IF self.readOnly = FALSE
+		IF fsync(self.fileDesc) = -1 THEN Throw(&quot;FILE&quot;, posixFailureReason(&#x27;cHostFile.flush(); fsync() failed&#x27;))
+	ENDIF
+	
+	-&gt;refresh write-through cache (should not strictly be required in write mode)
+	IF fstat(self.fileDesc, self.stat) = -1 THEN Throw(&quot;FILE&quot;, posixFailureReason(&#x27;cHostFile.flush(); fstat() failed&#x27;))
+	
+	-&gt;flush cached link info
+	END self.linkPath
+	self.linkIs0unknown1none2soft := 0
+ENDPROC
+
+PROC make() OF cHostFile RETURNS object:OWNS PTR TO cHostFile
+	NEW object
+ENDPROC
+
+PROC clone(writeNotRead=FALSE:BOOL) OF cHostFile /*RETURNS clone:OWNS PTR TO cHostFile*/ IS SUPER self.clone(writeNotRead)::cHostFile
+
+PROC makeCopy(path:ARRAY OF CHAR) OF cHostFile /*RETURNS copy:OWNS PTR TO cHostFile*/ IS SUPER self.makeCopy(path)::cHostFile
+
+-&gt;PROC infoReadOnly() OF cHostFile RETURNS readOnly:BOOL
+
+PROC infoIsOpen() OF cHostFile RETURNS isOpen:BOOL IS self.fileDesc &lt;&gt; NIL
+
+PROC infoPadByte() OF cHostFile RETURNS padByte:BYTE IS self.padByte
+
+-&gt;changes the attributes in a flexible manner
+PROC setAttributes(attr, mask=-1) OF cHostFile RETURNS success:BOOL
+	DEF newAttr, mode:MODE_T
+	
+	success := TRUE
+	
+	-&gt;use check
+	IF self.fileDesc = 0 THEN Throw(&quot;EMU&quot;, &#x27;cHostFile.setAttributes(); file not open&#x27;)
+	IF self.readOnly THEN Throw(&quot;EMU&quot;, &#x27;cHostFile.setAttributes(); file opened in read only mode&#x27;)
+	
+	-&gt;calculate new attributes
+	attr := attr AND mask		-&gt;clear any bits that the mask excludes (mistakes?)
+	
+	newAttr := self.getAttributes()
+	newAttr := newAttr AND NOT mask		-&gt;clear any bits that will be changed; i.e. only copy bits that are not changing
+	newAttr := newAttr OR attr			-&gt;add changed bits
+	
+	-&gt;change file&#x27;s mode bits according to new attributes
+	mode := self.stat.mode AND NOT (S_IRUSR OR S_IWUSR)	-&gt;keep unsupported mode bits the same
+	IF newAttr AND CPA_READ THEN mode := mode OR S_IRUSR
+	IF attr AND CPA_STRICT = FALSE
+		IF newAttr AND CPA_WRITE  THEN mode := mode OR S_IWUSR
+		IF newAttr AND CPA_DELETE THEN mode := mode OR S_IWUSR
+	ELSE
+		IF newAttr AND (CPA_WRITE OR CPA_DELETE) THEN mode := mode OR S_IWUSR
+	ENDIF
+	
+	IF chmod(self.hostFilePath, mode) = -1
+		self.failureReason := posixFailureReason(&#x27;error setting file mode bits&#x27;)
+		RETURN FALSE
+	ENDIF
+	self.forcedMode := self.forcedMode AND NOT (mode XOR self.stat.mode)	-&gt;clear any bits that have been changed, so they will no-longer be restored
+	self.stat.mode := mode
+FINALLY
+	IF success = FALSE
+		self.failureOrigin := &#x27;cHostFile.setAttributes()&#x27;
+	ENDIF
+ENDPROC
+
+-&gt;returns the file&#x27;s attribute bit pattern
+-&gt;NOTE: The OS&#x27;s attributes are mapped as well as possible to the CPA_ set.
+PROC getAttributes() OF cHostFile RETURNS attr
+	DEF mode
+	
+	-&gt;use check
+	IF self.fileDesc = 0 THEN Throw(&quot;EMU&quot;, &#x27;cHostFile.getAttributes(); file not open&#x27;)
+	
+	mode := self.stat.mode AND NOT self.forcedMode
+	attr := 0
+	IF mode AND S_IRUSR THEN attr := attr OR CPA_READ
+	IF mode AND S_IWUSR THEN attr := attr OR CPA_WRITE OR CPA_DELETE
+ENDPROC
+
+-&gt;return what attributes are supported
+-&gt;NOTE: a bit set to 1 indicate a supported attribute
+PROC getAttributesSupported() OF cHostFile RETURNS mask
+	-&gt;use check
+	IF self.fileDesc = 0 THEN Throw(&quot;EMU&quot;, &#x27;cHostFile.getAttributesSupported(); file not open&#x27;)
+	
+	mask := CPA_READ OR (CPA_WRITE OR CPA_DELETE)
+ENDPROC
+
+PRIVATE
+PROC openKludgeBegin() OF cHostFile
+	IF self.fileDesc = 0 THEN Throw(&quot;BUG&quot;, &#x27;cHostFile.openKludgeBegin(); kludge already started&#x27;)
+	
+	close(self.fileDesc) ; self.fileDesc := 0
+ENDPROC
+
+PROC openKludgeFinish() OF cHostFile
+	IF self.fileDesc &lt;&gt; 0 THEN Throw(&quot;BUG&quot;, &#x27;cHostFile.openKludgeFinish(); kludge already finished&#x27;)
+	
+	-&gt;undo kludge; re-opening of file must match that in the Open() method
+	self.fileDesc := open(self.hostFilePath, O_BINARY OR IF self.readOnly THEN O_RDONLY ELSE O_RDWR OR O_CREAT, (S_IWUSR OR S_IRUSR) #ifdef pe_TargetOS_Linux OR (S_IWGRP OR S_IRGRP) OR S_IROTH #endif)
+	IF self.fileDesc = -1
+		self.fileDesc := 0
+		END self.filePath
+		END self.hostFilePath
+		Throw(&quot;BUG&quot;, &#x27;cHostFile.openKludgeFinish(); kludge failed&#x27;)
+	ENDIF
+	
+	-&gt;update cache of position, which must have changed since reopened
+	self.hostPosition := safeSeek(self.fileDesc, 0, SEEK_CUR)
+ENDPROC
+PUBLIC
+
+-&gt;changes the whole path (moving &amp; renaming)
+PROC setPath(path:ARRAY OF CHAR) OF cHostFile RETURNS success:BOOL
+	DEF hostFilePath:OWNS STRING
+	
+	success := TRUE
+	
+	-&gt;use check
+	IF self.fileDesc = 0 THEN Throw(&quot;EMU&quot;, &#x27;cHostFile.setPath(); file not open&#x27;)
+	IF self.readOnly THEN Throw(&quot;EMU&quot;, &#x27;cHostFile.setPath(); file opened in read only mode&#x27;)
+	IF path = NILA THEN Throw(&quot;EMU&quot;, &#x27;cHostFile.setPath(); path=NILA&#x27;)
+	IF InvalidFilePath(path) THEN Throw(&quot;EMU&quot;, &#x27;cHostFile.setPath(); path is invalid&#x27;)
+	
+	-&gt;perform rename/move
+	hostFilePath := ExportPath(path)
+	self.openKludgeBegin()
+	IF rename(self.hostFilePath, hostFilePath) = -1
+		self.failureReason := posixFailureReason(&#x27;error renaming host file&#x27;)
+		self.openKludgeFinish()
+		RETURN FALSE
+	ENDIF
+	
+	-&gt;update internal filepath
+	END self.filePath
+	self.filePath := StrJoin(path)
+	
+	END self.hostFilePath
+	self.hostFilePath := PASS hostFilePath
+	
+	self.openKludgeFinish()
+FINALLY
+	END hostFilePath
+	
+	IF success = FALSE
+		self.failureOrigin := &#x27;cHostFile.setPath()&#x27;
+	ENDIF
+ENDPROC
+
+-&gt;returns the whole path
+PROC getPath() OF cHostFile RETURNS path:ARRAY OF CHAR
+	-&gt;use check
+	IF self.fileDesc = 0 THEN Throw(&quot;EMU&quot;, &#x27;cHostFile.getPath(); file not open&#x27;)
+	
+	path := self.filePath
+ENDPROC
+
+
+-&gt;changes the info of a file that is not changed by non-Extra methods of this class
+-&gt;NOTE: The returned failure may only indicate a partial failure, if multiple
+-&gt;      underlying OS elements are changed.
+-&gt;NOTE: Will avoid setting stuff that is not supported in the place the extra originated 
+-&gt;      from (this does NOT generate a failure).
+-&gt;NOTE: May be passed extra=NIL; will do nothing.
+PROC setExtra(extra:PTR TO cExtra) OF cHostFile RETURNS success:BOOL
+	DEF value, unknown:BOOL
+	
+	-&gt;use check
+	IF self.fileDesc = 0 THEN Throw(&quot;EMU&quot;, &#x27;cHostFile.setExtra(); file not open&#x27;)
+	IF self.readOnly THEN Throw(&quot;EMU&quot;, &#x27;cHostFile.setExtra(); file opened in read only mode&#x27;)
+	
+	success := TRUE
+	IF extra = NIL THEN RETURN
+	
+	value, unknown := extra.queryExtra(&quot;ATTR&quot;)
+	IF unknown = FALSE THEN success := success AND self.changeExtra(&quot;ATTR&quot;, value)
+	
+	value, unknown := extra.queryExtra(&quot;SLNK&quot;)
+	IF unknown = FALSE THEN success := success AND self.changeExtra(&quot;SLNK&quot;, value)
+ENDPROC
+
+-&gt;returns an object storing all the info of a file that is not returned by non-Extra methods of this class
+-&gt;NOTE: It returns NIL to indicate a failure.
+PROC getExtra() OF cHostFile RETURNS extra:OWNS PTR TO cExtra
+	DEF hostExtra:OWNS PTR TO cHostExtra
+	
+	-&gt;use check
+	IF self.fileDesc = 0 THEN Throw(&quot;EMU&quot;, &#x27;cHostFile.getExtra(); file not open&#x27;)
+	
+	NEW hostExtra.new()
+	IF hostExtra.setExtra(self) = FALSE THEN END hostExtra
+	RETURN hostExtra
+ENDPROC
+
+-&gt;changes an OS-specific element of the file
+-&gt;NOTE: Returns unknown=TRUE if the specified element is not supported by the host OS.
+PROC changeExtra(specific:QUAD, value) OF cHostFile RETURNS success:BOOL, unknown:BOOL
+	DEF mode:MODE_T, mask:MODE_T, newMode:MODE_T
+#ifdef pe_TargetOS_Linux
+	DEF linkType, linkPath:ARRAY OF CHAR, hostLinkPath:OWNS STRING, changesNeeded:BOOL
+#endif
+	
+	success := TRUE
+	
+	-&gt;use check
+	IF self.fileDesc = 0 THEN Throw(&quot;EMU&quot;, &#x27;cHostFile.changeExtra(); file not open&#x27;)
+	IF self.readOnly THEN Throw(&quot;EMU&quot;, &#x27;cHostFile.changeExtra(); file opened in read only mode&#x27;)
+	
+#ifdef pe_TargetOS_Linux
+	linkType := IF specific = &quot;SLNK&quot; THEN 2 ELSE /*IF specific = &quot;HLNK&quot; THEN 3 ELSE*/ 0
+	IF linkType THEN specific := &quot;link&quot; ELSE IF specific = &quot;link&quot; THEN specific := 0
+#endif
+	
+	unknown := FALSE
+	SELECT specific
+	CASE &quot;ATTR&quot;
+		-&gt;calculate new mode
+		mask := NOT (S_IRUSR OR S_IWUSR)	-&gt;exclude bits supported by getAttributes(), since these may be cached by a super class that is unaware of POSIX flags
+		mode := value AND mask !!MODE_T		-&gt;clear any bits that the mask excludes
+		
+		newMode := self.stat.mode
+		newMode := newMode AND NOT mask		-&gt;clear any bits that will be changed; i.e. only copy bits that are not changing
+		newMode := newMode OR mode			-&gt;add changed bits
+		
+		-&gt;change file&#x27;s mode bits
+		IF chmod(self.hostFilePath, newMode) = -1
+			self.failureReason := posixFailureReason(&#x27;error setting file mode bits&#x27;)
+			RETURN FALSE
+		ENDIF
+		self.stat.mode := newMode
+#ifdef pe_TargetOS_Linux
+	CASE &quot;LINK&quot;
+		linkPath := value!!ARRAY OF CHAR
+		
+		changesNeeded := FALSE
+		IF self.linkIs0unknown1none2soft &lt;&gt; linkType
+			-&gt;(changing from a soft to a hard link, or vice versa)
+			changesNeeded := TRUE
+			
+		ELSE IF (self.linkPath &lt;&gt; NILA) AND (linkPath &lt;&gt; NILA)
+			-&gt;(before &amp; after states are both links) so see if the link is being changed
+			IF StrCmpNoCase(self.linkPath, linkPath) = FALSE THEN changesNeeded := TRUE
+			
+		ELSE IF (self.linkPath &lt;&gt; NILA) &lt;&gt; (linkPath &lt;&gt; NILA)
+			-&gt;(changing creating or destroying a link)
+			changesNeeded := TRUE
+		ENDIF
+		
+		IF changesNeeded
+			IF linkPath
+				self.openKludgeBegin()
+				
+				IF success := DeletePath(self.filePath, /*force*/TRUE)
+					hostLinkPath := ExportPath(linkPath)
+					IF symlink(hostLinkPath, self.hostFilePath) = 0
+						END self.linkPath
+						self.linkPath := StrJoin(linkPath)
+						self.linkIs0unknown1none2soft := linkType
+					ENDIF
+				ENDIF
+				
+				self.openKludgeFinish()
+			ELSE
+				-&gt;(removing link)
+				IF self.linkIs0unknown1none2soft = 0
+					self.linkPath, self.linkIs0unknown1none2soft := getFileLink(self.hostFilePath)
+				ENDIF
+				
+				IF self.linkIs0unknown1none2soft = linkType
+					-&gt;(there is a link to be removed)
+					self.openKludgeBegin()
+					
+					IF success := DeletePath(self.filePath, /*force*/TRUE)
+						-&gt;a new file will be subsequently created
+						END self.linkPath
+						self.linkIs0unknown1none2soft := 1
+					ENDIF
+					
+					self.openKludgeFinish()
+				ELSE
+					success := TRUE
+				ENDIF
+			ENDIF
+			
+			IF success
+				-&gt;refresh write-through cache
+				IF fstat(self.fileDesc, self.stat) = -1 THEN Throw(&quot;FILE&quot;, posixFailureReason(&#x27;cHostFile.changeExtra(); fstat() failed&#x27;))
+			ENDIF
+		ELSE
+			success := TRUE
+		ENDIF
+#endif
+	DEFAULT
+		success := FALSE
+		unknown := TRUE
+	ENDSELECT
+FINALLY
+	IF success = FALSE
+		self.failureOrigin := &#x27;cHostFile.changeExtra()&#x27;
+	ENDIF
+	
+#ifdef pe_TargetOS_Linux
+	END hostLinkPath
+#endif
+ENDPROC
+
+-&gt;returns an OS-specific element of this file
+-&gt;NOTE: Returns unknown=TRUE if the specified element is not supported by the host OS.
+PROC queryExtra(specific:QUAD) OF cHostFile RETURNS value, unknown:BOOL
+	DEF mask
+	
+	-&gt;use check
+	IF self.fileDesc = 0 THEN Throw(&quot;EMU&quot;, &#x27;cHostFile.queryExtra(); file not open&#x27;)
+	
+	IF specific = &quot;SLNK&quot; THEN specific := &quot;LINK&quot;
+	
+	value := 0
+	unknown := FALSE
+	SELECT specific
+	CASE &quot;ATTR&quot;
+		mask := NOT (S_IRUSR OR S_IWUSR)
+		value := self.stat.mode AND mask
+#ifdef pe_TargetOS_Linux
+	CASE &quot;LINK&quot;
+		IF self.linkIs0unknown1none2soft = 0
+			self.linkPath, self.linkIs0unknown1none2soft := getFileLink(self.hostFilePath)
+		ENDIF
+		
+		value := self.linkPath
+#endif
+	DEFAULT
+		unknown := TRUE
+	ENDSELECT
+ENDPROC
+
+#ifdef pe_TargetOS_Linux
+PRIVATE
+PROC getFileLink(hostPath:STRING) RETURNS linkPath:OWNS STRING, linkIs0unknown1none2soft
+	DEF hostLinkPath:OWNS STRING, max, len:SSIZE_T
+	
+	max := 1024 / 2
+	REPEAT
+		max := max * 2
+		END hostLinkPath
+		
+		NEW hostLinkPath[max]
+		len := readlink(hostPath, hostLinkPath, max)
+	UNTIL (len &lt; max) OR (max &gt; 1024000)
+	
+	IF len &gt;= 0
+		SetStr(hostLinkPath, len!!VALUE)
+		linkPath := ImportFilePath(hostLinkPath)
+		linkIs0unknown1none2soft := 2
+	ELSE
+		linkIs0unknown1none2soft := 1	-&gt;# this could be wrong, should really check errno
+	ENDIF
+FINALLY
+	END hostLinkPath
+ENDPROC
+PUBLIC
+#endif
+
+
+-&gt;writes length bytes from the buffer to the file at the (read/write) position
+-&gt;NOTE: Normally writing past the end of file extends the file, but
+-&gt;      if noAutoExtend=TRUE then bytes outside the file range will be ignored.
+-&gt;NOTE: Returns the position after the bytes written, and the number of bytes lost due to being ignored.
+PROC write(buffer:ARRAY, lengthInBytes, offsetInBytes=0, noAutoExtend=FALSE:BOOL) OF cHostFile RETURNS nextPos:BIGVALUE, numOfLostBytes
+	DEF maxLength:BIGVALUE, origSizeInBytes:BIGVALUE, finalPosition:BIGVALUE, ret:SSIZE_T
+	
+	-&gt;use check
+	IF self.fileDesc = 0 THEN Throw(&quot;EMU&quot;, &#x27;cHostFile.write(); file not open&#x27;)
+	IF self.readOnly THEN Throw(&quot;EMU&quot;, &#x27;cHostFile.write(); file opened in read only mode&#x27;)
+	IF lengthInBytes &lt; 0 THEN Throw(&quot;EMU&quot;, &#x27;cHostFile.write(); lengthInBytes&lt;0&#x27;)
+	IF buffer = NILA THEN Throw(&quot;EMU&quot;, &#x27;cHostFile.write(); buffer=NILA&#x27;)
+	IF offsetInBytes &lt; 0 THEN Throw(&quot;EMU&quot;, &#x27;cHostFile.write(); offsetInBytes&lt;0&#x27;)
+	
+	-&gt;handle writing past end of file
+	IF noAutoExtend
+		-&gt;modify parameters to prevent extending file size
+		maxLength := bigMax(0, self.sizeInBytes - self.position)		-&gt;max length of real data that can be written from current position
+		numOfLostBytes := Max(0, lengthInBytes - maxLength !!VALUE)
+		lengthInBytes  := Min(maxLength !!VALUE, lengthInBytes)
+	ELSE
+		-&gt;increase file size, if necessary
+		origSizeInBytes := self.sizeInBytes
+		finalPosition := self.position + lengthInBytes
+		IF finalPosition &gt; origSizeInBytes
+			-&gt;no need to physically increase actual file&#x27;s size, since writing will automatically do it,
+			-&gt;but doing so does allow us to fail-safe in the event of the disk being full
+			self.setSizeQuick(finalPosition)
+		ENDIF
+		
+		-&gt;write pad bytes between end of file &amp; start of write position, if necessary
+		IF self.position &gt; origSizeInBytes THEN self.writePadBytes(self.position - origSizeInBytes, origSizeInBytes)
+		
+		numOfLostBytes := 0
+	ENDIF
+	
+	-&gt;write data from buffer
+	IF lengthInBytes &gt; 0
+		IF self.hostPosition &lt;&gt; self.position THEN safeSeek(self.fileDesc, self.hostPosition := self.position)
+		ret := write(self.fileDesc, buffer + offsetInBytes, lengthInBytes) 
+		IF ret = -1 THEN Throw(&quot;FILE&quot;, posixFailureReason(&#x27;cHostFile.write(); write() failed&#x27;))
+		IF ret &lt;&gt; lengthInBytes THEN Throw(&quot;FILE&quot;, &#x27;cHostFile.write(); size of written data does not match that expected&#x27;)
+		self.hostPosition := self.hostPosition + lengthInBytes
+	ENDIF
+	
+	-&gt;calculate next write position
+	nextPos := self.position + lengthInBytes
+	
+	-&gt;update cache with modified file&#x27;s actual time (&amp; archive mode bit?)
+	IF fstat(self.fileDesc, self.stat) = -1 THEN Throw(&quot;FILE&quot;, posixFailureReason(&#x27;cHostFile.write(); fstat() failed&#x27;))
+FINALLY
+	IF exception
+		-&gt;ensure cached state is correct
+		self.hostPosition := safeSeek(self.fileDesc, 0, SEEK_CUR)
+	ENDIF
+ENDPROC
+
+-&gt;reads length bytes into buffer, or less if the tobyte is found
+-&gt;NOTE: It reads starting from the (read/write) position, and does *not* change that position.
+-&gt;NOTE: The contents between the tobyte &amp; the end of the buffer are undefined.
+-&gt;NOTE: If reading past the end of file (or after matching toByte), it fills the rest of the buffer with pad bytes.
+-&gt;NOTE: Returns the position after the bytes read, and the number of pad bytes used.
+PROC read(buffer:ARRAY, lengthInBytes, offsetInBytes=0, toByte=-1:INT) OF cHostFile RETURNS nextPos:BIGVALUE, numOfPadBytes
+	DEF maxLength:BIGVALUE, origLength, ret:SSIZE_T
+	DEF byteBuffer:ARRAY OF BYTE, padByte:BYTE, i
+	DEF matchPos, oldNumOfPadBytes
+	
+	-&gt;use check
+	IF self.fileDesc = 0 THEN Throw(&quot;EMU&quot;, &#x27;cHostFile.read(); file not open&#x27;)
+	IF lengthInBytes &lt; 0 THEN Throw(&quot;EMU&quot;, &#x27;cHostFile.read(); lengthInBytes&lt;0&#x27;)
+	IF buffer = NILA THEN Throw(&quot;EMU&quot;, &#x27;cHostFile.read(); buffer=NILA&#x27;)
+	IF offsetInBytes &lt; 0 THEN Throw(&quot;EMU&quot;, &#x27;cHostFile.read(); offsetInBytes&lt;0&#x27;)
+	
+	-&gt;compare read request to actual range of file
+	origLength := lengthInBytes
+	maxLength := bigMax(0, self.sizeInBytes - self.position)	-&gt;max length of real data that can be read from current position
+	
+	numOfPadBytes := bigMax(0, lengthInBytes - maxLength) !!VALUE
+	IF numOfPadBytes &gt; 0 THEN lengthInBytes := maxLength !!VALUE
+	
+	-&gt;read data into buffer
+	IF lengthInBytes &gt; 0
+		IF self.hostPosition &lt;&gt; self.position THEN safeSeek(self.fileDesc, self.hostPosition := self.position)
+		ret := read(self.fileDesc, buffer + offsetInBytes, lengthInBytes)
+		IF ret = -1 THEN Throw(&quot;FILE&quot;, posixFailureReason(&#x27;cHostFile.read(); read() failed&#x27;))
+		IF ret &lt;&gt; lengthInBytes THEN Throw(&quot;BUG&quot;, &#x27;cHostFile.read(); size of read data does not match that expected&#x27;)
+		self.hostPosition := self.hostPosition + lengthInBytes
+	ENDIF
+	
+	-&gt;fill rest of buffer with pad bytes
+	byteBuffer := buffer + offsetInBytes !!ARRAY
+	padByte := self.padByte
+	FOR i := lengthInBytes TO origLength-1 DO byteBuffer[i] := padByte
+	
+	-&gt;search for requested toByte and truncate buffer if found
+	IF toByte &gt;= 0
+		-&gt;search entire buffer (incase pad byte is being searched for)  -&gt;#simple but inefficient
+		byteBuffer := buffer + offsetInBytes !!ARRAY
+		matchPos := -1
+		FOR i := 0 TO origLength-1
+			IF byteBuffer[i] = toByte THEN matchPos := i
+		ENDFOR IF matchPos &lt;&gt; -1
+		
+		IF matchPos &lt;&gt; -1
+			-&gt;(found match) so recalculate size of buffer
+			oldNumOfPadBytes := numOfPadBytes
+			
+			numOfPadBytes := origLength - (matchPos + 1)
+			lengthInBytes := matchPos + 1
+			
+			-&gt;fill buffer after match with pad bytes
+			padByte := self.padByte
+			FOR i := lengthInBytes TO origLength-1-oldNumOfPadBytes DO byteBuffer[i] := padByte
+			
+			-&gt;ensure next position starts after last match
+			origLength := lengthInBytes
+		ENDIF
+	ENDIF
+	
+	-&gt;calculate next read position
+	nextPos := self.position + origLength
+FINALLY
+	IF exception
+		-&gt;ensure cached position is correct
+		self.hostPosition := safeSeek(self.fileDesc, 0, SEEK_CUR)
+	ENDIF
+ENDPROC
+
+-&gt;changes the read/write position in the file; may go beyond it&#x27;s end (without changing filesize)
+-&gt;NOTE: A negative pos indicates position from end of file (-1=after last byte, -2=last byte, etc).
+-&gt;NOTE: An error will be raised if you attempt to go before the beginning of the file.
+PROC setPosition(pos:BIGVALUE) OF cHostFile
+	-&gt;use check
+	IF self.fileDesc = 0 THEN Throw(&quot;EMU&quot;, &#x27;cHostFile.setPosition(); file not open&#x27;)
+	
+	IF pos &lt; 0
+		pos := pos + self.sizeInBytes + 1
+		IF pos &lt; 0 THEN Throw(&quot;EMU&quot;, &#x27;cHostFile.setPosition(); position before start of file is illegal&#x27;)
+	ENDIF
+	
+	self.position := pos
+ENDPROC
+
+-&gt;returns the read/write position in the file, from the beginning unless requested otherwise.
+PROC getPosition(fromEnd=FALSE:BOOL) OF cHostFile RETURNS pos:BIGVALUE
+	-&gt;use check
+	IF self.fileDesc = 0 THEN Throw(&quot;EMU&quot;, &#x27;cHostFile.getPosition(); file not open&#x27;)
+	
+	IF fromEnd = FALSE
+		pos := self.position
+	ELSE
+		pos := self.position - self.sizeInBytes - 1
+	ENDIF
+ENDPROC
+
+PRIVATE
+-&gt;helper method, writes pad bytes to file
+PROC writePadBytes(numOfPadBytes:BIGVALUE, startPosOfPadBytes:BIGVALUE) OF cHostFile
+	DEF buffer:ARRAY OF BYTE, bufferSize
+	DEF writePadSize, i, padByte:BYTE, ret:SSIZE_T
+	
+	-&gt;create buffer full of necessary pad bytes
+	bufferSize := bigMin(CPATH_FILE_BUFFER_SIZE, numOfPadBytes) !!VALUE
+	NEW buffer[bufferSize]
+	padByte := self.padByte
+	IF padByte &lt;&gt; 0 THEN FOR i := 0 TO bufferSize-1 DO buffer[i] := padByte
+	
+	-&gt;write pad bytes
+	IF self.hostPosition &lt;&gt; startPosOfPadBytes
+		safeSeek(self.fileDesc, self.hostPosition := startPosOfPadBytes)
+	ENDIF
+	
+	writePadSize := bufferSize
+	WHILE numOfPadBytes &gt; 0
+		ret := write(self.fileDesc, buffer, writePadSize) 
+		IF ret = -1 THEN Throw(&quot;FILE&quot;, posixFailureReason(&#x27;cHostFile.writePadBytes(); write() failed&#x27;))
+		IF ret &lt;&gt; writePadSize THEN Throw(&quot;FULL&quot;, &#x27;cHostFile.writePadBytes(); not all pad bytes were written, disk may be full&#x27;)
+		self.hostPosition := self.hostPosition + writePadSize
+		
+		numOfPadBytes := numOfPadBytes - writePadSize	-&gt;keep track of how many pad bytes still to be written
+		IF numOfPadBytes &lt; writePadSize THEN writePadSize := numOfPadBytes !!VALUE	-&gt;ensure final write does not goes past intended place
+	ENDWHILE
+	IF numOfPadBytes &lt;&gt; 0 THEN Throw(&quot;BUG&quot;, &#x27;cHostFile.writePadBytes(); too many pad bytes were written&#x27;)
+FINALLY
+	END buffer
+ENDPROC
+
+-&gt;helper method, set file size without writing any pad bytes
+PROC setSizeQuick(sizeInBytes:BIGVALUE) OF cHostFile
+	IF (sizeInBytes &lt;= self.sizeInBytes) OR self.setSizeQuickKludgeUnsupported
+		-&gt;(reducing file size)
+		IF ftruncate(self.fileDesc, sizeInBytes) &lt;&gt; -1
+			-&gt;(correctly changed file size)
+			self.sizeInBytes := sizeInBytes
+		ELSE
+			-&gt;(failed to change size of file)
+			Throw(&quot;FILE&quot;, posixFailureReason(&#x27;cHostFile.setSizeQuick(); ftruncate() failed&#x27;))
+		ENDIF
+	ELSE
+		-&gt;(increasing file size) so use alternative method which is much faster on Windows (5.3 times faster for a 2GB FAT32 USB memory stick)
+		safeSeek(self.fileDesc, sizeInBytes - 1)
+		IF write(self.fileDesc, &#x27;&#x27;, 1) &lt;&gt; -1
+			-&gt;(correctly changed file size)
+			self.sizeInBytes := sizeInBytes
+		ELSE
+			-&gt;(failed to change size of file) so see whether out fast resize method is to blame
+			-&gt;NOTE: Windows accessing an Amiga-based Samba share gives the EINVAL error.
+			IF ftruncate(self.fileDesc, sizeInBytes) &lt;&gt; -1
+				-&gt;(correctly changed file size)
+				self.sizeInBytes := sizeInBytes
+				
+				self.setSizeQuickKludgeUnsupported := TRUE	-&gt;use the slower resize method in the future, for this file
+			ELSE
+				Throw(&quot;FILE&quot;, posixFailureReason(&#x27;cHostFile.setSizeQuick(); write() failed&#x27;))
+			ENDIF
+		ENDIF
+	ENDIF
+FINALLY
+	self.hostPosition := safeSeek(self.fileDesc, 0, SEEK_CUR)		-&gt;don&#x27;t assume position after resizing file (or an exception)
+ENDPROC
+PUBLIC
+
+-&gt;changes the file size, if necessary extending the file with pad bytes
+PROC setSize(sizeInBytes:BIGVALUE) OF cHostFile
+	DEF numOfPadBytes, startPosOfPadBytes:BIGVALUE
+	
+	-&gt;use check
+	IF self.fileDesc = 0 THEN Throw(&quot;EMU&quot;, &#x27;cHostFile.setSize(); file not open&#x27;)
+	IF self.readOnly THEN Throw(&quot;EMU&quot;, &#x27;cHostFile.setSize(); file opened in read only mode&#x27;)
+	IF sizeInBytes &lt; 0 THEN Throw(&quot;EMU&quot;, &#x27;cHostFile.setSize(); sizeInBytes&lt;0&#x27;)
+	
+	-&gt;calc number of pad bytes needed
+	numOfPadBytes := sizeInBytes - self.sizeInBytes !!VALUE
+	IF numOfPadBytes &lt; 0
+		numOfPadBytes := 0	-&gt;reduced file size, so no pad bytes needed
+	ELSE
+		startPosOfPadBytes := self.sizeInBytes
+	ENDIF
+	
+	-&gt;resize file
+	self.setSizeQuick(sizeInBytes)
+	
+	-&gt;write pad bytes
+	IF numOfPadBytes &gt; 0 THEN self.writePadBytes(numOfPadBytes, startPosOfPadBytes)
+	
+	-&gt;update cache with modified file&#x27;s actual time (&amp; archive mode bit?)
+	IF fstat(self.fileDesc, self.stat) = -1 THEN Throw(&quot;FILE&quot;, posixFailureReason(&#x27;cHostFile.setSize(); fstat() failed&#x27;))
+ENDPROC
+
+-&gt;returns the file size in bytes
+PROC getSize() OF cHostFile RETURNS sizeInBytes:BIGVALUE
+	-&gt;use check
+	IF self.fileDesc = 0 THEN Throw(&quot;EMU&quot;, &#x27;cHostFile.getSize(); file not open&#x27;)
+	
+	sizeInBytes := self.sizeInBytes
+ENDPROC
+
+-&gt;changes the time
+-&gt;NOTE: If the underlying filingsystem does not support the required time accuracy, then the actual time will be slightly different.
+PROC setTime(time:BIGVALUE) OF cHostFile RETURNS success:BOOL
+	DEF utimbuf:_utimbuf
+	
+	success := TRUE
+	
+	-&gt;use check
+	IF self.fileDesc = 0 THEN Throw(&quot;EMU&quot;, &#x27;cHostFile.setTime(); file not open&#x27;)
+	IF self.readOnly THEN Throw(&quot;EMU&quot;, &#x27;cHostFile.setTime(); file opened in read only mode&#x27;)
+	
+	-&gt;set time
+	utimbuf.actime := utimbuf.modtime := 946684800 + (time!!VALUE)
+	IF _futime(self.fileDesc, utimbuf) = -1
+		self.failureReason := posixFailureReason(&#x27;error setting file date&#x27;)
+		RETURN FALSE
+	ENDIF
+	
+	-&gt;update cache with actual time (incase it differs slightly)
+	IF fstat(self.fileDesc, self.stat) = -1 THEN Throw(&quot;FILE&quot;, posixFailureReason(&#x27;cHostFile.setTime(); fstat() failed&#x27;))
+FINALLY
+	IF success = FALSE
+		self.failureOrigin := &#x27;cHostFile.changeExtra()&#x27;
+	ENDIF
+ENDPROC
+
+-&gt;returns the time the file was last updated
+PROC getTime() OF cHostFile RETURNS time:BIGVALUE
+	-&gt;use check
+	IF self.fileDesc = 0 THEN Throw(&quot;EMU&quot;, &#x27;cHostFile.getTime(); file not open&#x27;)
+	
+	time := self.stat.mtime - 946684800
+ENDPROC
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

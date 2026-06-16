@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>queens.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-framework.html">framework</a> &rsaquo; queens.e</div><h1>File: <code>queens.e</code></h1><p class="meta">79 lines · project <a href="../examples/pkg-framework.html"><code>framework</code></a></p><p class="pathctx">framework/examples/queens.e</p><h2>Source</h2><pre class="code">
+OPT OSVERSION=37
+
+OBJECT queen
+  myrow:LONG
+  mycolumn:LONG
+  neighbor:PTR TO queen
+  boardsize:LONG
+ENDOBJECT
+
+PROC build(aQueen,col,size) OF queen
+  self.neighbor:=aQueen
+  self.mycolumn:=col
+  self.myrow:=1
+  self.boardsize:=size
+  IF self.neighbor THEN self.neighbor.first()
+ENDPROC
+
+PROC checkCol(colNumber,rowNumber) OF queen
+  DEF cd
+  IF rowNumber=self.myrow THEN RETURN FALSE
+  cd:=colNumber-self.mycolumn
+  IF self.myrow+cd=rowNumber THEN RETURN FALSE
+  IF self.myrow-cd=rowNumber THEN RETURN FALSE
+  IF self.neighbor THEN RETURN self.neighbor.checkCol(colNumber,rowNumber)
+ENDPROC TRUE
+
+PROC first() OF queen
+  self.myrow:=1
+ENDPROC self.checkrow()
+
+PROC next() OF queen
+  self.myrow:=self.myrow+1
+ENDPROC self.checkrow()
+
+PROC checkrow() OF queen
+  IF self.neighbor=NIL
+    IF self.myrow&gt;self.boardsize THEN RETURN 0
+    RETURN self.myrow
+  ENDIF
+  WHILE self.myrow&lt;=self.boardsize
+    IF self.neighbor.checkCol(self.mycolumn,self.myrow) THEN
+      RETURN self.myrow
+    self.myrow:=self.myrow+1
+  ENDWHILE
+  IF self.neighbor.next()=0 THEN RETURN 0
+ENDPROC self.first()
+
+PROC printboard() OF queen
+  DEF x
+  IF self.neighbor THEN self.neighbor.printboard()
+  FOR x:=1 TO self.boardsize
+    FputC(stdout,IF x=self.myrow THEN &quot;Q&quot; ELSE &quot;.&quot;)
+  ENDFOR
+  FputC(stdout,&quot;\n&quot;)
+ENDPROC
+
+PROC main() HANDLE
+  DEF myargs:PTR TO LONG,rdargs
+  DEF lastq=NIL:PTR TO queen,newq:PTR TO queen
+  DEF size,x
+  myargs:=New(8)
+  IF (rdargs:=ReadArgs(&#x27;BOARDSIZE/N/A,ALL/S&#x27;,myargs,NIL))=NIL THEN Raise(1)
+  IF (size:=Long(myargs[0]))&lt;=0 THEN Raise(1)
+  FOR x:=1 TO size DO lastq:=NEW newq.build(lastq,x,size)
+  IF lastq.first() THEN lastq.printboard()
+  IF myargs[1]=FALSE THEN Raise(0)
+  WHILE TRUE
+    EXIT CtrlC()
+    EXIT lastq.next()=0
+    FputC(stdout,&quot;\n&quot;)
+    lastq.printboard()
+  ENDWHILE
+EXCEPT DO
+  IF rdargs THEN FreeArgs(rdargs)
+  IF exception THEN WriteF(&#x27;Bad Args!\n&#x27;)
+ENDPROC
+
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

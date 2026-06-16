@@ -1,0 +1,320 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ViewIlbm.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-capus.html">capus</a> &rsaquo; ViewIlbm.e</div><h1>File: <code>ViewIlbm.e</code></h1><p class="meta">294 lines · project <a href="../examples/pkg-capus.html"><code>capus</code></a></p><p class="pathctx">capus/VIlbm/ViewIlbm.e</p><p class="prose">******************************************************************************* * &lt;&lt; <a href="../modules/opal.html#const-auto">AUTO</a> HEADER XDME &gt;&gt; ******************************************************************************** ED &quot;EDG&quot; EC &quot;EC&quot; PREPRO &quot;EPP&quot; SOURCE &quot;ViewIlbm.e&quot; EPPDEST &quot;ViewIlbm_EPP.e&quot; EXEC &quot;ViewIlbm&quot; ISOURCE &quot; &quot; HSOURCE &quot; &quot;</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/gfxbase.html">graphics/gfxbase</a></li><li><a href="../modules/view.html">graphics/view</a></li><li><a href="../modules/iff.html">iff</a></li><li><a href="../modules/reqtools.html">reqtools</a></li><li><a href="../modules/tagitem.html">utility/tagitem</a></li></ul></div><h2>Source</h2><pre class="code">/********************************************************************************
+ * &lt;&lt; AUTO HEADER XDME &gt;&gt;
+ ********************************************************************************
+ ED             &quot;EDG&quot;
+ EC             &quot;EC&quot;
+ PREPRO         &quot;EPP&quot;
+ SOURCE         &quot;ViewIlbm.e&quot;
+ EPPDEST        &quot;ViewIlbm_EPP.e&quot;
+ EXEC           &quot;ViewIlbm&quot;
+ ISOURCE        &quot; &quot;
+ HSOURCE        &quot; &quot;
+ ERROREC        &quot; &quot;
+ ERROREPP       &quot; &quot;
+ VERSION        &quot;0&quot;
+ REVISION       &quot;1&quot;
+ NAMEPRG        &quot;ViewIlbm&quot;
+ NAMEAUTHOR     &quot;NasGûl&quot;
+ ********************************************************************************
+ * HISTORY :
+ *******************************************************************************/
+
+OPT OSVERSION=39
+
+ENUM ER_NONE,ER_GFX,ER_INTUI,ER_IFF,ER_REQTOOLS,ER_ONLYCLI,ER_BADARGS
+
+MODULE &#x27;graphics/gfxbase&#x27;,&#x27;graphics/displayinfo&#x27;,&#x27;dos/dos&#x27;,&#x27;intuition/screens&#x27;,&#x27;intuition/intuition&#x27;
+MODULE &#x27;graphics/view&#x27;,&#x27;graphics/gfx&#x27;,&#x27;graphics/rastport&#x27;
+MODULE &#x27;iff&#x27;,&#x27;libraries/iff&#x27;
+MODULE &#x27;reqtools&#x27;,&#x27;libraries/reqtools&#x27;
+MODULE &#x27;utility/tagitem&#x27;
+
+DEF f_s[256]:STRING,opt_hires,opt_lace,opt_lores,opt_req,opt_info,opt_filereq
+DEF opt_did_cli,whith_req=FALSE
+DEF reqbody[500]:STRING
+DEF rast
+
+PROC main() HANDLE /*&quot;main()&quot;*/
+/********************************************************************************
+ * Para         : NONE
+ * Return       : NONE
+ * Description  : Main proc.
+ *******************************************************************************/
+    DEF test_main
+    VOID {prg_banner}
+    IF (gfxbase:=OpenLibrary(&#x27;graphics.library&#x27;,37))=NIL THEN Raise(ER_GFX)
+    IF (intuitionbase:=OpenLibrary(&#x27;intuition.library&#x27;,37))=NIL THEN Raise(ER_INTUI)
+    IF (iffbase:=OpenLibrary(&#x27;iff.library&#x27;,23))=NIL THEN Raise(ER_IFF)
+    IF (reqtoolsbase:=OpenLibrary(&#x27;reqtools.library&#x27;,38))=NIL THEN Raise(ER_REQTOOLS)
+    IF wbmessage&lt;&gt;NIL
+        Raise(ER_ONLYCLI)
+    ELSE
+        IF (test_main:=start_from_cli())&lt;&gt;ER_NONE THEN Raise(test_main)
+    ENDIF
+    IF opt_filereq
+        my_filerequester()
+    ELSE
+        displayilbm(f_s)
+    ENDIF
+    Raise(ER_NONE)
+EXCEPT
+    IF reqtoolsbase THEN CloseLibrary(reqtoolsbase)
+    IF iffbase THEN CloseLibrary(iffbase)
+    IF intuitionbase THEN CloseLibrary(intuitionbase)
+    IF gfxbase THEN CloseLibrary(gfxbase)
+    SELECT exception
+        CASE ER_GFX;         WriteF(&#x27;Graphics.library ?\n&#x27;)
+        CASE ER_INTUI;       WriteF(&#x27;Intuition.library ?\n&#x27;)
+        CASE ER_IFF;         WriteF(&#x27;Iff.library ?\n&#x27;)
+        CASE ER_REQTOOLS;    WriteF(&#x27;Reqtools.library ?\n&#x27;)
+        CASE ER_ONLYCLI;     WriteF(&#x27;Du cli uniquement.\n&#x27;)
+        CASE ER_BADARGS;     WriteF(&#x27;Mauvais Argument.\n&#x27;)
+    ENDSELECT
+ENDPROC
+PROC my_filerequester() /*&quot;my_filerequester()&quot;*/
+/********************************************************************************
+ * Para         : NONE
+ * Return       : NONE
+ * Description  : PopUp a MultiFileRequester to choose the source(s).
+ *******************************************************************************/
+    DEF buffer[108]:STRING,add_liste
+    DEF fich[100]:STRING
+    DEF liste:PTR TO rtfilelist
+    DEF reqfile:PTR TO rtfilerequester
+    IF reqfile:=RtAllocRequestA(RT_FILEREQ,0)
+        buffer[0]:=0
+        add_liste:=RtFileRequestA(reqfile,buffer,&#x27;ViewIlbm v0.0a (c) NasGûl&#x27;,[RTFI_FLAGS,FREQF_MULTISELECT,
+                                                               RTFI_OKTEXT,&#x27;_View&#x27;,RTFI_HEIGHT,256,
+                                                               RT_UNDERSCORE,&quot;_&quot;,
+                                                               TAG_DONE])
+        liste:=add_liste
+        IF buffer[0]&lt;&gt;0
+            WHILE liste
+                AddPart(reqfile.dir,&#x27;&#x27;,100)
+                StrCopy(fich,reqfile.dir,ALL)
+                StrAdd(fich,liste.name,ALL)
+                StrCopy(f_s,fich,ALL)
+                displayilbm(f_s)
+                liste:=liste.next
+            ENDWHILE
+            RtFreeFileList(add_liste)
+        ENDIF
+        RtFreeRequest(reqfile)
+    ELSE
+        RtEZRequestA(&#x27;Impossible d\aouvrir le sélécteur de fichiers.&#x27;,&#x27;Ok&#x27;,0,0,[RTEZ_REQTITLE,&#x27;ViewIlbm v0.0a (c) 1994 NasGûl&#x27;,
+                                                   TAG_DONE,0]:tagitem)
+    ENDIF
+ENDPROC
+PROC start_from_cli() /*&quot;start_from_cli()&quot;*/
+/********************************************************************************
+ * Para         : NONE
+ * Return       : ER_NONE if ok,else the error.
+ * Description  : Parse CLi arguments.
+ *******************************************************************************/
+    DEF myargs:PTR TO LONG,rdargs
+    myargs:=[0,0,0,0,0,0,0]
+    IF rdargs:=ReadArgs(&#x27;FICHIER,HIRES/S,LACE/S,LORES/S,REQ/S,INFO/S,FILEREQ/S&#x27;,myargs,NIL)
+        StringF(f_s,&#x27;\s&#x27;,myargs[0])
+        IF opt_hires:=myargs[1] THEN opt_did_cli:=HIRES_KEY
+        IF opt_lace:=myargs[2] THEN opt_did_cli:=LORESLACE_KEY
+        IF (opt_hires:=myargs[1]) AND (opt_lace:=myargs[2]) THEN opt_did_cli:=HIRESLACE_KEY
+        IF (opt_lores:=myargs[3]) THEN opt_did_cli:=LORES_KEY
+        IF (opt_req:=myargs[4]) THEN whith_req:=TRUE
+        opt_info:=myargs[5]
+        opt_filereq:=myargs[6]
+        FreeArgs(rdargs)
+    ELSE
+        RETURN ER_BADARGS
+    ENDIF
+    RETURN ER_NONE
+ENDPROC
+PROC displayilbm(f_s) /*&quot;displayilbm(f_s)&quot;*/
+/********************************************************************************
+ * Para         : the source file (STRING).
+ * Return       : NONE
+ * Description  : View the source file.
+ *******************************************************************************/
+    DEF iff
+    DEF my_bmhd:PTR TO bmhd
+    DEF my_screen:PTR TO screen
+    DEF my_ns:PTR TO ns
+    DEF count,colortable[768]:ARRAY OF INT
+    DEF passe_chunk=NIL
+    DEF f_mode,adr_chunk_camg,offset_camg
+    DEF ret,x
+    DEF vquatre_bit=FALSE
+    IF iff:=IfFL_OpenIFF(f_s,IFFL_MODE_READ)
+        IF adr_chunk_camg:=IfFL_FindChunk(iff,&quot;CAMG&quot;)
+            offset_camg:=adr_chunk_camg-iff
+        ENDIF
+        IF my_bmhd:=IfFL_GetBMHD(iff)
+            my_ns:=New(SIZEOF ns)
+            my_ns.type:=CUSTOMSCREEN+SCREENBEHIND+SCREENQUIET
+            my_ns.width:=my_bmhd.w
+            my_ns.height:=my_bmhd.h
+            my_ns.depth:=my_bmhd.nplanes
+            IF my_ns.depth&gt;8
+                my_ns.depth:=8
+                vquatre_bit:=TRUE
+            ENDIF
+            f_mode:=IfFL_GetViewModes(iff)
+            IF whith_req=FALSE
+                my_ns.viewmodes:=f_mode+opt_did_cli
+            ELSE
+                my_ns.viewmodes:=choosedisplayid(f_mode)
+            ENDIF
+            IF my_screen:=OpenScreen(my_ns)
+                /*PubScreenStatus(my_screen,0)*/
+                rast:=my_screen.rastport
+                count:=IfFL_GetColorTab(iff,colortable)
+                IF vquatre_bit=FALSE
+                    IF (IfFL_FindChunk(iff,&quot;CMAP&quot;))
+                        LoadRGB4(my_screen.viewport,colortable,count)
+                    ELSE
+                        /*LoadRGB4(my_screen.viewport,{pal256},768)*/
+                    ENDIF
+                ELSE
+                    FOR x:=0 TO 255 DO fullcolour(x,x,x,x)
+                ENDIF
+                IF (IfFL_DecodePic(iff,my_screen.bitmap))
+                    ScreenToFront(my_screen)
+                    StringF(reqbody,&#x27;ViewIlbm v0.0a © 1994 NasGûl\n&#x27;+
+                               &#x27;Image             Ecran\n&#x27;+
+                               &#x27;Width   :\l\d[8]  Width   :\l\d[8]\n&#x27;+
+                               &#x27;Height  :\l\d[8]  Height  :\l\d[8]\n&#x27;+
+                               &#x27;Depth   :\l\d[8]  Depth   :\l\d[8]\n&#x27;+
+                               &#x27;DisMode :\l\h[8]  DisMode :\l\h[8]\n&#x27;,
+                                my_bmhd.w,my_screen.width,
+                                my_bmhd.h,my_screen.height,
+                                my_bmhd.nplanes,my_ns.depth,
+                                f_mode,my_ns.viewmodes)
+                    REPEAT
+                        IF Mouse()=3
+                            DisplayBeep(my_screen)
+                            passe_chunk:=my_ns.viewmodes
+                        ENDIF
+                    UNTIL Mouse()=2
+                    ScreenToBack(my_screen)
+                    IF opt_info THEN RtEZRequestA(reqbody,&#x27;_Ok&#x27;,0,0,[RT_UNDERSCORE,&quot;_&quot;,TAG_DONE,0])
+                ELSE
+                    RtEZRequestA(&#x27;can\at decode picture.&#x27;,&#x27;Ok&#x27;,0,0,NIL)
+                ENDIF
+                CloseScreen(my_screen)
+                Dispose(my_ns)
+            ELSE
+                RtEZRequestA(&#x27;can\at open screen.&#x27;,&#x27;Ok&#x27;,0,0,NIL)
+            ENDIF
+        ELSE
+            RtEZRequestA(&#x27;This file has not bitmap header.&#x27;,&#x27;Ok&#x27;,0,0,NIL)
+        ENDIF
+        IF iff THEN IfFL_CloseIFF(iff)
+    ELSE
+        RtEZRequestA(&#x27;Can\at open file \s&#x27;,&#x27;Ops&#x27;,0,[f_s],NIL)
+    ENDIF
+    IF passe_chunk
+        IF vquatre_bit=FALSE
+            IF (RtEZRequestA(&#x27;Save New Viewmodes in \s\n&#x27;,&#x27;_Yes|_No&#x27;,0,[f_s],[RT_UNDERSCORE,&quot;_&quot;,TAG_DONE,0]))
+                ret:=save_chunk_viewmodes(passe_chunk,offset_camg)
+                IF ret=FALSE THEN RtEZRequestA(&#x27;Save NewModes Failed&#x27;,&#x27;_Ok&#x27;,0,0,[RT_UNDERSCORE,&quot;_&quot;,TAG_DONE,0])
+            ENDIF
+        ELSE
+            RtEZRequestA(&#x27;No Save in 24 bits file !!&#x27;,&#x27;_Ok&#x27;,0,0,[RT_UNDERSCORE,&quot;_&quot;,TAG_DONE,0])
+        ENDIF
+    ENDIF
+ENDPROC
+PROC save_chunk_viewmodes(passe_chunk,offset_camg) /*&quot;save_chunk_viewmodes(passe_chunk,offset_camg)&quot;*/
+/********************************************************************************
+ * Para         : the chunk,the offset of the camg chunk.
+ * Return       : TRUE if ok,else FALSE
+ * Description  : Save the new Chunk Camg in file.
+ *******************************************************************************/
+  DEF len,adr,buf,handle,flen=TRUE,ccc
+  DEF new_chunk,my_buf_chunk[3]:LIST
+  IF (flen:=FileLength(f_s))=-1 THEN RETURN FALSE
+  IF (buf:=New(flen+1))=NIL THEN RETURN FALSE
+  IF (handle:=Open(f_s,1005))=NIL THEN RETURN FALSE
+  len:=Read(handle,buf,flen)
+  Close(handle)
+  IF len&lt;1 THEN RETURN FALSE
+  new_chunk:=passe_chunk
+  my_buf_chunk:=[ID_CAMG,4,new_chunk]:LONG
+  adr:=buf
+  ccc:=adr+offset_camg
+  ^ccc:=ID_CAMG
+  ccc:=adr+offset_camg+4
+  ^ccc:=4
+  ccc:=adr+offset_camg+8
+  ^ccc:=new_chunk
+  handle:=Open(f_s,1006)
+  Write(handle,buf,len)
+  Close(handle)
+  Dispose(my_buf_chunk)
+  Dispose(buf)
+  RETURN TRUE
+ENDPROC
+PROC choosedisplayid(f_mode) /*&quot;choosedisplayid(f_mode)&quot;*/
+/********************************************************************************
+ * Para         : IDMode.
+ * Return       : The new IdMode selected.
+ * Description  : PopUp a ScreenModeRequester to choose the DisplayID.
+ *******************************************************************************/
+    DEF reqscreen:PTR TO rtscreenmoderequester
+    DEF retour
+    IF reqscreen:=RtAllocRequestA(RT_SCREENMODEREQ,NIL)
+            RtChangeReqAttrA(reqscreen,[RTSC_DISPLAYID,f_mode,TAG_DONE,0])
+            RtScreenModeRequestA(reqscreen,f_s,[RTSC_FLAGS,SCREQF_NONSTDMODES,TAG_DONE,0])
+            retour:=reqscreen.displayid
+            RtFreeRequest(reqscreen)
+    ENDIF
+    RETURN retour
+ENDPROC
+PROC fullcolour(nr,r,g,b) /*&quot;fullcolour(nr,r,g,b)&quot;*/
+/********************************************************************************
+ * Para         : Red,Green,Blue (0-255).
+ * Return       : NONE
+ * Description  : Make a SetRGB32().
+ *******************************************************************************/
+  MOVE.L rast,A0
+  SUB.L  #40,A0
+  MOVE.L nr,D0
+  MOVE.L r,D1
+  SWAP   D1
+  LSL.L  #8,D1
+  MOVE.L g,D2
+  SWAP   D2
+  LSL.L  #8,D2
+  MOVE.L b,D3
+  SWAP   D3
+  LSL.L  #8,D3
+  MOVE.L gfxbase,A6
+  JSR    -$354(A6)
+ENDPROC
+prg_banner:
+INCBIN &#x27;ViewIlbm.header&#x27;
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

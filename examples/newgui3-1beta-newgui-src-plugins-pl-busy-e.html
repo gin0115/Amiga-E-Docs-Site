@@ -1,0 +1,155 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>pl_busy.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-newgui3-1beta.html">newgui3_1beta</a> &rsaquo; pl_busy.e</div><h1>File: <code>pl_busy.e</code></h1><p class="meta">129 lines · project <a href="../examples/pkg-newgui3-1beta.html"><code>newgui3_1beta</code></a></p><p class="pathctx">newgui3_1beta/NewGUI/Src/Plugins/pl_busy.e</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/intuition.html">intuition/intuition</a></li><li><a href="../modules/newgui.html">newgui/newgui</a></li></ul></div><h2>Source</h2><pre class="code">OPT     OSVERSION = 37
+OPT     MODULE
+
+MODULE  &#x27;newgui/newgui&#x27;
+MODULE  &#x27;intuition/intuition&#x27;
+
+EXPORT  CONST   BUSY = PLUGIN
+
+EXPORT  ENUM    BUSY_STARTLEFT=1,
+                BUSY_STARTRIGHT,
+                BUSY_BOTH
+                
+
+EXPORT OBJECT busy      OF plugin
+PRIVATE
+ win            :LONG                   -&gt; Window-PTR
+ col            :LONG                   -&gt; Nummer der Farbe
+ elements       :LONG                   -&gt; Anzahl an Elementen
+ doit           :LONG                   -&gt;
+ dir            :INT                    -&gt; Direction
+ space          :INT                    -&gt; Abstand vom Rand zum Busy-Balken
+ height         :INT                    -&gt; Höhe
+ active         :INT                    -&gt; Plugin aktiv?
+ pos            :INT                    -&gt; (0-10)
+ both           :INT                    -&gt; Interner Weg&quot;weise&quot; für BUSY_BOTHWAY
+ENDOBJECT
+
+PROC busy(color,height=2,space=0,dir=0,elements=10)    OF busy
+ self.pos:=1
+  self.height:=height
+   self.space:=space
+    self.col:=color
+     IF dir=BUSY_BOTH
+      self.both:=TRUE
+       self.dir:=BUSY_STARTLEFT
+     ELSE
+      self.dir:=dir
+     ENDIF
+      self.elements:=elements
+       self.win:=NIL
+ENDPROC
+
+PROC min_size(ta,fh)    OF busy         IS 12,4+self.height
+
+PROC will_resize()      OF busy         IS RESIZEX
+
+PROC render(ta,x,y,xs,ys,w:PTR TO window) OF busy
+ DEF    height
+  height:=self.height
+   IF self.win=NIL THEN self.win:=w
+    stdrast:=w.rport
+     Line(x+1, y+1,       x+xs-2,y+1       ,1)
+     Line(x,   y+2,       x,     y+height+3,1)
+     Line(x+1, y+height+4,x+xs-2,y+height+4,2)
+     Line(x+xs,y+2,       x+xs,  y+height+3,2)
+    clear(w,x,y,xs,height)
+ENDPROC
+
+PROC clear(w:PTR TO window,x,y,xs,height)
+ SetAPen(w.rport,0)
+ SetBPen(w.rport,0)
+  RectFill(w.rport,x+1,y+2,x+xs-1,y+height+3)
+ENDPROC
+
+PROC message_test(imsg:PTR TO intuimessage,win:PTR TO window) OF busy 
+ IF (imsg.class=IDCMP_INTUITICKS) THEN self.doit:=TRUE ELSE self.doit:=FALSE
+ENDPROC FALSE
+
+PROC after_reply()    OF busy
+ DEF    pos,dir
+  IF self.doit=TRUE
+   pos,dir:=move(self.active,self.gh.wnd.rport,self.x,self.y,self.xs,self.pos,self.col,self.dir,self.elements,self.height,self.space,self.both)
+    self.pos:=pos
+   self.dir:=dir
+  ENDIF
+ENDPROC
+
+PROC move(active,rport,x,y,xs,pos,col,dir,elements,height,space,both)
+ DEF    len,                             -&gt; Länge des Busy-Balkens in Pixel
+        realpos
+  IF active
+   stdrast:=rport
+    IF pos&lt;elements
+     pos++
+    ELSE
+     IF both=TRUE
+      IF dir=BUSY_STARTRIGHT THEN dir:=BUSY_STARTLEFT ELSE dir:=BUSY_STARTRIGHT
+     ENDIF
+     pos:=1
+    ENDIF
+    len:=xs/elements
+     IF dir=BUSY_STARTRIGHT
+      IF pos=1
+       realpos:=0
+      ELSE
+       realpos:=len*(elements-(pos-1))
+      ENDIF
+       SetAPen(rport,0)
+       SetBPen(rport,0)
+        RectFill(rport,x+realpos+1+space,y+2+space,x+realpos+len-1-space,y+height+3-space)
+       realpos:=len*(elements-pos)
+       SetAPen(rport,col)
+       SetBPen(rport,col)
+        RectFill(rport,x+realpos+1+space,y+2+space,x+realpos+len-1-space,y+height+3-space)
+     ELSE
+      IF pos=1
+       realpos:=len*(elements-1)
+      ELSE
+       realpos:=len*(pos-2)
+      ENDIF
+       SetAPen(rport,0)
+       SetBPen(rport,0)
+        RectFill(rport,x+realpos+1+space,y+2+space,x+realpos+len-1-space,y+height+3-space)
+       realpos:=len*(pos-1)
+       SetAPen(rport,col)
+       SetBPen(rport,col)
+        RectFill(rport,x+realpos+1+space,y+2+space,x+realpos+len-1-space,y+height+3-space)
+     ENDIF
+   ENDIF
+ENDPROC pos,dir
+
+PROC active(value)      OF busy
+ self.active:=value
+  IF value=FALSE
+   clear(self.win,self.x,self.y,self.xs,self.height)
+  ENDIF
+ self.pos:=1
+ENDPROC value
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

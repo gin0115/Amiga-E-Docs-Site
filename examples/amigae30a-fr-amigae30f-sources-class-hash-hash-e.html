@@ -1,0 +1,134 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>hash.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-amigae30a-fr.html">amigae30a_fr</a> &rsaquo; hash.e</div><h1>File: <code>hash.e</code></h1><p class="meta">108 lines · project <a href="../examples/pkg-amigae30a-fr.html"><code>amigae30a_fr</code></a></p><p class="pathctx">amigae30a_fr/AmigaE30f/Sources/Class/Hash/hash.e</p><p class="prose">hashing module</p><h2>Source</h2><pre class="code">-&gt; hashing module
+
+OPT MODULE
+
+EXPORT CONST HASH_NORMAL   = 211,
+             HASH_MEDIUM   = 941,
+             HASH_HEAVY    = 3911,
+             HASH_HEAVIER  = 16267
+
+EXPORT OBJECT hashtable PRIVATE
+  size,entries:PTR TO LONG
+ENDOBJECT
+
+EXPORT OBJECT hashlink PRIVATE
+  next, data, len
+ENDOBJECT
+
+PROC hashtable(tablesize) OF hashtable          -&gt; constructeur
+  DEF table:PTR TO LONG
+  self.entries:=NEW table[tablesize]
+  self.size:=tablesize
+ENDPROC
+
+PROC end() OF hashtable                         -&gt; destructeur
+  DEF p:PTR TO LONG
+  p:=self.entries
+  END p[self.size]
+ENDPROC
+
+/* coupe les données, puis les essaie de trouver leur entrée.
+   retourne les hashlink, hashvalue */
+
+PROC find(data,len) OF hashtable
+  DEF e,s
+  e:=self.entries
+  s:=self.size
+  MOVEM.L D3-D7,-(A7)
+  MOVE.L data,D6        -&gt; D6=data
+  MOVE.L e,A1           -&gt; A1=table
+  MOVE.L s,D3           -&gt; D3=tablesize
+  MOVEQ  #0,D1          -&gt; D1=hashvalue
+  MOVEQ  #0,D0          -&gt; D0=hashlink
+  MOVE.L len,D4         -&gt; D4=len
+  BEQ.S  done
+  MOVE.L D4,D5
+  MOVE.L D6,A2
+  SUBQ.L #1,D5
+loop:
+  LSL.W  #4,D1
+  ADD.B  (A2)+,D1
+  DBRA   D5,loop
+  DIVU   D3,D1
+  SWAP   D1
+  EXT.L  D1
+  MOVE.L A1,A2          -&gt; maintenant cherche les entrées
+  MOVE.L D1,D5
+  LSL.L  #2,D5
+  ADD.L  D5,A2          -&gt; A2 pointe sur le spot dans la table
+findd:
+  MOVE.L (A2),D5        -&gt; pointe sur le prochain
+  BEQ.S  done
+  MOVE.L D5,A2
+  CMP.L  8(A2),D4       -&gt; si la longueur est inégale, pas de problême
+  BNE.S  findd
+  MOVE.L 4(A2),A0       -&gt; prend les pointeurs dans les 2 zones
+  MOVE.L D6,A3
+  MOVE.L D4,D5
+  SUBQ.L #1,D5
+compare:                -&gt; compare bytes à bytes
+  CMPM.B (A0)+,(A3)+
+  BNE.S  findd
+  DBRA   D5,compare
+  MOVE.L A2,D0          -&gt; cherche l&#x27;entrée
+done:
+  MOVEM.L (A7)+,D3-D7
+ENDPROC D0
+
+-&gt; ajoute un nouveau hashlink
+
+PROC add(link:PTR TO hashlink,hashvalue,data,len) OF hashtable
+  link.next:=self.entries[hashvalue]
+  link.data:=data
+  link.len:=len
+  self.entries[hashvalue]:=link
+ENDPROC
+
+PROC iterate(do_proc) OF hashtable
+  DEF a,n,p:PTR TO hashlink, depth, r=0, num=0, table:PTR TO LONG
+  n:=self.size
+  table:=self.entries
+  FOR a:=1 TO n
+    p:=table[]++
+    depth:=1
+    WHILE p
+      r:=r+do_proc(p, depth++)
+      num++
+      p:=p.next
+    ENDWHILE
+  ENDFOR
+ENDPROC r,num
+
+PROC calc_hash_spread() OF hashtable
+  DEF idepth,num
+  idepth,num:=self.iterate({calcspread})
+ENDPROC IF num THEN !idepth/num ELSE 0.0
+
+PROC calcspread(h,depth) IS depth
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

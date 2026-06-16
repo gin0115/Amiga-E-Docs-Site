@@ -1,0 +1,298 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>CIA_interval.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-jrh-rkrm-1.html">JRH-RKRM-1</a> &rsaquo; CIA_interval.e</div><h1>File: <code>CIA_interval.e</code></h1><p class="meta">272 lines · project <a href="../examples/pkg-jrh-rkrm-1.html"><code>JRH-RKRM-1</code></a></p><p class="pathctx">JRH-RKRM-1/JRH-RKRM-PartOne/Resources/CIA_interval.e</p><p class="prose">Cia_Interval.e - Demonstrate allocation and use of a cia <a href="../modules/interval.html">interval</a> <a href="../modules/timer.html">timer</a></p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/cia.html">other/cia</a></li></ul></div><h2>Source</h2><pre class="code">-&gt; Cia_Interval.e - Demonstrate allocation and use of a cia interval timer
+
+OPT PREPROCESS
+
+-&gt; E-Note: we need eCodeIntServer() in order to use an E PROC as a CIA interrupt
+MODULE &#x27;other/cia&#x27;,
+       &#x27;other/ecode&#x27;,
+       &#x27;exec/interrupts&#x27;,
+       &#x27;exec/libraries&#x27;,
+       &#x27;exec/nodes&#x27;,
+       &#x27;exec/tasks&#x27;,
+       &#x27;hardware/cia&#x27;,
+       &#x27;resources/cia&#x27;
+
+ENUM ERR_NONE, ERR_ECODE, ERR_SIG, ERR_TIMER
+
+CONST COUNTDOWN=20, HICOUNT=$FF, LOCOUNT=$FF
+
+CONST STOPA_AND=CIACRAF_TODIN OR CIACRAF_PBON OR
+                CIACRAF_OUTMODE OR CIACRAF_SPMODE
+   -&gt;
+   -&gt; AND mask for use with control register A
+   -&gt; (interval timer A on either CIA)
+   -&gt;
+   -&gt; STOP -
+   -&gt;       START bit 0 == 0 (STOP IMMEDIATELY)
+   -&gt;       PBON  bit 1 == same
+   -&gt;       OUT   bit 2 == same
+   -&gt;       RUN   bit 3 == 0 (SET CONTINUOUS MODE)
+   -&gt;       LOAD  bit 4 == 0 (NO FORCE LOAD)
+   -&gt;       IN    bit 5 == 0 (COUNTS 02 PULSES)
+   -&gt;       SP    bit 6 == same
+   -&gt;       TODIN bit 7 == same (unused on ciacra)
+
+CONST STOPB_AND=CIACRBF_ALARM OR CIACRBF_PBON OR CIACRBF_OUTMODE
+   -&gt;
+   -&gt; AND mask for use with control register B
+   -&gt; (interval timer B on either CIA)
+   -&gt;
+   -&gt; STOP -
+   -&gt;       START bit 0 == 0 (STOP IMMEDIATELY)
+   -&gt;       PBON  bit 1 == same
+   -&gt;       OUT   bit 2 == same
+   -&gt;       RUN   bit 3 == 0 (SET CONTINUOUS MODE)
+   -&gt;       LOAD  bit 4 == 0 (NO FORCE LOAD)
+   -&gt;       IN0   bit 5 == 0 (COUNTS 02 PULSES)
+   -&gt;       IN1   bit 6 == 0 (COUNTS 02 PULSES)
+   -&gt;       ALARM bit 7 == same (TOD alarm control bit)
+
+CONST STARTA_OR=CIACRAF_START
+   -&gt;
+   -&gt; OR mask for use with control register A
+   -&gt; (interval timer A on either CIA)
+   -&gt;
+   -&gt; START -
+   -&gt;
+   -&gt;       START bit 0 == 1 (START TIMER)
+   -&gt;
+   -&gt;       All other bits unaffected.
+
+CONST STARTB_OR=CIACRBF_START
+   -&gt;
+   -&gt; OR mask for use with control register B
+   -&gt; (interval timer A on either CIA)
+   -&gt;
+   -&gt; START -
+   -&gt;
+   -&gt;       START bit 0 == 1 (START TIMER)
+   -&gt;
+   -&gt;       All other bits unaffected.
+
+-&gt; Structure which will be used to hold all relevant information about cia
+-&gt; timer we manage to allocate.
+OBJECT freetimer
+  ciabase            -&gt; CIA Library Base
+  timerbit           -&gt; Timer bit allocated
+  cia                -&gt; Pointer to hardware
+  ciacr:PTR TO CHAR  -&gt; Pointer to control register
+  cialo:PTR TO CHAR  -&gt; Pointer to low byte of timer
+  ciahi:PTR TO CHAR  -&gt; Pointer to high byte of timer
+  timerint:is        -&gt; Interrupt structure
+  stopmask:CHAR      -&gt; Stop/set-up timer
+  startmask:CHAR     -&gt; Start timer
+ENDOBJECT
+
+-&gt; Structure which will be used by the interrupt routine called when our
+-&gt; cia interval timer generates an interrupt.
+OBJECT exampledata
+  task    -&gt; Task to signal
+  signal  -&gt; Signal bit to use
+  counter
+ENDOBJECT
+
+DEF ciaa=CIAA_ADDR:PTR TO cia, ciab=CIAB_ADDR:PTR TO cia
+
+-&gt; This is the interrupt routine which will be called when our CIA interval
+-&gt; timer counts down.
+-&gt;
+-&gt; This example decrements a counter each time the interrupt routine is called
+-&gt; until the counter reaches 0, at which time it signals our main task.
+-&gt;
+-&gt; Note that interrupt handling code should be efficient, and will generally be
+-&gt; written in assembly code.  Signaling another task such as this example does
+-&gt; is also a useful way of handling interrupts in an expedient manner.
+-&gt; E-Note: thanks to eCodeIntServer() we get ft.timerint.data as an argument
+PROC exampleInterrupt(ed:PTR TO exampledata)
+  IF ed.counter
+    ed.counter:=ed.counter-1  -&gt; Decrement counter
+  ELSE
+    ed.counter:=COUNTDOWN     -&gt; Reset counter
+    Signal(ed.task, Shl(1, ed.signal))
+  ENDIF
+ENDPROC
+
+PROC main() HANDLE
+  DEF ft:freetimer, ed:exampledata
+
+  -&gt; Set up data which will be passed to interrupt
+  ed.task:=FindTask(NIL)
+
+  -&gt; E-Note: C version doesn&#x27;t check the return value properly
+  ed.signal:=AllocSignal(-1)
+  IF ed.signal=-1 THEN Raise(ERR_SIG)
+
+  -&gt; Prepare freetimer object: set-up interrupt
+  ft.timerint.ln.type:=NT_INTERRUPT
+  ft.timerint.ln.pri:=0
+  ft.timerint.ln.name:=&#x27;cia_example&#x27;
+
+  ft.timerint.data:=ed
+  -&gt; E-Note: eCodeIntServer() wraps an E PROC for use as a CIA interrupt
+  ft.timerint.code:=eCodeIntServer({exampleInterrupt})
+  IF ft.timerint.code=NIL THEN Raise(ERR_ECODE)
+
+  -&gt; Call function to find a free CIA interval timer with flag indicating
+  -&gt; that we prefer a CIA-A timer.
+  WriteF(&#x27;Attempting to allocate a free timer\n&#x27;)
+
+  findFreeTimer(ft, TRUE)
+
+  WriteF(&#x27;CIA-\c timer &#x27;, IF ft.cia=ciaa THEN &quot;A&quot; ELSE &quot;B&quot;)
+
+  WriteF(&#x27;\c allocated\n&#x27;, IF ft.timerbit=CIAICRB_TA THEN &quot;A&quot; ELSE &quot;B&quot;)
+
+  -&gt; We found a free interval timer.  Let&#x27;s start it running.
+  startTimer(ft, ed)
+
+  -&gt; Wait for a signal
+  WriteF(&#x27;Waiting for signal bit \d\n&#x27;, ed.signal)
+
+  Wait(Shl(1, ed.signal))
+
+  WriteF(&#x27;We woke up!\n&#x27;)
+
+  -&gt; Release the interval timer
+  remICRVector(ft.ciabase, ft.timerbit, ft.timerint)
+
+EXCEPT DO
+  IF ed.signal&lt;&gt;-1 THEN FreeSignal(ed.signal)
+  SELECT exception
+  CASE ERR_ECODE;  WriteF(&#x27;Ran out of memory in eCodeIntServer()\n&#x27;)
+  CASE ERR_SIG;    WriteF(&#x27;Could not allocate signal\n&#x27;)
+  CASE ERR_TIMER;  WriteF(&#x27;No CIA interval timer available\n&#x27;)
+  ENDSELECT
+ENDPROC
+
+-&gt; This routine sets up the interval timer we allocated with addICRVector().
+-&gt; Note that we may have already received one, or more interrupts from our
+-&gt; timer.  Make no assumptions about the initial state of any of the hardware
+-&gt; registers we will be using.
+PROC startTimer(ft:PTR TO freetimer, ed:PTR TO exampledata)
+  DEF cia:PTR TO cia
+  cia:=ft.cia
+
+  -&gt; Note that there are differences between control register A, and B on
+  -&gt; each CIA (e.g., the TOD alarm bit, and INMODE bits).
+  IF ft.timerbit=CIAICRB_TA
+    -&gt; E-Note: use offsets to get addresses of the CIA bytes
+    ft.ciacr:=cia+CIACRA    -&gt; Control register A
+    ft.cialo:=cia+CIATALO   -&gt; Low byte counter
+    ft.ciahi:=cia+CIATAHI   -&gt; High byte counter
+
+    ft.stopmask:=STOPA_AND  -&gt; Set-up mask values
+    ft.startmask:=STARTA_OR
+  ELSE
+    ft.ciacr:=cia+CIACRB    -&gt; Control register B
+    ft.cialo:=cia+CIATBLO   -&gt; Low byte counter
+    ft.ciahi:=cia+CIATBHI   -&gt; High byte counter
+
+    ft.stopmask:=STOPB_AND  -&gt; Set-up mask values
+    ft.startmask:=STARTB_OR
+  ENDIF
+
+  -&gt; Modify control register within Disable().  This is done to avoid race
+  -&gt; conditions since code like this will be generated:
+  -&gt;
+  -&gt;      value = Read hardware byte
+  -&gt;      AND  value with MASK
+  -&gt;      Write value to hardware byte
+  -&gt;
+  -&gt; If we take a task switch in the middle of this sequence, two tasks trying
+  -&gt; to modify the same register could trash each others&#x27; bits.
+  -&gt;
+  -&gt; Normally this code would be written in Assembly language using atomic
+  -&gt; instructions so that the Disable() would not be needed.
+
+  Disable()
+  -&gt; STOP timer, set 02 pulse count-down mode, set continuous mode
+  ft.ciacr[]:=ft.ciacr[] AND ft.stopmask
+  Enable()
+
+  -&gt; Clear signal bit - interrupt will signal us later
+  SetSignal(NIL, Shl(1, ed.signal))
+
+  -&gt; Count-down X number of times
+  ed.counter:=COUNTDOWN
+
+  -&gt; Start the interval timer - we will start the counter after writing the
+  -&gt; low, and high byte counter values.
+  ft.cialo[]:=LOCOUNT
+  ft.ciahi[]:=HICOUNT
+
+  -&gt; Turn on start bit - same bit for both A, and B control regs
+  Disable()
+  ft.ciacr[]:=ft.ciacr[] OR ft.startmask
+  Enable()
+ENDPROC
+
+-&gt; A routine to find a free interval timer.
+-&gt;
+-&gt; This routine makes no assumptions about which interval timers (if any) are
+-&gt; available for use.  Currently there are two interval timers per CIA chip.
+-&gt;
+-&gt; Because CIA usage may change in the future, your code should use a routine
+-&gt; like this to find a free interval timer.
+-&gt;
+-&gt; Note that the routine takes a preference flag (which is used to indicate
+-&gt; that you would prefer an interval timer on CIA-A).  If the flag is FALSE,
+-&gt; it means that you would prefer an interval timer on CIA-B.
+PROC findFreeTimer(ft:PTR TO freetimer, preferA)
+  DEF ciaabase, ciabbase
+
+  -&gt; Get pointers to both Resource bases
+  ciaabase:=OpenResource(CIAANAME)
+  ciabbase:=OpenResource(CIABNAME)
+
+  -&gt; Try for a CIA-A timer first?
+  ft.ciabase:=IF preferA THEN ciaabase ELSE ciabbase  -&gt; Library address
+  ft.cia:=IF preferA THEN ciaa ELSE ciab              -&gt; Hardware address
+
+  IF tryTimer(ft) THEN RETURN
+
+  -&gt; Try for an interval timer on the other cia
+  ft.ciabase:=IF preferA THEN ciabbase ELSE ciaabase  -&gt; Library address
+  ft.cia:=IF preferA THEN ciab ELSE ciaa              -&gt; Hardware address
+
+  IF tryTimer(ft)=FALSE THEN Raise(ERR_TIMER)
+ENDPROC
+
+-&gt; Try to obtain a free interval timer on a CIA.
+PROC tryTimer(ft:PTR TO freetimer)
+  IF NIL=addICRVector(ft.ciabase, CIAICRB_TA, ft.timerint)
+    ft.timerbit:=CIAICRB_TA
+    RETURN TRUE
+  ENDIF
+
+  IF NIL=addICRVector(ft.ciabase, CIAICRB_TB, ft.timerint)
+    ft.timerbit:=CIAICRB_TB
+    RETURN TRUE
+  ENDIF
+ENDPROC FALSE
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

@@ -1,0 +1,265 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>icongadgets.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-icongad.html">icongad</a> &rsaquo; icongadgets.e</div><h1>File: <code>icongadgets.e</code></h1><p class="meta">239 lines · project <a href="../examples/pkg-icongad.html"><code>icongad</code></a></p><p class="pathctx">icongad/icongadgets.e</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/workbench.html">workbench/workbench</a></li></ul></div><h2>Source</h2><pre class="code">;/*
+	
+	ec icongadgets.e
+	run icongadgets
+	quit
+	
+	An easy way to have a nice button bank using icons. Will Harwood.
+
+	Hello! I have been trying for ages to find a simple way of getting a bank
+	of image buttons for any programs I might feel like writing. I searched in vain for
+	a gadtools command or tag, but then I downloaded a tiny bit of code by Marco 
+	Talamelli called ShowIcon and I thought YES! My search is at an end! Once it
+	actually worked (see Bugs) I thought to myself, &quot;if only I had found this on the
+	Aminet, how much easier my life would have been...&quot;, so here it is.
+
+	It also shows using easyrequest, standard intuimessage reading techniques, setting
+	the busy pointer on v39+ machines, changing window titles... Beginners: mess about
+	with this code as much as possible to learn how it works, because there is no better 
+	way of learning a language than crashing your machine.
+		
+	Since this file was the result of about half an hours typing and a free download
+	from the Aminet (isn&#x27;t Swansea uni nice?), I can hardly start going on about copyrights
+	and all that shit, but I will say that if anyone finds this ditty useful then I
+	would appreciate an E-mail to lift my spirits in these dark student days of bank loans
+	and getting rat-arsed every night (oh it&#x27;s such a drag ;). And there has to be some-
+	one else at Swansea who programs in E, yes? hello? You are not alone?
+
+	The source is pretty self explanatory (and like I know what I&#x27;m talking about...), and
+	can be dropped almost verbatim into what ever program you chose to write. 
+
+	Requires:
+	
+		WB 3.0
+		Amiga E (I compiled this on 3.2e, but it should work on anything =&gt;3.0)
+
+	To compile and run:
+	
+		Open a shell window and type icongadgets.e
+
+	Author:
+	
+		I am (&#x27;97 - &#x27;00) studying Computer Science at Swansea University, and I would like
+		to hear from anyone who is interested in [Amiga] E, or indeed anything from Britpop
+		to HIGNFY (I hate loading Pegasus to find that I have no E-mails...). I am espec-
+		ially interested in hearing from anyone who can tell me a neat way of loading the
+		icon images into a bitmap (i.e. not grabbing the gfx straight off the window), or
+		doing the same with datatypes?
+		
+		(this address is okay until June &#x27;98)
+		
+			Will Harwood
+			134 Hendrefoelan Student Village,
+			Sketty,
+			Swansea,
+			SA2 7QG
+			UK
+
+		or...
+		
+			Will Harwood
+			618 Dorchester Road,
+			Weymouth,
+			Dorset.
+			DT3 5LH
+			UK
+		
+		E-mail:		
+	
+		I am but a number...
+	
+			147800.97@swansea.ac.uk
+	
+	Bugs:
+	
+		Just the one, try changing the starting index for objects[] to 0 like it&#x27;s 
+		supposed to be (i.e. change max=1 to max=0 and FOR n:=1 to FOR n:=0) and then 
+		watch as it crashes when it Free&#x27;sDiskObject. WHY?
+		
+	Problems:
+	
+		I suppose it&#x27;s a fairly inefficient method in terms of disk space and loading time,
+		but you can&#x27;t have everything.
+		
+ */
+
+
+MODULE	&#x27;workbench/workbench&#x27;,
+			&#x27;exec/ports&#x27;,
+			&#x27;icon&#x27;,
+			&#x27;intuition/screens&#x27;, &#x27;intuition/intuition&#x27;,
+			&#x27;gadtools&#x27;, &#x27;libraries/gadtools&#x27;
+
+
+CONST MAX_BUTTONS=20, QUIT=21, ABOUT=22		/* gadtools id&#x27;s should be &gt;MAX_BUTTONS or you
+																could end up with two buttons having the same
+																id */
+
+
+PROC main() HANDLE
+	DEF win=NIL:PTR TO window, glist=NIL, objects[MAX_BUTTONS]:ARRAY OF diskobject, max=1, n,
+		 screen=NIL:PTR TO screen, vi=NIL, gad, x=5, h, w
+	
+	/* Open libraries */
+	IF NIL=(gadtoolsbase:=OpenLibrary(&#x27;gadtools.library&#x27;, 39)) THEN 
+		Throw(&quot;lib&quot;, &#x27;main: Could not open gadtools library&#x27;)
+	IF NIL=(iconbase:=OpenLibrary(&#x27;icon.library&#x27;, 0)) THEN
+		Throw(&quot;lib&quot;, &#x27;main: Could not open the icon library&#x27;)
+	
+	/* grab the public screen and get some visual info */
+	IF NIL=(screen:=LockPubScreen(NIL)) THEN Throw(&quot;scr&quot;, &#x27;main: Could not lock the public screen&#x27;)
+	IF NIL=(vi:=GetVisualInfoA(screen, NIL)) THEN Throw(&quot;vi&quot;, &#x27;main: Could not getvisualinfo&#x27;)
+
+	/* create gadget list */
+	IF NIL=(gad:=CreateContext({glist})) THEN Throw(&quot;gad&quot;, &#x27;main: Could not create context&#x27;)
+
+	/* add some gadtools gadgets */
+	gad:=CreateGadgetA(BUTTON_KIND, gad,
+                    [5, 69,
+                     100, 11,
+                     &#x27;Quit&#x27;, NIL,
+                     QUIT, 0,
+                     vi, NIL]:newgadget,
+                    [NIL])
+
+	gad:=CreateGadgetA(BUTTON_KIND, gad,
+                    [295, 69,
+                     100, 11,
+                     &#x27;About&#x27;, NIL,
+                     ABOUT, 0,
+                     vi, NIL]:newgadget,
+                    [NIL])
+	
+	
+	IF NIL=(win:=OpenWindowTagList(0, 
+				[WA_INNERWIDTH, 400, WA_INNERHEIGHT, 80,
+				 WA_FLAGS, WFLG_GIMMEZEROZERO OR WFLG_DRAGBAR OR WFLG_DEPTHGADGET OR WFLG_CLOSEGADGET,
+				 WA_IDCMP, IDCMP_CLOSEWINDOW OR IDCMP_GADGETUP OR BUTTONIDCMP OR IDCMP_REFRESHWINDOW,
+				 WA_GADGETS, glist,
+				 WA_TITLE, &#x27;Icons as gadgets example by Will Harwood&#x27;,
+				 WA_SCREENTITLE, &#x27;Will Harwood, 147800.97@swansea.ac.uk&#x27;,
+				 WA_PUBSCREEN, screen,
+				 NIL])) THEN Throw(&quot;win&quot;, &#x27;main: Could not open window&#x27;)
+
+ 	/* add some buttons: Change the names to any icons (minus .info) you like. */
+	w, h:=addiconbutton(win, objects[max], &#x27;Workbench:prefs/ScreenMode&#x27;, max++, x, 0)
+	w, h:=addiconbutton(win, objects[max], &#x27;Workbench:prefs/Font&#x27;, max++, x:=x+w, 0)
+	w, h:=addiconbutton(win, objects[max], &#x27;Workbench:prefs/WBPattern&#x27;, max++, x:=x+w, 0)
+	w, h:=addiconbutton(win, objects[max], &#x27;Workbench:prefs/Time&#x27;, max++, x:=x+w, 0)
+	w, h:=addiconbutton(win, objects[max], &#x27;Workbench:prefs/Locale&#x27;, max++, x:=x+w, 0)
+	w, h:=addiconbutton(win, objects[max], &#x27;Workbench:prefs/Input&#x27;, max++, x:=x+w, 0)
+
+	/* redraw everything */
+	RefreshWindowFrame(win)
+	
+	REPEAT
+	UNTIL handle(win)
+
+
+EXCEPT DO
+
+	IF exception THEN PrintF(&#x27;\h \s\n&#x27;, exception, exceptioninfo)
+
+	/* close gui */
+	IF win THEN CloseWindow(win)
+	IF glist THEN FreeGadgets(glist)
+	IF vi THEN FreeVisualInfo(vi)
+	IF screen THEN UnlockPubScreen(NIL, screen)
+	
+	/* free buttons */
+	FOR n:=1 TO max-1
+		IF objects[n] THEN FreeDiskObject(objects[n])
+	ENDFOR
+	
+	/* close libraries */
+	IF gadtoolsbase THEN CloseLibrary(gadtoolsbase)
+	IF iconbase THEN CloseLibrary(iconbase)
+ENDPROC
+
+PROC addiconbutton(win:PTR TO window, object:PTR TO diskobject, iconname, n, x, y)
+	IF NIL=(object:=GetDiskObject(iconname)) THEN Throw(&quot;icon&quot;, &#x27;addiconbutton: Could not GetGiskObject&#x27;)
+	/* change gadget attributes here. I *think* it&#x27;s safe to do this, at least it doesn&#x27;t
+		crash... */
+	object.gadget.leftedge:=x
+	object.gadget.topedge:=y
+	object.gadget.gadgetid:=n
+	AddGadget(win, object.gadget, NIL)
+	/* pass back the width and height so we can fit the gadgets in properly */
+ENDPROC object.gadget.width, object.gadget.height
+
+PROC handle(win:PTR TO window)
+	DEF msg:PTR TO intuimessage, class, code, gadget:PTR TO gadget, quit=0, id, str[200]:STRING,
+		 signals
+	
+	signals:=Wait(Shl(1, win.userport.sigbit))
+	
+	IF Shl(1, win.userport.sigbit) AND signals
+		WHILE msg:=Gt_GetIMsg(win.userport)
+			class:=msg.class
+			code:=msg.code
+			gadget:=msg.iaddress
+			id:=gadget.gadgetid
+			Gt_ReplyIMsg(msg)
+			
+			SELECT class
+		   CASE IDCMP_REFRESHWINDOW
+         	Gt_BeginRefresh(win)
+       		Gt_EndRefresh(win, TRUE)
+			CASE IDCMP_CLOSEWINDOW
+				quit:=TRUE
+			CASE IDCMP_GADGETUP
+				IF id=QUIT
+					quit:=TRUE
+				ELSEIF id=ABOUT
+					/* put up a busy pointer with a slight delay (to see why comment the delay
+						tags) */
+					SetWindowPointerA(win, [WA_BUSYPOINTER, TRUE, WA_POINTERDELAY, TRUE, NIL])
+					SetWindowTitles(win, &#x27;-- About --&#x27;, -1)
+					EasyRequestArgs(0, 
+						[SIZEOF easystruct, 0, 
+						 &#x27;icongadgets&#x27;, 
+						 &#x27;A little example of how you CAN EASILY have\ngadtools image buttons\n\nWill Harwood, 147800.97@swansea.ac.uk&#x27;, 
+						 &#x27;Yep&#x27;], 0, NIL)	
+					/* reset the pointer back to normal */
+					SetWindowPointerA(win, [WA_BUSYPOINTER, FALSE, NIL])
+					SetWindowTitles(win, &#x27;Icons as gadgets example by Will Harwood&#x27;, -1)
+				ELSE
+					/* better than printf */
+					StringF(str, &#x27;icon gadget \d clicked&#x27;, id)
+					SetWindowTitles(win, str, -1)
+				ENDIF
+			CASE IDCMP_VANILLAKEY
+				SELECT 256 OF code
+				CASE 27, &quot;q&quot;, &quot;Q&quot;, &quot;å&quot;		/* this should be every variety of quit there is */
+					quit:=TRUE
+				ENDSELECT
+			ENDSELECT
+		ENDWHILE
+	ENDIF
+ENDPROC quit</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

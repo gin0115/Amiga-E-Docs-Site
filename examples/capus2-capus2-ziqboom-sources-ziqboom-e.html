@@ -1,0 +1,1001 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ZiqBoom!.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-capus2.html">capus2</a> &rsaquo; ZiqBoom!.e</div><h1>File: <code>ZiqBoom!.e</code></h1><p class="meta">975 lines · project <a href="../examples/pkg-capus2.html"><code>capus2</code></a></p><p class="pathctx">capus2/capus2/ZiqBoom!/Sources/ZiqBoom!.e</p><p class="prose">=========================================================================================</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/intuition.html">intuition/intuition</a></li><li><a href="../modules/mheader.html">mheader</a></li><li><a href="../modules/rexxsyslib.html">rexxsyslib</a></li><li><a href="../modules/superplay.html">superplay</a></li></ul></div><h2>Source</h2><pre class="code">/*=========================================================================================*/
+/* Source code generate by Gui2E v0.1 © 1994 NasGûl                                        */
+/*=========================================================================================*/
+/*======&lt;&lt;&lt; Peps Header &gt;&gt;&gt;======
+ PRGVERSION &#x27;0&#x27;
+ ================================
+ PRGREVISION &#x27;1&#x27;
+ ================================
+ AUTHOR      &#x27;NasGûl&#x27;
+ ===============================*/
+/*======&lt;&lt;&lt;   History   &gt;&gt;&gt;======
+ ===============================*/
+
+OPT OSVERSION=37
+CONST DEBUG=FALSE
+MODULE &#x27;intuition/intuition&#x27;,&#x27;gadtools&#x27;,&#x27;libraries/gadtools&#x27;,&#x27;intuition/gadgetclass&#x27;,&#x27;intuition/screens&#x27;,
+       &#x27;graphics/text&#x27;,&#x27;exec/lists&#x27;,&#x27;exec/nodes&#x27;,&#x27;exec/ports&#x27;,&#x27;eropenlib&#x27;,&#x27;utility/tagitem&#x27;,
+       &#x27;exec/libraries&#x27;,&#x27;utility&#x27;,&#x27;reqtools&#x27;,&#x27;libraries/reqtools&#x27;,
+       &#x27;intuition/intuitionbase&#x27;,&#x27;icon&#x27;,&#x27;workbench/workbench&#x27;,&#x27;workbench/startup&#x27;
+
+
+MODULE &#x27;superplay&#x27;,&#x27;spobjects&#x27;
+
+MODULE &#x27;rexxsyslib&#x27;,&#x27;rexx/storage&#x27;
+
+MODULE &#x27;mheader&#x27;
+
+ENUM ER_NONE,ER_LOCKSCREEN,ER_VISUAL,ER_CONTEXT,ER_MENUS,ER_GADGET,ER_WINDOW,
+     ER_PORTEXIST,ER_CREATEPORT,ER_MEM,ER_HANDLE,ER_NOICON,ER_BADARGS
+
+CONST ER_SUPERPLAYLIB=$2755
+
+CONST F_MODULE=0,
+      F_CONFIG_SAVE=1,
+      F_CONFIG_LOAD=2
+
+
+
+PMODULE &#x27;PModules:Plist&#x27;
+PMODULE &#x27;PModules:DWriteF&#x27;
+PMODULE &#x27;Pmodules:PMHeader&#x27;
+
+/*&quot;WINDOW DEF&quot;*/
+DEF screen:PTR TO screen,
+    visual=NIL,
+    tattr:PTR TO textattr,
+    reelquit=FALSE,
+    offy,offx
+/*=======================================
+ = cp Definitions
+ =======================================*/
+DEF cp_window=NIL:PTR TO window
+DEF cp_glist=NIL
+DEF cp_menu=NIL
+/*==================*/
+/*     Gadgets      */
+/*==================*/
+CONST GA_G_SONGPRED=0
+CONST GA_G_MODPRED=1
+CONST GA_G_STOP=2
+CONST GA_G_MODSUCC=3
+CONST GA_G_SONGSUCC=4
+CONST GA_G_PLAY=5
+CONST GA_G_MODLIST=6
+CONST GA_G_LOADMOD=7
+CONST GA_G_REMMOD=8
+CONST GA_G_UPMOD=9
+CONST GA_G_DOWNMOD=10
+/*=============================
+ = Gadgets labels of cp
+ =============================*/
+DEF g_songpred
+DEF g_songback
+DEF g_stop
+DEF g_succ
+DEF g_songsucc
+DEF g_play
+DEF g_modlist
+DEF g_loadmod
+DEF g_remmod
+DEF g_upmod
+DEF g_downmod
+/**/
+/*&quot;APPLICATION DEF&quot;*/
+DEF arexxport:PTR TO mp
+DEF arexxportname[80]:STRING
+DEF currentnode=-1
+DEF modulelist:PTR TO lh
+DEF soundhandle=NIL
+DEF defaultdir[256]:STRING
+DEF sourceconfig[256]:STRING
+DEF prio=0,hide=FALSE
+/**/
+/*&quot;SUPERPLAY INCLUDES&quot;*/
+/*&quot;SuperPlay.h&quot;*/
+CONST SPLIB_VERSION=1
+
+/* Possible FileTypes */
+
+CONST SP_FILETYPE_NONE=0
+CONST SP_FILETYPE_UNKNOWN=SP_FILETYPE_NONE
+
+     /*
+        above : External, user defined FileTypes
+                (defined EACH TIME NEW at Library&#x27;s startup-time).
+     */
+
+CONST SP_FILETYPE_ILLEGAL=$FFFFFFFF
+
+
+/* Possible SubTypes of FileTypes */
+
+CONST SP_SUBTYPE_NONE=0
+CONST SP_SUBTYPE_UNKNOWN=SP_SUBTYPE_NONE
+
+     /*
+        above : External, user defined FileSubTypes
+                (defined EACH TIME NEW at Library&#x27;s startup-time).
+     */
+
+CONST SP_SUBTYPE_ILLEGAL=$FFFFFFFF
+
+
+/* Possible Input and Output mediums */
+
+CONST SPO_MEDIUM_NONE=0
+CONST SPO_MEDIUM_ILLEGAL=$FFFFFFFF
+
+CONST SPO_MEDIUM_DISK=1              /* Play and Write options   */
+CONST SPO_MEDIUM_CLIP=2
+
+     /* might not be supported by all kinds of File(Sub)Types */
+
+
+/* *************************************************** */
+/* *                                                 * */
+/* * Function Error Codes                            * */
+/* *                                                 * */
+/* *************************************************** */
+
+CONST SPERR_MAX_ERROR_TEXT_LENGTH=80       /* plus Null-Byte */
+
+CONST SPERR_NO_ERROR=NIL
+CONST SPERR_INTERNAL_ERROR=$FFFFFFFF
+
+CONST SPERR_UNKNOWN_FILE_FORMAT=    1
+CONST SPERR_FILE_NOT_FOUND=         2
+CONST SPERR_NO_MEMORY=              3
+CONST SPERR_IFFPARSE_ERROR=         4
+CONST SPERR_NO_CLIPBOARD=           5
+CONST SPERR_NO_FILE=                6
+CONST SPERR_NO_HANDLE=              7
+CONST SPERR_NO_DATA=                8
+CONST SPERR_NO_INFORMATION=         9
+CONST SPERR_ILLEGAL_ACCESS=         10
+CONST SPERR_DECODE_ERROR=           11
+CONST SPERR_UNKNOWN_PARAMETERS=     12
+CONST SPERR_ACTION_NOT_SUPPORTED=   13
+CONST SPERR_NO_CHANNELS=            14
+
+        /* Each new Library-Subversion may contain new Codes above
+           the last one of these.
+           So do not interpret the codes directly, but use
+           SPL_GetErrorString.
+           Maybe, newer Codes might not be listed up here.
+        */
+/**/
+/*&quot;SuperPlayBase.h&quot;*/
+OBJECT superplaybase
+    libnode:lib
+    seglist:LONG
+    exec_base:LONG
+    dos_lib:LONG
+    intuition_lib:LONG
+    spobjectlist:lh
+    private1:LONG
+    private2:LONG
+ENDOBJECT
+/**/
+/*&quot;spobjects.h&quot;*/
+OBJECT objectnode
+    node:ln
+    version:LONG
+    objecttype:LONG
+    filename:LONG
+    typeid:LONG
+    typeode:LONG
+    subtypenum:LONG
+    subtypeid:LONG
+    subtypecode:LONG
+    backgroundreplay:LONG
+ENDOBJECT
+
+CONST SPO_VERSION=1
+
+CONST SPO_OBJECTTYPE_NONE=0
+CONST SPO_OBJECTTYPEUNKNOWN=SPO_OBJECTTYPE_NONE
+CONST SPO_OBJECTTYPE_ILLEGAL=$FFFFFFFF
+
+CONST SPO_OBJECTTYPE_SAMPLE=1
+CONST SPO_OBJECTTYPE_MODULE=2
+/**/
+/*&quot;spobjectbase.h&quot;*/
+OBJECT objectbase
+    libnode:lib
+    spobject:LONG
+    reserved:LONG
+ENDOBJECT
+/**/
+/**/
+/*&quot;WINDOWS PROCEDURES&quot;*/
+/*&quot;p_OpenLibraries()&quot;*/
+PROC p_OpenLibraries() HANDLE 
+    IF (intuitionbase:=OpenLibrary(&#x27;intuition.library&#x27;,37))=NIL THEN Raise(ER_INTUITIONLIB)
+    IF (gadtoolsbase:=OpenLibrary(&#x27;gadtools.library&#x27;,37))=NIL THEN Raise(ER_GADTOOLSLIB)
+    IF (gfxbase:=OpenLibrary(&#x27;graphics.library&#x27;,37))=NIL THEN Raise(ER_GRAPHICSLIB)
+    IF (superplaybase:=OpenLibrary(&#x27;superplay.library&#x27;,0))=NIL THEN Raise(ER_SUPERPLAYLIB)
+    IF (rexxsysbase:=OpenLibrary(&#x27;rexxsyslib.library&#x27;,36))=NIL THEN Raise(ER_REXXSYSLIBLIB)
+    IF (utilitybase:=OpenLibrary(&#x27;utility.library&#x27;,0))=NIL THEN Raise(ER_UTILITYLIB)
+    IF (reqtoolsbase:=OpenLibrary(&#x27;reqtools.library&#x27;,0))=NIL THEN Raise(ER_REQTOOLSLIB)
+    IF (iconbase:=OpenLibrary(&#x27;icon.library&#x27;,0))=NIL THEN Raise(ER_ICONLIB)
+    Raise(ER_NONE)
+EXCEPT
+    RETURN exception
+ENDPROC
+/**/
+/*&quot;p_CloseLibraries()&quot;*/
+PROC p_CloseLibraries()  
+    IF iconbase THEN CloseLibrary(iconbase)
+    IF reqtoolsbase THEN CloseLibrary(reqtoolsbase)
+    IF utilitybase THEN CloseLibrary(utilitybase)
+    IF rexxsysbase THEN CloseLibrary(rexxsysbase)
+    IF superplaybase THEN CloseLibrary(superplaybase)
+    IF gfxbase THEN CloseLibrary(gfxbase)
+    IF gadtoolsbase THEN CloseLibrary(gadtoolsbase)
+    IF intuitionbase THEN CloseLibrary(intuitionbase)
+ENDPROC
+/**/
+/*&quot;p_SetUpScreen()&quot;*/
+PROC p_SetUpScreen() HANDLE 
+    IF (screen:=LockPubScreen(p_LockActivePubScreen()))=NIL THEN Raise(ER_LOCKSCREEN)
+    IF (visual:=GetVisualInfoA(screen,NIL))=NIL THEN Raise(ER_VISUAL)
+    offy:=screen.wbortop+Int(screen.rastport+58)-10
+    Raise(ER_NONE)
+EXCEPT
+    RETURN exception
+ENDPROC
+/**/
+/*&quot;p_SetDownScreen()&quot;*/
+PROC p_SetDownScreen() 
+    IF visual THEN FreeVisualInfo(visual)
+    IF screen THEN UnlockPubScreen(NIL,screen)
+ENDPROC
+/**/
+/*&quot;p_InitcpWindow()&quot;*/
+PROC p_InitcpWindow() HANDLE 
+    DEF g:PTR TO gadget
+    IF (g:=CreateContext({cp_glist}))=NIL THEN Raise(ER_CONTEXT)
+    IF (cp_menu:=CreateMenusA([1,0,&#x27;Fichier&#x27;,0,0,0,0,
+                                  2,0,&#x27;Charger Liste.&#x27;,&#x27;C&#x27;,0,0,0,
+                                  2,0,&#x27;Sauver Liste.&#x27;,&#x27;S&#x27;,0,0,0,
+                                  2,0,&#x27;    Infos.   &#x27;,&#x27;I&#x27;,0,0,0,
+                                  2,0,&#x27;   Quitter.  &#x27;,&#x27;Q&#x27;,0,0,0,
+                                   0,0,0,0,0,0,0]:newmenu,NIL))=NIL THEN Raise(ER_MENUS)
+    IF LayoutMenusA(cp_menu,visual,NIL)=FALSE THEN Raise(ER_MENUS)
+    IF (g_songpred:=CreateGadgetA(BUTTON_KIND,g,[offx+4,offy+11,61,13,&#x27;|&lt;&#x27;,tattr,0,16,visual,0]:newgadget,[GA_RELVERIFY,TRUE,GA_DISABLED,FALSE,GT_UNDERSCORE,&quot;_&quot;,TAG_DONE,0]))=NIL THEN Raise(ER_GADGET)
+    IF (g_songback:=CreateGadgetA(BUTTON_KIND,g_songpred,[offx+76,offy+11,61,13,&#x27;&lt;&lt;&#x27;,tattr,1,16,visual,0]:newgadget,[GA_RELVERIFY,TRUE,GA_DISABLED,FALSE,GT_UNDERSCORE,&quot;_&quot;,TAG_DONE,0]))=NIL THEN Raise(ER_GADGET)
+    IF (g_stop:=CreateGadgetA(BUTTON_KIND,g_songback,[offx+148,offy+11,61,13,&#x27;#&#x27;,tattr,2,16,visual,0]:newgadget,[GA_RELVERIFY,TRUE,GA_DISABLED,FALSE,GT_UNDERSCORE,&quot;_&quot;,TAG_DONE,0]))=NIL THEN Raise(ER_GADGET)
+    IF (g_succ:=CreateGadgetA(BUTTON_KIND,g_stop,[offx+292,offy+11,61,13,&#x27;&gt;&gt;&#x27;,tattr,3,16,visual,0]:newgadget,[GA_RELVERIFY,TRUE,GA_DISABLED,FALSE,GT_UNDERSCORE,&quot;_&quot;,TAG_DONE,0]))=NIL THEN Raise(ER_GADGET)
+    IF (g_songsucc:=CreateGadgetA(BUTTON_KIND,g_succ,[offx+364,offy+11,61,13,&#x27;&gt;|&#x27;,tattr,4,16,visual,0]:newgadget,[GA_RELVERIFY,TRUE,GA_DISABLED,FALSE,GT_UNDERSCORE,&quot;_&quot;,TAG_DONE,0]))=NIL THEN Raise(ER_GADGET)
+    IF (g_play:=CreateGadgetA(BUTTON_KIND,g_songsucc,[offx+220,offy+11,61,13,&#x27;&gt;&#x27;,tattr,5,16,visual,0]:newgadget,[GA_RELVERIFY,TRUE,GA_DISABLED,FALSE,GT_UNDERSCORE,&quot;_&quot;,TAG_DONE,0]))=NIL THEN Raise(ER_GADGET)
+    IF (g_modlist:=CreateGadgetA(LISTVIEW_KIND,g_play,[offx+4,offy+24,421,56,&#x27;&#x27;,tattr,6,0,visual,0]:newgadget,[GA_RELVERIFY,FALSE,GA_IMMEDIATE,FALSE,GTLV_SHOWSELECTED,NIL,GTLV_LABELS,NIL,GT_UNDERSCORE,&quot;_&quot;,TAG_DONE,0]))=NIL THEN Raise(ER_GADGET)
+    IF (g_loadmod:=CreateGadgetA(BUTTON_KIND,g_modlist,[offx+4,offy+77,105,13,&#x27;Add Mod(s).&#x27;,tattr,7,16,visual,0]:newgadget,[GA_RELVERIFY,TRUE,GA_DISABLED,FALSE,GT_UNDERSCORE,&quot;_&quot;,TAG_DONE,0]))=NIL THEN Raise(ER_GADGET)
+    IF (g_remmod:=CreateGadgetA(BUTTON_KIND,g_loadmod,[offx+109,offy+77,105,13,&#x27;Rem Mod.&#x27;,tattr,8,16,visual,0]:newgadget,[GA_RELVERIFY,TRUE,GA_DISABLED,FALSE,GT_UNDERSCORE,&quot;_&quot;,TAG_DONE,0]))=NIL THEN Raise(ER_GADGET)
+    IF (g_upmod:=CreateGadgetA(BUTTON_KIND,g_remmod,[offx+214,offy+77,105,13,&#x27;Up Mod.&#x27;,tattr,9,16,visual,0]:newgadget,[GA_RELVERIFY,TRUE,GA_DISABLED,FALSE,GT_UNDERSCORE,&quot;_&quot;,TAG_DONE,0]))=NIL THEN Raise(ER_GADGET)
+    IF (g_downmod:=CreateGadgetA(BUTTON_KIND,g_upmod,[offx+319,offy+77,105,13,&#x27;Down Mod.&#x27;,tattr,10,16,visual,0]:newgadget,[GA_RELVERIFY,TRUE,GA_DISABLED,FALSE,GT_UNDERSCORE,&quot;_&quot;,TAG_DONE,0]))=NIL THEN Raise(ER_GADGET)
+    Raise(ER_NONE)
+EXCEPT
+    RETURN exception
+ENDPROC
+/**/
+/*&quot;p_RendercpWindow()&quot;*/
+PROC p_RendercpWindow() 
+    IF p_EmptyList(modulelist)&lt;&gt;-1
+        Gt_SetGadgetAttrsA(g_modlist,cp_window,NIL,[GA_DISABLED,FALSE,GTLV_SHOWSELECTED,TRUE,GTLV_SELECTED,currentnode,GTLV_LABELS,modulelist,TAG_DONE])
+    ELSE
+        Gt_SetGadgetAttrsA(g_modlist,cp_window,NIL,[GA_DISABLED,TRUE,GTLV_SHOWSELECTED,NIL,GTLV_LABELS,NIL,TAG_DONE])
+    ENDIF
+    RefreshGList(g_songpred,cp_window,NIL,-1)
+    Gt_RefreshWindow(cp_window,NIL)
+ENDPROC
+/**/
+/*&quot;p_OpencpWindow()&quot;*/
+PROC p_OpencpWindow() HANDLE 
+    DEF mx,my
+    DEF winx,winy,offyz
+    mx:=screen.mousex-215
+    my:=screen.mousey-46
+    winx:=429+offx
+    winy:=92+offy
+    offyz:=26+offy
+    IF (cp_window:=OpenWindowTagList(NIL,
+                      [WA_LEFT,mx,
+                       WA_TOP,my,
+                       WA_WIDTH,winx,
+                       WA_HEIGHT,winy,
+                       WA_IDCMP,$400378+IDCMP_REFRESHWINDOW,
+                       WA_FLAGS,$102E+WFLG_HASZOOM,
+                       WA_GADGETS,cp_glist,
+                       WA_ZOOM,[mx,my,429,offyz]:INT,
+                       WA_CUSTOMSCREEN,screen,
+                       WA_TITLE,title_req,
+                       WA_SCREENTITLE,&#x27;Made With GadToolsBox V2.0b © 1991-1993&#x27;,
+                       TAG_DONE]))=NIL THEN Raise(ER_WINDOW)
+    IF SetMenuStrip(cp_window,cp_menu)=FALSE THEN Raise(ER_MENUS)
+    Gt_RefreshWindow(cp_window,NIL)
+    p_RendercpWindow()
+    Raise(ER_NONE)
+EXCEPT
+    RETURN exception
+ENDPROC
+/**/
+/*&quot;p_RemcpWindow()&quot;*/
+PROC p_RemcpWindow() 
+    IF cp_window THEN CloseWindow(cp_window)
+    IF cp_menu THEN FreeMenus(cp_menu)
+    IF cp_glist THEN FreeGadgets(cp_glist)
+ENDPROC
+/**/
+/*&quot;p_CloseWindow()&quot;*/
+PROC p_CloseWindow()
+    IF cp_window THEN p_RemcpWindow()
+    IF screen THEN p_SetDownScreen()
+    cp_window:=NIL
+    screen:=NIL
+ENDPROC
+/**/
+/*&quot;p_OpenWindow()&quot;*/
+PROC p_OpenWindow() HANDLE
+    DEF t
+    IF (t:=p_SetUpScreen())&lt;&gt;ER_NONE THEN Raise(t)
+    IF (t:=p_InitcpWindow())&lt;&gt;ER_NONE THEN Raise(t)
+    IF (t:=p_OpencpWindow())&lt;&gt;ER_NONE THEN Raise(t)
+    Raise(ER_NONE)
+EXCEPT
+    RETURN exception
+ENDPROC
+/**/
+/*&quot;p_LockGads(ar)&quot;*/
+PROC p_LockGads(ar)
+    IF cp_window&lt;&gt;NIL
+        Gt_SetGadgetAttrsA(g_songpred,cp_window,NIL,[GA_DISABLED,ar,TAG_DONE])
+        Gt_SetGadgetAttrsA(g_songback,cp_window,NIL,[GA_DISABLED,ar,TAG_DONE])
+        Gt_SetGadgetAttrsA(g_stop,cp_window,NIL,[GA_DISABLED,ar,TAG_DONE])
+        Gt_SetGadgetAttrsA(g_succ,cp_window,NIL,[GA_DISABLED,ar,TAG_DONE])
+        Gt_SetGadgetAttrsA(g_songsucc,cp_window,NIL,[GA_DISABLED,ar,TAG_DONE])
+        Gt_SetGadgetAttrsA(g_play,cp_window,NIL,[GA_DISABLED,ar,TAG_DONE])
+    ENDIF
+ENDPROC
+/**/
+
+/**/
+/*&quot;MESSAGES PROCEDURES&quot;*/
+/*&quot;p_LookAllMessage()&quot;*/
+PROC p_LookAllMessage() 
+    DEF sigreturn
+    DEF cpport:PTR TO mp
+    IF cp_window THEN cpport:=cp_window.userport ELSE cpport:=NIL
+    sigreturn:=Wait(Shl(1,cpport.sigbit) OR
+                    Shl(1,arexxport.sigbit) OR
+                    $F000)
+    IF (sigreturn AND Shl(1,cpport.sigbit))
+        p_LookcpMessage()
+    ENDIF
+    IF (sigreturn AND Shl(1,arexxport.sigbit))
+        p_LookArexxMessage()
+    ENDIF
+    IF (sigreturn AND $F000)
+        reelquit:=TRUE
+    ENDIF
+ENDPROC
+/**/
+/*&quot;p_LookcpMessage()&quot;*/
+PROC p_LookcpMessage() 
+   DEF mes:PTR TO intuimessage
+   DEF g:PTR TO gadget
+   DEF gstr:PTR TO stringinfo
+   DEF type=0,infos=NIL
+   DEF cn:PTR TO ln,tn
+   WHILE mes:=Gt_GetIMsg(cp_window.userport)
+       type:=mes.class
+       SELECT type
+           CASE IDCMP_MENUPICK
+              infos:=mes.code
+              SELECT infos
+                CASE $F800 /* Charger */
+                    p_DoConfig(F_CONFIG_LOAD)
+                CASE $F820 /* Sauver */
+                    p_DoConfig(F_CONFIG_SAVE)
+                CASE $F840 /* Info */
+                    p_DoReqInfo()
+                CASE $F860 /* Quit */
+                    reelquit:=TRUE
+              ENDSELECT
+           CASE IDCMP_GADGETDOWN 
+           CASE IDCMP_REFRESHWINDOW
+              p_RendercpWindow()
+           CASE IDCMP_GADGETUP
+              g:=mes.iaddress
+              infos:=g.gadgetid
+              SELECT infos
+                  CASE GA_G_MODSUCC
+                    p_DoModSucc()
+                  CASE GA_G_MODPRED
+                    p_DoModPred()
+                  CASE GA_G_STOP
+                    p_DoModStop()
+                  CASE GA_G_SONGPRED
+                    p_DoSongPred()
+                  CASE GA_G_SONGSUCC
+                    p_DoSongSucc()
+                  CASE GA_G_PLAY
+                    p_DoModPlay()
+                  CASE GA_G_MODLIST
+                    currentnode:=mes.code
+                    p_RendercpWindow()
+                  CASE GA_G_LOADMOD
+                    p_DoLoad()
+                  CASE GA_G_REMMOD
+                    currentnode:=p_EnleveNode(modulelist,currentnode,FALSE,0)
+                    p_RendercpWindow()
+                  CASE GA_G_UPMOD
+                    IF p_EmptyList(modulelist)&lt;&gt;-1 
+                        currentnode:=p_DoUpNode(modulelist,currentnode)
+                        p_RendercpWindow()
+                    ENDIF
+                  CASE GA_G_DOWNMOD
+                    IF p_EmptyList(modulelist)&lt;&gt;-1  
+                        currentnode:=p_DoDownNode(modulelist,currentnode)
+                        p_RendercpWindow()
+                    ENDIF
+              ENDSELECT
+       ENDSELECT
+       Gt_ReplyIMsg(mes)
+   ENDWHILE
+ENDPROC
+/**/
+/*&quot;p_LookArexxMessage()&quot;*/
+PROC p_LookArexxMessage()
+/*===============================================================================
+ = Para         : NONE
+ = Return       : NONE
+ = Description  : Process arexx Messge.
+ ==============================================================================*/
+    DEF mess_rexx:PTR TO rexxmsg
+    DEF commande:PTR TO LONG
+    DEF retstr[256]:STRING
+    DEF pv[256]:STRING
+    DEF tn,ret
+    DEF pvn:PTR TO ln
+    WHILE mess_rexx:=GetMsg(arexxport)
+        IF IsRexxMsg(mess_rexx)
+            commande:=mess_rexx.args
+            IF StrCmp(commande[0],&#x27;MODINFO&#x27;,7)
+                IF currentnode&lt;&gt;-1
+                    mess_rexx.result1:=0
+                    pvn:=p_GetAdrNode(modulelist,currentnode)
+                    StringF(retstr,&#x27;\s&#x27;,pvn.name)
+                    mess_rexx.result2:=String(EstrLen(retstr))
+                    StrCopy(mess_rexx.result2,retstr,EstrLen(retstr))
+                ENDIF
+            ELSEIF StrCmp(commande[0],&#x27;REQINFO&#x27;,7)
+                mess_rexx.result1:=0
+                p_DoReqInfo()
+            ELSEIF StrCmp(commande[0],&#x27;MODNUMINFO&#x27;,10)
+                IF currentnode&lt;&gt;-1
+                    mess_rexx.result1:=0
+                    MidStr(pv,commande[0],11,ALL)
+                    StringF(retstr,&#x27;\s&#x27;,pv)
+                    tn:=Val(pv,NIL)
+                    pvn:=p_GetAdrNode(modulelist,tn)
+                    StringF(retstr,&#x27;\s&#x27;,pvn.name)
+                    mess_rexx.result2:=String(EstrLen(retstr))
+                    StrCopy(mess_rexx.result2,retstr,EstrLen(retstr))
+                ENDIF
+            ELSEIF StrCmp(commande[0],&#x27;NBRSMOD&#x27;,7)
+                mess_rexx.result1:=0
+                StringF(retstr,&#x27;\d&#x27;,p_CountNodes(modulelist))
+                mess_rexx.result2:=String(EstrLen(retstr))
+                StrCopy(mess_rexx.result2,retstr,EstrLen(retstr))
+            ELSEIF StrCmp(commande[0],&#x27;NEXTSONG&#x27;,8)
+                p_DoSongSucc()
+            ELSEIF StrCmp(commande[0],&#x27;PREDSONG&#x27;,8)
+                p_DoSongPred()
+            ELSEIF StrCmp(commande[0],&#x27;ADDMOD&#x27;,6)
+                MidStr(pv,commande[0],7,ALL)
+                currentnode:=p_AjouteNode(modulelist,pv,0)
+                IF cp_window&lt;&gt;NIL THEN p_RendercpWindow()
+            ELSEIF StrCmp(commande[0],&#x27;PLAYMOD&#x27;,7)
+                MidStr(pv,commande[0],8,ALL)
+                p_PlayModule(pv)
+            ELSEIF StrCmp(commande[0],&#x27;PLAY&#x27;,4)
+                p_DoModPlay()
+            ELSEIF StrCmp(commande[0],&#x27;STOP&#x27;,4)
+                p_DoModStop()
+            ELSEIF StrCmp(commande[0],&#x27;QUIT&#x27;,4)
+                reelquit:=TRUE
+            ELSEIF StrCmp(commande[0],&#x27;CLEARLIST&#x27;,9)
+                modulelist:=p_CleanList(modulelist,FALSE,0,LIST_CLEAN)
+                IF cp_window&lt;&gt;NIL THEN p_RendercpWindow()
+            ELSEIF StrCmp(commande[0],&#x27;CONFIGLOAD&#x27;,10)
+                MidStr(pv,commande[0],11,ALL)
+                IF p_ReadFile(pv)
+                    IF cp_window&lt;&gt;NIL THEN p_RendercpWindow()
+                ENDIF
+            ELSEIF StrCmp(commande[0],&#x27;CONFIGSAVE&#x27;,10)
+                MidStr(pv,commande[0],11,ALL)
+                p_WriteFile(pv)
+            ELSEIF StrCmp(commande[0],&#x27;LOAD&#x27;,4)
+                p_DoLoad()
+            ELSEIF StrCmp(commande[0],&#x27;HIDE&#x27;,4)
+                IF cp_window&lt;&gt;NIL THEN p_CloseWindow()
+            ELSEIF StrCmp(commande[0],&#x27;SHOW&#x27;,4)
+                IF cp_window=NIL 
+                    ret:=p_OpenWindow()
+                    IF ret&lt;&gt;ER_NONE
+                        mess_rexx.result1:=20
+                        mess_rexx.result2:=&#x27;&#x27;
+                    ENDIF
+                ENDIF
+            ELSE
+                mess_rexx.result1:=20
+                mess_rexx.result2:=String(EstrLen(&#x27;&#x27;))
+                StrCopy(mess_rexx.result2,retstr,EstrLen(&#x27;&#x27;))
+            ENDIF
+        ENDIF
+        IF mess_rexx THEN ReplyMsg(mess_rexx)
+        IF mess_rexx.result2 THEN DisposeLink(mess_rexx.result2)
+    ENDWHILE
+    WHILE mess_rexx:=GetMsg(arexxport) DO ReplyMsg(arexxport)
+ENDPROC
+/**/
+/**/
+/*&quot;APPLICATIONS PROCEDURES&quot;*/
+/*&quot;p_DoModSucc()&quot;*/
+PROC p_DoModSucc()
+    dWriteF([&#x27;MODSUCC\n&#x27;],0)
+    IF soundhandle&lt;&gt;NIL
+        SpL_FastForward(soundhandle)
+    ENDIF
+ENDPROC
+/**/
+/*&quot;p_DoModPred()&quot;*/
+PROC p_DoModPred()
+    dWriteF([&#x27;MODPRED\n&#x27;],0)
+    IF soundhandle&lt;&gt;NIL
+        SpL_FastBackward(soundhandle)
+    ENDIF
+ENDPROC
+/**/
+/*&quot;p_DoModStop()&quot;*/
+PROC p_DoModStop()
+    dWriteF([&#x27;STOP\n&#x27;],0)
+    IF soundhandle
+        SpL_FreeHandle(soundhandle)
+        soundhandle:=NIL
+    ENDIF
+ENDPROC
+/**/
+/*&quot;p_DoSongPred()&quot;*/
+PROC p_DoSongPred()
+    DEF cn:PTR TO ln
+    dWriteF([&#x27;SONGPRED\n&#x27;],0)
+    IF currentnode&gt;0
+        currentnode:=currentnode-1
+        IF cp_window THEN p_RendercpWindow()
+        cn:=p_GetAdrNode(modulelist,currentnode)
+        p_PlayModule(cn.name)
+    ELSE
+        p_Request(&#x27;ZigBoom! a quelque chose a vous dire\n&#x27;+
+                  &#x27;      &lt;&lt;&lt; Debut de liste.&gt;&gt;&gt;          &#x27;,&#x27;Merci&#x27;,0)
+    ENDIF
+ENDPROC
+/**/
+/*&quot;p_DoSongSucc()&quot;*/
+PROC p_DoSongSucc()
+    DEF tn
+    DEF cn:PTR TO ln
+    dWriteF([&#x27;SONGSUCC\n&#x27;],0)
+    tn:=p_CountNodes(modulelist)
+    IF (currentnode&lt;(tn-1))
+        currentnode:=currentnode+1
+        IF cp_window THEN p_RendercpWindow()
+        cn:=p_GetAdrNode(modulelist,currentnode)
+        p_PlayModule(cn.name)
+    ELSE
+        p_Request(&#x27;ZiqBoom! a quelque chose a vous dire\n&#x27;+
+                  &#x27;         &lt;&lt;&lt; Fin de liste.&gt;&gt;&gt;         &#x27;,&#x27;Merci&#x27;,0)
+    ENDIF
+ENDPROC
+/**/
+/*&quot;p_DoModPlay()&quot;*/
+PROC p_DoModPlay()
+    DEF cn:PTR TO ln
+    IF currentnode&lt;&gt;-1
+        cn:=p_GetAdrNode(modulelist,currentnode)
+        p_PlayModule(cn.name)
+    ENDIF
+    dWriteF([&#x27;PLAY\n&#x27;],0)
+ENDPROC
+/**/
+/*&quot;p_DoLoad()&quot;*/
+PROC p_DoLoad()
+    IF p_FileRequester(F_MODULE)
+        IF cp_window THEN p_RendercpWindow()
+    ENDIF
+ENDPROC
+/**/
+/*&quot;p_DoConfig()&quot;*/
+PROC p_DoConfig(p)
+    IF p_FileRequester(p)
+        SELECT p
+            CASE F_CONFIG_LOAD; p_ReadFile(sourceconfig)
+            CASE F_CONFIG_SAVE; p_WriteFile(sourceconfig)
+        ENDSELECT
+        IF cp_window THEN p_RendercpWindow()
+    ENDIF
+ENDPROC
+/**/
+/*&quot;p_DoReqInfo()&quot;*/
+PROC p_DoReqInfo()
+    DEF reqstr[1000]:STRING
+    DEF cn:PTR TO ln,stat:PTR TO LONG
+    IF currentnode&lt;&gt;-1
+        cn:=p_GetAdrNode(modulelist,currentnode)
+    ELSE
+        cn.name:=&#x27;Ancun.&#x27;
+    ENDIF
+    stat:=[&#x27;Current:&#x27;,&#x27;Playing:&#x27;]
+  ‹75 bytes of embedded binary/non-text data elided›
+                   &#x27;««« AmigaE             © Wouter Van Oortmerssen.»»»\n&#x27;+
+                   &#x27;««« reqtools.library   © Nico François.         »»»\n&#x27;+
+                   &#x27;««« Arexx              © William S. Hawes       »»»\n&#x27;+
+                   &#x27;««« superplay.library  © Andreas R. Kleinert.   »»»\n&#x27;+
+                   &#x27;««« gadtoolsbox        © Jaba Dev.              »»»\n&#x27;+
+                   &#x27;««« GoldED             © Dietmar Eilert.        »»»\n&#x27;+
+  ‹75 bytes of embedded binary/non-text data elided›
+                   &#x27;««« \s\l\s[36]»»»\n&#x27;+
+  ‹122 bytes of embedded binary/non-text data elided›
+    p_Request(reqstr,&#x27;Tous ce monde..|C\aest pas vrai..&#x27;,0)
+ENDPROC
+/**/
+/*&quot;p_ReadFile(str)&quot;*/
+PROC p_ReadFile(str)
+    DEF fh,buf[1000]:ARRAY,n=0,last=NIL,s,first=NIL
+    DEF nom[256]:STRING,rn[256]:STRING
+    IF fh:=Open(str,OLDFILE)
+        WHILE Fgets(fh,buf,1000)
+            IF n&lt;&gt;0
+                StringF(nom,&#x27;\s&#x27;,buf)
+                StrCopy(rn,nom,(EstrLen(nom)-1))
+                currentnode:=p_AjouteNode(modulelist,rn,0)
+            ENDIF
+            n:=n+1
+        ENDWHILE
+        Close(fh)
+    ENDIF
+ENDPROC
+/**/
+/*&quot;p_WriteFile(str)&quot;*/
+PROC p_WriteFile(str)
+    DEF fh,oldout
+    DEF cn:PTR TO ln
+    oldout:=stdout
+    IF fh:=Open(str,1006)
+        stdout:=fh
+        WriteF(&#x27;MODLIST\n&#x27;)
+        cn:=modulelist.head
+        WHILE cn
+            IF cn.succ&lt;&gt;0
+                WriteF(&#x27;\s\n&#x27;,cn.name)
+            ENDIF
+            cn:=cn.succ
+        ENDWHILE
+        Close(fh)
+    ENDIF
+    stdout:=oldout
+ENDPROC
+/**/
+
+/*&quot;p_CreateArexxPort(nom,pri)&quot;*/
+PROC p_CreateArexxPort(nom,pri) HANDLE
+/*===============================================================================
+ = Para         : name (STRING),pri (NUM).
+ = Return       : the address of the port if ok,else NIL.
+ = Description  : Create a public port.
+ ==============================================================================*/
+    DEF dat_port:PTR TO ln
+    DEF myt:PTR TO ln
+    IF FindPort(nom)&lt;&gt;0 THEN Raise(ER_PORTEXIST)
+    arexxport:=CreateMsgPort()
+    IF arexxport=0
+        Raise(ER_CREATEPORT)
+    ENDIF
+    myt:=FindTask(NIL)
+    SetTaskPri(myt,prio)
+    dat_port:=arexxport.ln
+    dat_port.name:=nom
+    dat_port.pri:=pri
+    dat_port.type:=NT_MSGPORT
+    arexxport.sigtask:=myt
+    arexxport.flags:=PA_SIGNAL
+    IF nom&lt;&gt;NIL
+        AddPort(arexxport)
+    ENDIF
+    Raise(ER_NONE)
+EXCEPT
+    RETURN exception
+ENDPROC
+/**/
+/*&quot;p_DeleteArexxPort(adr_port:PTR TO mp)&quot;*/
+PROC p_DeleteArexxPort(adr_port:PTR TO mp)
+/*===============================================================================
+ = Para         : Address of port.
+ = Return       : NONE
+ = Description  : Remove a public port.
+ ==============================================================================*/
+    DEF data_port:PTR TO ln
+    data_port:=adr_port.ln
+    IF data_port.name&lt;&gt;NIL THEN RemPort(adr_port)
+    IF adr_port THEN DeleteMsgPort(adr_port)
+    SetTaskPri(FindTask(NIL),0)
+ENDPROC
+/**/
+/*&quot;p_InitAPP()&quot;*/
+PROC p_InitAPP() HANDLE
+    DEF t
+    IF (t:=p_CreateArexxPort(arexxportname,0))&lt;&gt;ER_NONE THEN Raise(t)
+    IF (modulelist:=p_InitList())=NIL THEN Raise(ER_MEM)
+EXCEPT
+    RETURN exception
+ENDPROC
+/**/
+/*&quot;p_RemAPP()&quot;*/
+PROC p_RemAPP()
+    IF arexxport THEN p_DeleteArexxPort(arexxport)
+    IF modulelist THEN p_CleanList(modulelist,FALSE,0,LIST_REMOVE)
+    IF soundhandle&lt;&gt;NIL THEN SpL_FreeHandle(soundhandle)
+ENDPROC
+/**/
+/*&quot;p_PlayModule(name)&quot;*/
+PROC p_PlayModule(name)
+    DEF retval
+    IF soundhandle 
+        SpL_FreeResources(soundhandle)
+        SpL_FreeHandle(soundhandle)
+    ENDIF
+    p_LockGads(TRUE)
+    IF cp_window&lt;&gt;NIL THEN SetWindowTitles(cp_window,name,&#x27;Made With GadToolsBox V2.0b © 1991-1993&#x27;)
+    IF soundhandle:=SpL_AllocHandle(NIL)
+        retval:=SpL_InitHandleAsDOS(soundhandle,NIL)
+        IF retval=0
+            retval:=SpL_SuperPlay(soundhandle,name)
+            IF retval&lt;&gt;0 THEN p_Request(SpL_GetErrorString(retval),&#x27;Error&#x27;,0)
+        ELSE
+            p_Request(SpL_GetErrorString(retval),&#x27;Error&#x27;,0)
+        ENDIF
+    ELSE
+        p_Request(SpL_GetErrorString(retval),&#x27;Error&#x27;,0)
+    ENDIF
+    IF cp_window&lt;&gt;NIL THEN SetWindowTitles(cp_window,title_req,&#x27;Made With GadToolsBox V2.0b © 1991-1993&#x27;)
+    p_LockGads(FALSE)
+ENDPROC
+/**/
+/*&quot;p_FileRequester(a)&quot;*/
+PROC p_FileRequester(a)
+/*===============================================================================
+ = Para         : NONE
+ = Return       : False if cancel selected.
+ = Description  : PopUp a MultiFileRequester,build the whatview arguments.
+ ==============================================================================*/
+    DEF reqfile:PTR TO rtfilerequester
+    DEF liste:PTR TO rtfilelist
+    DEF buffer[120]:STRING
+    DEF add_liste=0
+    DEF ret=FALSE
+    DEF the_reelname[256]:STRING
+    DEF lock,taglist
+    reqfile:=NIL
+    dWriteF([&#x27;p_WVFileRequester()\n&#x27;],[0])
+    IF a=F_MODULE
+        taglist:=[RT_PUBSCRNAME,p_LockActivePubScreen(),RTFI_FLAGS,FREQF_MULTISELECT+FREQF_PATGAD,RTFI_OKTEXT,&#x27;Charger&#x27;,RTFI_HEIGHT,200,
+                  RT_UNDERSCORE,&quot;_&quot;,TAG_DONE]
+    ELSEIF a=F_CONFIG_LOAD
+        taglist:=[RT_PUBSCRNAME,p_LockActivePubScreen(),RTFI_FLAGS,FREQF_PATGAD,RTFI_OKTEXT,&#x27;Charger&#x27;,RTFI_HEIGHT,200,
+                  RT_UNDERSCORE,&quot;_&quot;,TAG_DONE]
+    ELSEIF a=F_CONFIG_SAVE
+        taglist:=[RT_PUBSCRNAME,p_LockActivePubScreen(),RTFI_FLAGS,FREQF_SAVE+FREQF_PATGAD,RTFI_OKTEXT,&#x27;Sauver&#x27;,RTFI_HEIGHT,200,
+                  RT_UNDERSCORE,&quot;_&quot;,TAG_DONE]
+    ENDIF
+    IF reqfile:=RtAllocRequestA(RT_FILEREQ,NIL)
+        buffer[0]:=0
+        RtChangeReqAttrA(reqfile,[RTFI_DIR,defaultdir,RTFI_MATCHPAT,&#x27;(#?.mod|mod.#?)&#x27;,TAG_DONE])
+        add_liste:=RtFileRequestA(reqfile,buffer,title_req,taglist)
+        StrCopy(defaultdir,reqfile.dir,ALL)
+        IF reqfile THEN RtFreeRequest(reqfile)
+        IF add_liste THEN ret:=TRUE
+    ELSE
+        dWriteF([&#x27;p_WVFileRequester() Bad\n&#x27;],[0])
+        ret:=FALSE
+    ENDIF
+    AddPart(defaultdir,&#x27;&#x27;,256)
+    IF ret=TRUE
+        IF a=F_MODULE
+            liste:=add_liste
+            IF add_liste
+                WHILE liste
+                    StringF(the_reelname,&#x27;\s\s&#x27;,defaultdir,liste.name)
+                    currentnode:=p_AjouteNode(modulelist,the_reelname,0)
+                    liste:=liste.next
+                ENDWHILE
+                IF add_liste THEN RtFreeFileList(add_liste)
+            ELSE
+            ENDIF
+        ELSE
+            StringF(sourceconfig,&#x27;\s\s&#x27;,defaultdir,buffer)
+        ENDIF
+    ELSE
+        ret:=FALSE
+    ENDIF
+    RETURN ret
+ENDPROC
+/**/
+/*&quot;p_Request(bodytext,gadgettext,the_arg)&quot;*/
+PROC p_Request(bodytext,gadgettext,the_arg)
+/*===============================================================================
+ = Para         : texte (STRING),gadgets (STRING),the_arg.
+ = Return       : FALSE if cancel selected,else TRUE.
+ = Description  : PopUp a requester (reqtools.library).
+ ==============================================================================*/
+    DEF ret
+    DEF taglist
+    dWriteF([&#x27;p_MakeWVRequest()\n&#x27;],[0])
+    IF cp_window&lt;&gt;NIL
+        taglist:=[RT_WINDOW,cp_window,RT_LOCKWINDOW,TRUE,RTEZ_REQTITLE,title_req,RT_UNDERSCORE,&quot;_&quot;,0]
+    ELSE
+        taglist:=[RT_PUBSCRNAME,p_LockActivePubScreen(),RTEZ_REQTITLE,title_req,RT_UNDERSCORE,&quot;_&quot;,0]
+    ENDIF
+    ret:=RtEZRequestA(bodytext,gadgettext,0,the_arg,taglist)
+    RETURN ret
+ENDPROC
+/**/
+/*&quot;p_LockActivePubScreen()&quot;*/
+PROC p_LockActivePubScreen()
+    DEF ps:PTR TO pubscreennode
+    DEF s:PTR TO screen
+    DEF sn:PTR TO ln
+    DEF psl:PTR TO lh
+    DEF ret=NIL
+    DEF myintui:PTR TO intuitionbase
+    ret:=NIL
+    myintui:=intuitionbase
+    s:=myintui.activescreen
+    IF psl:=LockPubScreenList()
+        sn:=psl.head
+        WHILE sn
+            ps:=sn
+            IF sn.succ&lt;&gt;0
+                IF ps.screen=s THEN ret:=sn.name
+            ENDIF
+            sn:=sn.succ
+        ENDWHILE
+        UnlockPubScreenList()
+    ENDIF
+    RETURN ret
+ENDPROC
+/**/
+/*&quot;p_StartCLI()&quot;*/
+PROC p_StartCLI() HANDLE
+    DEF myargs:PTR TO LONG,rdargs=NIL
+    myargs:=[0,0,0,0]
+    IF rdargs:=ReadArgs(&#x27;ArexxPortName/K,Priority/N,Def_Dir/K,Hide/S&#x27;,myargs,NIL)
+        IF myargs[0] THEN StrCopy(arexxportname,myargs[0],ALL) ELSE StrCopy(arexxportname,&#x27;ZiqBoom!Port&#x27;,ALL)
+        IF myargs[1] THEN prio:=Long(myargs[1])
+        IF myargs[2] THEN StrCopy(defaultdir,myargs[2],ALL) ELSE StrCopy(defaultdir,&#x27;&#x27;,ALL)
+        IF myargs[3] THEN hide:=TRUE
+    ELSE
+        Raise(ER_BADARGS)
+    ENDIF
+    Raise(ER_NONE)
+EXCEPT
+    IF rdargs THEN FreeArgs(rdargs)
+    RETURN exception
+ENDPROC
+/**/
+/*&quot;p_StartWB()&quot;*/
+PROC p_StartWB() HANDLE
+    DEF bl,disk:PTR TO diskobject
+    DEF wb:PTR TO wbstartup
+    DEF args:PTR TO wbarg
+    DEF prgname[80]:STRING,str[256]:STRING,np=NIL
+    wb:=wbmessage
+    args:=wb.arglist
+    StrCopy(prgname,args[0].name,ALL)
+    bl:=CurrentDir(args[0].lock)
+    IF (disk:=GetDiskObject(prgname))=NIL THEN Raise(ER_NOICON)
+    IF str:=FindToolType(disk.tooltypes,&#x27;AREXXPORTNAME&#x27;)
+        StrCopy(arexxportname,str,ALL)
+    ELSE
+        StrCopy(arexxportname,&#x27;ZiqBoom!Port&#x27;,ALL)
+    ENDIF
+    IF str:=FindToolType(disk.tooltypes,&#x27;PRIORITY&#x27;)
+        np:=Val(str,NIL)
+        prio:=np
+    ENDIF
+    IF str:=FindToolType(disk.tooltypes,&#x27;HIDE&#x27;) THEN hide:=TRUE
+    IF str:=FindToolType(disk.tooltypes,&#x27;DEF_DIR&#x27;)
+        StrCopy(defaultdir,str,ALL)
+    ELSE
+        StrCopy(defaultdir,&#x27;&#x27;,ALL)
+    ENDIF
+    Raise(ER_NONE)
+EXCEPT
+    IF bl THEN CurrentDir(bl)
+    IF disk THEN FreeDiskObject(disk)
+    RETURN exception
+ENDPROC
+/**/
+/**/
+/*&quot;main()&quot;*/
+PROC main() HANDLE 
+    DEF testmain
+    tattr:=[&#x27;topaz.font&#x27;,8,0,0]:textattr
+    StrCopy(defaultdir,&#x27;Hd2:Modules/Pro&#x27;,ALL)
+    p_DoReadHeader({banner})
+    IF (testmain:=p_OpenLibraries())&lt;&gt;ER_NONE THEN Raise(testmain)
+    IF wbmessage&lt;&gt;NIL
+        IF (testmain:=p_StartWB())&lt;&gt;ER_NONE THEN Raise(testmain)
+    ELSE
+        IF (testmain:=p_StartCLI())&lt;&gt;ER_NONE THEN Raise(testmain)
+    ENDIF
+    IF (testmain:=p_InitAPP())&lt;&gt;ER_NONE THEN Raise(testmain)
+    IF hide=FALSE
+        IF (testmain:=p_SetUpScreen())&lt;&gt;ER_NONE THEN Raise(testmain)
+        IF (testmain:=p_InitcpWindow())&lt;&gt;ER_NONE THEN Raise(testmain)
+        IF (testmain:=p_OpencpWindow())&lt;&gt;ER_NONE THEN Raise(testmain)
+    ENDIF
+    REPEAT
+        p_LookAllMessage()
+    UNTIL reelquit=TRUE
+    Raise(ER_NONE)
+EXCEPT
+    IF cp_window THEN p_RemcpWindow()
+    IF screen THEN p_SetDownScreen()
+    p_RemAPP()
+    p_CloseLibraries()
+    SELECT exception
+        CASE ER_LOCKSCREEN;     WriteF(&#x27;Lock Screen Failed.\n&#x27;)
+        CASE ER_VISUAL;         WriteF(&#x27;Error Visual.\n&#x27;)
+        CASE ER_CONTEXT;        WriteF(&#x27;Error Context.\n&#x27;)
+        CASE ER_MENUS;          WriteF(&#x27;Error Menus.\n&#x27;)
+        CASE ER_GADGET;         WriteF(&#x27;Error Gadget.\n&#x27;)
+        CASE ER_WINDOW;         WriteF(&#x27;Error Window.\n&#x27;)
+        CASE ER_SUPERPLAYLIB;   WriteF(&#x27;superplay.library ??\n&#x27;)
+        CASE ER_REQTOOLSLIB;    WriteF(&#x27;reqtools.library ??\n&#x27;)
+        CASE ER_REXXSYSLIBLIB;     WriteF(&#x27;rexxsyslib.library ??\n&#x27;)
+        CASE ER_UTILITYLIB;     WriteF(&#x27;utility.library ??\n&#x27;)
+        CASE ER_PORTEXIST;      WriteF(&#x27;Arexx port \s exist.\n&#x27;,arexxportname)
+        CASE ER_CREATEPORT;     WriteF(&#x27;Error Create arexx port.\n&#x27;)
+        CASE ER_BADARGS;        WriteF(&#x27;Bad Args.\n&#x27;)
+        CASE ER_NOICON;         WriteF(&#x27;No Icon.\n&#x27;)
+    ENDSELECT
+ENDPROC
+/**/
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

@@ -1,0 +1,192 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ping.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-goportscan-src.html">GoPortscan_src</a> &rsaquo; ping.e</div><h1>File: <code>ping.e</code></h1><p class="meta">166 lines · project <a href="../examples/pkg-goportscan-src.html"><code>GoPortscan_src</code></a></p><p class="pathctx">GoPortscan_src/GoPortscan_Src/EXPERIMENTAL/ping.e</p><p class="prose">Description: Experimental source on performing <a href="../modules/code.html#const-icmp">ICMP</a> pings. This source is actually quite functional and could easily be adapted into a fully functional ping command. By default pings localhost 30 times.</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/socket.html">socket</a></li></ul></div><h2>Source</h2><pre class="code">/*
+    Description: Experimental source on performing ICMP pings. This source is
+                 actually quite functional and could easily be adapted into a
+                 fully functional ping command.
+
+                 By default pings localhost 30 times.
+*/
+
+
+
+MODULE  &#x27;socket&#x27;,
+        &#x27;amitcp/sys/socket&#x27;,
+        &#x27;amitcp/sys/types&#x27;,
+        &#x27;amitcp/sys/time&#x27;,
+        &#x27;amitcp/sys/param&#x27;,
+        &#x27;amitcp/sys/errno&#x27;,
+        &#x27;amitcp/netinet/in&#x27;,
+        &#x27;amitcp/netinet/ip_icmp&#x27;,
+        &#x27;amitcp/netinet/ip&#x27;,
+        &#x27;amitcp/netdb&#x27;,
+        &#x27;oomodules/softtimer_oo&#x27;
+
+CONST SEQNUM=29, ICMPIDNUM=1066
+
+OBJECT intfold
+    arr[100]:ARRAY OF INT
+ENDOBJECT
+
+PROC main()
+DEF icmphdr:PTR TO icmp,
+    iphdr:PTR TO ip,
+    ricmp:PTR TO icmp,
+    sain:PTR TO sockaddr_in,
+    hst:PTR TO hostent,
+    rcvbuffer,
+    sock,
+    recvlen,
+    readfds:fd_set,
+    tv:compatible_timeval,
+    loop,
+    hostname[200]:STRING,
+    mytimer:PTR TO softtimer
+
+IF arg[]=0
+    StrCopy(hostname, &#x27;localhost&#x27;)
+ELSE
+    StrCopy(hostname, arg)
+ENDIF
+
+IF (socketbase:=OpenLibrary(&#x27;bsdsocket.library&#x27;,NIL))&lt;&gt;NIL
+    IF hst:=GetHostByName(hostname)
+        IF (sock:=Socket(AF_INET, SOCK_RAW, IPPROTO_ICMP))&lt;&gt;-1
+            sain:=New(SIZEOF sockaddr)
+            sain.family:=AF_INET
+            CopyMem(Long(hst.addr_list), sain.addr, hst.length)
+
+            NEW mytimer.softtimer()
+
+            FOR loop:=1 TO 30
+
+                icmphdr:=New(SIZEOF icmp)
+                iphdr:=New(SIZEOF ip)
+
+                -&gt;WriteF(&#x27;SENDING ICMP PACKET\n-------------------\n\n&#x27;)
+
+                icmphdr.type:=ICMP_ECHO
+                icmphdr.code:=0 -&gt;3
+                icmphdr.idseq.id:=ICMPIDNUM
+                icmphdr.idseq.seq:=loop
+                icmphdr.cksum:=cksum(icmphdr, SIZEOF icmp)
+
+                /*
+                WriteF(&#x27;ICMP TYPE     =  $\h (\d)\n&#x27;, icmphdr.type, icmphdr.type)
+                WriteF(&#x27;ICMP CODE     =  $\h (\d)\n&#x27;, icmphdr.code, icmphdr.code)
+                WriteF(&#x27;ICMP IDNUM    =  $\h (\d)\n&#x27;, icmphdr.idseq.id, icmphdr.idseq.id)
+                WriteF(&#x27;ICMP SEQNUM   =  $\h (\d)\n&#x27;, icmphdr.idseq.seq, icmphdr.idseq.seq)
+                WriteF(&#x27;ICMP CHECKSUM =  $\h (\d)\n&#x27;, icmphdr.cksum, icmphdr.cksum)
+                */
+
+                -&gt;WriteF(&#x27;PING!\n&#x27;)
+
+                SendTo(sock, icmphdr, SIZEOF icmp, NIL, sain, SIZEOF sockaddr_in)
+
+            -&gt;ENDFOR
+
+
+            -&gt;FOR loop:=1 TO 30
+
+                fd_zero(readfds)
+                fd_set(sock, readfds)
+                tv.sec:=0
+                tv.usec:=1
+
+                WHILE WaitSelect(sock+1, readfds, NIL, NIL, tv, NIL)&gt;0
+
+                    rcvbuffer:=New((SIZEOF ip) + (SIZEOF icmp))
+                    recvlen:=RecvFrom(sock, rcvbuffer, (SIZEOF ip) + (SIZEOF icmp), NIL, NIL, NIL)
+                    -&gt;WriteF(&#x27;\n\nRECEIVED IP PACKET\n------------------\n\n&#x27;)
+                    iphdr:=rcvbuffer
+                    ricmp:=rcvbuffer + (SIZEOF ip)
+
+                    /*
+                    WriteF(&#x27;IP VERSION (V4 is $45) = $\h (\d)\n&#x27;, iphdr.v_hl, iphdr.v_hl)
+                    WriteF(&#x27;IP SOURCE ADDRESS      = $\h (\s)\n&#x27;, iphdr.src, Inet_NtoA(iphdr.src.addr))
+                    WriteF(&#x27;IP DESTINATION ADDRESS = $\h (\s)\n&#x27;, iphdr.dst, Inet_NtoA(iphdr.dst.addr))
+                    WriteF(&#x27;IP TOS                 = $\h (\d)\n&#x27;, iphdr.tos, iphdr.tos)
+                    WriteF(&#x27;IP LENGTH (DATA PART)  = $\h (\d)\n&#x27;, iphdr.len, iphdr.len)
+                    WriteF(&#x27;IP IDNUM               = $\h (\d)\n&#x27;, iphdr.id, iphdr.id)
+                    WriteF(&#x27;IP FRAGMENT OFFSET     = $\h (\d)\n&#x27;, iphdr.off, iphdr.off)
+                    WriteF(&#x27;IP TIME TO LIVE        = $\h (\d)\n&#x27;, iphdr.ttl, iphdr.ttl)
+                    WriteF(&#x27;IP PROTOCOL (1=ICMP)   = $\h (\d)\n&#x27;, iphdr.p, iphdr.p)
+                    WriteF(&#x27;IP CHECKSUM            = $\h (\d)\n&#x27;, iphdr.sum, iphdr.sum)
+                    WriteF(&#x27;  |\n&#x27;)
+                    WriteF(&#x27;  -&gt;\n&#x27;)
+                    WriteF(&#x27;    ICMP TYPE     =  $\h (\d)\n&#x27;, ricmp.type, ricmp.type)
+                    WriteF(&#x27;    ICMP CODE     =  $\h (\d)\n&#x27;, ricmp.code, ricmp.code)
+                    WriteF(&#x27;    ICMP IDNUM    =  $\h (\d)\n&#x27;, ricmp.idseq.id, ricmp.idseq.id)
+                    WriteF(&#x27;    ICMP SEQNUM   =  $\h (\d)\n&#x27;, ricmp.idseq.seq, ricmp.idseq.seq)
+                    WriteF(&#x27;    ICMP CHECKSUM =  $\h (\d)\n&#x27;, ricmp.cksum, ricmp.cksum)
+                    */
+
+                    WriteF(&#x27;\d Bytes From \s: Sequence=\d: TTL=\d\n&#x27;,recvlen, Inet_NtoA(iphdr.src.addr), ricmp.idseq.seq, iphdr.ttl)
+                -&gt;ELSE
+                -&gt;    WriteF(&#x27;TIMED OUT\n&#x27;)
+                -&gt;ENDIF
+
+                ENDWHILE
+
+                Delay(5)
+
+            ENDFOR
+
+        ELSE
+            WriteF(&#x27;Problem with creating the socket&#x27;)
+        ENDIF
+    ELSE
+        WriteF(&#x27;Problem with host lookup\n&#x27;)
+    ENDIF
+
+    CloseSocket(sock)
+    CloseLibrary(socketbase)
+ELSE
+    WriteF(&#x27;Unable to open bsdsocket.library\n&#x27;)
+ENDIF
+
+
+ENDPROC
+
+PROC cksum(hdr:PTR TO intfold, hdrsize:LONG)
+DEF accumulator=0:LONG,
+    loop
+
+-&gt;WriteF(&#x27;Using Headersize $\h (\d)\n&#x27;,hdrsize, hdrsize)
+
+FOR loop:=0 TO ((hdrsize-1)/2)
+    accumulator:=accumulator+hdr.arr[loop]
+ENDFOR
+
+accumulator:=(Shr(accumulator, 16)) + (Eor(accumulator, $FFFF))
+accumulator:=accumulator + (Shr(accumulator, 16))
+
+-&gt;WriteF(&#x27;Calculated Checksum = $\h (\d)\n&#x27;,accumulator, accumulator)
+
+ENDPROC accumulator
+
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

@@ -1,0 +1,392 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>UseIFFImageClass.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-aepd44.html">AEPD44</a> &rsaquo; UseIFFImageClass.e</div><h1>File: <code>UseIFFImageClass.e</code></h1><p class="meta">366 lines · project <a href="../examples/pkg-aepd44.html"><code>AEPD44</code></a></p><p class="pathctx">AEPD44/EPD44/Programme/BOOPSI-Klassen/IFFImageClass/UseIFFImageClass.e</p><p class="prose">-- --------------------------------------------------------------- -- * * -- Autor..............: Daniel Kasmeroglu (Gideon) -- * * -- Programmname.......: UseIFFImageClass.e -- * * -- Original von.......: Holger Engels -- * * -- Version............: 0.1 -- * * -- -- -- -- * * -- History............</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/intuition.html">intuition/intuition</a></li></ul></div><h2>Source</h2><pre class="code">/* -- --------------------------------------------------------------- -- *
+ * -- Autor..............: Daniel Kasmeroglu (Gideon)                 -- *
+ * -- Programmname.......: UseIFFImageClass.e                         -- *
+ * -- Original von.......: Holger Engels                              -- *
+ * -- Version............: 0.1                                        -- *
+ * -- --                                                           -- -- *
+ * -- History............:                                            -- *
+ * --     0.1            - Die erste Version !                        -- *
+ * --                      (24.03.1996)                               -- *
+ * -- --------------------------------------------------------------- -- */
+
+/* -- --------------------------------------------------------------- -- *
+ * -- ACHTUNG: Die Datei &quot;Projectbrushes&quot; muß sich im Verzeichniss    -- *
+ * --          &quot;Ram Disk:&quot; befinden um dieses Testprogramm starten zu -- *
+ * --          können.                                                -- *
+ * -- --------------------------------------------------------------- -- */
+
+
+     /* -- ------------------------------------------------- -- *
+      * --                  Compiler-Optionen                -- *
+      * -- ------------------------------------------------- -- */
+
+OPT OSVERSION = 37             -&gt;: BOOPSI gibt es erst ab Amiga OS 2.04
+OPT REG = 5                    -&gt;: Register-Optimierung einschalten
+OPT PREPROCESS                 -&gt;: Präprozessor aktivieren
+
+
+     /* -- ------------------------------------------------- -- *
+      * --                      E-Module                     -- *
+      * -- ------------------------------------------------- -- */
+ 
+MODULE &#x27;intuition/intuition&#x27;,
+       &#x27;intuition/screens&#x27;,
+       &#x27;intuition/classes&#x27;,
+       &#x27;intuition/classusr&#x27;,
+       &#x27;intuition/imageclass&#x27;,
+       &#x27;intuition/gadgetclass&#x27;,
+       &#x27;exec/ports&#x27;,
+       &#x27;exec/lists&#x27;,
+       &#x27;exec/nodes&#x27;,
+       &#x27;graphics/text&#x27;,
+       &#x27;libraries/iffparse&#x27;,
+       &#x27;utility/tagitem&#x27;,
+       &#x27;tools/ilbmdefs&#x27;,
+       &#x27;utility&#x27;,
+       &#x27;iffparse&#x27;,
+       &#x27;gadtools&#x27;,
+       &#x27;*iffimageclass&#x27;
+
+
+     /* -- ------------------------------------------------- -- *
+      * --                       Konstanten                  -- *
+      * -- ------------------------------------------------- -- */
+
+CONST ID_ILBM = &quot;ILBM&quot;,    -&gt;: Chunk ID&#x27;s
+      ID_NAME = &quot;NAME&quot;,
+      ID_BMHD = &quot;BMHD&quot;,
+      ID_BODY = &quot;BODY&quot;
+
+
+ENUM GADGET_NEW = 1,       -&gt;: Schalter-Codes
+     GADGET_OPEN,
+     GADGET_SAVE,
+     GADGET_PRINT,
+     GADGET_CUT,
+     GADGET_COPY,
+     GADGET_PASTE,
+     GADGET_DELETE
+
+
+
+     /* -- ------------------------------------------------- -- *
+      * --                   Globale Variablen               -- *
+      * -- ------------------------------------------------- -- */
+
+DEF glo_screen   : PTR TO screen
+DEF glo_window   : PTR TO window
+DEF glo_drinfo   : PTR TO drawinfo
+DEF glo_ifficl   : PTR TO iclass        -&gt;: unsere private Klasse
+
+DEF glo_imnew    : PTR TO image         -&gt;: die IFF-Images
+DEF glo_imopen   : PTR TO image
+DEF glo_imsave   : PTR TO image
+DEF glo_imprint  : PTR TO image
+DEF glo_imcut    : PTR TO image
+DEF glo_imcopy   : PTR TO image
+DEF glo_impaste  : PTR TO image
+DEF glo_imdelete : PTR TO image
+
+DEF glo_ganew    : PTR TO gadget        -&gt;: Schalter
+DEF glo_gaopen   : PTR TO gadget
+DEF glo_gasave   : PTR TO gadget
+DEF glo_gaprint  : PTR TO gadget
+DEF glo_gacut    : PTR TO gadget
+DEF glo_gacopy   : PTR TO gadget
+DEF glo_gapaste  : PTR TO gadget
+DEF glo_gadelete : PTR TO gadget
+
+DEF glo_visual
+
+
+     /* -- ------------------------------------------------- -- *
+      * --                    Hauptprogramm                  -- *
+      * -- ------------------------------------------------- -- */
+
+PROC main() HANDLE
+
+  -&gt;: alles öffnen und initialisieren
+
+  glo_visual   := NIL
+  gadtoolsbase := OpenLibrary(&#x27;gadtools.library&#x27;,37)
+  utilitybase  := OpenLibrary(&#x27;utility.library&#x27;,37)
+  iffparsebase := OpenLibrary(&#x27;iffparse.library&#x27;,37)
+  glo_screen   := LockPubScreen(NIL)
+  glo_visual   := GetVisualInfoA(glo_screen,TAG_DONE)
+  glo_drinfo   := GetScreenDrawInfo(glo_screen)
+  glo_window   := OpenWindowTagList(NIL,
+  [WA_LEFT,                           0,
+   WA_TOP,      glo_screen.wbortop + glo_screen.font.ysize + 1,
+   WA_WIDTH,                        300,
+   WA_HEIGHT,                       200,
+   WA_AUTOADJUST,                  TRUE,
+   WA_FLAGS,      WFLG_SIZEGADGET OR WFLG_SIZEBRIGHT OR WFLG_SIZEBBOTTOM OR WFLG_DRAGBAR OR WFLG_DEPTHGADGET OR WFLG_CLOSEGADGET OR WFLG_SMART_REFRESH,
+   WA_IDCMP,          IDCMP_CLOSEWINDOW OR IDCMP_GADGETUP,
+   WA_ACTIVATE,                    TRUE,
+   WA_TITLE,            &#x27;Solution Test&#x27;,
+   WA_SCREENTITLE,      &#x27;Solution Test&#x27;,
+   WA_PUBSCREEN,             glo_screen,
+   TAG_DONE,                   TAG_DONE])
+
+  use_DisplayImage()  -&gt;: unsere Testroutine
+
+EXCEPT DO
+
+  IF glo_window   &lt;&gt; NIL THEN CloseWindow(glo_window)
+  IF glo_drinfo   &lt;&gt; NIL THEN FreeScreenDrawInfo(glo_screen,glo_drinfo)
+  IF glo_visual   &lt;&gt; NIL THEN FreeVisualInfo(glo_visual)
+  IF glo_screen   &lt;&gt; NIL THEN UnlockPubScreen(NIL,glo_screen)
+  IF iffparsebase &lt;&gt; NIL THEN CloseLibrary(iffparsebase)
+  IF utilitybase  &lt;&gt; NIL THEN CloseLibrary(utilitybase)
+  IF gadtoolsbase &lt;&gt; NIL THEN CloseLibrary(gadtoolsbase)
+
+ENDPROC
+
+
+-&gt;: Kleine Prozedur, die auf ein Intuition-Event wartet
+PROC use_HandleMessages()
+DEF han_msg : PTR TO intuimessage
+DEF han_gad : PTR TO gadget
+DEF han_class,han_state
+
+  han_state := FALSE
+  REPEAT
+
+    WaitPort(glo_window.userport)
+    han_msg   := GetMsg(glo_window.userport)
+    han_class := han_msg.class
+    han_gad   := han_msg.iaddress
+    ReplyMsg(han_msg)
+
+    SELECT han_class
+      CASE IDCMP_CLOSEWINDOW ; han_state := TRUE
+      CASE IDCMP_GADGETUP    ; WriteF(&#x27;Gadget ID.: \d\n&#x27;,han_gad.gadgetid)
+    ENDSELECT
+
+  UNTIL han_state = TRUE
+
+ENDPROC
+
+
+
+PROC use_DisplayImage()
+DEF dis_ifflist : PTR TO lh
+
+  -&gt;: die Klasse erstellen
+  glo_ifficl := iff_InitIFFIMAGEClass()
+  IF glo_ifficl &lt;&gt; NIL
+
+    -&gt;: die CATENATION-Datei laden
+    dis_ifflist := iff_InitIFFList(&#x27;ram:projectbrushes2&#x27;)
+    IF dis_ifflist &lt;&gt; NIL
+
+      -&gt;: die Image-Objekte erzeugen
+      glo_imnew := NewObjectA(glo_ifficl,NIL,
+      [IFFIM_IFFLIST,            dis_ifflist,
+       ISD_NORMAL,                     &#x27;New&#x27;,
+       ISD_SELECTED,                &#x27;NewSel&#x27;,
+       TAG_END,                      TAG_END])
+
+      IF glo_imnew = NIL THEN WriteF(&#x27;no image!\n&#x27;)
+
+      glo_imopen := NewObjectA(glo_ifficl,NIL,
+      [IFFIM_IFFLIST,             dis_ifflist,
+       ISD_NORMAL,                     &#x27;Open&#x27;, 
+       ISD_SELECTED,                &#x27;OpenSel&#x27;,
+       TAG_END,                       TAG_END])
+
+      IF glo_imopen = NIL THEN WriteF(&#x27;no image !\n&#x27;)
+
+      glo_imsave := NewObjectA(glo_ifficl,NIL,
+      [IFFIM_IFFLIST,             dis_ifflist,
+       ISD_NORMAL,                     &#x27;Save&#x27;,
+       ISD_SELECTED,                &#x27;SaveSel&#x27;,
+       TAG_END,                       TAG_END])
+
+      IF glo_imsave = NIL THEN WriteF(&#x27;no image !\n&#x27;)
+
+      glo_imprint := NewObjectA(glo_ifficl,NIL,
+      [IFFIM_IFFLIST,              dis_ifflist,
+       ISD_NORMAL,                     &#x27;Print&#x27;,
+       ISD_SELECTED,                &#x27;PrintSel&#x27;,
+       TAG_END,                        TAG_END])
+
+      IF glo_imprint = NIL THEN WriteF(&#x27;no image !\n&#x27;)
+
+      glo_imcut := NewObjectA(glo_ifficl,NIL,
+      [IFFIM_IFFLIST,            dis_ifflist,
+       ISD_NORMAL,                     &#x27;Cut&#x27;,
+       ISD_SELECTED,                &#x27;CutSel&#x27;,
+       TAG_END,                      TAG_END])
+
+      IF glo_imcut = NIL THEN WriteF(&#x27;no image !\n&#x27;)
+
+      glo_imcopy := NewObjectA(glo_ifficl,NIL,
+      [IFFIM_IFFLIST,             dis_ifflist,
+       ISD_NORMAL,                     &#x27;Copy&#x27;,
+       ISD_SELECTED,                &#x27;CopySel&#x27;,
+       TAG_END,                       TAG_END])
+
+      IF glo_imcopy = NIL THEN WriteF(&#x27;no image !\n&#x27;)
+  
+      glo_impaste := NewObjectA(glo_ifficl,NIL,
+      [IFFIM_IFFLIST,              dis_ifflist,
+       ISD_NORMAL,                     &#x27;Paste&#x27;,
+       ISD_SELECTED,                &#x27;PasteSel&#x27;,
+       TAG_END,                        TAG_END])
+
+      IF glo_impaste = NIL THEN WriteF(&#x27;no image !\n&#x27;)
+
+      glo_imdelete := NewObjectA(glo_ifficl,NIL,
+      [IFFIM_IFFLIST,               dis_ifflist,
+       ISD_NORMAL,                     &#x27;Delete&#x27;,
+       ISD_SELECTED,                &#x27;DeleteSel&#x27;,
+       TAG_END,                         TAG_END])
+ 
+      IF glo_imdelete = NIL THEN WriteF(&#x27;no image !\n&#x27;)
+
+      -&gt;: Images können wieder freigegeben werden
+      iff_FreeIFFList(dis_ifflist)
+
+
+      -&gt;: Zur Veranschaulichung des Nutzens, werden
+      -&gt;: die Images gleich im Zusammenhang mit
+      -&gt;: Schaltern benutzt
+
+      glo_ganew := NewObjectA(NIL,BUTTONGCLASS,
+      [GA_LEFT,                             10,
+       GA_TOP,                              30,
+       GA_RELVERIFY,                      TRUE,
+       GA_IMAGE,                     glo_imnew,
+       GA_ID,                       GADGET_NEW,
+       TAG_END,                        TAG_END])
+
+      glo_gaopen := NewObjectA(NIL,BUTTONGCLASS,
+      [GA_PREVIOUS,                   glo_ganew,
+       GA_LEFT,                              40,
+       GA_TOP,                               30,
+       GA_RELVERIFY,                       TRUE,
+       GA_IMAGE,                     glo_imopen,
+       GA_ID,                       GADGET_OPEN,
+       TAG_END,                         TAG_END])
+
+      glo_gasave := NewObjectA(NIL,BUTTONGCLASS,
+      [GA_PREVIOUS,                  glo_gaopen,
+       GA_LEFT,                              70,
+       GA_TOP,                               30,
+       GA_RELVERIFY,                       TRUE,
+       GA_IMAGE,                     glo_imsave,
+       GA_ID,                       GADGET_SAVE,
+       TAG_END,                         TAG_END])
+
+      glo_gaprint := NewObjectA(NIL,BUTTONGCLASS,
+      [GA_PREVIOUS,                   glo_gasave,
+       GA_LEFT,                              100,
+       GA_TOP,                                30,
+       GA_RELVERIFY,                        TRUE,
+       GA_IMAGE,                     glo_imprint,
+       GA_ID,                       GADGET_PRINT,
+       TAG_END,                          TAG_END])
+
+      glo_gacut := NewObjectA(NIL,BUTTONGCLASS,
+      [GA_PREVIOUS,                glo_gaprint,
+       GA_LEFT,                            130,
+       GA_TOP,                              30,
+       GA_RELVERIFY,                      TRUE,
+       GA_IMAGE,                     glo_imcut,
+       GA_ID,                       GADGET_CUT,
+       TAG_END,                        TAG_END])
+
+      glo_gacopy := NewObjectA(NIL,BUTTONGCLASS,
+      [GA_PREVIOUS,                   glo_gacut,
+       GA_LEFT,                             160,
+       GA_TOP,                               30,
+       GA_RELVERIFY,                       TRUE,
+       GA_IMAGE,                     glo_imcopy,
+       GA_ID,                       GADGET_COPY,
+       TAG_END,                         TAG_END])
+
+      glo_gapaste := NewObjectA(NIL,BUTTONGCLASS,
+      [GA_PREVIOUS,                   glo_gacopy,
+       GA_LEFT,                              190,
+       GA_TOP,                                30,
+       GA_RELVERIFY,                        TRUE,
+       GA_IMAGE,                     glo_impaste,
+       GA_ID,                       GADGET_PASTE,
+       TAG_END,                          TAG_END])
+
+      glo_gadelete := NewObjectA(NIL,BUTTONGCLASS,
+      [GA_PREVIOUS,                   glo_gapaste,
+       GA_LEFT,                               220,
+       GA_TOP,                                 30,
+       GA_RELVERIFY,                         TRUE,
+       GA_IMAGE,                     glo_imdelete,
+       GA_ID,                       GADGET_DELETE,
+       TAG_END,                           TAG_END])
+
+      -&gt;: Schalter ins Fenster &quot;einhängen&quot;
+      AddGList(glo_window,glo_ganew,-1,-1,NIL)
+      RefreshGadgets(glo_ganew,glo_window,NIL)
+
+      -&gt;: auf Nachrichten warten bzw. reagieren
+      use_HandleMessages()
+
+      -&gt;: Schalter wieder aushängen
+      RemoveGList(glo_window,glo_ganew,-1)
+
+      -&gt;: Objekt auflösen
+      IF glo_ganew    &lt;&gt; NIL THEN DisposeObject(glo_ganew)
+      IF glo_gaopen   &lt;&gt; NIL THEN DisposeObject(glo_gaopen)
+      IF glo_gasave   &lt;&gt; NIL THEN DisposeObject(glo_gasave)
+      IF glo_gaprint  &lt;&gt; NIL THEN DisposeObject(glo_gaprint)
+      IF glo_gacut    &lt;&gt; NIL THEN DisposeObject(glo_gacut)
+      IF glo_gacopy   &lt;&gt; NIL THEN DisposeObject(glo_gacopy)
+      IF glo_gapaste  &lt;&gt; NIL THEN DisposeObject(glo_gapaste)
+      IF glo_gadelete &lt;&gt; NIL THEN DisposeObject(glo_gadelete)
+
+      IF glo_imnew    &lt;&gt; NIL THEN DisposeObject(glo_imnew)
+      IF glo_imopen   &lt;&gt; NIL THEN DisposeObject(glo_imopen)
+      IF glo_imsave   &lt;&gt; NIL THEN DisposeObject(glo_imsave)
+      IF glo_imprint  &lt;&gt; NIL THEN DisposeObject(glo_imprint)
+      IF glo_imcut    &lt;&gt; NIL THEN DisposeObject(glo_imcut)
+      IF glo_imcopy   &lt;&gt; NIL THEN DisposeObject(glo_imcopy)
+      IF glo_impaste  &lt;&gt; NIL THEN DisposeObject(glo_impaste)
+      IF glo_imdelete &lt;&gt; NIL THEN DisposeObject(glo_imdelete)
+
+    ENDIF
+
+    -&gt;: Private Klasse wieder freigeben
+    iff_FreeIFFIMAGEClass(glo_ifficl)
+
+  ELSE
+    WriteF(&#x27;no class !\n&#x27;)
+  ENDIF
+
+ENDPROC
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

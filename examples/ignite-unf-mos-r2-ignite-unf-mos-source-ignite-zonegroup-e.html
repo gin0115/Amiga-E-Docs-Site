@@ -1,0 +1,256 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>zonegroup.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-ignite-unf-mos-r2.html">ignite-unf-mos-r2</a> &rsaquo; zonegroup.e</div><h1>File: <code>zonegroup.e</code></h1><p class="meta">230 lines · project <a href="../examples/pkg-ignite-unf-mos-r2.html"><code>ignite-unf-mos-r2</code></a></p><p class="pathctx">ignite-unf-mos-r2/ignite-unf-mos/source/ignite/zonegroup.e</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/boopsi.html">amigalib/boopsi</a></li><li><a href="../modules/lists.html">amigalib/lists</a></li><li><a href="../modules/classes.html">intuition/classes</a></li><li><a href="../modules/classusr.html">intuition/classusr</a></li><li><a href="../modules/intuition.html">intuition/intuition</a></li><li><a href="../modules/mui.html">libraries/mui</a></li><li><a href="../modules/muip.html">libraries/muip</a></li><li><a href="../modules/muicustomclass.html">mui/muicustomclass</a></li><li><a href="../modules/muimaster.html">muimaster</a></li><li><a href="../modules/installhook.html">tools/installhook</a></li><li><a href="../modules/utility.html">utility</a></li><li><a href="../modules/hooks.html">utility/hooks</a></li><li><a href="../modules/tagitem.html">utility/tagitem</a></li></ul></div><h2>Source</h2><pre class="code">
+OPT MODULE, PREPROCESS
+
+-&gt; zonegroup, a mui group of gadgets to control zone parameters
+
+-&gt; TODO: make use of mathstring
+
+MODULE &#x27;*mainmisc&#x27;
+MODULE &#x27;*mystring&#x27;
+MODULE &#x27;*fractmisc&#x27;
+
+-&gt;MODULE &#x27;*modules&#x27;
+
+MODULE &#x27;muimaster&#x27;
+MODULE &#x27;libraries/mui&#x27;
+MODULE &#x27;libraries/muip&#x27;
+MODULE &#x27;utility&#x27;
+MODULE &#x27;utility/tagitem&#x27;
+MODULE &#x27;utility/hooks&#x27;
+MODULE &#x27;mui/muicustomclass&#x27;
+MODULE &#x27;tools/installhook&#x27;
+MODULE &#x27;amigalib/boopsi&#x27;
+MODULE &#x27;amigalib/lists&#x27;
+MODULE &#x27;intuition/classes&#x27;
+MODULE &#x27;intuition/classusr&#x27;
+MODULE &#x27;intuition/intuition&#x27;
+
+#ifdef DEBUG
+   #define DEBUGF(str,...) DebugF(str,...)
+#else
+   #define DEBUGF(str,...)
+#endif
+
+
+OBJECT zonegroupdata
+   actionhook:PTR TO hook
+   backGad, forwGad, zoneXGad, zoneYGad, zoneRGad
+   ehn:mui_eventhandlernode
+ENDOBJECT
+
+EXPORT PROC createZonegroupClass()
+ENDPROC eMui_CreateCustomClass(NIL,MUIC_Group,NIL,SIZEOF zonegroupdata,{zonegroupDispatcher})
+
+#define MiniKeyButton(name,key)\
+        TextObject,\
+                ButtonFrame,\
+            MUIA_Font,          MUIV_Font_Button,\
+                MUIA_Text_Contents, name,\
+                MUIA_Text_PreParse, &#x27;\ec&#x27;,\
+                MUIA_ControlChar  , key,\
+                MUIA_InputMode    , MUIV_InputMode_RelVerify,\
+                MUIA_Background   , MUII_ButtonBack,\
+                MUIA_Weight, 0,\
+                End
+
+PROC zonegroupDispatcher(cl:PTR TO iclass, obj:PTR TO object, msg:PTR TO msg)
+   DEF mid
+
+   mid:=msg.methodid
+   SELECT mid
+   CASE MUIM_HandleEvent  ; RETURN zonegroupHandleEvent(cl, obj, msg)
+   CASE OM_NEW           ;  RETURN            zonegroupNew(cl, obj, msg)
+   CASE OM_DISPOSE       ;  RETURN        zonegroupDispose(cl, obj, msg)
+   CASE MUIM_Zonegroup_Set_Zone ; RETURN  zonegroupSetZone(cl, obj, msg)
+   CASE MUIM_Zonegroup_Get_Zone ; RETURN  zonegroupGetZone(cl, obj, msg)
+   CASE MUIM_Setup        ; RETURN zonegroupSetup(cl, obj, msg)
+   CASE MUIM_Cleanup      ; RETURN zonegroupCleanup(cl, obj, msg)
+   ENDSELECT
+
+ENDPROC doSuperMethodA(cl, obj, msg)
+
+PROC zonegroupNew(cl:PTR TO iclass, obj:PTR TO object, msg:PTR TO opnew)  HANDLE
+   DEF data:PTR TO zonegroupdata, gr=NIL, tags:PTR TO tagitem, tag:PTR TO tagitem
+
+   IF (obj := doSuperMethodA(cl, obj, msg)) = NIL THEN RETURN 0
+
+   data := INST_DATA(cl, obj)
+
+   tags := msg.attrlist
+
+   data.actionhook := GetTagData(MUIA_Zonegroup_ActionHook, NIL, tags)
+   IF data.actionhook = NIL THEN Raise(&quot;ITAG&quot;)
+
+   gr := HGroup,
+         Child, Label1(&#x27;X&#x27;),
+         Child, data.zoneXGad := floatStringObject(0.0,&quot;ZCX&quot;),
+         Child, Label1(&#x27;Y&#x27;),
+         Child, data.zoneYGad := floatStringObject(0.0,&quot;ZCY&quot;),
+         Child, Label1(&#x27;R&#x27;),
+         Child, data.zoneRGad := floatStringObject(1.5,&quot;ZCR&quot;),
+         Child, HGroup, MUIA_Group_Spacing, 0,
+            Child, data.backGad := MiniKeyButton(&#x27;U&#x27;, &quot;u&quot;),
+            Child, data.forwGad := MiniKeyButton(&#x27;R&#x27;, &quot;r&quot;),
+         End,
+   End
+
+   IF gr = FALSE THEN Raise(&quot;GR&quot;)
+
+   DOMETHODA(obj, [OM_ADDMEMBER, gr])
+
+   DOMETHODA(data.zoneXGad, [MUIM_Notify, MUIA_String_Acknowledge, MUIV_EveryTime,
+      obj, 3, MUIM_CallHook, data.actionhook, AH_NEWZONE])
+   DOMETHODA(data.zoneYGad, [MUIM_Notify, MUIA_String_Acknowledge, MUIV_EveryTime,
+      obj, 3, MUIM_CallHook, data.actionhook, AH_NEWZONE])
+   DOMETHODA(data.zoneRGad, [MUIM_Notify, MUIA_String_Acknowledge, MUIV_EveryTime,
+      obj, 3, MUIM_CallHook, data.actionhook, AH_NEWZONE])
+
+   DOMETHODA(data.backGad, [MUIM_Notify, MUIA_Pressed, FALSE,
+      obj, 3, MUIM_CallHook, data.actionhook, AH_PREVZONE])
+
+   DOMETHODA(data.forwGad, [MUIM_Notify, MUIA_Pressed, FALSE,
+      obj, 3, MUIM_CallHook, data.actionhook, AH_NEXTZONE])
+
+EXCEPT
+
+   SetIoErr(exception)
+   coerceMethodA(cl, obj, [OM_DISPOSE])
+   RETURN NIL
+
+ENDPROC obj
+
+
+PROC zonegroupDispose(cl:PTR TO iclass, obj:PTR TO object, msg:PTR TO msg)
+
+ENDPROC doSuperMethodA(cl, obj, msg)
+
+
+PROC zonegroupSetup(cl:PTR TO iclass, obj:PTR TO object, msg:PTR TO msg)
+   DEF data:PTR TO zonegroupdata
+
+   IF doSuperMethodA(cl, obj, msg) = FALSE THEN RETURN FALSE
+
+  data := INST_DATA(cl, obj)
+
+  DEBUGF(&#x27;zonegroupSetup()\n&#x27;)
+
+  data.ehn.ehn_priority := 0
+  data.ehn.ehn_flags := 0
+  data.ehn.ehn_events := IDCMP_RAWKEY
+  data.ehn.ehn_object := obj
+  data.ehn.ehn_class := cl
+
+  DOMETHODA(_win(obj), [MUIM_Window_AddEventHandler, data.ehn])
+
+ENDPROC MUI_TRUE
+
+PROC zonegroupCleanup(cl:PTR TO iclass, obj:PTR TO object, msg:PTR TO msg)
+   DEF data:PTR TO zonegroupdata
+
+   data := INST_DATA(cl, obj)
+
+   DEBUGF(&#x27;zonegroupCleanup()\n&#x27;)
+
+   DOMETHODA(_win(obj), [MUIM_Window_RemEventHandler, data.ehn])
+
+ENDPROC doSuperMethodA(cl, obj, msg)
+
+
+
+PROC zonegroupSetZone(cl:PTR TO iclass, obj:PTR TO object, msg:PTR TO PTR)
+   DEF data:PTR TO zonegroupdata, zone:PTR TO zone
+
+   data := INST_DATA(cl, obj)
+   zone := msg[1]
+
+   setStringFloat(data.zoneXGad, zone.x)
+   setStringFloat(data.zoneYGad, zone.y)
+   setStringFloat(data.zoneRGad, zone.r)
+
+ENDPROC TRUE
+
+PROC zonegroupGetZone(cl:PTR TO iclass, obj:PTR TO object, msg:PTR TO PTR)
+   DEF data:PTR TO zonegroupdata, zone:PTR TO zone
+
+   data := INST_DATA(cl, obj)
+   zone := msg[1]
+
+   zone.x := getStringFloat(data.zoneXGad)
+   zone.y := getStringFloat(data.zoneYGad)
+   zone.r := getStringFloat(data.zoneRGad)
+
+ENDPROC TRUE
+
+CONST CURS_LEFT=79,
+     CURS_UP=76,
+     CURS_RIGHT=78,
+     CURS_DOWN=77,
+     CURS_UP_RELEASE=204,
+     CURS_DOWN_RELEASE=205,
+     CURS_RIGHT_RELEASE=206,
+     CURS_LEFT_RELEASE=207,
+     PAD_PLUS=94,
+     PAD_MINUS=74
+
+PROC zonegroupHandleEvent(cl:PTR TO iclass,obj:PTR TO object,msg:PTR TO muip_handleevent)
+   DEF class, code
+   DEF data:PTR TO zonegroupdata
+   DEF rc=NIL
+
+   data := INST_DATA(cl, obj)
+
+   IF msg.imsg
+      class := msg.imsg.class
+      code := msg.imsg.code
+      SELECT class
+      CASE IDCMP_RAWKEY
+         DEBUGF(&#x27;zonegroupHandleEvent() received rawkey \d\n&#x27;, code)
+         SELECT 256 OF code
+         CASE CURS_LEFT   ; CALLHOOKA(data.actionhook, obj, [AH_SKIP_LEFT])
+         CASE CURS_RIGHT  ; CALLHOOKA(data.actionhook, obj, [AH_SKIP_RIGHT])
+         CASE CURS_UP     ; CALLHOOKA(data.actionhook, obj, [AH_SKIP_UP])
+         CASE CURS_DOWN   ; CALLHOOKA(data.actionhook, obj, [AH_SKIP_DOWN])
+         CASE PAD_PLUS    ; CALLHOOKA(data.actionhook, obj, [AH_SKIP_IN])
+         CASE PAD_MINUS   ; CALLHOOKA(data.actionhook, obj, [AH_SKIP_OUT])
+         ENDSELECT
+      ENDSELECT
+
+   ENDIF
+
+
+
+ENDPROC rc
+
+
+
+
+
+
+
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

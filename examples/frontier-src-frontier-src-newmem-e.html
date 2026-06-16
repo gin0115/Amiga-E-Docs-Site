@@ -1,0 +1,556 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>newmem.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-frontier-src.html">FRONTIER-Src</a> &rsaquo; newmem.e</div><h1>File: <code>newmem.e</code></h1><p class="meta">530 lines · project <a href="../examples/pkg-frontier-src.html"><code>FRONTIER-Src</code></a></p><p class="pathctx">FRONTIER-Src/FRONTIER-Src/newmem.e</p><p class="prose">* NewMem - Erweitere Speicherallokierfunktionen für den Amiga * -======- * * - Am Anfang (am besten als ERSTE Zeile) muß initNewMem(newmemlist) erfolgen!! * - Speicher wird wie gewohnt mit <a href="../modules/exec.html#fn-allocmem">AllocMem</a>, <a href="../modules/exec.html#fn-allocvec">AllocVec</a> angefordert und kann wie gewohnt mit <a href="../modules/exec.html#fn-freemem">FreeMem</a> * und <a href="../modules/exec.html#fn-freevec">FreeVec</a> wieder freigegeben werden,daher a</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/lists.html">amigalib/lists</a></li><li><a href="../modules/execbase.html">exec/execbase</a></li><li><a href="../modules/lists.html">exec/lists</a></li><li><a href="../modules/memory.html">exec/memory</a></li><li><a href="../modules/nodes.html">exec/nodes</a></li></ul></div><h2>Source</h2><pre class="code">/* 
+ *  NewMem - Erweitere Speicherallokierfunktionen für den Amiga
+ * -======-
+ * 
+ * - Am Anfang (am besten als ERSTE Zeile) muß initNewMem(newmemlist) erfolgen!!
+ * - Speicher wird wie gewohnt mit AllocMem, AllocVec angefordert und kann wie gewohnt mit FreeMem
+ *   und FreeVec wieder freigegeben werden,daher also nur gerine Anpassungen in Syntaxform im Source er-
+ *   forderlich (man muß nur den Namen der Routinen ändern, z.B. AllocMem -&gt; newAllocMem, FreeMem-&gt;
+ *   newFreeMem, AllocVec -&gt; newAllocVec, FreeVec -&gt; newFreeVec... und als Parameter &gt;newmemlist&lt; über-
+ *   geben!). Außerdem muß im Source folgende Zeile eingefügt werden (vor CleanUP()), damit wird JEDER
+ *   Speicher der nicht freigegeben wurde wieder dem System zugefügt und freigegeben:
+ *   freeNewMem(newmemlist)
+ * - Die Speicheranforderung verzögert sich nur geringfügig
+ * - neue Routinen in diesem Modul:
+ * 
+ *      initNewMem(newmemlist,task=NIL)         -&gt; Initialisiert die Memory-Liste (task=Optional!)
+ *      newValid(addr,newmemlist)               -&gt; Prüft, ob die Adresse in unserem Speicherbereich liegt
+ *      newAddMem(addr,bytesize,newmemlist)     -&gt; Fügt Exec-Speicher der newmemliste hinzu
+ *      newAddVec(addr,newmemlist)              -&gt; Fügt Exec-Speicher der newmemliste hinzu
+ *      newCreatePool(flags,puddle,tresh,newmemlist)    -&gt; Legt eine Poolstruktur für newAllocPool() an
+ *      newDeletePool(pool,newmemlist)          -&gt; löscht die Pool-Struktur von newCreatePool()
+ *      newAllocMem(bytesize,attr,newmemlist)   -&gt; Allokiert Speicher (wie AllocMem)
+ *      newAllocVec(bytesize,attr,newmemlist)   -&gt; Allokiert Speicher (wie AllocVec)
+ *      newAllocPool(pool,bytesize,newmemlist)  -&gt; Pool-Allokieren
+ *      newFreeMem(block,bytesize,newmemlist)   -&gt; Gibt Speicher frei (wie FreeMem)
+ *      newFreePool(block,newmemlist)           -&gt; Gibt den Pool frei (ACHTUNG! Pool-PTR wird NICHT benötigt!)
+ *      newFreeVec(block,newmemlist)            -&gt; Gibt Speicher frei (wie FreeVec)
+ *      newFreeBlock(block,newmemlist)          -&gt; Gibt JEDEN Typ von Speicher frei!
+ *      newFreePart(block,bytesize,newmemlist)  -&gt; Gibt einen Teil des Speichers frei
+ *      freeNewMem(newmemlist)                  -&gt; Gibt die Memory-Liste wieder frei
+ * 
+ *      newOpenLibrary(name,version,newmemlist) -&gt; Öffnet eine Library
+ *      newCloseLibrary(libptr,newmemlist)      -&gt; Schließt eine Library
+ *      
+ *      
+ *
+ *      © 1996 THE DARK FRONTIER Softwareentwicklungen (Grundler &quot;TurricaN&quot; Mathias)
+ */
+
+OPT MODULE
+OPT PREPROCESS
+
+MODULE  &#x27;amigalib/lists&#x27;
+MODULE  &#x27;exec/execbase&#x27;
+MODULE  &#x27;exec/lists&#x27;
+MODULE  &#x27;exec/memory&#x27;
+MODULE  &#x27;exec/nodes&#x27;
+MODULE  &#x27;*newmemory&#x27;
+
+-&gt;  #define DEBUG
+
+EXPORT PROC initNewMem(task=NIL)
+ DEF newmemlist:PTR TO newlh
+  NEW newmemlist
+   newList(newmemlist)
+    IF (task&lt;&gt;NIL)
+     newmemlist.task:=task
+    ELSE
+     newmemlist.task:=FindTask(NIL)
+    ENDIF
+ENDPROC newmemlist
+
+EXPORT PROC newValid(addr,newmemlist:PTR TO newlh)
+ DEF    newmem=NIL:PTR TO newmem,
+        nextmem
+  Forbid()
+  newmem:=newmemlist.head
+   WHILE nextmem:=newmem.ln.succ
+    IF (addr&gt;newmem.addr) AND (addr&lt;(newmem.addr+newmem.bytes))
+     Permit()
+      RETURN TRUE
+    ENDIF
+     newmem:=nextmem
+   ENDWHILE
+    Permit()
+ENDPROC FALSE
+
+EXPORT PROC newAddMem(addr,bytesize,newmemlist:PTR TO newlh)
+ DEF    newmem:PTR TO newmem
+  Forbid()
+   NEW newmem
+    IF newmem=NIL
+     Permit()
+      RETURN NIL
+    ENDIF
+     newmem.type:=MEMT_MEM
+      newmem.status:=MEMS_ALLOCATED
+       newmem.addr:=addr
+        newmem.bytes:=bytesize
+         IF newmem.addr=NIL
+          END newmem
+           Permit()
+            RETURN NIL
+         ENDIF
+          newmem.ln.pri:=bytesize
+           Enqueue(newmemlist,newmem)
+            Permit()
+ENDPROC TRUE
+
+EXPORT PROC newOpenLibrary(name,ver,newmemlist:PTR TO newlh)
+ DEF    newmem:PTR TO newmem
+  Forbid()
+   NEW newmem
+    IF newmem=NIL
+     Permit()
+      RETURN NIL
+    ELSE
+     newmem.type:=MEMT_LIBRARY
+      newmem.status:=MEMS_REFRESHED
+       newmem.addr:=OpenLibrary(name,ver)
+        newmem.bytes:=ver
+         IF newmem.addr=NIL
+          END newmem
+           Permit()
+            RETURN NIL
+         ENDIF
+    ENDIF
+     newmem.ln.pri:=ver
+      Enqueue(newmemlist,newmem)
+       Permit()
+ENDPROC newmem.addr
+
+EXPORT PROC newCloseLibrary(libbase,newmemlist:PTR TO newlh)
+ DEF    newmem:PTR TO newmem
+  Forbid()
+   newmem:=jumpmem(libbase,newmemlist)
+    IF newmem.type = MEMT_LIBRARY
+     IF newmem.status = MEMS_REFRESHED
+      CloseLibrary(newmem.addr)
+#ifdef DEBUG
+     ELSE
+ WriteF(&#x27;Wrong Status for Library at $\h\n&#x27;,newmem.addr)
+#endif
+     ENDIF
+#ifdef DEBUG
+    ELSE
+ WriteF(&#x27;Corrupt newmemlist, $\h isn`t a library-PTR\n&#x27;,newmem.addr)
+#endif
+    ENDIF
+     Remove(newmem)             -&gt; Node entfernen
+      END       newmem          -&gt; Speicher freigeben
+       Permit()
+ENDPROC TRUE
+
+EXPORT PROC newAddVec(addr,newmemlist:PTR TO newlh)
+ DEF    newmem:PTR TO newmem,
+        bytesize=0
+  Forbid()
+   NEW newmem
+    IF newmem=NIL
+     Permit()
+      RETURN NIL
+    ENDIF
+     newmem.type:=MEMT_VEC
+      newmem.status:=MEMS_ALLOCATED
+       newmem.addr:=addr
+
+MOVE.L addr,A0
+MOVE.L -(A0),bytesize
+MOVE.L A0,addr
+
+        newmem.bytes:=bytesize-4
+         IF newmem.addr=NIL
+          END newmem
+           Permit()
+            RETURN NIL
+         ENDIF
+          newmem.ln.pri:=newmem.bytes
+           Enqueue(newmemlist,newmem)
+            Permit()
+ENDPROC TRUE
+
+EXPORT PROC freeNewMem(newmemlist:PTR TO newlh)
+ DEF    newmem:PTR TO newmem,
+        nextmem
+ Forbid()
+  newmem:=newmemlist.head
+   WHILE nextmem:=newmem.ln.succ
+    IF (newmem.status = MEMS_ALLOCATED) OR (newmem.status = MEMS_REFRESHED)
+     IF (newmem.type = MEMT_MEM) OR (newmem.type = MEMT_PART)
+      FreeMem(newmem.addr,newmem.bytes)
+#ifdef DEBUG
+ WriteF(&#x27;\d-Bytes unfreed Mem at $\h\n&#x27;,newmem.bytes,newmem.addr)
+#endif
+     ELSEIF newmem.type = MEMT_VEC
+      FreeVec(newmem.addr)
+#ifdef DEBUG
+ WriteF(&#x27;\d-Bytes unfreed Vec at $\h\n&#x27;,newmem.bytes,newmem.addr)
+#endif
+     ELSEIF newmem.type = MEMT_POOL
+      newFreePool(newmem.addr,newmemlist)
+       newDeletePool(newmem.pool,newmemlist)
+#ifdef DEBUG
+ WriteF(&#x27;\d-Bytes unfreed Pool at $\h\n&#x27;,newmem.bytes,newmem.addr)
+#endif
+     ELSEIF newmem.type = MEMT_LIBRARY
+      CloseLibrary(newmem.addr)
+#ifdef DEBUG
+ WriteF(&#x27;Unclosed Library at $\h (ver:\d)\n&#x27;,newmem.addr,newmem.bytes)
+#endif
+     ENDIF
+    ENDIF
+     END newmem
+      newmem:=nextmem
+   ENDWHILE
+    END newmemlist
+ Permit()
+ENDPROC TRUE
+
+EXPORT PROC newAllocMem(bytesize,attr,newmemlist)
+ DEF    newmem=NIL:PTR TO newmem
+  Forbid()
+   NEW newmem
+    IF newmem=NIL
+     Permit()
+      RETURN NIL
+    ENDIF
+     newmem.type:=MEMT_MEM
+      newmem.status:=MEMS_ALLOCATED
+       newmem.addr:=AllocMem(bytesize,attr OR MEMF_REVERSE)
+        newmem.bytes:=bytesize
+         IF newmem.addr=NIL
+          END newmem
+           Permit()
+            RETURN NIL
+         ENDIF
+          newmem.ln.pri:=bytesize
+           Enqueue(newmemlist,newmem)
+            Permit()
+ENDPROC newmem.addr
+
+EXPORT PROC newAllocVec(bytesize,attr,newmemlist)       IS newAllocMem(bytesize,attr,newmemlist)
+/*
+ DEF    newmem=NIL:PTR TO newmem
+  Forbid()
+   NEW newmem
+    IF newmem=NIL
+     Permit()
+      RETURN NIL
+    ENDIF
+     newmem.type:=MEMT_VEC
+      newmem.status:=MEMS_ALLOCATED
+       newmem.addr:=AllocVec(bytesize,attr OR MEMF_REVERSE)
+        newmem.bytes:=bytesize
+         IF newmem.addr=NIL
+          END newmem
+           RETURN NIL
+         ENDIF
+          newmem.ln.pri:=bytesize
+           Enqueue(newmemlist,newmem)
+            Permit()
+ENDPROC newmem.addr
+*/
+
+EXPORT PROC newAllocPool(pool:PTR TO pool,bytesize,newmemlist:PTR TO newlh)
+ DEF    newmem:PTR TO newmem
+  Forbid()
+   NEW newmem
+    IF newmem=NIL
+     END newmem
+      Permit()
+       RETURN FALSE
+    ENDIF
+     newmem.addr:=libAllocPooled(pool,bytesize)
+      IF (newmem.addr=NIL)
+       END newmem
+        Permit()
+         RETURN FALSE
+      ENDIF
+       newmem.ln.pri:=bytesize
+        newmem.type:=MEMT_POOL
+         newmem.status:=MEMS_ALLOCATED
+          newmem.pool:=pool
+           Enqueue(newmemlist,newmem)
+            Permit()
+ENDPROC newmem.addr
+
+EXPORT PROC newFreePool(block,newmemlist)
+ DEF    newmem:PTR TO newmem
+ Forbid()
+  newmem:=jumpmem(block,newmemlist)
+   IF newmem.type=MEMT_POOL
+    IF newmem.status = MEMS_FREE
+#ifdef DEBUG
+ WriteF(&#x27;Pool at $\h was always free!\n&#x27;,newmem.addr)
+#endif
+     Permit()
+      RETURN NIL
+    ENDIF
+     newmem.status:=MEMS_REFRESHED
+      libFreePooled(newmem.pool,newmem.addr,newmem.bytes)
+       newmem.status:=MEMS_FREE
+   ELSE
+#ifdef DEBUG
+ WriteF(&#x27;newFreePool() should free a Mem or a Vec!!(\d) at $\h\n&#x27;,newmem.type,newmem.addr)
+#endif
+    RETURN FALSE
+   ENDIF
+    Permit()
+ENDPROC TRUE
+
+EXPORT PROC newFreeMem(block,bytesize,newmemlist)
+ DEF    newmem:PTR TO newmem
+ Forbid()
+  newmem:=jumpmem(block,newmemlist)
+   IF newmem.type = MEMT_MEM
+    IF newmem.status = MEMS_FREE
+#ifdef DEBUG
+ WriteF(&#x27;Mem at $\h was always free!\n&#x27;,newmem.addr)
+#endif
+     Permit()
+      RETURN NIL
+    ENDIF
+     newmem.status:=MEMS_REFRESHED
+#ifdef DEBUG
+ IF newmem.bytes &lt;&gt; bytesize
+  WriteF(&#x27;Uncorrect Size of Mem to Free at $\h! (a:\d - f:\d)\n&#x27;,newmem.addr,newmem.bytes,bytesize)
+ ENDIF
+#endif
+      FreeMem(newmem.addr,newmem.bytes)
+       newmem.status:=MEMS_FREE
+   ELSE
+#ifdef DEBUG
+ WriteF(&#x27;newFreeMem() should free a Vec or a Pool!!(\d) at $\h\n&#x27;,newmem.type,newmem.addr)
+#endif
+   ENDIF
+    Permit()
+-&gt;       Remove(newmem)
+ENDPROC TRUE
+
+EXPORT PROC newFreeVec(block,newmemlist)
+DEF    newmem:PTR TO newmem
+ Forbid()
+  newmem:=jumpmem(block,newmemlist)
+   IF (newmem.type = MEMT_VEC) OR (newmem.type = MEMT_MEM)
+    IF newmem.status = MEMS_FREE
+#ifdef DEBUG
+ WriteF(&#x27;Vec at $\h was always free!\n&#x27;,newmem.addr)
+#endif
+     Permit()
+      RETURN NIL
+    ENDIF
+     newmem.status:=MEMS_REFRESHED
+      IF (newmem.type = MEMT_MEM)
+       FreeMem(newmem.addr,newmem.bytes)
+      ELSEIF (newmem.type = MEMT_VEC)
+       FreeVec(newmem.addr)
+      ENDIF
+       newmem.status:=MEMS_FREE
+   ELSE
+#ifdef DEBUG
+ WriteF(&#x27;newFreeVec() should free a Pool!!(\d) at $\h\n&#x27;,newmem.type,newmem.addr)
+#endif
+   ENDIF
+    Permit()
+-&gt;       Remove(newmem)
+ENDPROC TRUE
+
+EXPORT PROC newFreeBlock(block,newmemlist)
+ DEF    newmem:PTR TO newmem
+  Forbid()
+   newmem:=jumpmem(block,newmemlist)
+   IF newmem.status = MEMS_FREE
+#ifdef DEBUG
+ WriteF(&#x27;Block at $\h was always free!\n&#x27;,newmem.addr)
+#endif
+    Permit()
+     RETURN NIL
+   ENDIF
+    newmem.status:=MEMS_REFRESHED
+     IF (newmem.type = MEMT_MEM) OR (newmem.type = MEMT_PART)
+      FreeMem(newmem.addr,newmem.bytes)
+     ELSEIF newmem.type = MEMT_VEC
+      FreeVec(newmem.addr)
+     ELSEIF newmem.type = MEMT_POOL
+      newFreePool(block,newmemlist)
+     ENDIF
+      newmem.status:=MEMS_FREE
+       Permit()
+-&gt;       Remove(newmem)
+ENDPROC TRUE
+
+EXPORT PROC newFreePart(block,bytesize,newmemlist)
+ DEF    newmem:PTR TO newmem,
+        addr=0
+ Forbid()
+  newmem:=jumpmem(block,newmemlist)
+   IF newmem.status = MEMS_FREE
+#ifdef DEBUG
+ WriteF(&#x27;Part at $\h was always free!\n&#x27;,newmem.addr)
+#endif
+    Permit()
+     RETURN NIL
+   ENDIF
+    newmem.status:=MEMS_REFRESHED
+     IF (newmem.type = MEMT_MEM) OR (newmem.type = MEMT_PART)
+      Forbid()
+       addr:=newmem.addr
+        FreeMem(newmem.addr,bytesize)
+         newmem.addr:=addr+bytesize             /* Neue Adresse errechnen!      */
+          Permit()
+     ELSEIF newmem.type = MEMT_VEC
+      Forbid()                                  /* Multitasking AUS!            */
+       addr:=newmem.addr
+        FreeVec(newmem.addr)                    /* Gesamten speicher freigeben! */
+         newmem.addr:=AllocAbs(newmem.bytes-bytesize,addr+bytesize)     /* Speicher wieder an der gleichen Stelle anfordern!)   */
+          Permit()                              /* Multitasking an!             */
+#ifdef DEBUG
+     ELSEIF newmem.type = MEMT_POOL
+WriteF(&#x27;newFreePart() should free a Pool!!(\d) at $\h\n&#x27;,newmem.type,newmem.addr)
+#endif
+     ENDIF
+      newmem.type:=MEMT_PART
+       newmem.status:=MEMS_ALLOCATED
+        newmem.bytes:=newmem.bytes-bytesize
+-&gt;       Remove(newmem)
+          Permit()
+ENDPROC newmem.addr
+
+PROC jumpmem(addr,newmemlist:PTR TO newlh)
+ DEF    newmem:PTR TO newmem
+  Forbid()
+   newmem:=newmemlist.head
+    IF (newmem = NIL) OR (newmem.addr = addr) 
+     Permit()
+      RETURN newmem
+    ENDIF
+     REPEAT
+      newmem:=newmem.ln.succ
+     UNTIL (newmem = NIL) OR (newmem.addr = addr)
+      Permit()
+ENDPROC newmem
+
+EXPORT PROC newCreatePool(flags,puddlesize,treshsize,newmemlist)
+  DEF pool=NIL:REG PTR TO pool
+ Forbid()
+  IF treshsize &lt;= puddlesize
+    IF (pool:=newAllocMem(SIZEOF pool,MEMF_ANY,newmemlist))&lt;&gt;NIL
+      pool.flags:=flags
+      pool.puddlesize:=puddlesize
+      pool.treshsize:=treshsize
+      newList(pool::lh)
+      pool::lh.type:=NT_MEMORY
+    ENDIF
+  ENDIF
+ Permit()
+ENDPROC pool
+
+EXPORT PROC newDeletePool(pool: PTR TO pool,newmemlist)
+  DEF mh:PTR TO mh
+ Forbid()
+  IF KickVersion(39)
+    DeletePool(pool)
+  ELSEIF pool&lt;&gt;NIL
+    WHILE Not(IsListEmpty(pool::lh))
+      mh:=pool::lh.head
+      Remove(mh)
+      freeMemHeader(mh,newmemlist)
+    ENDWHILE
+    FreeMem(pool,SIZEOF pool)
+  ENDIF
+ Permit()
+ENDPROC
+
+-&gt; Ab hier die Memory-Pool-Funktionen!
+
+PROC libAllocPooled(pool:PTR TO pool,size)
+  DEF mh:PTR TO mh,newmem=NIL
+  IF KickVersion(39) THEN RETURN AllocPooled(pool,size)
+  IF (IsListEmpty(pool::lh)) OR (size&gt;=pool.treshsize)
+    IF (allocPuddle(pool,size))=FALSE THEN RETURN NIL
+  ENDIF
+  mh:=pool::lh.head
+  WHILE (mh::ln.succ)
+    IF (newmem:=Allocate(mh,size))&lt;&gt;NIL THEN RETURN newmem
+    mh:=mh::ln.succ
+  ENDWHILE
+  IF (allocPuddle(pool,size))=FALSE THEN RETURN NIL
+  mh:=pool::lh.head
+  RETURN Allocate(mh,size)
+ENDPROC
+
+PROC allocPuddle(pool:PTR TO pool,size)
+  DEF mh=NIL:PTR TO mh,poolsize
+
+  poolsize:=Max(pool.puddlesize,(size+8))
+  IF (mh:=allocMemHeader(poolsize,pool.flags))=FALSE THEN RETURN FALSE
+  AddHead(pool::lh,mh)
+ENDPROC TRUE
+
+PROC libFreePooled(pool:PTR TO pool,mem,size)
+  DEF mh:PTR TO mh
+
+  IF mem=NIL THEN RETURN
+  IF KickVersion(39) THEN RETURN FreePooled(pool,mem,size)
+  mh:=pool::lh.head
+  WHILE (mh::ln.succ)
+    IF (mem&gt;=mh.lower) AND (mem&lt;mh.upper)
+      RETURN Deallocate(mh,mem,size)
+    ENDIF
+    mh:=mh::ln.succ
+  ENDWHILE
+ENDPROC
+
+PROC freeMemHeader(mh:PTR TO mh,newmemlist)
+  IF mh&lt;&gt;NIL THEN  newFreeMem(mh,mh.upper-mh.lower+SIZEOF mh,newmemlist)
+ENDPROC
+
+PROC allocMemHeader(size,flags)
+  DEF mh:REG PTR TO mh,
+      mc:REG PTR TO mc
+
+  mh:=AllocMem(size + SIZEOF mh,flags)
+  IF mh&lt;&gt;NIL
+    mc:=mh+SIZEOF mh
+    mc.next:=NIL
+    mc.bytes:=size
+
+    mh::ln.type:=NT_MEMORY
+    mh::ln.name:=NIL
+    mh::ln.succ:=NIL
+    mh::ln.pred:=NIL
+    mh::ln.pri:=0
+    mh.first:=mc
+    mh.lower:=mc
+    mh.upper:=mc+size
+    mh.free:=size
+  ENDIF
+ENDPROC mh
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

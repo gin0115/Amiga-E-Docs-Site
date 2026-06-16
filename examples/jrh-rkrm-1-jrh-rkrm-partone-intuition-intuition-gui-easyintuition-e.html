@@ -1,0 +1,137 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>easyintuition.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-jrh-rkrm-1.html">JRH-RKRM-1</a> &rsaquo; easyintuition.e</div><h1>File: <code>easyintuition.e</code></h1><p class="meta">111 lines · project <a href="../examples/pkg-jrh-rkrm-1.html"><code>JRH-RKRM-1</code></a></p><p class="pathctx">JRH-RKRM-1/JRH-RKRM-PartOne/Intuition/Intuition_GUI/easyintuition.e</p><p class="prose">easyintuition.e  Simple backward-compatible V37 <a href="../modules/intuition.html#fn-intuition">Intuition</a> example  This example uses extended structures with the pre-V37 <a href="../modules/intuition.html#fn-openscreen">OpenScreen</a>() and <a href="../modules/intuition.html#fn-openwindow">OpenWindow</a>() functions to compatibly open an <a href="../modules/intuition.html#fn-intuition">Intuition</a> <a href="../modules/display.html">display</a>.  Enhanced V37 options specified via <a href="../modules/tags.html">tags</a> are ignored on 1.3 systems.</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/intuition.html">intuition/intuition</a></li></ul></div><h2>Source</h2><pre class="code">-&gt; easyintuition.e  Simple backward-compatible V37 Intuition example
+-&gt;
+-&gt; This example uses extended structures with the pre-V37 OpenScreen() and
+-&gt; OpenWindow() functions to compatibly open an Intuition display.  Enhanced
+-&gt; V37 options specified via tags are ignored on 1.3 systems.
+
+-&gt; E-Note: you need to be more specific about modules than C does about includes
+MODULE &#x27;intuition/intuition&#x27;,  -&gt; Intuition and window data structures and tags
+       &#x27;intuition/screens&#x27;,    -&gt; Screen data structures and tags
+       &#x27;graphics/view&#x27;,        -&gt; Screen resolutions
+       &#x27;dos/dos&#x27;               -&gt; Official return codes defined here
+
+-&gt; Position and sizes for our window
+CONST WIN_LEFTEDGE=20, WIN_TOPEDGE=20,
+      WIN_WIDTH=400,   WIN_MINWIDTH=80,
+      WIN_HEIGHT=150,  WIN_MINHEIGHT=20
+
+-&gt; Exception values
+-&gt; E-Note: exceptions are a much better way of handling errors
+ENUM ERR_NONE, ERR_SCRN, ERR_WIN
+
+-&gt; Automatically raise exceptions
+-&gt; E-Note: these take care of a lot of error cases
+RAISE ERR_SCRN IF OpenS()=NIL,
+      ERR_WIN  IF OpenW()=NIL
+
+PROC main() HANDLE
+  -&gt; Declare variables here
+  -&gt; E-Note: the signals stuff is handled directly by WaitIMessage
+  DEF screen1=NIL:PTR TO screen, window1=NIL:PTR TO window
+
+  -&gt; E-Note: E automatically opens the Intuition library
+
+  -&gt; Open the screen
+  -&gt; E-Note: automatically error-checked (automatic exception)
+  -&gt; E-Note: simplified using OpenS
+  screen1:=OpenS(640,             -&gt; Width (high-resolution)
+                 STDSCREENHEIGHT, -&gt; Height (non-interlace)
+                 2,               -&gt; Depth (4 colours will be available)
+                 V_HIRES,         -&gt; The high-resolution display mode
+                 &#x27;Our Screen&#x27;,    -&gt; The screen title
+  -&gt; We can specify that we want the V37-compatible 3D look when running under
+  -&gt; V37 by adding an SA_PENS tag.
+                [SA_PENS, [-1]:INT,  -&gt; Tags for additional V37 features
+                 -&gt; E-Note: these tags replace the missing OpenS parameters
+                 SA_DETAILPEN, 0,
+                 SA_BLOCKPEN,  1,
+                 NIL])
+
+  -&gt; E-Note: we attach the window to the open screen directly, below
+
+  -&gt; ... and open the window
+  -&gt; E-Note: automatically error-checked (automatic exception)
+  window1:=OpenW(WIN_LEFTEDGE,
+                 WIN_TOPEDGE,
+                 WIN_WIDTH,
+                 WIN_HEIGHT,
+
+                 -&gt; This field specifies the events we want to get
+                 IDCMP_CLOSEWINDOW,
+
+                 -&gt; These flags specify system gadgets and other attributes
+                 WFLG_CLOSEGADGET OR WFLG_SMART_REFRESH OR WFLG_ACTIVATE OR
+                 WFLG_DRAGBAR OR WFLG_DEPTHGADGET OR WFLG_SIZEGADGET OR
+                 WFLG_NOCAREREFRESH,
+
+                 &#x27;EasyWindow&#x27;,  -&gt; Window title
+                 screen1,       -&gt; Attach to screen1...
+                 CUSTOMSCREEN,  -&gt; ... a custom screen
+                 NIL,           -&gt; Pointer to first gadget
+  -&gt; Under V37, we&#x27;ll get a special screen title when our window is active
+                 -&gt; Tags for additional V37 features
+                [WA_SCREENTITLE, &#x27;Our Screen - EasyWindow is Active&#x27;,
+                 -&gt; E-Note: these tags replace the missing OpenW parameters
+                 WA_MINWIDTH,    WIN_MINWIDTH,
+                 WA_MINHEIGHT,   WIN_MINHEIGHT,
+                 WA_MAXWIDTH,    -1,
+                 WA_MAXHEIGHT,   -1,
+                 NIL])
+
+  -&gt; Here&#x27;s the main input event loop
+  -&gt; E-Note: the signals and stuff is handled by WaitIMessage
+  REPEAT
+  UNTIL handleIDCMP(window1)
+
+  -&gt; E-Note: exit and clean up via handler
+EXCEPT DO
+  IF window1 THEN CloseW(window1)
+  IF screen1 THEN CloseS(screen1)
+  -&gt; E-Note: we can print a minimal error message
+  SELECT exception
+  CASE ERR_SCRN; WriteF(&#x27;Error: Failed to open custom screen\n&#x27;)
+  CASE ERR_WIN;  WriteF(&#x27;Error: Failed to open window\n&#x27;)
+  ENDSELECT
+-&gt; E-Note: select return code according to exception
+ENDPROC IF exception THEN RETURN_WARN ELSE RETURN_OK
+
+PROC handleIDCMP(win:PTR TO window)
+  DEF class, done=FALSE
+  -&gt; E-Note: WaitIMessage replaces a lot of C code concerned with signals
+  class:=WaitIMessage(win)
+  -&gt; E-Note: other parts of the message are available via MsgXXX() functions
+
+  -&gt; See what events occurred
+  SELECT class
+  CASE IDCMP_CLOSEWINDOW
+    done:=TRUE
+  ENDSELECT
+ENDPROC done
+
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

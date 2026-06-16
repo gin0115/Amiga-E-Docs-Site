@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ExecutiveAPI.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-executive-api.html">Executive_API</a> &rsaquo; ExecutiveAPI.e</div><h1>File: <code>ExecutiveAPI.e</code></h1><p class="meta">100 lines · project <a href="../examples/pkg-executive-api.html"><code>Executive_API</code></a></p><p class="pathctx">Executive_API/executive/Modules/other/ExecutiveAPI.e</p><p class="prose">** $VER: ExecutiveAPI.h 1.00 (03.09.96) ** ExecutiveAPI Release 1.00 ** ** ExecutiveAPI definitions ** ** Copyright © 1996 Petri Nordlund. All rights reserved. ** Conversion to E-module by Jaco Schoonen (jaco@<a href="../modules/stack.html">stack</a>.urc.tue.nl) ** ** $Id: ExecutiveAPI.h 1.1 1996/10/01 23:08:16 petrin Exp petrin $ **</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/types.html">exec/types</a></li></ul></div><h2>Source</h2><pre class="code">/*
+**      $VER: ExecutiveAPI.h 1.00 (03.09.96)
+**      ExecutiveAPI Release 1.00
+**
+**      ExecutiveAPI definitions
+**
+**      Copyright © 1996 Petri Nordlund. All rights reserved.
+**      Conversion to E-module by Jaco Schoonen (jaco@stack.urc.tue.nl)
+**
+**      $Id: ExecutiveAPI.h 1.1 1996/10/01 23:08:16 petrin Exp petrin $
+**
+*/
+
+OPT MODULE
+OPT EXPORT
+OPT PREPROCESS
+
+MODULE &#x27;exec/types&#x27;,&#x27;exec/ports&#x27;,&#x27;exec/tasks&#x27;
+
+
+/*
+ * Public message port to send messages to
+ *
+ */
+#define EXECUTIVEAPI_PORTNAME &#x27;Executive_server&#x27;
+
+
+/*
+ * ExecutiveMessage
+ *
+ */
+OBJECT executivemessage
+    message:mn
+    ident:INT                       -&gt; This must always be 0
+
+    command:INT                     -&gt; Command to be sent, see below
+    task:PTR TO tc                  -&gt; Task address
+    taskname:PTR TO CHAR            -&gt; Task name
+    value1                          -&gt; Depends on command
+    value2                          -&gt; Depends on command
+    value3                          -&gt; Depends on command
+    value4                          -&gt; Depends on command
+    error:INT                       -&gt; Non-zero IF error, see below
+
+    reserved[4]:ARRAY OF LONG       -&gt; Reserved FOR future use
+ENDOBJECT
+
+
+/*
+ * Commands
+ *
+ */
+ENUM    EXAPI_CMD_ADD_CLIENT = 0,       /* Add new client                               */
+	EXAPI_CMD_REM_CLIENT,           /* Remove client                                */
+
+	EXAPI_CMD_GET_NICE,             /* Get nice-value                               */
+	EXAPI_CMD_SET_NICE,             /* Set nice-value                               */
+
+	EXAPI_CMD_GET_PRIORITY,         /* Get task&#x27;s correct (not scheduling) priority */
+
+	EXAPI_CMD_WATCH                 /* Schedule, don&#x27;t schedule etc. See below        */
+
+
+
+/*
+ * These are used with EXAPI_CMD_WATCH
+ *
+ */
+
+/* --&gt; value1 */
+ENUM    EXAPI_WHICH_TASK = 0,           /* Current task                                 */
+	EXAPI_WHICH_CHILDTASKS          /* Childtasks of this task                      */
+
+
+/* --&gt; value2 */
+ENUM    EXAPI_TYPE_SCHEDULE = 0,        /* Schedule     this task / childtasks          */
+	EXAPI_TYPE_NOSCHEDULE,          /* Don&#x27;t schedule this task / childtasks        */
+	EXAPI_TYPE_RELATIVE             /* Childtasks&#x27; priority relative TO parent&#x27;s    */
+					/* priority.                                    */
+
+/* --&gt; value3 */
+/* These are only used with EXAPI_TYPE_NOSCHEDULE */
+ENUM    EXAPI_PRI_LEAVE_ALONE = 0,      /* Ignore task priority                         */
+	EXAPI_PRI_ABOVE,                /* Task&#x27;s priority kept above scheduled tasks   */
+	EXAPI_PRI_BELOW,                /* Task&#x27;s priority kept below scheduled tasks   */
+	EXAPI_PRI_SET                   /* Set priority to given value (value4)         */
+
+
+/*
+ * Errors
+ *
+ */
+ENUM    EXAPI_OK = 0,                   /* No error                                     */
+	EXAPI_ERROR_TASK_NOT_FOUND,     /* Specified task wasn&#x27;t found                  */
+	EXAPI_ERROR_NO_SERVER,          /* Server not available (quitting)              */
+	EXAPI_ERROR_INTERNAL,           /* Misc. error (e.g. no memory)                 */
+	EXAPI_ERROR_ALREADY_WATCHED     /* Task is already being watched, meaning that  */
+					/* user has put the task to &quot;Executive.prefs&quot;.  */
+
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

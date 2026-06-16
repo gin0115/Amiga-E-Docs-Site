@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>publicscreen.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-jrh-rkrm-1.html">JRH-RKRM-1</a> &rsaquo; publicscreen.e</div><h1>File: <code>publicscreen.e</code></h1><p class="meta">71 lines · project <a href="../examples/pkg-jrh-rkrm-1.html"><code>JRH-RKRM-1</code></a></p><p class="pathctx">JRH-RKRM-1/JRH-RKRM-PartOne/Intuition/Screens/publicscreen.e</p><p class="prose">publicscreen.e - open a screen with the pens from a public screen</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/screens.html">intuition/screens</a></li></ul></div><h2>Source</h2><pre class="code">-&gt; publicscreen.e - open a screen with the pens from a public screen
+
+MODULE &#x27;intuition/screens&#x27;
+
+ENUM ERR_NONE, ERR_SCRN, ERR_LOCKPUB, ERR_GETDRAW
+
+RAISE ERR_SCRN    IF OpenScreenTagList()=NIL,
+      ERR_LOCKPUB IF LockPubScreen()=NIL,
+      ERR_GETDRAW IF GetScreenDrawInfo()=NIL
+
+PROC main()
+  IF KickVersion(37)
+    -&gt; Check the version.  Release 2 is required for public screen functions
+    -&gt; E-Note: E automatically opens the Intuition library
+    usePubScreenPens()
+  ENDIF
+ENDPROC
+
+-&gt; Open a screen that uses the pens of an existing public screen (the Workbench
+-&gt; screen in this case).
+PROC usePubScreenPens() HANDLE
+  DEF my_screen=NIL:PTR TO screen, pubScreenName,
+      pub_screen=NIL:PTR TO screen, screen_drawinfo=NIL:PTR TO drawinfo
+  pubScreenName:=&#x27;Workbench&#x27;
+
+  -&gt; Get a lock on the Workbench screen
+  -&gt; E-Note: automatically error-checked (automatic exception)
+  pub_screen:=LockPubScreen(pubScreenName)
+
+  -&gt; Get the DrawInfo structure from the locked screen
+  -&gt; E-Note: automatically error-checked (automatic exception)
+  screen_drawinfo:=GetScreenDrawInfo(pub_screen)
+
+  -&gt; The pens are copied in the OpenScreenTagList() call, so we can simply use
+  -&gt; a pointer to the pens in the tag list.
+  -&gt;
+  -&gt; This works better if the depth and colors of the new screen matches that
+  -&gt; of the public screen.  Here we are forcing the Workbench screen pens on a
+  -&gt; monochrome screen (which may not be a good idea).  You could add the tag:
+  -&gt;      (SA_DEPTH, screen_drawinfo.depth)
+  -&gt; E-Note: automatically error-checked (automatic exception)
+  my_screen:=OpenScreenTagList(NIL,
+                              [SA_PENS, screen_drawinfo.pens,
+                              -&gt; E-Note: try uncommenting next line (see above)
+                              -&gt; SA_DEPTH, screen_drawinfo.depth,
+                               NIL])
+
+  -&gt; We no longer need to hold the lock on the public screen or a copy of its
+  -&gt; DrawInfo structure as we now have our own screen.  Release the screen.
+  FreeScreenDrawInfo(pub_screen, screen_drawinfo)
+  screen_drawinfo:=NIL
+  UnlockPubScreen(pubScreenName, pub_screen)
+  pub_screen:=NIL
+
+  Delay(90)  -&gt; Should be the rest of the program
+
+  -&gt; E-Note: exit and clean up via handler
+EXCEPT DO
+  -&gt; The first two are freed in the main code if OpenScreenTagList() does not
+  -&gt; fail.  If something goes wrong, free them here.
+  IF screen_drawinfo THEN FreeScreenDrawInfo(pub_screen, screen_drawinfo)
+  IF pub_screen THEN UnlockPubScreen(pubScreenName, pub_screen)
+  IF my_screen THEN CloseScreen(my_screen)
+  -&gt; E-Note: we can print a minimal error message
+  SELECT exception
+  CASE ERR_SCRN;    WriteF(&#x27;Error: Failed to open custom screen\n&#x27;)
+  CASE ERR_LOCKPUB; WriteF(&#x27;Error: Failed to locked public screen\n&#x27;)
+  CASE ERR_GETDRAW; WriteF(&#x27;Error: Failed to get DrawInfo of screen\n&#x27;)
+  ENDSELECT
+ENDPROC
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

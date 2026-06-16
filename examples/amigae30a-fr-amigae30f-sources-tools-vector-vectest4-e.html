@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>vectest4.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-amigae30a-fr.html">amigae30a_fr</a> &rsaquo; vectest4.e</div><h1>File: <code>vectest4.e</code></h1><p class="meta">93 lines · project <a href="../examples/pkg-amigae30a-fr.html"><code>amigae30a_fr</code></a></p><p class="pathctx">amigae30a_fr/AmigaE30f/Sources/Tools/Vector/vectest4.e</p><p class="prose">C&#x27;est celui qui est supposé qui magnifie les vecteurs de classe, mais il marche pas très bien (implémentation = expérience). Changez WINX et WINY en dessous</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/vector.html">tools/vector</a></li></ul></div><h2>Source</h2><pre class="code">/* C&#x27;est celui qui est supposé qui magnifie les vecteurs de classe,
+   mais il marche pas très bien (implémentation = expérience).
+   Changez WINX et WINY en dessous
+*/
+
+MODULE &#x27;tools/vector&#x27;
+
+CONST R=100,S=-100,MAXD=24,N=3            /* met N=1..7 (nombre de gris) */
+CONST DISTANCE=80,WINX=639,WINY=282
+
+OBJECT status
+  phi,theta,depth,x,y
+ENDOBJECT
+
+DEF depth:PTR TO LONG,stats[N]:ARRAY OF status, translist:PTR TO LONG
+
+PROC main()
+  DEF w,curphi=75,curtheta=40,curd=0,curs=0,a,fact=1,x,y,nx,ny,ox,oy
+  IF w:=OpenW(0,0,WINX,WINY,$200,$E,&#x27;3d VectorZ en E! (déplacez la souris!)&#x27;,NIL,1,NIL)
+    SetRast(stdrast,1)
+    translist:=[0,-16,-28,-36,-40,-40,-36,-28,-16,0,16,28,36,40,40,36,28,16,0]
+    FOR x:=0 TO WINX STEP 16
+      FOR y:=0 TO WINY STEP 16
+        nx,ny:=posttrans(x,y)
+        ox,oy:=posttrans(x,y+16)
+        Line(nx,ny,ox,oy,4)
+        ox,oy:=posttrans(x+16,y)
+        Line(nx,ny,ox,oy,4)
+      ENDFOR
+    ENDFOR
+    RefreshWindowFrame(w)
+    SetDrMd(stdrast,2)
+    PutChar(stdrast+24,3)
+    FOR a:=0 TO N-1 DO stats[a].phi:=-1
+    depth:=[200,201,202,205,208,211,215,220,224,230,238,246,254,262,270,276,280,285,289,292,295,298,299,300]
+    REPEAT
+      stats[curs].phi:=curphi
+      stats[curs].theta:=curtheta
+      stats[curs].depth:=curd
+      stats[curs].x:=Bounds(MouseX(w),DISTANCE,WINX-DISTANCE)
+      stats[curs].y:=Bounds(MouseY(w),DISTANCE,WINY-DISTANCE)
+      drawshape(stats[curs],2)
+      curs++
+      IF curs&gt;=N THEN curs:=0
+      curd:=curd+fact
+      IF curd&gt;=(MAXD-1) THEN (curd:=MAXD-1) BUT fact:=-fact
+      IF curd&lt;=0 THEN (curd:=0) BUT fact:=-fact
+      curphi:=curphi+2
+      IF curphi&gt;=360 THEN curphi:=0
+      curtheta:=curtheta+2
+      IF curtheta&gt;=360 THEN curtheta:=0
+      IF stats[curs].phi&gt;=0 THEN drawshape(stats[curs],1)
+    UNTIL GetMsg(Long(w+$56))
+    CloseW(w)
+  ELSE
+    WriteF(&#x27;um,...\n&#x27;)
+  ENDIF
+ENDPROC
+
+PROC drawshape(s:PTR TO status,col)
+  setmiddle3d(s.x,s.y)
+  setpers3d(750,depth[s.depth])
+  init3d(s.phi,s.theta)
+  polygon([R,R,S, R,R,R, R,S,R, R,S,S, R,R,S, S,R,S, S,R,R, S,S,R, S,S,S, S,R,S],col)
+  polygon([R,S,R, S,S,R],col)
+  polygon([R,R,R, S,R,R],col)
+  polygon([R,S,S, S,S,S],col)
+ENDPROC
+
+PROC posttrans(x,y)
+  IF x&gt;DISTANCE
+    IF y&gt;DISTANCE
+      IF DISTANCE+288&gt;x
+        IF DISTANCE+288&gt;y
+          x:=ListItem(translist,Shr(x-DISTANCE,4))+x
+          y:=ListItem(translist,Shr(y-DISTANCE,4))+y
+        ENDIF
+      ENDIF
+    ENDIF
+  ENDIF
+ENDPROC x,y
+
+PROC polygon(list:PTR TO LONG,col=1)
+  DEF n,i,sx,sy,ox,oy,f=FALSE
+  n:=ListLen(list)/3
+  FOR i:=1 TO n
+    sx,sy:=vec3d(list[]++,list[]++,list[]++)
+    sx,sy:=posttrans(sx,sy)
+    IF f THEN Line(ox,oy,sx,sy,col) ELSE f:=TRUE
+    ox:=sx; oy:=sy;
+  ENDFOR
+ENDPROC
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

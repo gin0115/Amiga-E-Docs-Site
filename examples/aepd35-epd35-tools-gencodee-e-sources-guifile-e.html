@@ -1,0 +1,1285 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>GUIFile.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-aepd35.html">AEPD35</a> &rsaquo; GUIFile.e</div><h1>File: <code>GUIFile.e</code></h1><p class="meta">1259 lines · project <a href="../examples/pkg-aepd35.html"><code>AEPD35</code></a></p><p class="pathctx">AEPD35/EPD35/Tools/GenCodeE/E/sources/GUIFile.e</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/muibuilder.html">muibuilder</a></li></ul></div><h2>Source</h2><pre class="code">OPT MODULE
+OPT PREPROCESS
+
+
+-&gt;/////////////////////////////////////////////////////////////////////////////
+-&gt;//////////////////////////////////////////////////////////// MODULE ... /////
+-&gt;/////////////////////////////////////////////////////////////////////////////
+MODULE &#x27;muibuilder&#x27; , &#x27;libraries/muibuilder&#x27;
+
+MODULE &#x27;*Variable&#x27;
+MODULE &#x27;*AuxProcs&#x27;
+
+
+-&gt;/////////////////////////////////////////////////////////////////////////////
+-&gt;//////////////////////////////////////////////// RAISE ... IF ... = ... /////
+-&gt;/////////////////////////////////////////////////////////////////////////////
+RAISE	&quot;OPEN&quot;	IF	Open()		=	NIL	,
+		&quot;OUT&quot;	IF	Fputs()		=	-1	,
+		&quot;OUT&quot;	IF	FputC()		=	-1	,
+		&quot;MEM&quot;	IF	String()	=	NIL
+
+
+-&gt;/////////////////////////////////////////////////////////////////////////////
+-&gt;//////////////////////////////////////////////////////////// OBJECT ... /////
+-&gt;/////////////////////////////////////////////////////////////////////////////
+EXPORT	OBJECT gui_file
+			PRIVATE
+				file				:	LONG
+				number_vars			:	LONG
+				vars				:	PTR TO variable
+				ident_length_max	:	LONG
+				hook_funcs			:	LONG
+				main_object_ident	:	PTR TO CHAR
+		ENDOBJECT
+
+
+-&gt;/////////////////////////////////////////////////////////////////////////////
+-&gt;///////////////////////////////////////////////////////////// PROC open /////
+-&gt;/////////////////////////////////////////////////////////////////////////////
+PROC open( filename : PTR TO CHAR , number_vars , vars : PTR TO variable , ident_length_max ) OF gui_file
+
+	DEF i
+
+	self.file := Open( filename , NEWFILE )
+	self.number_vars := number_vars
+	self.vars := vars
+	self.ident_length_max := ident_length_max
+	self.main_object_ident := vars[ 0 ].ident
+	self.hook_funcs := FALSE
+
+	FOR i := 0 TO ( number_vars - 1 ) DO IF vars[ i ].type = TYPEVAR_HOOK THEN self.hook_funcs := TRUE
+
+ENDPROC
+
+
+-&gt;/////////////////////////////////////////////////////////////////////////////
+-&gt;//////////////////////////////////////////////////////////// PROC close /////
+-&gt;/////////////////////////////////////////////////////////////////////////////
+PROC close() OF gui_file
+
+	IF self.file THEN Close( self.file )
+
+ENDPROC
+
+
+-&gt;/////////////////////////////////////////////////////////////////////////////
+-&gt;/////////////////////////////////////////////////////// PROC put_header /////
+-&gt;/////////////////////////////////////////////////////////////////////////////
+PROC put_header( application , locale ) OF gui_file
+
+	Fputs( self.file ,
+		&#x27;OPT MODULE\n&#x27;																		+
+		&#x27;OPT PREPROCESS\n\n\n&#x27;																+
+		&#x27;-&gt;/////////////////////////////////////////////////////////////////////////////\n&#x27;	+
+		&#x27;-&gt;//////////////////////////////////////////////////////////// MODULE ... /////\n&#x27;	+
+		&#x27;-&gt;/////////////////////////////////////////////////////////////////////////////\n&#x27; +
+		&#x27;MODULE &#x27;&#x27;muimaster&#x27;&#x27; , &#x27;&#x27;libraries/mui&#x27;&#x27;\n&#x27;										+
+		&#x27;MODULE &#x27;&#x27;tools/boopsi&#x27;&#x27; , &#x27;&#x27;libraries/gadtools&#x27;&#x27;\n&#x27;															+
+		&#x27;MODULE &#x27;&#x27;utility/tagitem&#x27;&#x27;&#x27;														)
+
+	Fputs( self.file , IF ( self.hook_funcs OR application ) THEN &#x27; , &#x27;&#x27;utility/hooks&#x27;&#x27;\n\n&#x27; ELSE &#x27;\n\n&#x27; )
+
+	IF locale THEN Fputs( self.file , &#x27;MODULE &#x27;&#x27;*Locale&#x27;&#x27;\n\n\n&#x27; ) ELSE FputC( self.file , &quot;\n&quot; )
+
+ENDPROC
+
+
+-&gt;/////////////////////////////////////////////////////////////////////////////
+-&gt;////////////////////////////////////////////////// PROC put_aux_objects /////
+-&gt;/////////////////////////////////////////////////////////////////////////////
+PROC put_aux_objects( environment , application ) OF gui_file
+
+	DEF i
+
+	IF environment
+
+		Fputs( self.file ,
+			&#x27;-&gt;/////////////////////////////////////////////////////////////////////////////\n&#x27;	+
+			&#x27;-&gt;//////////////////////////////////////////////////////////// OBJECT ... /////\n&#x27;	+
+			&#x27;-&gt;/////////////////////////////////////////////////////////////////////////////\n&#x27; )
+
+		IF application THEN	Fputs( self.file ,
+								&#x27;EXPORT OBJECT app_arexx\n&#x27;				+
+								&#x27;\tcommands :\tPTR TO mui_command\n&#x27;	+
+								&#x27;\terror    :\thook\n&#x27;					+
+								&#x27;ENDOBJECT\n\n&#x27;							)
+
+	ENDIF
+
+	IF self.hook_funcs
+
+		IF environment
+
+			Fputs( self.file , &#x27;EXPORT OBJECT &#x27; )
+			Fputs( self.file , self.main_object_ident )
+			Fputs( self.file , &#x27;_display\n&#x27; )
+
+		ENDIF
+
+		FOR i := 0 TO ( self.number_vars - 1 )
+
+			IF self.vars[ i ].type = TYPEVAR_HOOK
+
+				FputC( self.file , &quot;\t&quot; )
+				Fputs( self.file , self.vars[ i ].ident )
+				indent_defs( self.file , self.vars[ i ].ident , self.ident_length_max )
+				Fputs( self.file , &#x27; :\thook\n&#x27; )
+
+			ENDIF
+
+		ENDFOR
+
+		IF environment THEN Fputs( self.file , &#x27;ENDOBJECT\n\n&#x27; ) ELSE FputC( self.file , &quot;\n&quot; )
+
+	ENDIF
+
+ENDPROC
+
+
+-&gt;/////////////////////////////////////////////////////////////////////////////
+-&gt;////////////////////////////////////////////////// PROC put_main_object /////
+-&gt;/////////////////////////////////////////////////////////////////////////////
+PROC put_main_object( environment ) OF gui_file
+
+	DEF i
+
+	IF environment
+
+		Fputs( self.file , &#x27;EXPORT OBJECT &#x27; )
+		Fputs( self.file , self.main_object_ident )
+		Fputs( self.file , &#x27;_obj\n&#x27; )
+
+	ENDIF
+
+	FOR i := 0 TO ( self.number_vars - 1 )
+
+		IF self.vars[ i ].type = TYPEVAR_PTR
+
+			FputC( self.file , &quot;\t&quot; )
+			Fputs( self.file , self.vars[ i ].ident )
+			indent_defs( self.file , self.vars[ i ].ident , self.ident_length_max )
+			Fputs( self.file , &#x27; :\tPTR TO LONG\n&#x27; )
+
+		ENDIF
+
+	ENDFOR
+
+	FOR i := 0 TO ( self.number_vars - 1 )
+
+		IF ( self.vars[ i ].type = TYPEVAR_INT ) AND ( self.vars[ i ].type = TYPEVAR_BOOL )
+
+			FputC( self.file , &quot;\t&quot; )
+			Fputs( self.file , self.vars[ i ].ident )
+			indent_defs( self.file , self.vars[ i ].ident , self.ident_length_max )
+			Fputs( self.file , &#x27; :\tLONG\n&#x27; )
+
+		ENDIF
+
+	ENDFOR
+
+	FOR i := 0 TO ( self.number_vars - 1 )
+
+		IF self.vars[ i ].type = TYPEVAR_STRING
+
+			FputC( self.file , &quot;\t&quot; )
+			Fputs( self.file , self.vars[ i ].ident )
+			indent_defs( self.file , self.vars[ i ].ident , self.ident_length_max )
+			Fputs( self.file , &#x27; :\tPTR TO CHAR\n&#x27; )
+
+		ENDIF
+
+	ENDFOR
+
+	FOR i := 0 TO ( self.number_vars - 1 )
+
+		IF self.vars[ i ].type = TYPEVAR_TABSTRING
+
+			FputC( self.file , &quot;\t&quot; )
+			Fputs( self.file , self.vars[ i ].ident )
+			indent_defs( self.file , self.vars[ i ].ident , self.ident_length_max )
+			Fputs( self.file , &#x27; :\tPTR TO LONG\n&#x27; )
+
+		ENDIF
+
+	ENDFOR
+
+	Fputs( self.file , IF environment THEN &#x27;ENDOBJECT\n\n\n&#x27; ELSE &#x27;\n\n&#x27; )
+
+ENDPROC
+
+
+-&gt;/////////////////////////////////////////////////////////////////////////////
+-&gt;//////////////////////////////////////////////////// PROC put_constants /////
+-&gt;/////////////////////////////////////////////////////////////////////////////
+PROC put_constants( environment ) OF gui_file
+
+	DEF i , first_constant = TRUE , previous_ident : PTR TO CHAR , offset = 0
+
+	FOR i := 0 TO ( self.number_vars - 1 )
+
+		IF self.vars[ i ].type = TYPEVAR_IDENT
+
+			IF first_constant
+
+				IF environment THEN	Fputs( self.file ,
+										&#x27;-&gt;/////////////////////////////////////////////////////////////////////////////\n&#x27;	+
+										&#x27;-&gt;/////////////////////////////////////////////////////// CONST ... = ... /////\n&#x27;	+
+										&#x27;-&gt;/////////////////////////////////////////////////////////////////////////////\n&#x27;	+
+										&#x27;EXPORT ENUM\n&#x27;																		)
+
+				FputC( self.file , &quot;\t&quot; )
+				Fputs( self.file , self.vars[ i ].ident )
+				Fputs( self.file , &#x27; = 1&#x27; )
+				previous_ident := self.vars[ i ].ident
+				first_constant := FALSE
+
+			ELSE
+
+				indent_defs( self.file , previous_ident , self.ident_length_max + offset )
+				Fputs( self.file , &#x27; ,\n\t&#x27; )
+				Fputs( self.file , self.vars[ i ].ident )
+				offset := 4
+				previous_ident := self.vars[ i ].ident
+
+			ENDIF
+
+		ENDIF
+
+	ENDFOR
+
+	IF first_constant = FALSE THEN Fputs( self.file , &#x27;\n\n\n&#x27; )
+
+ENDPROC
+
+
+-&gt;/////////////////////////////////////////////////////////////////////////////
+-&gt;////////////////////////////////////////////////// PROC put_global_vars /////
+-&gt;/////////////////////////////////////////////////////////////////////////////
+PROC put_global_vars( environment , locale , catalog_name : PTR TO CHAR ) OF gui_file
+
+	DEF i , first_global_var = TRUE
+
+	FOR i := 0 TO ( self.number_vars - 1 )
+
+		IF self.vars[ i ].type = TYPEVAR_EXTERNAL
+
+			IF first_global_var
+
+				IF environment THEN	Fputs( self.file ,
+										&#x27;-&gt;/////////////////////////////////////////////////////////////////////////////\n&#x27; +
+										&#x27;-&gt;///////////////////////////////////////////////////////// DEF ... = ... /////\n&#x27; +
+										&#x27;-&gt;/////////////////////////////////////////////////////////////////////////////\n&#x27;	)
+
+				first_global_var := FALSE
+
+			ENDIF
+
+			Fputs( self.file , &#x27;EXPORT DEF &#x27; )
+			Fputs( self.file , self.vars[ i ].ident )
+			FputC( self.file , &quot;\n&quot; )
+
+		ENDIF
+
+	ENDFOR
+
+	IF locale
+
+		IF first_global_var
+
+			IF environment THEN	Fputs( self.file ,
+									&#x27;-&gt;/////////////////////////////////////////////////////////////////////////////\n&#x27; +
+									&#x27;-&gt;///////////////////////////////////////////////////////// DEF ... = ... /////\n&#x27; +
+									&#x27;-&gt;/////////////////////////////////////////////////////////////////////////////\n&#x27;	)
+
+			first_global_var := FALSE
+
+		ELSE
+
+			FputC( self.file , &quot;\n&quot; )
+
+		ENDIF
+
+		Fputs( self.file , &#x27;EXPORT DEF cat : PTR TO &#x27; )
+		Fputs( self.file ,  catalog_name )
+		FputC( self.file , &quot;\n&quot; )
+
+	ENDIF
+
+	IF first_global_var = FALSE THEN Fputs( self.file , &#x27;\n\n&#x27; )
+
+ENDPROC
+
+
+-&gt;/////////////////////////////////////////////////////////////////////////////
+-&gt;/////////////////////////////////////////// PROC put_create_declaration /////
+-&gt;/////////////////////////////////////////////////////////////////////////////
+PROC put_create_declaration( application ) OF gui_file
+
+	Fputs( self.file ,
+		&#x27;-&gt;/////////////////////////////////////////////////////////////////////////////\n&#x27;	+
+		&#x27;-&gt;/////////////////////////////////////////////////////////// PROC create /////\n&#x27;	+
+		&#x27;-&gt;/////////////////////////////////////////////////////////////////////////////\n&#x27;	+
+		&#x27;PROC create(&#x27;																		)
+
+	IF application
+
+		IF self.hook_funcs
+
+			Fputs( self.file , &#x27; display : PTR TO &#x27; )
+			Fputs( self.file , self.main_object_ident )
+			Fputs( self.file , &#x27;_display ,\n            &#x27; )
+
+		ENDIF
+
+		Fputs( self.file ,
+			&#x27; icon  = NIL ,\n&#x27;									+
+			&#x27;             arexx = NIL : PTR TO app_arexx ,\n&#x27;	+
+			&#x27;             menu  = NIL &#x27;							)
+
+	ELSE
+
+		IF self.hook_funcs
+
+			Fputs( self.file , &#x27; display : PTR TO &#x27; )
+			Fputs( self.file , self.main_object_ident )
+			Fputs( self.file , &#x27;_display &#x27; )
+
+		ENDIF
+
+	ENDIF
+
+	Fputs( self.file , &#x27;) OF &#x27; )
+	Fputs( self.file , self.main_object_ident )
+	Fputs( self.file , &#x27;_obj\n\n&#x27; )
+
+ENDPROC
+
+
+-&gt;/////////////////////////////////////////////////////////////////////////////
+-&gt;//////////////////////////////////////////// PROC put_create_local_defs /////
+-&gt;/////////////////////////////////////////////////////////////////////////////
+PROC put_create_local_defs() OF gui_file
+
+	DEF i , defs_string[ 70 ] : STRING , local_vars = FALSE
+
+	FOR i := 0 TO ( self.number_vars - 1 )
+
+		IF self.vars[ i ].type = TYPEVAR_LOCAL_PTR
+
+			local_vars := TRUE
+
+			IF ( EstrLen( defs_string ) + StrLen ( self.vars[ i ].ident ) ) &lt;= 57
+
+				IF EstrLen( defs_string ) &lt;&gt; 0 THEN StrAdd( defs_string , &#x27; , &#x27; )
+				StrAdd( defs_string , self.vars[ i ].ident )
+
+			ELSE
+
+				Fputs( self.file, &#x27;\tDEF &#x27; )
+				Fputs( self.file, defs_string )
+				FputC( self.file , &quot;\n&quot; )
+				SetStr( defs_string , 0 )
+				StrAdd( defs_string , self.vars[ i ].ident )
+
+			ENDIF
+
+		ENDIF
+			
+	ENDFOR
+
+	IF EstrLen( defs_string ) &lt;&gt; 0
+
+		Fputs( self.file , &#x27;\tDEF &#x27; )
+		Fputs( self.file , defs_string )
+		FputC( self.file , &quot;\n&quot; )
+
+	ENDIF
+
+	IF local_vars THEN FputC( self.file , &quot;\n&quot; )
+
+ENDPROC
+
+
+-&gt;/////////////////////////////////////////////////////////////////////////////
+-&gt;/////////////////////////////////////// PROC put_create_initialisations /////
+-&gt;/////////////////////////////////////////////////////////////////////////////
+PROC put_create_initialisations( locale , getstring_func : PTR TO CHAR ) OF gui_file
+
+	DEF i , j , initialisations = FALSE
+	DEF strptr : PTR TO CHAR
+
+	FOR i := 0 TO ( self.number_vars - 1 )
+
+		IF self.vars[ i ].type = TYPEVAR_STRING
+
+			initialisations := TRUE
+
+			Fputs( self.file , &#x27;\tself.&#x27; )
+			Fputs( self.file , self.vars[ i ].ident )
+			indent_defs( self.file , self.vars[ i ].ident , self.ident_length_max )
+			Fputs( self.file , &#x27; := &#x27; )
+
+			IF Char( self.vars[ i ].init ) &lt;&gt; 0
+
+				IF locale
+
+					Fputs( self.file , &#x27;cat.&#x27; )
+					Fputs( self.file , self.vars[ i ].init )
+					FputC( self.file , &quot;.&quot; )
+					Fputs( self.file , getstring_func )
+					Fputs( self.file , &#x27;()\n&#x27; )
+
+				ELSE
+
+					Fputs( self.file , string_convert( self.vars[ i ].init ) )
+					FputC( self.file , &quot;\n&quot; )
+
+				ENDIF
+
+			ELSE
+
+				Fputs( self.file , &#x27;NIL\n&#x27; )
+
+			ENDIF
+
+		ENDIF
+
+	ENDFOR
+
+	FOR i := 0 TO ( self.number_vars - 1 )
+
+		IF self.vars[ i ].type = TYPEVAR_TABSTRING
+
+			initialisations := TRUE
+
+			Fputs( self.file , &#x27;\tself.&#x27; )
+			Fputs( self.file , self.vars[ i ].ident )
+			indent_defs( self.file , self.vars[ i ].ident , self.ident_length_max )
+			Fputs( self.file , &#x27; := [\n&#x27; )
+			strptr := self.vars[ i ].init
+
+			FOR j := 1 TO self.vars[ i ].size
+
+				Fputs( self.file , &#x27;\t\t&#x27; )
+
+				IF locale
+
+					Fputs( self.file , &#x27;cat.&#x27; )
+					Fputs( self.file , strptr )
+					FputC( self.file , &quot;.&quot; )
+					Fputs( self.file , getstring_func )
+					Fputs( self.file , &#x27;() ,\n&#x27; )
+
+				ELSE
+
+					Fputs( self.file , string_convert( strptr ) )
+					Fputs( self.file , &#x27; ,\n&#x27; )
+
+				ENDIF
+
+				strptr := strptr + StrLen( strptr ) + 1
+
+			ENDFOR
+
+			Fputs( self.file , &#x27;\t\tNIL ]\n&#x27; )
+
+		ENDIF
+
+	ENDFOR
+
+	IF initialisations THEN FputC( self.file , &quot;\n&quot; )
+
+ENDPROC
+
+
+-&gt;/////////////////////////////////////////////////////////////////////////////
+-&gt;///////////////////////////////////////////////////////// PROC put_code /////
+-&gt;/////////////////////////////////////////////////////////////////////////////
+PROC put_code( getstring_func : PTR TO CHAR , muistrings : PTR TO LONG ) OF gui_file
+
+	DEF type , code
+	DEF indent_level = 1 , func_level = 0
+	DEF return = TRUE , objfunction = FALSE , inobj = FALSE
+	DEF makeobject = 0
+
+	Mb_GetNextCode( {type} , {code} )
+
+	WHILE type &lt;&gt; -1
+
+		SELECT type
+
+			CASE TC_CREATEOBJ
+
+				indent_code( self.file , indent_level , return )
+				Fputs( self.file , muistrings[ Val( code ) ] )
+				Fputs( self.file , &#x27; ,\n&#x27; )
+				INC indent_level
+				return := TRUE
+				inobj := TRUE
+
+				IF Val( code ) = 113
+
+					indent_code( self.file , indent_level , return )
+					Fputs( self.file , &#x27;( IF icon THEN MUIA_Application_DiskObject ELSE TAG_IGNORE ) , icon ,\n&#x27; )
+
+					indent_code( self.file , indent_level , return )
+					Fputs( self.file , &#x27;( IF arexx THEN MUIA_Application_Commands ELSE TAG_IGNORE ) , ( IF arexx THEN arexx.commands ELSE NIL ) ,\n&#x27; )
+
+					indent_code( self.file , indent_level , return )
+					Fputs( self.file , &#x27;( IF arexx THEN MUIA_Application_RexxHook ELSE TAG_IGNORE ) , ( IF arexx THEN arexx.error ELSE NIL ) ,\n&#x27; )
+
+					indent_code( self.file , indent_level , return )
+					Fputs( self.file , &#x27;( IF menu THEN MUIA_Application_Menu ELSE TAG_IGNORE ) , menu ,\n&#x27; )
+
+				ENDIF
+
+				Mb_GetNextCode( {type} , {code} )
+
+			CASE TC_ATTRIBUT
+
+				indent_code( self.file , indent_level , return )
+				Fputs( self.file , muistrings[ Val( code ) ] )
+				Fputs( self.file , &#x27; , &#x27;)
+				return := FALSE
+				Mb_GetNextCode( {type} , {code} )
+
+			CASE TC_END
+
+				DEC indent_level
+				indent_code( self.file , indent_level , return )
+				Fputs( self.file , muistrings[ Val( code ) ] )
+				Fputs( self.file , &#x27;\n\n&#x27;)
+				inobj := FALSE
+				return := TRUE
+				Mb_GetNextCode( {type} , {code} )
+
+			CASE TC_FUNCTION
+
+				indent_code( self.file , indent_level , return )
+
+				IF Val( code ) = 673
+
+					FputC( self.file , 34 )
+					Mb_GetNextCode( {type} , {code} )
+					Fputs( self.file , code )
+					Mb_GetNextCode( {type} , {code} )
+					Fputs( self.file , code )
+					Mb_GetNextCode( {type} , {code} )
+					Fputs( self.file , code )
+					Mb_GetNextCode( {type} , {code} )
+					Fputs( self.file , code )
+					Mb_GetNextCode( {type} , {code} )
+					Fputs( self.file , &#x27;&quot; ,\n&#x27; )
+
+					return := TRUE
+
+				ELSE
+
+					INC func_level
+					Fputs( self.file , muistrings[ Val( code ) ] )
+					Fputs( self.file , &#x27;( &#x27; )
+					return := FALSE
+
+				ENDIF
+
+				Mb_GetNextCode( {type} , {code} )
+
+			CASE TC_MUIARG_FUNCTION		-&gt;	same as TC_FUNCTION
+
+				indent_code( self.file , indent_level , return )
+				INC func_level
+				Fputs( self.file , muistrings[ Val( code ) ] )
+				Fputs( self.file , &#x27;( &#x27; )
+				return := FALSE
+				Mb_GetNextCode( {type} , {code} )
+
+			CASE TC_OBJFUNCTION
+
+				indent_code( self.file , indent_level , return )
+				Fputs( self.file , muistrings[ Val( code ) ] )
+				Fputs( self.file , &#x27;( &#x27; )
+				INC func_level
+				return := FALSE
+				objfunction := TRUE
+				IF Val( code ) = 750 THEN INC makeobject
+				Mb_GetNextCode( {type} , {code} )
+
+			CASE TC_MUIARG_OBJFUNCTION		-&gt;	same as TC_OBJFUNCTION
+
+				indent_code( self.file , indent_level , return )
+				Fputs( self.file , muistrings[ Val( code ) ] )
+				Fputs( self.file , &#x27;( &#x27; )
+				INC func_level
+				return := FALSE
+				objfunction := TRUE
+				Mb_GetNextCode( {type} , {code} )
+
+			CASE TC_STRING
+
+				indent_code( self.file , indent_level , return )
+				Fputs( self.file , string_convert( code ) )
+				Mb_GetNextCode( {type} , {code} )
+
+				IF func_level &gt; 0
+
+					IF type &lt;&gt; TC_END_FUNCTION THEN Fputs( self.file , &#x27; , &#x27; )
+					return := FALSE
+
+				ELSE
+
+					Fputs( self.file , &#x27; ,\n&#x27; )
+					return := TRUE
+
+				ENDIF
+
+			CASE TC_INTEGER
+
+				indent_code( self.file , indent_level , return )
+				Fputs( self.file , code )
+				Mb_GetNextCode( {type} , {code} )
+
+				IF func_level &gt; 0
+
+					IF type &lt;&gt; TC_END_FUNCTION THEN Fputs( self.file , &#x27; , &#x27; )
+					return := FALSE
+
+				ELSE
+
+					Fputs( self.file , &#x27; ,\n&#x27; )
+					return := TRUE
+
+				ENDIF
+
+			CASE TC_CHAR
+
+				indent_code( self.file , indent_level , return )
+				FputC( self.file , 34 )
+				Fputs( self.file , code )
+				Mb_GetNextCode( {type} , {code} )
+
+				IF func_level &gt; 0
+
+					IF type &lt;&gt; TC_END_FUNCTION THEN Fputs( self.file , &#x27;&quot; , &#x27;) ELSE FputC( self.file , 34 )
+					return := FALSE
+
+				ELSE
+
+					Fputs( self.file , &#x27;&quot; ,\n&#x27; )
+					return := TRUE
+
+				ENDIF
+
+			CASE TC_VAR_AFFECT
+
+				indent_code( self.file , indent_level , return )
+
+				IF self.vars[ Val( code ) ].type &lt;&gt; TYPEVAR_LOCAL_PTR
+
+					Fputs( self.file , &#x27;self.&#x27; )
+
+				ENDIF
+
+				Fputs( self.file , self.vars[ Val( code ) ].ident )
+				Fputs( self.file , &#x27; := &#x27;)
+				return := FALSE
+				Mb_GetNextCode( {type} , {code} )
+
+			CASE TC_VAR_ARG
+
+				indent_code( self.file , indent_level , return )
+
+				IF self.vars[ Val( code ) ].type &lt;&gt; TYPEVAR_LOCAL_PTR
+
+					Fputs( self.file , &#x27;self.&#x27; )
+
+				ENDIF
+
+				Fputs( self.file , self.vars[ Val( code ) ].ident )
+				Mb_GetNextCode( {type} , {code} )
+
+				IF func_level &gt; 0
+
+					IF type &lt;&gt; TC_END_FUNCTION THEN Fputs( self.file , &#x27; , &#x27;)
+					return := FALSE
+
+				ELSE
+
+					Fputs( self.file , &#x27; ,\n&#x27;)
+					return := TRUE
+
+				ENDIF
+
+			CASE TC_OBJ_ARG		-&gt;	same as TC_VAR_ARG
+
+				indent_code( self.file , indent_level , return )
+
+				IF self.vars[ Val( code ) ].type &lt;&gt; TYPEVAR_LOCAL_PTR
+
+					Fputs( self.file , &#x27;self.&#x27; )
+
+				ENDIF
+
+				Fputs( self.file , self.vars[ Val( code ) ].ident )
+				Mb_GetNextCode( {type} , {code} )
+
+				IF func_level &gt; 0
+
+					IF type &lt;&gt; TC_END_FUNCTION THEN Fputs( self.file , &#x27; , &#x27;)
+					return := FALSE
+
+				ELSE
+
+					Fputs( self.file , &#x27; ,\n&#x27;)
+					return := TRUE
+
+				ENDIF
+
+			CASE TC_END_FUNCTION
+
+				indent_code( self.file , indent_level , return )
+				DEC func_level
+				Mb_GetNextCode( {type} , {code} )
+
+				IF makeobject
+					Fputs( self.file , &#x27; ]&#x27; )
+					makeobject := 0
+				ENDIF
+
+				IF func_level &gt; 0
+
+					Fputs( self.file , &#x27; )&#x27; )
+					IF type &lt;&gt; TC_END_FUNCTION THEN Fputs( self.file , &#x27; ,&#x27; )
+					return := FALSE
+
+				ELSE
+
+					Fputs( self.file , IF objfunction THEN &#x27; )\n\n&#x27; ELSE &#x27; ) ,\n&#x27; )
+					objfunction := FALSE
+					return := TRUE
+
+				ENDIF
+
+			CASE TC_BOOL
+
+				indent_code( self.file , indent_level , return )
+				Fputs( self.file , IF Char( code ) = &quot;0&quot; THEN &#x27;FALSE&#x27; ELSE &#x27;MUI_TRUE&#x27;)
+				Mb_GetNextCode( {type} , {code} )
+
+				IF func_level &gt; 0
+
+					IF type &lt;&gt; TC_END_FUNCTION THEN Fputs( self.file , &#x27; , &#x27;)
+					return := FALSE
+
+				ELSE
+
+					Fputs( self.file , &#x27; ,\n&#x27;)
+					return := TRUE
+
+				ENDIF
+
+			CASE TC_MUIARG
+
+				indent_code( self.file , indent_level , return )
+				Fputs( self.file , muistrings[ Val( code ) ] )
+				Mb_GetNextCode( {type} , {code} )
+
+				IF func_level &gt; 0
+
+					IF type &lt;&gt; TC_END_FUNCTION THEN Fputs( self.file , &#x27; , &#x27;)
+					IF makeobject = 1
+						Fputs( self.file , &#x27;[ &#x27; )
+						INC makeobject
+					ENDIF
+					return := FALSE
+
+				ELSE
+
+					Fputs( self.file , &#x27; ,\n&#x27;)
+					return := TRUE
+
+				ENDIF
+
+			CASE TC_MUIARG_OBJ
+
+				indent_code( self.file , indent_level , return )
+				Fputs( self.file , muistrings[ Val( code ) ] )
+				Mb_GetNextCode( {type} , {code} )
+
+				IF inobj
+
+					Fputs( self.file , &#x27; ,\n&#x27; )
+					return := TRUE
+
+				ELSE
+
+					IF func_level &gt; 0
+
+						IF type &lt;&gt; TC_END_FUNCTION THEN Fputs( self.file , &#x27; , &#x27;)
+						return := FALSE
+
+					ELSE
+
+						Fputs( self.file , &#x27;\n\n&#x27;)
+						return := TRUE
+
+					ENDIF
+
+				ENDIF
+
+			CASE TC_MUIARG_ATTRIBUT		-&gt;	same as TC_MUIARG_OBJ
+
+				indent_code( self.file , indent_level , return )
+				Fputs( self.file , muistrings[ Val( code ) ] )
+				Mb_GetNextCode( {type} , {code} )
+
+				IF inobj
+
+					Fputs( self.file , &#x27; ,\n&#x27; )
+					return := TRUE
+
+				ELSE
+
+					IF func_level &gt; 0
+
+						IF type &lt;&gt; TC_END_FUNCTION THEN Fputs( self.file , &#x27; , &#x27;)
+						return := FALSE
+
+					ELSE
+
+						Fputs( self.file , &#x27;\n\n&#x27;)
+						return := TRUE
+
+					ENDIF
+
+				ENDIF
+
+			CASE TC_EXTERNAL_FUNCTION
+
+				indent_code( self.file , indent_level , return )
+				Fputs( self.file , &#x27;display.&#x27; )
+				Fputs( self.file , code )
+				Mb_GetNextCode( {type} , {code} )
+
+				IF func_level &gt; 0
+
+					IF type &lt;&gt; TC_END_FUNCTION THEN Fputs( self.file , &#x27; , &#x27;)
+					return := FALSE
+
+				ELSE
+
+					Fputs( self.file , &#x27; ,\n&#x27;)
+					return := TRUE
+
+				ENDIF
+
+			CASE TC_LOCALESTRING
+
+				indent_code( self.file , indent_level , return )
+				Fputs( self.file , &#x27;getMBstring( cat.&#x27;)
+				Fputs( self.file ,  code )
+				FputC( self.file , &quot;.&quot; )
+				Fputs( self.file , getstring_func )
+				Fputs( self.file , &#x27;() )&#x27; )
+				Mb_GetNextCode( {type} , {code} )
+
+				IF func_level &gt; 0
+
+					IF type&lt;&gt;TC_END_FUNCTION THEN Fputs( self.file , &#x27; , &#x27;)
+					return := FALSE
+
+				ELSE
+
+					Fputs( self.file , &#x27; ,\n&#x27;)
+					return := TRUE
+
+				ENDIF
+
+			CASE TC_LOCALECHAR
+
+				indent_code( self.file , indent_level , return )
+				Fputs( self.file , &#x27;Char( cat.&#x27;)
+				Fputs( self.file ,  code )
+				FputC( self.file , &quot;.&quot; )
+				Fputs( self.file , getstring_func )
+				Fputs( self.file , &#x27;() )&#x27;)
+				Mb_GetNextCode( {type} , {code} )
+
+				IF func_level &gt; 0
+
+					IF type&lt;&gt;TC_END_FUNCTION THEN Fputs( self.file , &#x27; , &#x27;)
+					return := FALSE
+
+				ELSE
+
+					Fputs( self.file , &#x27; ,\n&#x27;)
+					return := TRUE
+
+				ENDIF
+
+		ENDSELECT
+
+	ENDWHILE
+
+ENDPROC
+
+
+-&gt;/////////////////////////////////////////////////////////////////////////////
+-&gt;/////////////////////////////////////////////////// PROC put_create_end /////
+-&gt;/////////////////////////////////////////////////////////////////////////////
+PROC put_create_end() OF gui_file
+
+	Fputs( self.file , &#x27;ENDPROC self.&#x27; )
+	Fputs( self.file , self.main_object_ident )
+	Fputs( self.file , &#x27;\n\n\n&#x27; )
+
+ENDPROC
+
+
+-&gt;/////////////////////////////////////////////////////////////////////////////
+-&gt;/////////////////////////////////////////////// PROC put_dispose_method /////
+-&gt;/////////////////////////////////////////////////////////////////////////////
+PROC put_dispose_method() OF gui_file
+
+	Fputs( self.file ,
+		&#x27;-&gt;/////////////////////////////////////////////////////////////////////////////\n&#x27;	+
+		&#x27;-&gt;////////////////////////////////////////////////////////// PROC dispose /////\n&#x27;	+
+		&#x27;-&gt;/////////////////////////////////////////////////////////////////////////////\n&#x27;	+
+		&#x27;PROC dispose() OF &#x27;																)
+	Fputs( self.file , self.main_object_ident )
+	Fputs( self.file , &#x27;_obj IS ( IF self.&#x27; )
+	Fputs( self.file , self.main_object_ident )
+	Fputs( self.file , &#x27; THEN Mui_DisposeObject( self.&#x27; )
+	Fputs( self.file , self.main_object_ident )
+	Fputs( self.file , &#x27; ) ELSE NIL )\n\n\n&#x27; )
+
+ENDPROC
+
+
+-&gt;/////////////////////////////////////////////////////////////////////////////
+-&gt;/////////////////////////////// PROC put_init_notifications_declaration /////
+-&gt;/////////////////////////////////////////////////////////////////////////////
+PROC put_init_notifications_declaration() OF gui_file
+
+	DEF i , comma = FALSE
+
+	Fputs( self.file ,
+		&#x27;-&gt;/////////////////////////////////////////////////////////////////////////////\n&#x27;	+
+		&#x27;-&gt;/////////////////////////////////////////////// PROC init_notifications /////\n&#x27;	+
+		&#x27;-&gt;/////////////////////////////////////////////////////////////////////////////\n&#x27;	+
+		&#x27;PROC init_notifications( &#x27;															)
+
+	IF self.hook_funcs
+
+		Fputs( self.file , &#x27;display : PTR TO &#x27; )
+		Fputs( self.file , self.main_object_ident )
+		Fputs( self.file , &#x27;_display&#x27; )
+
+		comma := TRUE
+
+	ENDIF
+
+	FOR i := 0 TO ( self.number_vars - 1 )
+
+		IF self.vars[ i ].type = TYPEVAR_EXTERNAL_PTR
+
+			IF comma THEN Fputs( self.file , &#x27; , &#x27; ) ELSE comma := TRUE
+
+			Fputs( self.file , self.vars[ i ].ident )
+
+		ENDIF
+
+	ENDFOR
+
+	Fputs( self.file , &#x27; ) OF &#x27; )
+	Fputs( self.file , self.main_object_ident )
+	Fputs( self.file , &#x27;_obj\n\n&#x27; )
+
+ENDPROC
+
+
+-&gt;/////////////////////////////////////////////////////////////////////////////
+-&gt;//////////////////////////////////////////////// PROC put_notifications /////
+-&gt;/////////////////////////////////////////////////////////////////////////////
+PROC put_notifications( muistrings : PTR TO LONG , getstring_func : PTR TO CHAR ) OF gui_file
+
+	DEF type , code , indent = FALSE , set_func = FALSE
+
+	Mb_GetNextNotify( {type} , {code} )
+
+	WHILE ( type &lt;&gt; -1 )
+
+		IF indent THEN Fputs( self.file , &#x27;\t\t&#x27; )
+
+		SELECT type
+
+			CASE TC_BEGIN_NOTIFICATION
+
+				Fputs( self.file , &#x27;\tdomethod( self.&#x27; )
+				Fputs( self.file , self.vars[ Val( code ) ].ident )
+				Fputs( self.file , &#x27; , [\n&#x27; )
+				indent := TRUE
+				Mb_GetNextNotify( {type} , {code} )
+
+			CASE TC_END_NOTIFICATION
+
+				Fputs( self.file , &#x27; ] )\n\n&#x27; )
+				indent := FALSE
+				Mb_GetNextNotify( {type} , {code} )
+
+			CASE TC_FUNCTION
+
+				FputC( self.file , &quot;\t&quot; )
+				Fputs( self.file , muistrings[ Val( code ) ] )
+				Fputs( self.file , &#x27;( &#x27; )
+				indent := FALSE
+				IF Val( code ) = 203 /* set function */ THEN set_func := TRUE
+				Mb_GetNextNotify( {type} , {code} )
+
+			CASE TC_END_FUNCTION
+
+				Fputs( self.file , &#x27; )\n\n&#x27; )
+				indent := FALSE
+				set_func := FALSE
+				Mb_GetNextNotify( {type} , {code} )
+
+			CASE TC_STRING
+
+				Fputs( self.file , string_convert( code ) )
+				Mb_GetNextNotify( {type} , {code} )
+
+				IF ( type &lt;&gt; TC_END_FUNCTION ) AND ( type &lt;&gt; TC_END_NOTIFICATION )
+
+					indent := TRUE
+					Fputs( self.file , &#x27; ,\n&#x27; )
+
+				ELSE
+
+					indent := FALSE
+
+				ENDIF
+
+			CASE TC_LOCALESTRING
+
+				Fputs( self.file , &#x27;getMBstring( cat.&#x27;)
+				Fputs( self.file ,  code )
+				FputC( self.file , &quot;.&quot; )
+				Fputs( self.file , getstring_func )
+				Fputs( self.file , &#x27;() )&#x27; )
+				Mb_GetNextNotify( {type} , {code} )
+
+				IF ( type &lt;&gt; TC_END_FUNCTION ) AND ( type &lt;&gt; TC_END_NOTIFICATION )
+
+					indent := TRUE
+					Fputs( self.file , &#x27; ,\n&#x27; )
+
+				ELSE
+
+					indent := FALSE
+
+				ENDIF
+
+			CASE TC_INTEGER
+
+				Fputs( self.file , code )
+				Mb_GetNextNotify( {type} , {code} )
+
+				IF ( type &lt;&gt; TC_END_FUNCTION ) AND ( type &lt;&gt; TC_END_NOTIFICATION )
+
+					indent := TRUE
+					Fputs( self.file , &#x27; ,\n&#x27; )
+
+				ELSE
+
+					indent := FALSE
+
+				ENDIF
+
+			CASE TC_CHAR
+
+				FputC( self.file , 34)
+				Fputs( self.file , code )
+				FputC( self.file , 34)
+				Mb_GetNextNotify( {type} , {code} )
+
+				IF ( type &lt;&gt; TC_END_FUNCTION ) AND ( type &lt;&gt; TC_END_NOTIFICATION )
+
+					indent := TRUE
+					Fputs( self.file , &#x27; ,\n&#x27; )
+
+				ELSE
+
+					indent := FALSE
+
+				ENDIF
+
+			CASE TC_BOOL
+
+				Fputs( self.file , IF Char( code ) = &quot;0&quot; THEN &#x27;FALSE&#x27; ELSE &#x27;MUI_TRUE&#x27;)
+				Mb_GetNextNotify( {type} , {code} )
+
+				IF ( type &lt;&gt; TC_END_FUNCTION ) AND ( type &lt;&gt; TC_END_NOTIFICATION )
+
+					indent := TRUE
+					Fputs( self.file , &#x27; ,\n&#x27; )
+
+				ELSE
+
+					indent := FALSE
+
+				ENDIF
+
+			CASE TC_VAR_ARG
+
+				IF self.vars[ Val( code ) ].type &lt;&gt; TYPEVAR_EXTERNAL_PTR THEN Fputs( self.file , &#x27;self.&#x27; )
+				Fputs( self.file , self.vars[ Val( code ) ].ident )
+				Mb_GetNextNotify( {type} , {code} )
+
+				IF set_func
+
+					Fputs( self.file , &#x27; ,&#x27; )
+					indent := FALSE
+
+				ELSEIF ( type &lt;&gt; TC_END_FUNCTION ) AND ( type &lt;&gt; TC_END_NOTIFICATION )
+
+					Fputs( self.file , &#x27; ,\n&#x27; )
+					indent := TRUE
+
+				ELSE
+
+					indent := FALSE
+
+				ENDIF
+
+			CASE TC_MUIARG
+
+				Fputs( self.file , muistrings[ Val( code ) ] )
+				indent := FALSE
+				Mb_GetNextNotify( {type} , {code} )
+				IF ( type &lt;&gt; TC_END_FUNCTION ) AND ( type &lt;&gt; TC_END_NOTIFICATION ) THEN Fputs( self.file , &#x27; , &#x27; )
+
+			CASE TC_MUIARG_OBJ		-&gt;	same as TC_MUIARG
+
+				Fputs( self.file , muistrings[ Val( code ) ] )
+				indent := FALSE
+				Mb_GetNextNotify( {type} , {code} )
+				IF ( type &lt;&gt; TC_END_FUNCTION ) AND ( type &lt;&gt; TC_END_NOTIFICATION ) THEN Fputs( self.file , &#x27; , &#x27; )
+
+			CASE TC_MUIARG_ATTRIBUT
+
+				Fputs( self.file , muistrings[ Val( code ) ] )
+				Mb_GetNextNotify( {type} , {code} )
+
+				IF ( type &lt;&gt; TC_END_FUNCTION ) AND ( type &lt;&gt; TC_END_NOTIFICATION )
+
+					indent := TRUE
+					Fputs( self.file , &#x27; ,\n&#x27; )
+
+				ELSE
+
+					indent := FALSE
+
+				ENDIF
+
+			CASE TC_EXTERNAL_CONSTANT
+
+				Fputs( self.file , code )
+				Mb_GetNextNotify( {type} , {code} )
+
+				IF ( type &lt;&gt; TC_END_FUNCTION ) AND ( type &lt;&gt; TC_END_NOTIFICATION )
+
+					indent := TRUE
+					Fputs( self.file , &#x27; ,\n&#x27; )
+
+				ELSE
+
+					indent := FALSE
+
+				ENDIF
+
+			CASE TC_EXTERNAL_FUNCTION
+
+				Fputs( self.file , &#x27;display.&#x27; )
+				Fputs( self.file , code )
+
+				Mb_GetNextNotify( {type} , {code} )
+
+				IF ( type &lt;&gt; TC_END_FUNCTION ) AND ( type &lt;&gt; TC_END_NOTIFICATION )
+
+					indent := TRUE
+					Fputs( self.file , &#x27; ,\n&#x27; )
+
+				ELSE
+
+					indent := FALSE
+
+				ENDIF
+
+			CASE TC_EXTERNAL_VARIABLE
+
+				Fputs( self.file , code )
+				Mb_GetNextNotify( {type} , {code} )
+
+				IF ( type &lt;&gt; TC_END_FUNCTION ) AND ( type &lt;&gt; TC_END_NOTIFICATION )
+
+					indent := TRUE
+					Fputs( self.file , &#x27; ,\n&#x27; )
+
+				ELSE
+
+					indent := FALSE
+
+				ENDIF
+
+		ENDSELECT
+
+	ENDWHILE
+
+ENDPROC
+
+
+-&gt;/////////////////////////////////////////////////////////////////////////////
+-&gt;/////////////////////////////////////// PROC put_init_notifications_end /////
+-&gt;/////////////////////////////////////////////////////////////////////////////
+PROC put_init_notifications_end() OF gui_file IS Fputs( self.file , &#x27;ENDPROC\n\n\n&#x27; )
+
+
+-&gt;/////////////////////////////////////////////////////////////////////////////
+-&gt;//////////////////////////////////////////////////// PROC put_aux_funcs /////
+-&gt;/////////////////////////////////////////////////////////////////////////////
+PROC put_aux_funcs() OF gui_file
+
+	Fputs( self.file ,
+		&#x27;-&gt;/////////////////////////////////////////////////////////////////////////////\n&#x27;														+
+		&#x27;-&gt;////////////////////////////////////////////////////// PROC getMBstring /////\n&#x27;														+
+		&#x27;-&gt;/////////////////////////////////////////////////////////////////////////////\n&#x27;														+
+		&#x27;PROC getMBstring( local_string : PTR TO CHAR ) RETURN ( IF local_string[ 1 ] = &quot;\\0&quot; THEN ( local_string + 2 ) ELSE local_string )\n&#x27;	)
+
+ENDPROC
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

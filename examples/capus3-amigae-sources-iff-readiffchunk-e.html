@@ -1,0 +1,178 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ReadIFFChunk.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-capus3.html">capus3</a> &rsaquo; ReadIFFChunk.e</div><h1>File: <code>ReadIFFChunk.e</code></h1><p class="meta">152 lines · project <a href="../examples/pkg-capus3.html"><code>capus3</code></a></p><p class="pathctx">capus3/AmigaE/Sources/IFF/ReadIFFChunk.e</p><p class="prose">&gt; EDEVHEADER</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/nodes.html">exec/nodes</a></li><li><a href="../modules/iffparse.html">iffparse</a></li><li><a href="../modules/iffparse.html">libraries/iffparse</a></li><li><a href="../modules/plist.html">other/plist</a></li><li><a href="../modules/easygui.html">tools/easygui</a></li></ul></div><h2>Source</h2><pre class="code">-&gt;&gt; EDEVHEADER
+/*= © NasGûl =========================
+ ESOURCE ReadIFFChunk.e
+ EDIR    Workbench:AmigaE/Sources/IFF
+ ECOPT   ERRLINE
+ EXENAME ReadIFFChunk
+ MAKE    EC
+ AUTHOR  NasGûl
+ TYPE    EXEDOS
+ =====================================*/
+-&gt;&lt;
+-&gt;&gt; ©/DISTRIBUTION/UTILISATION
+/*=====================================
+
+ - TOUTE UTILISATION COMMERCIALE DES CES SOURCES EST
+   INTERDITE SANS MON AUTORISATION.
+
+ - TOUTE DISTRIBUTION DOIT ETRE FAITES EN TOTALITE (EXECUTABLES/MODULES E/SOURCES E).
+
+ !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+ !! TOUTE INCLUSION SUR UN CD-ROM EST INTERDITE SANS MON AUTORISATION.!!
+ !! SEULES LES DISTRIBUTIONS DE FRED FISH ET AMINET CDROM SONT AUTO-  !!
+ !! RISES A DISTRIBUER CES PROGRAMMES/SOURCES.                        !!
+ !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+=====================================*/
+-&gt;&lt;
+-&gt;&gt; MODULES
+
+MODULE &#x27;libraries/iffparse&#x27;
+MODULE &#x27;iffparse&#x27;
+MODULE &#x27;exec/nodes&#x27;,&#x27;exec/lists&#x27;
+MODULE &#x27;other/plist&#x27;
+MODULE &#x27;tools/easygui&#x27;,&#x27;tools/exceptions&#x27;
+
+-&gt;&lt;
+-&gt;&gt; DEFINITIONS GLOBALES
+
+DEF objsource[256]:STRING
+DEF mylist:PTR TO lh
+DEF force=FALSE
+
+-&gt;&lt;
+-&gt;&gt; main() HANDLE
+PROC main() HANDLE
+    DEF myargs:PTR TO LONG,rdargs=NIL
+    DEF title[256]:STRING,test
+    myargs:=[0,0]
+    VOID &#x27;$VER: ReadIFFChunk 1.0 (13.11.95) © 1995 NasGûl&#x27;
+    IF iffparsebase:=OpenLibrary(&#x27;iffparse.library&#x27;,0)
+    IF rdargs:=ReadArgs(&#x27;FICHIER/A,FORCE/S&#x27;,myargs,NIL)
+        IF myargs[0] THEN StrCopy(objsource,myargs[0],ALL)
+        IF myargs[1] THEN force:=TRUE
+        IF mylist:=initList()
+        test:=readIFFFile()
+        IF ((force=TRUE) OR (test=-1))
+            StringF(title,&#x27;ReadIFFChunk :\s&#x27;,objsource)
+            easygui(title,
+                [BEVEL,
+                    [EQROWS,
+                    [LISTV,{rien},NIL,43,5,mylist,0,NIL],
+                    [SBUTTON,0,&#x27;Ok&#x27;]
+                    ]
+                ],NIL,NIL,NIL)
+            IF mylist THEN removeList(mylist)
+        ENDIF
+        ENDIF
+        IF rdargs THEN FreeArgs(rdargs)
+    ELSE
+        WriteF(&#x27;Bad Args\n&#x27;)
+    ENDIF
+    CloseLibrary(iffparsebase)
+    ELSE
+    WriteF(&#x27;iffparse.library ?.\n&#x27;)
+    ENDIF
+EXCEPT DO
+    IF mylist THEN removeList(mylist)
+    IF rdargs THEN FreeArgs(rdargs)
+    IF iffparsebase THEN CloseLibrary(iffparsebase)
+    report_exception()
+ENDPROC
+-&gt;&lt;
+-&gt;&gt; rien()
+PROC rien()
+ENDPROC
+-&gt;&lt;
+-&gt;&gt; readIFFFile()
+PROC readIFFFile()
+    DEF iff=NIL:PTR TO iffhandle
+    DEF error=0
+    DEF curchunk:PTR TO contextnode
+    DEF buffer[256]:STRING
+    DEF strid[5]:STRING,cid[5]:STRING
+    DEF comment,comstr[256]:STRING
+    IF (iff:=AllocIFF())&gt;0
+    iff.stream:=Open(objsource,1005)
+    InitIFFasDOS(iff)
+    IF (error:=OpenIFF(iff,IFFF_READ))=0
+        REPEAT
+        error:=ParseIFF(iff,IFFPARSE_RAWSTEP)
+        IF error=0
+            curchunk:=CurrentChunk(iff)
+            VOID IdtoStr(curchunk.id,cid)
+            VOID IdtoStr(curchunk.type,strid)
+
+            StringF(buffer,&#x27;Chunk ID: \l\s[4] Size:\l\d[12] (\s[4])&#x27;,
+                        cid,curchunk.size,strid)
+-&gt;            WriteF(&#x27;\s\n&#x27;,buffer)
+            IF (curchunk.id=&quot;ANNO&quot;) OR (curchunk.id=&quot;(c) &quot;)
+            IF comment:=New(curchunk.size)
+                ReadChunkBytes(iff,comment,curchunk.size)
+                StringF(comstr,&#x27; -&gt;(\s)&#x27;,comment)
+                Dispose(comment)
+                StrAdd(buffer,comstr,ALL)
+            ENDIF
+            ENDIF
+            addNode(mylist,buffer,0,0)
+        ENDIF
+        UNTIL ((error&lt;&gt;0) AND (error&lt;&gt;-2))
+        checkIFFError(error)
+        CloseIFF(iff)
+        Close(iff.stream)
+    ENDIF
+    FreeIFF(iff)
+    ENDIF
+    RETURN error
+ENDPROC
+-&gt;&lt;
+-&gt;&gt; checkIFFError(er)
+PROC checkIFFError(er)
+    DEF text[256]:STRING
+    SELECT er
+    CASE 0;          RETURN TRUE
+    CASE IFFERR_EOF;     RETURN FALSE
+    CASE IFFERR_EOC;     RETURN TRUE
+    CASE IFFERR_NOSCOPE; StrCopy(text,&#x27;IFFERR_NOSCOPE.&#x27;,ALL)
+    CASE IFFERR_NOMEM;   StrCopy(text,&#x27;IFFERR_NOMEM.&#x27;,ALL)
+    CASE IFFERR_READ;    StrCopy(text,&#x27;IFFERR_READ.&#x27;,ALL)
+    CASE IFFERR_WRITE;   StrCopy(text,&#x27;IFFERR_WRITE.&#x27;,ALL)
+    CASE IFFERR_SEEK;    StrCopy(text,&#x27;IFFERR_SEEK.&#x27;,ALL)
+    CASE IFFERR_MANGLED; StrCopy(text,&#x27;IFFERR_MANGLED.&#x27;,ALL)
+    CASE IFFERR_SYNTAX;  StrCopy(text,&#x27;IFFERR_SYNTAX.&#x27;,ALL)
+    CASE IFFERR_NOTIFF;  StrCopy(text,&#x27;IFFERR_NOTIFF.&#x27;,ALL)
+    CASE IFFERR_NOHOOK;  StrCopy(text,&#x27;IFFERR_NOHOOK.&#x27;,ALL)
+    ENDSELECT
+    EasyRequestArgs(0,[20,0,&#x27;IFF Error&#x27;,text,&#x27;Ok&#x27;],0,0)
+    RETURN FALSE
+ENDPROC
+-&gt;&lt;
+
+
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

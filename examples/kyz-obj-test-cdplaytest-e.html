@@ -1,0 +1,185 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>cdplaytest.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-kyz-obj.html">kyz_obj</a> &rsaquo; cdplaytest.e</div><h1>File: <code>cdplaytest.e</code></h1><p class="meta">159 lines · project <a href="../examples/pkg-kyz-obj.html"><code>kyz_obj</code></a></p><p class="pathctx">kyz_obj/test/cdplaytest.e</p><p class="prose">mini CD³² CD player - joypad controlled, no output  play - play/pause/unpause blue - stop/spindown red  - restart <a href="../modules/current.html">current</a> track click left/right shoulder - skip track back/forward left/right on directional pad - search back/forward</p><h2>Source</h2><pre class="code">-&gt; mini CD³² CD player - joypad controlled, no output
+-&gt;
+-&gt; play - play/pause/unpause
+-&gt; blue - stop/spindown
+-&gt; red  - restart current track
+-&gt; click left/right shoulder - skip track back/forward
+-&gt; left/right on directional pad - search back/forward
+
+MODULE &#x27;*cdplayer&#x27;, &#x27;lowlevel&#x27;, &#x27;libraries/lowlevel&#x27;
+
+DEF cd=NIL:PTR TO cdplayer, list[100]:ARRAY OF CHAR, listpos,
+    playing, startplay, searching = FALSE, direction,
+    playbtn = 0, bluebtn = 0, greybtn = 0, redbtn = 0
+
+PROC main() HANDLE
+  IF lowlevelbase := OpenLibrary(&#x27;lowlevel.library&#x27;, 40)
+    NEW cd.open()
+    mainloop()
+  ENDIF
+EXCEPT DO
+  END cd
+  CloseLibrary(lowlevelbase)
+ENDPROC
+
+PROC mainloop()
+  DEF c1, c2, control
+
+  stop()
+
+  REPEAT
+    WaitTOF()
+    c1 := ReadJoyPort(0)
+    c2 := ReadJoyPort(1)
+
+    control := (IF c1 AND JP_TYPE_GAMECTLR THEN c1 ELSE 0) OR
+               (IF c2 AND JP_TYPE_GAMECTLR THEN c2 ELSE 0)
+
+    check_buttons(control)
+
+    IF startplay AND cd.discinserted() THEN start_play()
+    IF playing
+      IF cd.discinserted() = FALSE THEN stop()
+      IF cd.playing() = FALSE THEN advance_play()
+    ENDIF
+
+  UNTIL CtrlC()
+ENDPROC
+
+-&gt;------------------------------------------------------------------------------
+
+CONST PLAY    = JPF_BUTTON_PLAY
+CONST RED     = JPF_BUTTON_RED
+CONST BLUE    = JPF_BUTTON_BLUE
+CONST FORWARD = JPF_BUTTON_FORWARD
+CONST REVERSE = JPF_BUTTON_REVERSE
+CONST LEFT    = JPF_JOY_LEFT
+CONST RIGHT   = JPF_JOY_RIGHT
+
+PROC check_buttons(c)
+  -&gt; if play button pressed, try to start play.
+  -&gt; if already playing, it toggles pause
+
+  IF button(c AND PLAY, {playbtn})
+    IF playing THEN toggle_pause() ELSE startplay := TRUE
+  ENDIF
+
+  -&gt; if blue is pressed, stop play. if already stopped, turn off motor
+  IF button(c AND BLUE, {bluebtn})
+    IF playing THEN stop() ELSE cd.spindown()
+  ENDIF
+
+  -&gt; if a shoulder button is pressed, skip forward or back (if playing)
+  IF button(c AND (FORWARD OR REVERSE), {greybtn})
+    IF playing THEN IF c AND REVERSE THEN prev() ELSE next(FALSE)
+  ENDIF
+
+  -&gt; red restarts the current track
+  IF button(c AND RED, {redbtn})
+    IF playing THEN play()
+  ENDIF
+
+  -&gt; if left/right is pressed, search forward or back (if playing)
+  IF c AND (LEFT OR RIGHT)
+    IF playing AND (searching = FALSE)
+      searching := TRUE
+      direction := IF c AND LEFT THEN CDSEARCH_BACK ELSE CDSEARCH_FWD
+      cd.search(direction)
+    ENDIF
+  ELSE
+    IF searching THEN cd.search(CDSEARCH_STOP) BUT searching := FALSE
+  ENDIF
+ENDPROC
+
+PROC start_play()
+  -&gt; request to start play has been made. we try to get a list of playable
+  -&gt; tracks. if there are some, we can enter playmode
+  IF make_list() THEN cd.unpause() BUT play()
+  startplay := FALSE
+ENDPROC
+
+PROC advance_play()
+  -&gt; play will have stopped either because we have reached the end of
+  -&gt; the track, or reached the start of the track (via backwards search)
+  -&gt; if we reached the start, turn off search mode and play the track again.
+  -&gt; otherwise, play the next track
+
+  IF searching AND (direction = CDSEARCH_BACK)
+    cd.search(CDSEARCH_STOP); play()
+  ELSE
+    next(TRUE)
+  ENDIF
+ENDPROC
+
+-&gt;------------------------------------------------------------------------------
+
+PROC make_list()
+  -&gt; build a list of all audio tracks on the CD
+  -&gt; return TRUE if there are any audio tracks on the CD
+  DEF m=0, n
+
+  FOR n := 1 TO cd.tracks() DO IF
+    cd.trackinfo(n) = CDTRACK_AUDIO THEN list[m++] := n
+
+  list[m] := 0 -&gt; null-terminate after last entry in list
+  listpos := 0 -&gt; set list pointer to start of list
+ENDPROC (m &gt; 0)
+
+PROC prev()
+  -&gt; play previous track (if at first track, play first track again)
+  IF listpos-- &lt; 0 THEN listpos := 0; play()
+ENDPROC
+
+PROC next(stop_at_end)
+  -&gt; play next track in list. if stop_at_end set then stop after final track
+  -&gt; otherwise play final track again
+  listpos++
+  IF list[listpos] THEN play() ELSE IF
+    stop_at_end THEN stop() ELSE listpos-- BUT play()
+ENDPROC
+
+PROC play()
+  -&gt; play currently selected track
+  DEF type, offset, length
+  type, offset, length := cd.trackinfo(list[listpos])
+  playing := TRUE
+  cd.play(offset, length)
+ENDPROC
+
+PROC stop() IS cd.stop() BUT playing := FALSE
+
+PROC toggle_pause() IS IF cd.paused() THEN cd.unpause() ELSE cd.pause()
+
+PROC button(b, s)
+  -&gt; tests against a particular joypad buttonset. Only returns TRUE on the
+  -&gt; initial press of the button(s), and button(s) must be released before
+  -&gt; pressing again returns TRUE
+  IF b; IF ^s = 0; ^s := 1; RETURN TRUE; ENDIF; ELSE; ^s := 0; ENDIF
+ENDPROC FALSE
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

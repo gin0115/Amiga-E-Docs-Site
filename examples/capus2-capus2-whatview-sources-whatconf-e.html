@@ -1,0 +1,305 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>WhatConf.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-capus2.html">capus2</a> &rsaquo; WhatConf.e</div><h1>File: <code>WhatConf.e</code></h1><p class="meta">279 lines · project <a href="../examples/pkg-capus2.html"><code>capus2</code></a></p><p class="pathctx">capus2/capus2/WhatView/Sources/WhatConf.e</p><p class="prose">======&lt;&lt;&lt; <a href="../modules/peps.html">Peps</a> Header &gt;&gt;&gt;====== PRGVERSION &#x27;0&#x27; ================================ PRGREVISION &#x27;01&#x27; ================================ AUTHOR &#x27;NasGûl&#x27; ===============================</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/dos.html">dos/dos</a></li><li><a href="../modules/dosextens.html">dos/dosextens</a></li><li><a href="../modules/rdargs.html">dos/rdargs</a></li><li><a href="../modules/lists.html">exec/lists</a></li></ul></div><h2>Source</h2><pre class="code">/*======&lt;&lt;&lt; Peps Header &gt;&gt;&gt;======
+ PRGVERSION &#x27;0&#x27;
+ ================================
+ PRGREVISION &#x27;01&#x27;
+ ================================
+ AUTHOR      &#x27;NasGûl&#x27;
+ ===============================*/
+/*======&lt;&lt;&lt;   History   &gt;&gt;&gt;======
+ - Convertit les fichiers prefs de whatview,
+   D&#x27;Ascii en binaire et vice-vers-ça.
+
+ ===============================*/
+
+
+MODULE &#x27;dos/dos&#x27;
+MODULE &#x27;dos/rdargs&#x27;
+MODULE &#x27;dos/dosextens&#x27;
+MODULE &#x27;exec/lists&#x27;,&#x27;exec/nodes&#x27;
+MODULE &#x27;wvprefs&#x27;
+
+
+PMODULE &#x27;WhatConfList&#x27;
+
+DEF mylist:PTR TO lh
+DEF testlist:PTR TO lh
+DEF defact=-1
+/*&quot;main()&quot;*/
+PROC main()
+    DEF rdargs=NIL,myargs:PTR TO LONG
+    myargs:=[0,0,0]
+    VOID {banner}
+    IF rdargs:=ReadArgs(&#x27;Source,Destination,SaveBin/S&#x27;,myargs,NIL)
+        mylist:=p_InitList()
+        testlist:=p_InitList()
+        IF myargs[2]
+            WriteF(&#x27;Read Ascii file..\n&#x27;)
+            p_ReadAsciiFile(myargs[0])
+            WriteF(&#x27;Save Binary file..\n&#x27;)
+            p_SaveBinFile(mylist,myargs[1])
+            JUMP end
+        ELSE
+            WriteF(&#x27;Read Binary file..\n&#x27;)
+            p_ReadBinFile(myargs[0])
+            WriteF(&#x27;Save Ascii file..\n&#x27;)
+            p_SaveAsciiFile(mylist,myargs[1])
+            JUMP end
+        ENDIF
+        end:
+        IF rdargs THEN FreeArgs(rdargs)
+    ELSE
+        WriteF(&#x27;Bad args!\n&#x27;)
+    ENDIF
+ENDPROC
+/**/
+
+/*&quot;p_SaveBinFile(list:PTR TO lh,fichier)&quot;*/
+PROC p_SaveBinFile(list:PTR TO lh,fichier)
+    DEF sactnode:PTR TO actionnode
+    DEF node:PTR TO ln
+    DEF h
+    IF h:=Open(fichier,1006)
+        Write(h,[ID_WVPR]:LONG,4)
+        sactnode:=list.head
+        WHILE sactnode
+            node:=sactnode
+            IF node.succ&lt;&gt;0
+                Write(h,[ID_WVAC]:LONG,4)
+                Write(h,[sactnode.exectype]:INT,2)
+                Write(h,[sactnode.stack]:LONG,4)
+                Write(h,[sactnode.priority]:INT,2)
+                Write(h,[sactnode.usesubtype]:INT,2)
+                Write(h,node.name,EstrLen(node.name))
+                IF Even(EstrLen(node.name))
+                    Out(h,0)
+                    Out(h,0)
+                ELSE
+                    Out(h,0)
+                ENDIF
+                Write(h,sactnode.command,EstrLen(sactnode.command))
+                IF Even(EstrLen(sactnode.command))
+                    Out(h,0)
+                    Out(h,0)
+                ELSE
+                    Out(h,0)
+                ENDIF
+                Write(h,sactnode.currentdir,EstrLen(sactnode.currentdir))
+                IF Even(EstrLen(sactnode.currentdir))
+                    Out(h,0)
+                    Out(h,0)
+                ELSE
+                    Out(h,0)
+                ENDIF
+            ENDIF
+            sactnode:=node.succ
+        ENDWHILE
+        Write(h,[ID_DEFA]:LONG,4)
+        Write(h,[defact]:LONG,4)
+        IF h THEN Close(h)
+    ENDIF
+ENDPROC
+/**/
+/*&quot;p_ReadBinFile(source)&quot;*/
+PROC p_ReadBinFile(source)
+    DEF len,a,adr,buf,handle,flen=TRUE,pos:PTR TO CHAR
+    DEF chunk
+    DEF pv[256]:STRING
+    DEF node:PTR TO ln
+    DEF addact:PTR TO actionnode
+    DEF nn=NIL
+    IF (flen:=FileLength(source))=-1 THEN RETURN FALSE
+    IF (buf:=New(flen+1))=NIL THEN RETURN FALSE
+    IF (handle:=Open(source,1005))=NIL THEN RETURN FALSE
+    len:=Read(handle,buf,flen)
+    Close(handle)
+    IF len&lt;1 THEN RETURN FALSE
+    adr:=buf
+    chunk:=Long(adr)
+    IF chunk&lt;&gt;ID_WVPR
+        Dispose(buf)
+        RETURN FALSE
+    ENDIF
+    FOR a:=0 TO len-1
+        pos:=adr++
+        IF Even(pos)
+            chunk:=Long(pos)
+            SELECT chunk
+                CASE ID_WVAC
+                    pos:=pos+4
+                    node:=New(SIZEOF ln)
+                    addact:=New(SIZEOF actionnode)
+                    addact.exectype:=Int(pos)
+                    addact.stack:=Long(pos+2)
+                    addact.priority:=Int(pos+6)
+                    addact.usesubtype:=Int(pos+8)
+                    StringF(pv,&#x27;\s&#x27;,pos+10)
+                    node.name:=String(EstrLen(pv))
+                    node.succ:=0
+                    StrCopy(node.name,pv,ALL)
+                    IF Even(EstrLen(pv))
+                        pos:=pos+10+EstrLen(pv)+2
+                    ELSE
+                        pos:=pos+10+EstrLen(pv)+1
+                    ENDIF
+                    StringF(pv,&#x27;\s&#x27;,pos)
+                    addact.command:=String(EstrLen(pv))
+                    StrCopy(addact.command,pv,ALL)
+                    IF Even(EstrLen(pv))
+                        pos:=pos+EstrLen(pv)+2
+                    ELSE
+                        pos:=pos+EstrLen(pv)+1
+                    ENDIF
+                    StringF(pv,&#x27;\s&#x27;,pos)
+                    addact.currentdir:=String(EstrLen(pv))
+                    StrCopy(addact.currentdir,pv,ALL)
+                    IF Even(EstrLen(pv))
+                        pos:=pos+EstrLen(pv)+2
+                    ELSE
+                        pos:=pos+EstrLen(pv)+1
+                    ENDIF
+                    nn:=p_AjouteNode(mylist,node.name,addact)
+                    IF node THEN Dispose(node)
+                CASE ID_DEFA
+                    pos:=pos+4
+                    defact:=Long(pos)
+            ENDSELECT
+        ENDIF
+    ENDFOR
+    Dispose(buf)
+    RETURN TRUE
+ENDPROC
+/**/
+
+
+/*&quot;p_SaveAsciiFile(list:PTR TO lh,fichier)&quot;*/
+PROC p_SaveAsciiFile(list:PTR TO lh,fichier)
+    DEF sactnode:PTR TO actionnode
+    DEF node:PTR TO ln
+    DEF h,us
+    DEF outstr[256]:STRING
+    IF h:=Open(fichier,1006)
+        sactnode:=list.head
+        WHILE sactnode
+            node:=sactnode
+            IF node.succ&lt;&gt;0
+                us:=sactnode.usesubtype
+                StringF(outstr,&#x27;Type &quot;\s&quot; Com &quot;\s&quot; Dir &quot;\s&quot; Mode &quot;\d&quot; Pri &quot;\d&quot; Stack &quot;\d&quot; \s\n&#x27;,
+                                node.name,sactnode.command,sactnode.currentdir,
+                                sactnode.exectype,sactnode.priority,sactnode.stack,
+                                IF us&lt;&gt;FALSE THEN &#x27;UseParent&#x27; ELSE &#x27;&#x27;)
+                Write(h,outstr,EstrLen(outstr))
+            ENDIF
+            sactnode:=node.succ
+        ENDWHILE
+        IF h THEN Close(h)
+    ENDIF
+ENDPROC
+/**/
+/*&quot;p_ReadAsciiFile(str)&quot;*/
+PROC p_ReadAsciiFile(str)
+    DEF fh,buf[1000]:ARRAY,numline=1
+    DEF nom[256]:STRING,rn[256]:STRING
+    DEF m:PTR TO LONG
+    DEF test
+    DEF addact:PTR TO actionnode,nn
+    DEF str_name[80]:STRING,str_com[80]:STRING,str_dir[256]:STRING
+    DEF mode,pri,st,usep
+    IF fh:=Open(str,OLDFILE)
+        WHILE test:=Fgets(fh,buf,1000)
+                StringF(nom,&#x27;\s&#x27;,test)
+                StrCopy(rn,test,(EstrLen(test)-1))
+                m:=[0,0,0,0,0,0,0]
+                IF getArg(rn,&#x27;Type/K,Com/K,Dir/K,Mode/K/N,Pri/K/N,Stack/K/N,UseParent/S&#x27;,m)
+                    /*
+                    WriteF(&#x27;Type :\s Com:\s Dir:\s Mode:\d Pri:\d Stack:\d UseParent:\d\n&#x27;,
+                            m[0],m[1],m[2],Long(m[3]),Long(m[4]),Long(m[5]),Long(m[6]))
+                    */
+                    StringF(str_name,&#x27;\s&#x27;,m[0])
+                    StringF(str_com,&#x27;\s&#x27;,m[1])
+                    StringF(str_dir,&#x27;\s&#x27;,m[2])
+                    mode:=Long(m[3])
+                    pri:=Long(m[4])
+                    st:=Long(m[5])
+                    usep:=m[6]
+                    /*===========================*/
+                    /*===========================*/
+                    addact:=New(SIZEOF actionnode)
+                    addact.exectype:=mode
+                    addact.stack:=st
+                    addact.priority:=pri
+                    IF usep THEN addact.usesubtype:=TRUE ELSE addact.usesubtype:=FALSE
+                    addact.command:=String(EstrLen(str_com))
+                    StrCopy(addact.command,str_com,ALL)
+                    addact.currentdir:=String(EstrLen(str_dir))
+                    StrCopy(addact.currentdir,str_dir,ALL)
+                    /*===============================*/
+                    /*===============================*/
+                    p_AjouteNode(testlist,str_name,0)
+                    nn:=p_AjouteNode(mylist,str_name,addact)
+                ELSE
+                    WriteF(&#x27;Error in line \d\n&#x27;,numline)
+                    JUMP fin
+                ENDIF
+                m[0]:=0;m[1]:=0;m[2]:=0;m[3]:=0;m[4]:=0;m[5]:=0;m[6]:=0
+                numline:=numline+1
+        ENDWHILE
+        fin:
+        Close(fh)
+    ENDIF
+ENDPROC
+/**/
+
+/*&quot;getArg(argu,temp,a:PTR TO LONG)&quot;*/
+PROC getArg(argu,temp,a:PTR TO LONG)
+    DEF myc:PTR TO csource
+    DEF ma:PTR TO rdargs
+    DEF rdarg=NIL
+    DEF argstr[256]:STRING
+    DEF ret=NIL
+    StrCopy(argstr,argu,ALL)
+    StrAdd(argstr,&#x27;\n&#x27;,1)
+    IF ma:=AllocDosObject(DOS_RDARGS,NIL)
+        myc:=New(SIZEOF csource)
+        myc.buffer:=argstr
+        myc.length:=EstrLen(argstr)
+        ma.flags:=4
+        CopyMem(myc,ma.source,SIZEOF csource)
+        IF rdarg:=ReadArgs(temp,a,ma)
+            ret:=a
+            IF rdarg THEN FreeArgs(rdarg)
+        ELSE
+        ENDIF
+        FreeDosObject(DOS_RDARGS,ma)
+    ELSE
+        WriteF(&#x27;AllocDosObject failed !!\n&#x27;)
+    ENDIF
+    RETURN ret
+ENDPROC
+/**/
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

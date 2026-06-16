@@ -1,0 +1,209 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>userkmmodel.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-jrh-rkrm-1.html">JRH-RKRM-1</a> &rsaquo; userkmmodel.e</div><h1>File: <code>userkmmodel.e</code></h1><p class="meta">183 lines · project <a href="../examples/pkg-jrh-rkrm-1.html"><code>JRH-RKRM-1</code></a></p><p class="pathctx">JRH-RKRM-1/JRH-RKRM-PartOne/Intuition/Boopsi/userkmmodel.e</p><h2>Source</h2><pre class="code">OPT OSVERSION=37
+
+MODULE &#x27;*rkmmodel&#x27;,
+       &#x27;amigalib/boopsi&#x27;,
+       &#x27;utility&#x27;,
+       &#x27;intuition/classusr&#x27;,
+       &#x27;intuition/gadgetclass&#x27;,
+       &#x27;intuition/icclass&#x27;,
+       &#x27;intuition/imageclass&#x27;,
+       &#x27;intuition/intuition&#x27;
+
+ENUM ERR_NONE, ERR_DRAW, ERR_LIB, ERR_OBJ, ERR_WIN
+
+RAISE ERR_DRAW IF GetScreenDrawInfo()=NIL,
+      ERR_LIB  IF OpenLibrary()=NIL,
+      ERR_OBJ  IF NewObjectA()=NIL,
+      ERR_WIN  IF OpenWindowTagList()=NIL
+
+CONST PROPID=1, INTEGERID=2, RIGHTID=3, LEFTID=4, PROPWIDTH=80, PROPHEIGHT=10,
+      INTWIDTH=50, INTHEIGHT=14, VISIBLE=10, TOTAL=100, INITIALVAL=25
+CONST MINWINDOWWIDTH=80, MINWINDOWHEIGHT=PROPHEIGHT+70, MAXCHARS=4
+
+DEF w=NIL:PTR TO window, mydrawinfo=NIL, rkmmodcl=NIL,
+    rkmmodel=NIL, currval2int=NIL, currval2prop=NIL,
+    prop=NIL:PTR TO gadget, integer=NIL:PTR TO gadget,
+    leftbut=NIL:PTR TO gadget, rightbut=NIL:PTR TO gadget,
+    rightimage=NIL, leftimage=NIL
+
+PROC main() HANDLE
+  DEF qwe
+  utilitybase:=OpenLibrary(&#x27;utility.library&#x27;, 37)
+  w:=OpenWindowTagList(NIL,
+                      [WA_FLAGS, WFLG_DEPTHGADGET OR WFLG_DRAGBAR OR
+                                     WFLG_CLOSEGADGET OR WFLG_SIZEGADGET,
+                       WA_IDCMP, IDCMP_CLOSEWINDOW,
+                       NIL])
+  -&gt; E-Note: we could have made initRKMModClass raise an exception
+  IF rkmmodcl:=initRKMModClass()
+    mydrawinfo:=GetScreenDrawInfo(w.wscreen)
+    makeGadgetsAndRKMModel()
+    doMethodA(rkmmodel, [OM_ADDMEMBER, currval2prop])
+    currval2prop:=NIL  -&gt; E-Note: this is now part of the rkmmodel object
+    doMethodA(rkmmodel, [OM_ADDMEMBER, currval2int])
+    currval2int:=NIL   -&gt; E-Note: again, now part of the rkmmodel object
+    WindowLimits(w,
+                 w.borderleft+w.borderright+integer.leftedge+integer.width+10,
+                 w.bordertop+w.borderbottom+prop.height+10,
+                 w.maxwidth,
+                 w.maxheight)
+    AddGList(w, prop, -1, -1, NIL)
+    RefreshGadgets(prop, w, NIL)
+
+    GetAttr(RKMMOD_CURRVAL, rkmmodel, {qwe})
+    WriteF(&#x27;RKMMOD_CURRVAL = \d\n&#x27;, qwe)
+    Delay(200)
+
+    IF SetAttrsA(rkmmodel, [RKMMOD_CURRVAL, 10, NIL])
+      RefreshGadgets(prop, w, NIL)
+    ENDIF
+    GetAttr(RKMMOD_CURRVAL, rkmmodel, {qwe})
+    WriteF(&#x27;RKMMOD_CURRVAL = \d\n&#x27;, qwe)
+    Delay(200)
+
+    IF SetAttrsA(rkmmodel, [RKMMOD_CURRVAL, 30, NIL])
+      RefreshGadgets(prop, w, NIL)
+    ENDIF
+    GetAttr(RKMMOD_CURRVAL, rkmmodel, {qwe})
+    WriteF(&#x27;RKMMOD_CURRVAL = \d\n&#x27;, qwe)
+    Delay(200)
+
+    IF SetAttrsA(rkmmodel, [RKMMOD_CURRVAL, 50, NIL])
+      RefreshGadgets(prop, w, NIL)
+    ENDIF
+    GetAttr(RKMMOD_CURRVAL, rkmmodel, {qwe})
+    WriteF(&#x27;RKMMOD_CURRVAL = \d\n&#x27;, qwe)
+    Delay(200)
+
+    IF SetAttrsA(rkmmodel, [RKMMOD_UP, 1, NIL])
+      RefreshGadgets(prop, w, NIL)
+    ENDIF
+
+    -&gt; Wait for the user to click window close gadget
+    REPEAT
+    UNTIL WaitIMessage(w)=IDCMP_CLOSEWINDOW
+    RemoveGList(w, prop, -1)
+  ENDIF
+
+EXCEPT DO
+  IF currval2int  THEN DisposeObject(currval2int)
+  IF currval2prop THEN DisposeObject(currval2prop)
+  IF rightbut     THEN DisposeObject(rightbut)
+  IF leftbut      THEN DisposeObject(leftbut)
+  IF integer      THEN DisposeObject(integer)
+  IF prop         THEN DisposeObject(prop)
+  IF rkmmodel     THEN DisposeObject(rkmmodel)
+  IF leftimage    THEN DisposeObject(leftimage)
+  IF rightimage   THEN DisposeObject(rightimage)
+
+  IF mydrawinfo THEN FreeScreenDrawInfo(w.wscreen, mydrawinfo)
+  IF rkmmodcl THEN freeRKMModClass(rkmmodcl)
+  IF w THEN CloseWindow(w)
+  IF utilitybase THEN CloseLibrary(utilitybase)
+  SELECT exception
+  CASE ERR_DRAW; WriteF(&#x27;Error: Failed to get screen DrawInfo\n&#x27;)
+  CASE ERR_LIB;  WriteF(&#x27;Error: Failed to open utility library\n&#x27;)
+  CASE ERR_OBJ;  WriteF(&#x27;Error: Failed to make new Object\n&#x27;)
+  CASE ERR_WIN;  WriteF(&#x27;Error: Failed to open window\n&#x27;)
+  ENDSELECT
+ENDPROC
+
+PROC makeGadgetsAndRKMModel() HANDLE
+  rightimage:=NewObjectA(NIL, &#x27;sysiclass&#x27;,
+                        [SYSIA_WHICH, RIGHTIMAGE,
+                         SYSIA_DRAWINFO, mydrawinfo, NIL])
+  leftimage:=NewObjectA(NIL, &#x27;sysiclass&#x27;,
+                       [SYSIA_WHICH, LEFTIMAGE,
+                        SYSIA_DRAWINFO, mydrawinfo, NIL])
+  rkmmodel:=NewObjectA(rkmmodcl, NIL,
+                      [RKMMOD_CURRVAL, INITIALVAL,
+                       RKMMOD_LIMIT, TOTAL-VISIBLE, NIL])
+  prop:=NewObjectA(NIL, &#x27;propgclass&#x27;,
+                  [GA_ID,       PROPID,
+                   GA_TOP,      w.bordertop+5,
+                   GA_LEFT,     w.borderleft+5,
+                   GA_WIDTH,    PROPWIDTH,
+                   GA_HEIGHT,   PROPHEIGHT,
+                   ICA_MAP,    [PGA_TOP, RKMMOD_CURRVAL,
+                                STRINGA_LONGVAL, RKMMOD_CURRVAL,
+                                NIL],
+                   ICA_TARGET,  rkmmodel,
+                   PGA_FREEDOM, FREEHORIZ,
+                   PGA_TOTAL,   TOTAL,
+                   PGA_TOP,     INITIALVAL,
+                   PGA_VISIBLE, VISIBLE,
+                   PGA_NEWLOOK, TRUE,
+                   NIL])
+  integer:=NewObjectA(NIL, &#x27;strgclass&#x27;,
+                     [GA_ID,       INTEGERID,
+                      GA_TOP,      w.bordertop+5,
+                      GA_LEFT,     prop.leftedge+prop.width+48,
+                      GA_WIDTH,    INTWIDTH,
+                      GA_HEIGHT,   INTHEIGHT,
+                      ICA_MAP,    [PGA_TOP, RKMMOD_CURRVAL,
+                                   STRINGA_LONGVAL, RKMMOD_CURRVAL,
+                                   NIL],
+                      ICA_TARGET,  rkmmodel,
+                      GA_PREVIOUS, prop,
+                      STRINGA_LONGVAL,  INITIALVAL,
+                      STRINGA_MAXCHARS, MAXCHARS,
+                      NIL])
+  leftbut:=NewObjectA(NIL, &#x27;buttongclass&#x27;,
+                     [GA_ID,       LEFTID,
+                      GA_IMAGE,    leftimage,
+                      GA_TOP,      w.bordertop+5,
+                      GA_LEFT,     prop.leftedge+prop.width,
+                      ICA_MAP,    [GA_ID, RKMMOD_DOWN, NIL],
+                      ICA_TARGET,  rkmmodel,
+                      GA_PREVIOUS, integer,
+                      NIL])
+  rightbut:=NewObjectA(NIL, &#x27;buttongclass&#x27;,
+                      [GA_ID,       RIGHTID,
+                       GA_IMAGE,    rightimage,
+                       GA_TOP,      w.bordertop+5,
+                       GA_LEFT,     prop.leftedge+prop.width+leftbut.width,
+                       ICA_MAP,    [GA_ID, RKMMOD_UP, NIL],
+                       ICA_TARGET,  rkmmodel,
+                       GA_PREVIOUS, leftbut,
+                       NIL])
+  currval2prop:=NewObjectA(NIL, &#x27;icclass&#x27;,
+                          [ICA_MAP,    [RKMMOD_CURRVAL, PGA_TOP, NIL],
+                           ICA_TARGET,  prop,
+                           NIL])
+  currval2int:=NewObjectA(NIL, &#x27;icclass&#x27;,
+                         [ICA_MAP,    [RKMMOD_CURRVAL, STRINGA_LONGVAL, NIL],
+                          ICA_TARGET,  integer,
+                          NIL])
+  RETURN TRUE
+EXCEPT
+  ReThrow()  -&gt; E-Note: pass on exception if it is an error
+ENDPROC
+
+vers: CHAR 0, &#x27;$VER: UseRKMModel 37.1&#x27;, 0
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

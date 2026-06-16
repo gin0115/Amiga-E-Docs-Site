@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>buildlist.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-jrh-rkrm-1.html">JRH-RKRM-1</a> &rsaquo; buildlist.e</div><h1>File: <code>buildlist.e</code></h1><p class="meta">96 lines · project <a href="../examples/pkg-jrh-rkrm-1.html"><code>JRH-RKRM-1</code></a></p><p class="pathctx">JRH-RKRM-1/JRH-RKRM-PartOne/Exec_Library/Lists/buildlist.e</p><p class="prose">buildlist.e - <a href="../modules/example.html">Example</a> which uses an application-specific Exec list</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/lists.html">amigalib/lists</a></li></ul></div><h2>Source</h2><pre class="code">-&gt; buildlist.e - Example which uses an application-specific Exec list
+
+MODULE &#x27;amigalib/lists&#x27;,
+       &#x27;exec/lists&#x27;,
+       &#x27;exec/nodes&#x27;
+
+CONST DATASIZE=62
+
+OBJECT nameNode
+  ln:ln               -&gt; System Node structure
+  data[DATASIZE]:ARRAY  -&gt; Node-specific data
+ENDOBJECT
+
+CONST NAMENODE_ID=100  -&gt; The type of &#x27;nameNode&#x27;
+
+PROC main() HANDLE
+  DEF nameList=NIL:PTR TO lh  -&gt; Note that a mlh would also work
+  NEW nameList
+  newList(nameList)  -&gt; Important: prepare header for use
+
+  addName(nameList, &#x27;Name7&#x27;);  addName(nameList, &#x27;Name6&#x27;)
+  addName(nameList, &#x27;Name5&#x27;);  addName(nameList, &#x27;Name4&#x27;)
+  addName(nameList, &#x27;Name2&#x27;);  addName(nameList, &#x27;Name0&#x27;)
+
+  addName(nameList, &#x27;Name7&#x27;);  addName(nameList, &#x27;Name5&#x27;)
+  addName(nameList, &#x27;Name3&#x27;);  addName(nameList, &#x27;Name1&#x27;)
+
+  displayName(nameList, &#x27;Name5&#x27;)
+  displayNameList(nameList)
+
+EXCEPT DO
+  IF nameList
+    -&gt; E-Note: none of this is necessary, since the program is terminating
+    -&gt;         and the memory will be freed automatically
+    freeNameNodes(nameList)
+    END nameList  -&gt; Free list header
+  ENDIF
+  SELECT exception
+  CASE &quot;MEM&quot;; WriteF(&#x27;Error: Out of memory\n&#x27;)
+  ENDSELECT
+ENDPROC
+
+-&gt; Allocate a NameNode structure, copy the given name into the structure, then
+-&gt; add it the specified list.  This example does not provide an error return
+-&gt; for the out of memory condition.
+-&gt; E-Note: ...instead it raises an exception which is handled by the caller
+PROC addName(list, name)
+  DEF namenode:PTR TO nameNode
+  NEW namenode
+  -&gt; E-Note: copy *safely* to namenode.data
+  AstrCopy(namenode.data, name, DATASIZE)
+  namenode.ln.name:=namenode.data
+  namenode.ln.type:=NAMENODE_ID
+  namenode.ln.pri:=0
+  AddHead(list, namenode)
+ENDPROC
+
+-&gt; Free the entire list, including the header.  The header is not updated as
+-&gt; the list is freed.  This function demonstrates how to avoid referencing
+-&gt; freed memory when deallocating nodes.
+PROC freeNameNodes(list:PTR TO lh)
+  DEF worknode:PTR TO nameNode, nextnode
+  worknode:=list.head  -&gt; First node
+  WHILE nextnode:=worknode.ln.succ
+    END worknode
+    worknode:=nextnode
+  ENDWHILE
+ENDPROC
+
+-&gt; Print the names of each node in a list.
+PROC displayNameList(list:PTR TO lh)
+  DEF node:PTR TO ln
+  IF list.tailpred=list
+    WriteF(&#x27;List is empty.\n&#x27;)
+  ELSE
+    node:=list.head
+    WHILE node.succ
+      WriteF(&#x27;$\h -&gt; \s\n&#x27;, node, node.name)
+      node:=node.succ
+    ENDWHILE
+  ENDIF
+ENDPROC
+
+-&gt; Print the location of all nodes with a specified name.
+PROC displayName(list, name)
+  DEF node:PTR TO ln
+  IF node:=FindName(list,name)
+    WHILE node
+      WriteF(&#x27;Found a \s at location $\h\n&#x27;, node.name, node)
+      node:=FindName(node, name)
+    ENDWHILE
+  ELSE
+    WriteF(&#x27;No node with name \s found.\n&#x27;, name)
+  ENDIF
+ENDPROC
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

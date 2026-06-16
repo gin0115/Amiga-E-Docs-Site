@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>easyintuition.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-aepd25.html">AEPD25</a> &rsaquo; easyintuition.e</div><h1>File: <code>easyintuition.e</code></h1><p class="meta">88 lines · project <a href="../examples/pkg-aepd25.html"><code>AEPD25</code></a></p><p class="pathctx">AEPD25/EPD25/Amiga_E-Programme/JRH-RKRM-PartOne/Intuition/Intuition_GUI/easyintuition.e</p><p class="prose">RememberTest - Illustrates the use of <a href="../modules/intuition.html#fn-allocremember">AllocRemember</a>() and <a href="../modules/intuition.html#fn-freeremember">FreeRemember</a>(). E-Note: E&#x27;s New() family of <a href="../modules/memory.html">memory</a> allocators are usually adequate...</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/dos.html">dos/dos</a></li></ul></div><h2>Source</h2><pre class="code">-&gt; RememberTest - Illustrates the use of AllocRemember() and FreeRemember().
+-&gt; E-Note: E&#x27;s New() family of memory allocators are usually adequate...
+
+MODULE &#x27;dos/dos&#x27;,
+       &#x27;exec/memory&#x27;
+
+RAISE &quot;MEM&quot; IF AllocRemember()=NIL
+
+-&gt; Random sizes to demonstrate the Remember functions. */
+CONST SIZE_A=100, SIZE_B=200
+
+PROC main()
+  methodOne()
+  methodTwo()
+ENDPROC RETURN_OK
+
+-&gt; MethodOne
+-&gt; Illustrates using AllocRemember() to allocate all memory and FreeRemember()
+-&gt; to free it all.
+PROC methodOne() HANDLE
+  DEF memBlockA=NIL, memBlockB=NIL, rememberKey=NIL
+
+  memBlockA:=AllocRemember({rememberKey}, SIZE_A, MEMF_CLEAR OR MEMF_PUBLIC)
+  memBlockB:=AllocRemember({rememberKey}, SIZE_B, MEMF_CLEAR OR MEMF_PUBLIC)
+
+  -&gt; Both memory allocations succeeded.
+  -&gt; The program may now use this memory.
+
+EXCEPT DO
+  -&gt; It is not necessary to keep track of the status of each allocation.
+  -&gt; Intuition has kept track of all successful allocations by updating its
+  -&gt; linked list of Remember nodes.  The following call to FreeRemember() will
+  -&gt; deallocate any and all of the memory that was successfully allocated.
+  -&gt; The memory blocks as well as the link nodes will be deallocated because
+  -&gt; the &quot;ReallyForget&quot; parameter is TRUE.
+  -&gt;
+  -&gt; It is possible to have reached the call to FreeRemember() in one of three
+  -&gt; states.  Here they are, along with their results.
+  -&gt;
+  -&gt; 1. Both memory allocations failed.
+  -&gt;       RememberKey is still NIL.  FreeRemember() will do nothing.
+  -&gt; 2. The memBlockA allocation succeeded but the memBlockB allocation failed.
+  -&gt;       FreeRemember() will free the memory block pointed to by memBlockA.
+  -&gt; 3. Both memory allocations were successful.
+  -&gt;       FreeRemember() will free the memory blocks pointed to by
+  -&gt;       memBlockA and memBlockB.
+  FreeRemember({rememberKey}, TRUE)
+  ReThrow()  -&gt; E-Note: pass on exception if an error
+ENDPROC
+
+-&gt; MethodTwo
+-&gt; Illustrates using AllocRemember() to allocate all memory, FreeRemember() to
+-&gt; free the link nodes, and FreeMem() to free the actual memory blocks.
+PROC methodTwo() HANDLE
+  DEF memBlockA=NIL, memBlockB=NIL, rememberKey=NIL
+
+  memBlockA:=AllocRemember({rememberKey}, SIZE_A, MEMF_CLEAR OR MEMF_PUBLIC)
+  memBlockB:=AllocRemember({rememberKey}, SIZE_B, MEMF_CLEAR OR MEMF_PUBLIC)
+
+  -&gt; Both memory allocations succeeded.
+  -&gt; For the purpose of illustration, FreeRemember() is called at this point,
+  -&gt; but only to free the link nodes.  The memory pointed to by memBlockA and
+  -&gt; memBlockB is retained.
+  FreeRemember({rememberKey}, FALSE)
+
+  -&gt; Individually free the two memory blocks. The Exec FreeMem() call must be
+  -&gt; used, as the link nodes are no longer available.
+  FreeMem(memBlockA, SIZE_A)
+  FreeMem(memBlockB, SIZE_B)
+
+EXCEPT DO
+  -&gt; It is possible to have reached the call to FreeRemember() in one of three
+  -&gt; states.  Here they are, along with their results.
+  -&gt;
+  -&gt; 1. Both memory allocations failed.
+  -&gt;    RememberKey is still NIL.  FreeRemember() will do nothing.
+  -&gt; 2. The memBlockA allocation succeeded but the memBlockB allocation failed.
+  -&gt;    FreeRemember() will free the memory block pointed to by memBlockA.
+  -&gt; 3. Both memory allocations were successful.
+  -&gt;    If this is the case, the program has already freed the link nodes with
+  -&gt;    FreeRemember() and the memory blocks with FreeMem().  When
+  -&gt;    FreeRemember() freed the link nodes, it reset RememberKey to NIL.
+  -&gt;    This (second) call to FreeRemember() will do nothing.
+  FreeRemember({rememberKey}, TRUE)
+ENDPROC
+  ‹734 bytes of embedded binary/non-text data elided›
+  ‹24 bytes of embedded binary/non-text data elided›
+  ‹44 bytes of embedded binary/non-text data elided›</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

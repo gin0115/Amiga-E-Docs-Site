@@ -1,0 +1,145 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>libfuncs.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-re.html">RE</a> &rsaquo; libfuncs.e</div><h1>File: <code>libfuncs.e</code></h1><p class="meta">119 lines · project <a href="../examples/pkg-re.html"><code>RE</code></a></p><p class="pathctx">RE/RE/lib/WUP/libfuncs.e</p><p class="prose">THIS IS COMPILED TO 68K NOT PPC!</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/exec.html">exec</a></li></ul></div><h2>Source</h2><pre class="code">/*
+
+THIS IS COMPILED TO 68K NOT PPC!
+*/
+OPT NOHEAD,NOEXE
+
+MODULE 
+  &#x27;exec&#x27;,&#x27;exec/libraries&#x27;,&#x27;powerpc&#x27;,&#x27;powerpc/powerpc&#x27;
+
+OBJECT LibMinBase
+  library   :Library
+  flags     :BYTE
+  pad       :BYTE
+  segment   :LONG
+-&gt;  stack     :LONG
+ENDOBJECT
+
+LIBRARY LINK
+ customInitLib(base),
+ customOpenLib(base),
+ customCloseLib(base),
+ customExpungeLib(base)
+
+-&gt;IMPORT DEF PowerPCBase
+DEF stk:PTR TO LONG
+DEF ppcstruct:PPCArgs
+
+PROC pushregs(a REG d0)=&#x27;movem.l\td0-d7/a0-a6,-(a7)&#x27;
+PROC popregs(a REG d0)=&#x27;movem.l\t(a7)+,d0-d7/a0-a6&#x27;
+
+PROC LibNull()
+ENDPROC 0
+
+__getA7:WORD 0  -&gt;WARNING:align to 32 bit (if put after LibNull)
+LONG $7C7E1B78,$4E800020 -&gt;PPC code:mr r30,d0; blr
+
+PROC LibInit(base:PTR TO LibMinBase REG d0,segment REG a0)
+  pushregs(0)
+
+  ExecBase := Long(4)
+
+  base.segment:=segment
+  IF PowerPCBase:=OpenLibrary(&#x27;powerpc.library&#x27;,7)
+ASM
+	xref	_LinkerDB
+	lea	_LinkerDB,a4	; get local data
+	lea	_ppcstruct,a0
+	move.l	a4,$44(a0)	; store a4/r2
+ENDASM
+  -&gt;allocate own stack to be able to call custom functions
+    stk:=AllocVec($1000,$10005)
+    -&gt;base.stack:=stk
+    ppcstruct.Code := &amp;__getA7
+    ppcstruct.Regs[PPREG_D0] := (stk+32 + 31) AND NOT 31 -&gt;round up to 32
+    RunPPC(ppcstruct)
+    ppcstruct.Code := &amp;customInitLib
+    ppcstruct.Regs[PPREG_D0] := base
+    RunPPC(ppcstruct)
+    IFN ppcstruct.Regs[PPREG_D0]
+      LibExpunge(base)
+      base:=0
+    ENDIF
+  ELSE
+    base:=0
+  ENDIF
+  popregs(0)
+ENDPROC base
+PROC LibOpen(base:PTR TO LibMinBase REG a6)
+  
+  ppcstruct.Code := &amp;__getA7
+  ppcstruct.Regs[PPREG_D0] := (stk+32 + 31) AND NOT 31 -&gt;round up to 32
+  RunPPC(ppcstruct)
+  ppcstruct.Code := &amp;customOpenLib
+  ppcstruct.Regs[0] := base
+  RunPPC(ppcstruct)
+  IFN ppcstruct.Regs[0] THEN RETURN 0
+
+  base.library.Flags &amp;=~LIBF_DELEXP
+  base.library.OpenCnt +=1
+
+ENDPROC base
+PROC LibClose(base:PTR TO LibMinBase REG a6)
+  
+  ppcstruct.Code := &amp;__getA7
+  ppcstruct.Regs[PPREG_D0] := (stk+32 + 31) AND NOT 31 -&gt;round up to 32
+  RunPPC(ppcstruct)
+  ppcstruct.Code := &amp;customCloseLib
+  ppcstruct.Regs[0] := base
+  RunPPC(ppcstruct)
+
+  IFN base.library.OpenCnt -=1
+    IF base.library.Flags &amp; LIBF_DELEXP THEN RETURN LibExpunge(base)
+  ENDIF
+
+ENDPROC 0
+PROC LibExpunge(base:PTR TO LibMinBase REG a6)
+  DEF rc
+
+  pushregs(0)
+  IF base.library.OpenCnt
+    base.library.Flags |=LIBF_DELEXP
+    RETURN 0
+  ENDIF
+
+  ppcstruct.Code := &amp;__getA7
+  ppcstruct.Regs[PPREG_D0] := (stk+32 + 31) AND NOT 31 -&gt;round up to 32
+  RunPPC(ppcstruct)
+  ppcstruct.Code := &amp;customExpungeLib
+  ppcstruct.Regs[0] := base
+  RunPPC(ppcstruct)
+
+  FreeVec(stk)
+  CloseLibrary(PowerPCBase)
+  Remove(base)
+  rc:=base.segment
+  FreeMem(base-base.library.NegSize,base.library.NegSize+base.library.PosSize)
+  popregs(0)
+ENDPROC rc
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

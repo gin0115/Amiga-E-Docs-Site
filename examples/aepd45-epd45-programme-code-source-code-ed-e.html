@@ -1,0 +1,531 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>CODE-ED.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-aepd45.html">AEPD45</a> &rsaquo; CODE-ED.e</div><h1>File: <code>CODE-ED.e</code></h1><p class="meta">505 lines · project <a href="../examples/pkg-aepd45.html"><code>AEPD45</code></a></p><p class="pathctx">AEPD45/EPD45/Programme/code/source/CODE-ED.e</p><p class="prose">MUI CODE-ED © Andreas Rehm 1995 Geschrieben auf Basis von der E-Muidemo mit den MUIdev2.3 Dieses Programm ist fast zu 100% gleich mit dem Code-Editor, jedoch ist diese Version auf MUI umgeschrieben</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/dos.html">dos/dos</a></li><li><a href="../modules/classes.html">intuition/classes</a></li><li><a href="../modules/gadtools.html">libraries/gadtools</a></li><li><a href="../modules/muimaster.html">muimaster</a></li><li><a href="../modules/tagitem.html">utility/tagitem</a></li></ul></div><h2>Source</h2><pre class="code">/*
+  MUI CODE-ED © Andreas Rehm 1995
+
+  Geschrieben auf Basis von der E-Muidemo
+  mit den MUIdev2.3
+
+  Dieses Programm ist fast zu 100% gleich mit dem Code-Editor,
+  jedoch ist diese Version auf MUI umgeschrieben
+*/
+
+OPT OSVERSION=37 /* DOS 2.0+ erforderlich */
+OPT PREPROCESS /* Preprozessor verwenden */
+
+/* Library Zugriffs MODULE */
+MODULE &#x27;muimaster&#x27;, &#x27;libraries/mui&#x27;
+MODULE &#x27;utility/tagitem&#x27;, &#x27;utility/hooks&#x27;
+MODULE &#x27;intuition/classes&#x27;, &#x27;intuition/classusr&#x27;
+MODULE &#x27;libraries/gadtools&#x27;, &#x27;reqtools&#x27;, &#x27;libraries/reqtools&#x27;
+MODULE &#x27;dos/dos&#x27;, &#x27;dos/datetime&#x27;
+
+/* GUI Exception IDs */
+ENUM ER_NON, ER_MUILIB, ER_APP, ER_REQTOOLS
+ENUM ID_ABOUT=1, ID_CED, ID_UED, ID_CDEL, ID_UDEL, ID_LOG, ID_ZEIG, ID_INFO
+
+
+/* GUI- Definitionen */
+DEF menu, ap_Code, wi_Master, wi_Mcode, wi_Ucode, bt_Quit, bt_Cae, bt_Cdel, bt_Mced, bt_Uced,
+    bt_Ucae, bt_Udel, bt_Log, bt_Zeig, bt_Info, st_Code, st_Ucode
+
+/* Programm Definitionen */
+DEF titel[50]:STRING, len:LONG, hand=NIL, dts[80]:STRING, a  /* Definitionen */
+
+PROC main() HANDLE /* Die GUI und das Handling */
+ DEF signal, running, result, mbuf, ubuf
+   IF (muimasterbase := OpenLibrary(MUIMASTER_NAME,MUIMASTER_VMIN))=NIL THEN Raise(ER_MUILIB)
+   IF (reqtoolsbase := OpenLibrary(&#x27;reqtools.library&#x27;,37))=NIL THEN Raise(ER_REQTOOLS)
+   StringF(titel,&#x27;CODE-ED ©1995 Andreas Rehm&#x27;)
+   sysop()
+
+/* Menü Strucktur aufbauen */
+menu := [ NM_TITLE,0, &#x27;Projekt&#x27;  , 0 ,0,0,0,
+          NM_ITEM ,0, &#x27;Über...&#x27; ,&#x27;?&#x27;,0,0,ID_ABOUT,
+          NM_ITEM ,0, NM_BARLABEL, 0 ,0,0,0,
+          NM_ITEM ,0, &#x27;Ende&#x27;     ,&#x27;Q&#x27;,0,0,MUIV_Application_ReturnID_Quit,
+          NM_END  ,0, NIL        , 0 ,0,0,0]:newmenu
+
+/* MUI Oberfläche generieren */
+ap_Code := ApplicationObject,
+ MUIA_Application_UseRexx,     FALSE,
+ MUIA_Application_Title,       &#x27;CODE-Editor&#x27;,
+ MUIA_Application_Version,     &#x27;$VER: CODE-Editor-II ©1994-95 1.01 (25.03.95) (© Andreas Rehm - 2.Release)&#x27;,
+ MUIA_Application_Copyright,   &#x27;Copyright ©1995, Andreas Rehm&#x27;,
+ MUIA_Application_Author,      &#x27;Andreas Rehm&#x27;,
+ MUIA_Application_Description, &#x27;Hauptprogramm für CODE © Andreas Rehm&#x27;,
+ MUIA_Application_Base,        &#x27;CODE-ED&#x27;,
+ MUIA_Application_Menustrip,    Mui_MakeObjectA(MUIO_MenustripNM,[menu,0]),
+
+ SubWindow,
+  wi_Mcode := WindowObject,
+   MUIA_Window_Title, &#x27;Mastercode eingeben&#x27;,
+   MUIA_Window_ID, &quot;MCOD&quot;,
+   MUIA_Window_SizeGadget, FALSE,
+   WindowContents, VGroup,
+    MUIA_Frame, MUIV_Frame_ImageButton,
+    Child, VGroup,
+     MUIA_Background, MUII_FILLBACK,
+     GroupFrame,
+     Child, HGroup,
+      Child, RectangleObject,
+       MUIA_Rectangle_HBar, MUI_TRUE,
+      End,
+      Child, TextObject,
+       MUIA_Weight, 0,
+       MUIA_Background, MUII_TextBack,
+       MUIA_Text_Contents, &#x27;Bitte geben Sie den Mastercode ein:&#x27;,
+      End,
+      Child, RectangleObject,
+       MUIA_Rectangle_HBar, MUI_TRUE,
+      End,
+     End,
+     Child, st_Code := StringObject,
+      MUIA_ControlChar, &quot;b&quot;,
+      MUIA_String_MaxLen, 201,
+      StringFrame,
+     End,
+     Child, bt_Mced := SimpleButton(&#x27;_Mastercode annehmen&#x27;),
+    End,
+   End,
+  End,
+ SubWindow,
+  wi_Ucode := WindowObject,
+   MUIA_Window_Title, &#x27;Usercode eingeben&#x27;,
+   MUIA_Window_ID, &quot;UCOD&quot;,
+   MUIA_Window_SizeGadget, FALSE,
+   WindowContents, VGroup,
+    MUIA_Frame, MUIV_Frame_ImageButton,
+    Child, VGroup,
+     MUIA_Background, MUII_FILLBACK,
+     GroupFrame,
+     Child, HGroup,
+      Child, RectangleObject,
+       MUIA_Rectangle_HBar, MUI_TRUE,
+      End,
+      Child, TextObject,
+       MUIA_Weight, 0,
+       MUIA_Background, MUII_TextBack,
+       MUIA_Text_Contents, &#x27;Bitte geben Sie den Usercode ein:&#x27;,
+      End,
+      Child, RectangleObject,
+       MUIA_Rectangle_HBar, MUI_TRUE,
+      End,
+     End,
+     Child, st_Ucode := StringObject,
+      MUIA_ControlChar, &quot;b&quot;,
+      MUIA_String_MaxLen, 201,
+      StringFrame,
+     End,
+     Child, bt_Uced := SimpleButton(&#x27;_Usercode annehmen&#x27;),
+    End,
+   End,
+  End,
+ SubWindow,
+  wi_Master := WindowObject,
+   MUIA_Window_Title, &#x27;CODE-Editor - ©1995&#x27;,
+   MUIA_Window_ID,    &quot;MAIN&quot;,
+   MUIA_Window_SizeGadget, FALSE,
+   WindowContents, VGroup,
+    MUIA_Frame, MUIV_Frame_ImageButton,
+    Child, TextObject,
+     GroupFrame,
+     MUIA_Background, MUII_SHADOWFILL,
+     MUIA_Text_Contents, &#x27;\ec\e8\eb\euCODE-Editor\en\n\n©1995 von Andreas Rehm&#x27;,
+    End,
+    Child, VGroup,
+     GroupFrameT(&#x27;Änderungen&#x27;),
+     Child, VGroup,
+      Child, VGroup,
+       MUIA_Group_SameWidth, MUI_TRUE,
+       Child, VGroup,
+        MUIA_Group_Columns, 2,
+        Child, bt_Cae  := SimpleButton(&#x27;_Code ändern&#x27;),
+        Child, bt_Cdel := SimpleButton(&#x27;Code _löschen&#x27;),
+       End,
+       Child, RectangleObject,
+        MUIA_Weight, 0,
+        MUIA_Rectangle_HBar, MUI_TRUE,
+       End,
+       Child, VGroup,
+        MUIA_Group_Columns, 2,
+        Child, bt_Ucae := SimpleButton(&#x27;_Usercode ändern&#x27;),
+        Child, bt_Udel := SimpleButton(&#x27;Use_rcode löschen&#x27;),
+       End,
+      End,
+     End,
+    End,
+    Child, VGroup,
+     GroupFrame,
+     MUIA_Background, MUII_FILLBACK,
+     Child, bt_Log := SimpleButton(&#x27;L_og Modus&#x27;),
+     Child, RectangleObject,
+      MUIA_Weight , 0 ,
+      MUIA_Rectangle_HBar, MUI_TRUE,
+     End,
+     Child, bt_Zeig := SimpleButton(&#x27;Codes _zeigen&#x27;),
+     Child, bt_Info := SimpleButton(&#x27;_Information&#x27;),
+    End,
+    Child, VGroup,
+     MUIA_Frame, MUIV_Frame_Text,
+     MUIA_Background, MUII_FILL,
+     Child, bt_Quit := SimpleButton(&#x27;_Beenden&#x27;),
+    End,
+   End,
+  End,
+ End
+
+ IF ap_Code=NIL THEN Raise(ER_APP)
+
+ /* Verbindungen herstellen */
+ doMethod(bt_Quit,[MUIM_Notify,MUIA_Pressed,FALSE,ap_Code,2,MUIM_Application_ReturnID,MUIV_Application_ReturnID_Quit])
+ doMethod(bt_Cdel,[MUIM_Notify,MUIA_Pressed,FALSE,ap_Code,2,MUIM_Application_ReturnID,ID_CDEL])
+ doMethod(bt_Udel,[MUIM_Notify,MUIA_Pressed,FALSE,ap_Code,2,MUIM_Application_ReturnID,ID_UDEL])
+ doMethod(bt_Log,[MUIM_Notify,MUIA_Pressed,FALSE,ap_Code,2,MUIM_Application_ReturnID,ID_LOG])
+ doMethod(bt_Zeig,[MUIM_Notify,MUIA_Pressed,FALSE,ap_Code,2,MUIM_Application_ReturnID,ID_ZEIG])
+ doMethod(bt_Info,[MUIM_Notify,MUIA_Pressed,FALSE,ap_Code,2,MUIM_Application_ReturnID,ID_INFO])
+ doMethod(bt_Mced,[MUIM_Notify,MUIA_Pressed,FALSE,ap_Code,2,MUIM_Application_ReturnID,ID_CED])
+ doMethod(bt_Uced,[MUIM_Notify,MUIA_Pressed,FALSE,ap_Code,2,MUIM_Application_ReturnID,ID_UED])
+ doMethod(wi_Master,[MUIM_Notify,MUIA_Window_CloseRequest,MUI_TRUE,ap_Code,2,MUIM_Application_ReturnID,MUIV_Application_ReturnID_Quit])
+
+ /* Fenster mit den Knöpfen öffnen ... */
+ doMethod(bt_Cae,[MUIM_Notify,MUIA_Pressed,FALSE,wi_Mcode,3,MUIM_Set,MUIA_Window_Open,MUI_TRUE])
+ doMethod(bt_Ucae,[MUIM_Notify,MUIA_Pressed,FALSE,wi_Ucode,3,MUIM_Set,MUIA_Window_Open,MUI_TRUE])
+
+ /* Fenster schließen */
+ doMethod(wi_Mcode,[MUIM_Notify,MUIA_Window_CloseRequest,MUI_TRUE,wi_Mcode,3,MUIM_Set,MUIA_Window_Open,FALSE])
+ doMethod(wi_Ucode,[MUIM_Notify,MUIA_Window_CloseRequest,MUI_TRUE,wi_Ucode,3,MUIM_Set,MUIA_Window_Open,FALSE])
+
+ set(wi_Master,MUIA_Window_Open,MUI_TRUE);
+
+ running := TRUE  /* Programm mit der Oberfläche verbinden und ansteuern */
+ WHILE running
+  result := doMethod(ap_Code, [MUIM_Application_Input, {signal} ])
+  SELECT result
+   CASE MUIV_Application_ReturnID_Quit
+     running := FALSE
+   CASE ID_ABOUT
+     Mui_RequestA(ap_Code,wi_Master,0,NIL,&#x27;_OK&#x27;,&#x27;                CODE - Editor\n\n            ©1995 von Andreas Rehm\n\n            Version: 1.01 Release: 2\n\nDieses Programm verwendet MUI - © Stefan Stuntz&#x27;,NIL)
+   CASE ID_CED
+    get(st_Code,MUIA_String_Contents,{mbuf})
+    set(wi_Mcode,MUIA_Window_Open,FALSE)
+    codeedit(mbuf)
+    set(st_Code,MUIA_String_Contents,&#x27;&#x27;)
+   CASE ID_UED
+    get(st_Ucode,MUIA_String_Contents,{ubuf})
+    set(wi_Ucode,MUIA_Window_Open,FALSE)
+    usercodeedit(ubuf)
+    set(st_Ucode,MUIA_String_Contents,&#x27;&#x27;)
+   CASE ID_CDEL
+    deletecode()
+   CASE ID_UDEL
+    deleteusercode()
+   CASE ID_LOG
+    logmode()
+   CASE ID_ZEIG
+    codezeigen()
+   CASE ID_INFO
+    information()
+  ENDSELECT
+  IF signal THEN Wait(signal)
+ ENDWHILE
+ IF reqtoolsbase THEN CloseLibrary(reqtoolsbase)
+ Raise(ER_NON)
+EXCEPT
+ IF ap_Code THEN Mui_DisposeObject(ap_Code)
+ IF muimasterbase THEN CloseLibrary(muimasterbase)
+ SELECT exception
+  CASE ER_MUILIB
+   WriteF(&#x27;Konnte die &gt;\s&lt; V\d nicht öffnen.\n&#x27;,MUIMASTER_NAME,MUIMASTER_VMIN)
+   CleanUp(20)
+  CASE ER_REQTOOLS
+   EasyRequestArgs(0,[20,0,0,&#x27;CODE-Editor ©1995 Andreas Rehm&#x27;,&#x27;Sie benötigen die ReqTools © Nico François ab V37!&#x27;,&#x27;OK&#x27;],0,NIL)
+  CASE ER_APP
+   WriteF(&#x27;Konnte die Applikation nicht starten.\n&#x27;)
+   CleanUp(20)
+ ENDSELECT
+ENDPROC 0
+
+PROC doMethod( obj:PTR TO object, msg:PTR TO msg )
+ DEF h:PTR TO hook, o:PTR TO object, dispatcher
+ IF obj
+  o := obj-SIZEOF object  /* instance data is to negative offset */
+  h := o.class
+  dispatcher := h.entry   /* get dispatcher from hook in iclass */
+  MOVEA.L h,A0
+  MOVEA.L msg,A1
+  MOVEA.L obj,A2          /* probably should use CallHookPkt, but the */
+  MOVEA.L dispatcher,A3   /*   original code (DoMethodA()) doesn&#x27;t. */
+  JSR (A3)                /* call classDispatcher() */
+  MOVE.L D0,o
+  RETURN o
+ ENDIF
+ENDPROC NIL
+
+PROC zeit() /* Systemzeit holen und konvertieren */
+ DEF dt:datetime, ds:PTR TO datestamp, day[12]:ARRAY, date[12]:ARRAY, time[12]:ARRAY
+ ds:=DateStamp(dt.stamp)
+ dt.format:=FORMAT_DOS
+ dt.flags:=DTF_FUTURE
+ dt.strday:=day
+ dt.strdate:=date 
+ dt.strtime:=time
+ DateToStr(dt)
+ StringF(dts,&#x27;am \s den \sum \s&#x27;,day,date,time)
+ENDPROC 
+
+PROC sysop() /* Zugriff auf den Editor nur mit dem Mastercode zulassen und Logfile mit Zugriffsdaten füllen */
+ DEF buf[200]:STRING, enteredbuf[200]:STRING, logbuf[240]:STRING
+ IF hand:=Open(&#x27;S:code.config&#x27;,OLDFILE)
+  len:=FileLength(&#x27;S:code.config&#x27;)
+  Read(hand,buf,len)
+  /* De-Codierung des Codes */
+  FOR a:= 1 TO len
+   buf[a]:=Eor(buf[a],a)
+  ENDFOR 
+ ENDIF
+ IF hand
+  Close(hand)
+  IF len
+   IF rtgetstr(enteredbuf,&#x27;Nur dem SYSOP ist der Zugriff auf dieses Programm erlaubt!\n\nGeben Sie bitte den Master Code ein, Usercodes gelten nicht.&#x27;)
+    IF StrCmp(enteredbuf,buf,len)
+     zeit()
+     IF hand:=Open(&#x27;S:log&#x27;,OLDFILE)
+      StringF(buf,&#x27;\e[1mCode Editor Zugriff \s\e[0m\n&#x27;,dts)
+      len:=StrLen(buf)
+      Seek(hand,0,1)
+      Write(hand,buf,len)
+      Close(hand)
+     ENDIF
+    ELSE
+     end(enteredbuf,logbuf)
+    ENDIF
+   ELSE
+    end(enteredbuf,logbuf)
+   ENDIF
+  ELSE
+   end(enteredbuf,logbuf)
+  ENDIF
+ ELSE
+  request(&#x27;Es existiert kein Codewort. -&gt; Zugriff frei!&#x27;,&#x27;OK&#x27;,0,0,0)
+ ENDIF
+ENDPROC
+
+PROC end(a,b) /* Wenn ein unberechtigter Zugriff versucht wurde */
+ request(&#x27;Nur dem Systeminhaber ist der Zugriff erlaubt!\n\nNicht erlaubter Zugriff mit &gt;\s&lt; versucht.&#x27;,&#x27;OK&#x27;,a,0,0)
+ zeit()
+ IF hand:=Open(&#x27;S:log&#x27;,OLDFILE)
+  StringF(b,&#x27;\e[1mCode Editor Zugriff mit &gt;\s&lt; versucht \s\e[0m\n&#x27;,a,dts)
+  len:=StrLen(b)
+  Seek(hand,0,1)
+  Write(hand,b,len)
+  Close(hand)
+ ENDIF
+ CleanUp(0)
+ENDPROC
+
+PROC codeedit(buf) /* Code ändern */
+ IF request(&#x27;Sie haben den Code: &gt;\s&lt; eingegeben.&#x27;,&#x27;OK|Abbruch&#x27;,buf,0,0)
+  /* Codierung des Codes */
+  len:=StrLen(buf)
+  FOR a:= 1 TO len
+   buf[a]:=Eor(buf[a],a)
+  ENDFOR 
+ ELSE
+  RETURN TRUE
+ ENDIF
+ IF hand:=Open(&#x27;S:code.config&#x27;,NEWFILE)
+  Write(hand,buf,STRLEN)
+  SetFileSize(hand,0,0)
+ ELSE
+  request(&#x27;Der Code konnte nicht gesichert werden!&#x27;,&#x27;OK&#x27;,0,0,0)
+ ENDIF
+ Close(hand)
+ENDPROC
+
+PROC usercodeedit(ubuf)  /* User Code ändern */
+ IF request(&#x27;Sie haben den User Code: &gt;\s&lt; eingegeben.&#x27;,&#x27;OK|Falscher Code (Ändern)&#x27;,ubuf,0,0)
+  /* Codierung des Codes */
+  len:=StrLen(ubuf)
+  FOR a:= 1 TO len
+   ubuf[a]:=Eor(ubuf[a],a)
+  ENDFOR
+ ELSE
+  RETURN TRUE
+ ENDIF
+ IF hand:=Open(&#x27;S:usercode.config&#x27;,NEWFILE)
+  Write(hand,ubuf,STRLEN)
+  SetFileSize(hand,0,0)
+ ELSE
+  request(&#x27;Der User Code konnte nicht gesichert werden!&#x27;,&#x27;OK&#x27;,0,0,0)
+ ENDIF
+ Close(hand)
+ENDPROC  
+
+PROC codezeigen()  /* Codes anzeigen */
+ DEF buf[200]:STRING,ubuf[200]:STRING
+ IF hand:=Open(&#x27;S:code.config&#x27;,OLDFILE)
+  len:=FileLength(&#x27;S:code.config&#x27;)
+  Read(hand,buf,len)
+   /* Codierung des Codes */
+   FOR a:= 1 TO len
+    buf[a]:=Eor(buf[a],a)
+   ENDFOR
+  Close(hand)
+ ELSE
+  StrCopy(buf,&#x27;&#x27;,ALL)
+ ENDIF
+ IF hand:=Open(&#x27;S:usercode.config&#x27;,OLDFILE)
+  len:=FileLength(&#x27;S:usercode.config&#x27;)
+  Read(hand,ubuf,len)
+  /* Codierung des Codes */
+  FOR a:= 1 TO len
+   ubuf[a]:=Eor(ubuf[a],a)
+  ENDFOR
+  Close(hand)
+ ELSE
+  StrCopy(ubuf,&#x27;&#x27;,ALL)
+ ENDIF
+ request(&#x27;Der Standard Code ist: \s\n\nDer User Code ist: \s&#x27;,&#x27;OK&#x27;,buf,ubuf,0)
+ENDPROC
+
+PROC deletecode()   /* Mastercode löschen */
+ IF DeleteFile(&#x27;S:code.config&#x27;)
+  request(&#x27;Code.config Datei gelöscht!&#x27;,&#x27;OK&#x27;,0,0,0)
+ ELSE
+  request(&#x27;Code.config Datei existiert noch gar nicht!&#x27;,&#x27;OK&#x27;,0,0,0)
+ ENDIF
+ENDPROC
+
+PROC deleteusercode()  /* Usercode löschen */
+ IF DeleteFile(&#x27;S:usercode.config&#x27;)
+  request(&#x27;UserCode.config Datei gelöscht!&#x27;,&#x27;OK&#x27;,0,0,0)
+ ELSE
+  request(&#x27;UserCode.config Datei existiert noch gar nicht!&#x27;,&#x27;OK&#x27;,0,0,0)
+ ENDIF 
+ENDPROC
+
+PROC information() /* Daten über den Status und das Programm */
+ DEF a[100]:STRING, b[100]:STRING, log[20]:STRING
+ IF hand:=Open(&#x27;S:code.config&#x27;,OLDFILE)
+  StrCopy(a,&#x27;vorhanden.\n\nEr kann gelöscht werden, indem man im Hauptfenster\n&gt;Codewort löschen&lt; wählt&#x27;,ALL)
+ ELSE
+  StrCopy(a,&#x27;nicht vorhanden&#x27;,ALL)
+ ENDIF
+ Close(hand)
+ IF hand:=Open(&#x27;S:usercode.config&#x27;,OLDFILE)
+  StrCopy(b,&#x27;vorhanden.\n\nEr kann gelöscht werden, indem man im Hauptfenster\n&gt;User Code löschen&lt; wählt&#x27;,ALL)
+ ELSE
+  StrCopy(b,&#x27;nicht vorhanden&#x27;,ALL)
+ ENDIF 
+ Close(hand)
+ IF hand:=Open(&#x27;S:log&#x27;,OLDFILE)
+  StrCopy(log,&#x27;aktiv&#x27;,ALL)
+ ELSE
+  StrCopy(log,&#x27;nicht aktiv&#x27;,ALL)
+ ENDIF
+ Close(hand)
+ request(&#x27;Code Editor ©HAWK 1994-95\n\nDieses Programm kann das Codewort für die Codeabfrage\nändern. Wählen Sie dazu den Taster: Code ändern.\nDieses Programm verwendet die ReqTools © Nico François\nUnd es verwendet MUI © bei Stefan Stuntz\n\nNetzadresse des Authors:\n\nHAWK@Andromeda.Rhein-Main.de\n\n______________________________________________________\n\nDer Standard Code ist \s.\n\nDer User Code ist \s.\n\nDer LOG Modus ist \s.&#x27;,&#x27;OK&#x27;,a,b,log)
+ENDPROC
+
+PROC logmode() /* Log Modus Einstellungen */
+ DEF login=NIL,log=NIL,answer,reqinput[140]:STRING,strs:LONG, a, m
+ IF log:=Open(&#x27;S:log&#x27;,OLDFILE)
+  len:=FileLength(&#x27;S:log&#x27;)
+  m:=NewM(len+8,0)
+  FOR a:=0 TO 3
+    m[a]:=&quot;\n&quot;
+    m[len+4+a]:=&quot;\n&quot;
+  ENDFOR
+  m:=m+4
+  Read(log,m,len)
+  strs:=ct(m,len)
+  Close(log)
+  Dispose(m-4)
+ ENDIF
+ IF len&gt;0 THEN StringF(reqinput,&#x27;aktiv und das Logfile ist\n \d Byte(s) und \d Zeile(n) lang.&#x27;,len,strs,0) ELSE StringF(reqinput,&#x27;aktiv und das Logfile ist leer.&#x27;)
+ IF log
+  answer:=request(&#x27;Der Log Modus verursacht, daß ein Log File mit dem Namen\nS:log erstellt und geführt wird.\n\nDer Log Modus ist \s&#x27;,&#x27;Weiter|Log File entleeren|Status ändern&#x27;,reqinput,0,0)
+ ELSE
+  answer:=request(&#x27;Der Log Modus verursacht, daß ein Log File mit dem Namen\nS:log erstellt und geführt wird.\n\nDer Log Modus ist nicht aktiv.&#x27;,&#x27;Weiter|Status ändern&#x27;,0,0,0)
+ ENDIF
+ IF answer=0
+  IF log
+   IF request(&#x27;Log Modus desaktivieren?&#x27;,&#x27;Desaktivieren|Abbruch&#x27;,0,0,0)
+    IF DeleteFile(&#x27;S:log&#x27;)=FALSE THEN request(&#x27;Der Log Modus konnte nicht desaktiviert werden.&#x27;,&#x27;OK&#x27;,0,0,0)
+   ENDIF
+  ELSE
+   IF request(&#x27;Log Modus aktivieren?&#x27;,&#x27;Aktivieren|Abbruch&#x27;,0,0,0)
+    IF login:=Open(&#x27;S:log&#x27;,NEWFILE)
+     Close(login)
+    ELSE
+     request(&#x27;Der Log Modus konnte nicht aktiviert werden.&#x27;,&#x27;OK&#x27;,0,0,0)
+    ENDIF
+   ENDIF
+  ENDIF
+ ELSEIF answer=2
+  IF log
+   IF len
+    IF request(&#x27;Wollen Sie wirklich das Log File &gt;S:log&lt;, das eine Länge von\n\d Byte(s) und \d Zeile(n) hat, entleeren?&#x27;,&#x27;Log File leeren|Abbruch&#x27;,len,strs,0)
+     IF log:=Open(&#x27;S:log&#x27;,OLDFILE)
+      IF Write(log,%00000000,len)=FALSE THEN request(&#x27;Konnte Log nicht überschreiben!&#x27;,&#x27;OK&#x27;,0,0,0)
+      IF SetFileSize(log,0,-1)=-1 THEN request(&#x27;Konnte die Loggröße nicht auf null setzen!&#x27;,&#x27;OK&#x27;,0,0,0)
+      Close(log)
+     ELSE
+      request(&#x27;Das Logfile ist nicht ansprechbar.&#x27;,&#x27;OK&#x27;,0,0,0)
+     ENDIF
+    ENDIF
+   ELSE
+    request(&#x27;Das Log File ist bereits geleert!&#x27;,&#x27;OK&#x27;,0,0,0)
+   ENDIF
+  ELSE
+   request(&#x27;Kein Log File vorhanden!&#x27;,&#x27;OK&#x27;,0,0,0)
+  ENDIF  
+ ELSEIF answer=1
+  RETURN TRUE
+ ENDIF
+ENDPROC
+
+PROC request(txt,knopf,aabuf,bbbuf,ccbuf) IS RtEZRequestA(txt,knopf,[REQPOS_CENTERWIN,2,REQ_OK,0],[aabuf,bbbuf,ccbuf],[RTEZ_REQTITLE,titel])
+
+PROC rtgetstr(defstr,txt) IS RtGetStringA(defstr,200,&#x27;Code eingeben...&#x27;,[REQPOS_CENTERWIN,2,0,0],[RTGS_TEXTFMT,txt])
+
+PROC ct(mem,len) /* Logfilelänge herausfinden */
+ MOVE.L mem,A0
+ MOVE.L A0,D1
+ ADD.L  len,D1
+ MOVEQ  #0,D0
+ MOVEQ  #10,D2
+strings:
+ ADDQ.L #1,D0
+findstring:
+ CMP.B  (A0)+,D2
+ BNE.S  findstring
+ CMPA.L D1,A0
+ BMI.S  strings
+ENDPROC D0
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

@@ -1,0 +1,221 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>dto.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-energy.html">energy</a> &rsaquo; dto.e</div><h1>File: <code>dto.e</code></h1><p class="meta">195 lines · project <a href="../examples/pkg-energy.html"><code>energy</code></a></p><p class="pathctx">energy/Energy/C2E/Datatypes/dto.e</p><p class="prose">dto.e * Come racchiudere un oggetto DataType in una finestra <a href="../modules/intuition.html#fn-intuition">Intuition</a> * Scritto da M. Talamelli 24-09-95</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/dos.html">dos/dos</a></li></ul></div><h2>Source</h2><pre class="code">/* dto.e
+ * Come racchiudere un oggetto DataType in una finestra Intuition
+ * Scritto da M. Talamelli 24-09-95
+ */
+
+MODULE 	&#x27;dos/dos&#x27;,&#x27;exec/ports&#x27;,
+	&#x27;datatypes&#x27;,
+	&#x27;datatypes/datatypesclass&#x27;,
+	&#x27;datatypes/pictureclass&#x27;,
+	&#x27;intuition/intuition&#x27;,
+	&#x27;intuition/icclass&#x27;,
+	&#x27;intuition/classes&#x27;,
+	&#x27;intuition/screens&#x27;,
+	&#x27;intuition/gadgetclass&#x27;,
+	&#x27;graphics/displayinfo&#x27;,
+	&#x27;graphics/modeid&#x27;,
+	&#x27;libraries/asl&#x27;,&#x27;asl&#x27;,
+	&#x27;utility&#x27;,
+	&#x27;utility/tagitem&#x27;
+
+CONST	IDCMP_FLAGS=IDCMP_CLOSEWINDOW OR IDCMP_VANILLAKEY OR IDCMP_IDCMPUPDATE
+
+PROC main()
+
+DEF 	win:PTR TO window,lock,oldlock,dto:PTR TO object,scr:PTR TO screen,
+ 	name,class,code,iaddress,modeid=INVALID_ID,nomwidth,nomheight,
+	usescreen=FALSE,dtf:dtframebox,fri:frameinfo,done=TRUE,response,
+	message:PTR TO intuimessage,fr:PTR TO filerequester
+
+	datatypesbase:=OpenLibrary(&#x27;datatypes.library&#x27;,39)
+  	utilitybase:= OpenLibrary(&#x27;utility.library&#x27;,39)
+	aslbase:=OpenLibrary(&#x27;asl.library&#x27;,37)
+
+	    /* Prende un oggetto DataType */
+
+ fr:=AllocAslRequest(ASL_FILEREQUEST,
+			[ASLFR_TITLETEXT,&#x27;Select a File...&#x27;,
+			ASLFR_POSITIVETEXT,&#x27;Show&#x27;,
+			ASLFR_REJECTICONS,TRUE,TAG_DONE])
+
+WHILE	response:=AslRequest(fr,NIL)
+	lock:=Lock(fr.drawer,ACCESS_READ)
+       oldlock:=CurrentDir(lock)
+
+  	dto := NewDTObjectA(fr.file,TAG_DONE)
+	    
+		/* Prende informazioni dall&#x27;oggetto */
+		GetDTAttrsA(dto,[DTA_OBJNAME,{name},
+				DTA_NOMINALHORIZ,{nomwidth},
+				DTA_NOMINALVERT,{nomheight},
+				PDTA_MODEID,{modeid},
+				TAG_DONE])
+
+	/* Mostra qualsiasi informazione noi abbiamo ottenuto */
+	IF (name)
+	request(&#x27;aperto \s\nmodo ID $\z\h[8]\nlarghezza nominale \d, altezza \d\n&#x27;,&#x27;OK&#x27;,[name,modeid,nomwidth,nomheight])
+	ENDIF
+	dtf:=New(SIZEOF dtframebox)
+	fri:=New(SIZEOF frameinfo)
+	/* Chiedere all&#x27;oggetto che tipo di ambiente ha bisogno */
+		dtf.methodid:=DTM_FRAMEBOX
+			dtf.frameinfo:=fri
+			dtf.contentsinfo:=fri
+		dtf.sizeframeinfo:=SIZEOF frameinfo
+
+		IF DoDTMethodA(dto,NIL,NIL,dtf)
+		   request(&#x27;PropertyFlags : $\h\n&#x27;+
+		    &#x27;RedBits       : $\h\n&#x27;+
+		    &#x27;GreenBits     : $\h\n&#x27;+
+		    &#x27;BlueBits      : $\h\n&#x27;+
+		    &#x27;Width         : \d\n&#x27;+
+		    &#x27;Height        : \d\n&#x27;+
+		    &#x27;Depth         : \d\n&#x27;+
+		    &#x27;Screen        : $\h\n&#x27;+
+		    &#x27;ColorMap      : $\h\n&#x27;,&#x27;OK&#x27;,
+				[fri.propertyflags,
+				fri.redbits,
+				fri.greenbits,
+				fri.bluebits,
+				fri.width,
+				fri.height,
+				fri.depth,
+				fri.screen,
+				fri.colormap])
+
+		    IF ((fri.propertyflags AND DIPF_IS_HAM) OR
+			(fri.propertyflags AND DIPF_IS_EXTRAHALFBRITE))
+
+			request(&#x27;HAM o ExtraHalfBrite&#x27;,&#x27;Continua&#x27;,NIL)
+			usescreen:=TRUE
+		    ENDIF
+
+		    IF ((fri.propertyflags = 0) AND (modeid AND $800) AND (modeid &lt;&gt; INVALID_ID))
+
+			request(&#x27;ModeID=$\z\h[8]\n&#x27;,&#x27;OK&#x27;,modeid)
+			usescreen:=TRUE
+		    ENDIF
+		ELSE
+		   request(&#x27;non posso ottenere informazioni&#x27;,&#x27;Continua&#x27;,NIL)
+		ENDIF
+		IF (usescreen)
+		    request(&#x27;questo oggetto richiede uno schermo privato&#x27;,&#x27;OK&#x27;,NIL)
+
+		ELSEIF scr:= LockPubScreen(NIL)
+
+		    nomwidth:= (IF nomwidth THEN nomwidth ELSE 600)
+		    nomheight:= (IF nomheight THEN nomheight ELSE 175)
+
+		    IF win:=OpenWindowTagList(NIL,
+					     [WA_INNERWIDTH,	nomwidth,
+					      WA_INNERHEIGHT,	nomheight,
+					      WA_TITLE,		name,
+					      WA_IDCMP,		IDCMP_FLAGS,
+					      WA_DRAGBAR,	TRUE,
+					      WA_DEPTHGADGET,	TRUE,
+					      WA_CLOSEGADGET,	TRUE,
+					      WA_AUTOADJUST,	TRUE,
+					      WA_SIMPLEREFRESH,	TRUE,
+					      WA_BUSYPOINTER,	TRUE,
+					      WA_ACTIVATE,	TRUE,
+					      TAG_DONE])
+
+		/* Assegna le dimensioni dell&#x27;oggetto DataType. */
+			SetDTAttrsA(dto,NIL,NIL,
+				   [GA_LEFT,	win.borderleft,
+				    GA_TOP,	win.bordertop,
+				    GA_WIDTH,	win.width - win.borderleft - win.borderright,
+				    GA_HEIGHT,	win.height - win.bordertop - win.borderbottom,
+				    ICA_TARGET,	ICTARGET_IDCMP,
+				    TAG_DONE])
+
+			/* Aggiunge l&#x27;oggetto alla finestra */
+			AddDTObject(win,NIL,dto,-1)
+
+			/* Rinfresca l&#x27;oggetto DataType */
+			RefreshDTObjectA(dto,win,NIL,NIL)
+	WHILE done
+	    Wait(Shl(1, win.userport.sigbit))
+
+	    WHILE message:=GetMsg(win.userport)
+
+		class:=message.class
+		iaddress:=message.iaddress
+		code:=message.code
+
+		SELECT class
+		    CASE IDCMP_CLOSEWINDOW
+			done:=FALSE
+		    CASE IDCMP_VANILLAKEY
+			SELECT code
+			  CASE &quot;Q&quot;
+				done:=FALSE
+			  CASE &quot;q&quot;
+				done:=FALSE
+			  CASE 27
+				done:=FALSE
+			ENDSELECT
+		    CASE IDCMP_IDCMPUPDATE
+			IF (GetTagData(DTA_BUSY, 0, iaddress))
+			   SetWindowPointerA(win,[WA_BUSYPOINTER, TRUE, TAG_DONE])
+   			ELSE
+			   SetWindowPointerA(win,[WA_POINTER, NIL, TAG_DONE])
+			ENDIF 
+			IF GetTagData(DTA_SYNC, 0,iaddress)
+				  RefreshDTObjectA(dto, win, NIL, NIL) 
+			ENDIF
+		ENDSELECT
+		ReplyMsg(message)
+	    ENDWHILE
+	 ENDWHILE
+Dispose(dtf)
+Dispose(fri)
+			RemoveDTObject(win, dto)
+			CloseWindow(win)
+			ELSE
+			  request(&#x27;non posso aprire la finestra!!&#x27;,&#x27;OK&#x27;,NIL)
+			ENDIF		
+		    UnlockPubScreen (NIL, scr)
+		ELSE
+		   request(&#x27;could lock default public screen\n&#x27;,&#x27;OK&#x27;,NIL)
+		ENDIF
+		DisposeDTObject (dto)
+	done:=TRUE
+	   CurrentDir(oldlock)
+		UnLock(lock)
+ENDWHILE
+	FreeAslRequest(fr)
+	    CloseLibrary(utilitybase)
+	    CloseLibrary(datatypesbase)
+	    CloseLibrary(aslbase)
+ENDPROC
+
+PROC request(body,gadgets,args)
+ENDPROC EasyRequestArgs(0,[20,0,0,body,gadgets],0,args)
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

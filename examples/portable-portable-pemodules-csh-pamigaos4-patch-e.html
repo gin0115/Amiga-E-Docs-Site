@@ -1,0 +1,303 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>pAmigaOS4_patch.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-portable.html">PortablE</a> &rsaquo; pAmigaOS4_patch.e</div><h1>File: <code>pAmigaOS4_patch.e</code></h1><p class="meta">277 lines · project <a href="../examples/pkg-portable.html"><code>PortablE</code></a></p><p class="pathctx">PortablE/PortablE/PEmodules/CSH/pAmigaOS4_patch.e</p><p class="prose">CSH/pAmigaOS4_patch.e 05-10-2012 An easy system for patching AmigaOS4. Copyright (c) 2010,2011,2012 Christopher Steven Handley ( http://cshandley.co.uk/email ) All rights reserved. Redistribution and use in source and binary <a href="../modules/forms.html">forms</a>, with or without modification, are permitted provided that the follow</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/dos.html">dos</a></li></ul></div><h2>Source</h2><pre class="code">/* CSH/pAmigaOS4_patch.e 05-10-2012
+	An easy system for patching AmigaOS4.
+
+
+Copyright (c) 2010,2011,2012 Christopher Steven Handley ( http://cshandley.co.uk/email )
+All rights reserved.
+
+Redistribution and use in source and binary forms, with or without modification,
+are permitted provided that the following conditions are met:
+
+* The source code must not be modified after it has been translated or converted
+away from the PortablE programming language.  For clarification, the intention
+is that all development of the source code must be done using the PortablE
+programming language (as defined by Christopher Steven Handley).
+
+* Redistributions of source code must retain the above copyright notice, this
+list of conditions and the following disclaimer.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS &quot;AS IS&quot; AND
+ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+DISCLAIMED.  IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR
+TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
+THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+*/
+
+/* Public procedures:
+newPatches(size, verbose=FALSE:BOOL)
+addPatch(index, interface:PTR, method:PTR, newMethod:PTR) RETURNS success:BOOL
+remPatch(index, doNotWait=FALSE:BOOL) RETURNS success:BOOL
+endPatches()
+
+beginPatch(index)
+methodIsPatched(index) RETURNS isPatched:BOOL
+methodBeforePatch(index) RETURNS method:APTR
+quittingPatch(index) RETURNS quitting:BOOL
+finishPatch(index)
+
+     PrintPatchException()
+DebugPrintPatchException()
+*/
+
+OPT POINTER, INLINE
+OPT NATIVE		-&gt;this uses some C magic, and so will only work with the C++ target
+PUBLIC MODULE &#x27;std/pCallback&#x27;
+MODULE &#x27;dos&#x27;, &#x27;exec&#x27;, &#x27;std/pSemaphores&#x27;
+
+/*****************************/	-&gt;single patch abstraction (private)
+
+PRIVATE
+
+CONST DEBUG = FALSE
+
+OBJECT amigaPatch PRIVATE
+	oldMethod:APTR
+	newMethod:APTR
+	offsetOfMethod
+	interface:PTR TO interface
+	
+	count
+	semaphore:SEMAPHORE
+	quit:BOOL
+ENDOBJECT
+
+PROC initSinglePatch(self:PTR TO amigaPatch)
+	self.oldMethod := NILA
+	self.count     := 0
+	self.semaphore := NIL
+ENDPROC
+
+PROC addSinglePatch(self:PTR TO amigaPatch, interface:PTR, method:PTR, newMethod:PTR) RETURNS success:BOOL
+	self.semaphore := NewSemaphore()
+	
+	self.quit := FALSE
+	
+	self.offsetOfMethod := NATIVE {(unsigned long)} method { - (unsigned long)} interface ENDNATIVE !!VALUE
+	self.interface := interface !!PTR TO interface
+	self.newMethod := newMethod !!APTR
+	Forbid()	-&gt;this ensures that &quot;oldMethod&quot; holds a valid value before newMethod() could be called
+	self.oldMethod := SetMethod(self.interface, self.offsetOfMethod, self.newMethod)
+	Permit()
+	
+	success := (self.oldMethod &lt;&gt; NIL)
+	IF DEBUG
+		IF success = FALSE THEN Print(&#x27;ERROR: method \d was protected from patching.\n&#x27;, self.offsetOfMethod / SIZEOF LONG)
+	ENDIF
+ENDPROC
+
+PROC remSinglePatch1(self:PTR TO amigaPatch, doNotWait=FALSE:BOOL) RETURNS success:BOOL
+	DEF replMethod:APTR
+	
+	success := TRUE
+	
+	IF DEBUG THEN Print(&#x27;RemovING patch for method \d...\n&#x27;, self.offsetOfMethod / SIZEOF LONG)
+	
+	IF self.oldMethod
+		Forbid()	-&gt;this ensures we can restore the patch, if removing it fails
+		WHILE (replMethod := SetMethod(self.interface, self.offsetOfMethod, self.oldMethod)) &lt;&gt; self.newMethod
+			-&gt;(Aaargh!  Someone patched on-top of us) so undo patch &amp; try again a little while later
+			SetMethod(self.interface, self.offsetOfMethod, replMethod)
+			Permit()
+			
+			IF doNotWait = FALSE THEN Delay(50) ELSE success := FALSE
+			Forbid()
+		ENDWHILE IF doNotWait
+		Permit()
+	ENDIF
+ENDPROC
+
+PROC remSinglePatch2(self:PTR TO amigaPatch)
+	-&gt;request that all pending Method() calls finish
+	self.quit := TRUE
+	
+	-&gt;ensure newMethod() is unused before continuing
+	IF self.semaphore
+		SemLock(self.semaphore)
+		WHILE self.count &gt; 0
+			SemUnlock(self.semaphore)
+			
+			Delay(50)
+			SemLock(self.semaphore)
+		ENDWHILE
+		SemUnlock(self.semaphore)
+		
+		self.oldMethod := NILA
+		self.semaphore := DisposeSemaphore(self.semaphore)
+	ENDIF
+	
+	IF DEBUG THEN Print(&#x27;RemovED  patch for method \d.\n&#x27;, self.offsetOfMethod / SIZEOF LONG)
+ENDPROC
+
+PROC infoAddedSinglePatch(self:PTR TO amigaPatch) IS self.oldMethod &lt;&gt; NILA
+
+
+PROC beginSinglePatch(self:PTR TO amigaPatch)
+	SemLock(self.semaphore)
+	self.count++
+	SemUnlock(self.semaphore)
+ENDPROC
+
+PROC methodIsSinglePatched(self:PTR TO amigaPatch) RETURNS isPatched:BOOL IS self.oldMethod &lt;&gt; NILA
+
+PROC methodBeforeSinglePatch(self:PTR TO amigaPatch) RETURNS method:APTR IS self.oldMethod
+
+PROC quittingSinglePatch(self:PTR TO amigaPatch) RETURNS quitting:BOOL IS self.quit
+
+PROC finishSinglePatch(self:PTR TO amigaPatch)
+	SemLock(self.semaphore)
+	self.count--
+	SemUnlock(self.semaphore)
+ENDPROC
+
+PUBLIC
+
+/*****************************/	-&gt;multi patch abstraction
+
+PRIVATE
+DEF multiPatches:ARRAY OF amigaPatch
+DEF multiPatchSize
+DEF multiPatchesVerbose:BOOL
+PUBLIC
+
+PROC newPatches(size, verbose=FALSE:BOOL)
+	DEF index
+	
+	NEW multiPatches[size]
+	multiPatchSize := size
+	multiPatchesVerbose := verbose
+	
+	FOR index := 0 TO size-1 DO initSinglePatch(multiPatches[index])
+ENDPROC
+
+PROC addPatch(index, interface:PTR, method:PTR, newMethod:PTR) RETURNS success:BOOL
+	IF (index &lt; 0) OR (index &gt;= multiPatchSize) THEN Throw(&quot;EPU&quot;, &#x27;addPatch(); the supplied &quot;index&quot; parameter is out of range&#x27;)
+	
+	success := addSinglePatch(multiPatches[index], interface, method, newMethod)
+	
+	IF multiPatchesVerbose
+		IF success = FALSE
+			Print(&#x27;ERROR: addPatch() failed for index=\d (method was protected from patching)\n&#x27;, index)
+		ELSE
+			Print(&#x27;Added method patch for index=\d.\n&#x27;, index)
+		ENDIF
+	ENDIF
+ENDPROC
+
+PROC remPatch(index, doNotWait=FALSE:BOOL) RETURNS success:BOOL
+	IF infoAddedSinglePatch(multiPatches[index])
+		IF multiPatchesVerbose
+			Print(&#x27;Removing method patch for index=\d...  &#x27;, index)
+			PrintFlush()
+		ENDIF
+		
+		IF success := remSinglePatch1(multiPatches[index], doNotWait)
+			          remSinglePatch2(multiPatches[index])
+		ENDIF
+		
+		IF multiPatchesVerbose THEN IF success THEN Print(&#x27;done.\n&#x27;) ELSE Print(&#x27;FAILED.\n&#x27;)
+	ENDIF
+ENDPROC
+
+PROC endPatches()
+	DEF index, removed:OWNS ARRAY OF BOOL, remainingCount
+	
+	IF multiPatches = NILA THEN RETURN	-&gt;newPatches() was never called
+	
+	-&gt;keep track of the removed patches
+	NEW removed[multiPatchSize]
+	FOR index := 0 TO multiPatchSize-1 DO removed[index] := FALSE
+	remainingCount := multiPatchSize
+	
+	-&gt;remove all patches, without one problematic patch preventing the others being removed
+	REPEAT
+		FOR index := 0 TO multiPatchSize-1
+			IF removed[index] = FALSE
+				-&gt;(we have not yet removed this patch)
+				IF multiPatchesVerbose THEN IF infoAddedSinglePatch(multiPatches[index]) THEN Print(&#x27;RemovING method patch for index=\d...\n&#x27;, index)
+				
+				IF remSinglePatch1(multiPatches[index], /*doNotWait*/ TRUE)
+					-&gt;(the patch was removed)
+					remainingCount--
+					removed[index] := TRUE
+				ENDIF
+			ENDIF
+		ENDFOR
+		
+		IF remainingCount &gt; 0 THEN Delay(50)
+	UNTIL remainingCount &lt;= 0
+	
+	-&gt;wait for all patched calls to complete
+	FOR index := 0 TO multiPatchSize-1
+		remSinglePatch2(multiPatches[index])
+		
+		IF multiPatchesVerbose THEN IF infoAddedSinglePatch(multiPatches[index]) = FALSE THEN Print(&#x27;RemovED  method patch for index=\d.\n&#x27;, index)
+	ENDFOR
+	
+	END multiPatches
+FINALLY
+	END removed
+ENDPROC
+
+
+PROC beginPatch(index) IS beginSinglePatch(multiPatches[index])
+
+PROC methodIsPatched(index) RETURNS isPatched:BOOL IS methodIsSinglePatched(multiPatches[index])
+
+PROC methodBeforePatch(index) RETURNS method:APTR IS methodBeforeSinglePatch(multiPatches[index])
+
+PROC quittingPatch(index) RETURNS quitting:BOOL IS quittingSinglePatch(multiPatches[index])
+
+PROC finishPatch(index) IS finishSinglePatch(multiPatches[index])
+
+/*****************************/	-&gt;helper procedures
+
+FUNC patchPrint(fmtString:ARRAY OF CHAR, arg1=0, arg2=0, arg3=0, arg4=0, arg5=0, arg6=0, arg7=0, arg8=0) IS Print(fmtString, arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8)
+
+-&gt;this is like PrintException() except that it also prints where the problem occured
+PROC PrintPatchException(location:ARRAY OF CHAR, alternativePrint=NIL:PTR TO patchPrint)
+	DEF task:PTR TO tc
+	
+	IF exception
+		task := FindTask(NILA)
+		IF alternativePrint = NIL THEN alternativePrint := patchPrint
+		alternativePrint(&#x27;EXCEPTION: &quot;\s&quot;; \s.\n&#x27;, QuadToStr(exception), IF exceptionInfo THEN exceptionInfo ELSE &#x27;&#x27;)
+		alternativePrint(&#x27;EXCEPTION: Occured in \s for task \s.\n&#x27;, location, IF task THEN task.ln.name ELSE &#x27;unknown&#x27;)
+	ENDIF
+ENDPROC
+
+FUNC patchDebugPrintF(fmtString:ARRAY OF CHAR, arg1=0, arg2=0, arg3=0, arg4=0, arg5=0, arg6=0, arg7=0, arg8=0) OF patchPrint IS DebugPrintF(fmtString, arg1, arg2, arg3, arg4, arg5, arg6, arg7 /*, arg8*/)
+
+-&gt;this should be used if using PrintPatchException() inside of a patch causes a crash.
+PROC DebugPrintPatchException(location:ARRAY OF CHAR) IS PrintPatchException(location, patchDebugPrintF)
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

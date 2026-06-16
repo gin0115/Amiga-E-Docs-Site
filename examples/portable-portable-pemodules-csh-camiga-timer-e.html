@@ -1,0 +1,146 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>cAmiga_Timer.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-portable.html">PortablE</a> &rsaquo; cAmiga_Timer.e</div><h1>File: <code>cAmiga_Timer.e</code></h1><p class="meta">120 lines · project <a href="../examples/pkg-portable.html"><code>PortablE</code></a></p><p class="pathctx">PortablE/PortablE/PEmodules/CSH/cAmiga_Timer.e</p><p class="prose">cAmiga_Timer.e 06-09-2012 An OOP <a href="../modules/class.html">class</a> which provides a simple way to be informed of a one-off <a href="../modules/timed.html">timed</a> event. Copyright (c) 2012 Christopher Steven Handley ( http://cshandley.co.uk/email )</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/exec.html">exec</a></li></ul></div><h2>Source</h2><pre class="code">/* cAmiga_Timer.e 06-09-2012
+	An OOP class which provides a simple way to be informed of a one-off timed event.
+	Copyright (c) 2012 Christopher Steven Handley ( http://cshandley.co.uk/email )
+*/
+OPT POINTER
+MODULE &#x27;exec&#x27;, &#x27;timer&#x27;
+
+PROC main()
+	DEF timer:OWNS PTR TO cTimer, signal, events, i
+	
+	Print(&#x27;Test started\n&#x27;)
+	NEW timer.new()
+	signal := timer.infoSignal()
+	FOR i := 1 TO 3
+		Print(&#x27;Timer started\n&#x27;)
+		timer.start(1*1000000)
+		REPEAT
+			events := Wait(signal)
+		UNTIL events AND signal
+		timer.finished()
+		Print(&#x27;Timer finished\n&#x27;)
+	ENDFOR
+	END timer
+	Print(&#x27;Test finished\n&#x27;)
+FINALLY
+	PrintException()
+	
+	END timer
+ENDPROC
+
+
+CLASS cTimer PRIVATE
+	port:PTR TO mp			-&gt;allocated port for timerequest
+	tr  :PTR TO timerequest	-&gt;allocated timerequest
+	started:BOOL
+ENDCLASS
+
+-&gt;NOTE: If periodInMicroSeconds is supplied, then it calls start() for you.
+PROC new(periodInMicroSeconds=0) OF cTimer
+	-&gt;use check
+	IF periodInMicroSeconds &lt; 0 THEN Throw(&quot;EMU&quot;, &#x27;cTimer.new(); periodInMicroSeconds&lt;=0&#x27;)
+	
+	-&gt;initialise object so end() does nothing
+	self.port := NIL
+	self.tr   := NIL
+	self.started := FALSE
+	
+	-&gt;create the timer
+	self.port := CreateMsgPort()
+	IF self.port = NIL THEN Throw(&quot;MEM&quot;, &#x27;cTimer.new(); failed to allocate port&#x27;)
+	
+	self.tr := CreateIORequest(self.port, SIZEOF timerequest) !!VALUE!!PTR
+	IF self.tr = NIL THEN Throw(&quot;MEM&quot;, &#x27;cTimer.new(); failed to allocate IO request&#x27;)
+	
+	IF OpenDevice(&#x27;timer.device&#x27;, UNIT_MICROHZ, self.tr.io, 0) &lt;&gt; 0 THEN Throw(&quot;RES&quot;, &#x27;cTimer.new(); failed to open timer.device&#x27;)
+	
+	-&gt;start the timer, if requested
+	IF periodInMicroSeconds &lt;&gt; 0 THEN self.start(periodInMicroSeconds)
+ENDPROC
+
+-&gt;Start the timer.
+PROC start(periodInMicroSeconds) OF cTimer
+	-&gt;use check
+	IF periodInMicroSeconds &lt;= 0 THEN Throw(&quot;EMU&quot;, &#x27;cTimer.start(); periodInMicroSeconds&lt;=0&#x27;)
+	IF self.started THEN Throw(&quot;EMU&quot;, &#x27;cTimer.start(); the timer was already running&#x27;)
+	
+	-&gt;initialise timer
+	self.tr.io.command := TR_ADDREQUEST		-&gt;Initial iorequest to start
+	self.tr.time.secs  := 0
+	self.tr.time.micro := periodInMicroSeconds !!LONG -&gt;MICRO_DELAY
+	
+	-&gt;start the timer
+	SendIO(self.tr.io)
+	self.started := TRUE
+ENDPROC
+
+-&gt;Call this after start(), if you don&#x27;t want to wait for it to finish.
+PROC halt() OF cTimer
+	IF self.started = FALSE THEN Throw(&quot;EMU&quot;, &#x27;cTimer.halt(); the timer was not running&#x27;)
+	AbortIO(self.tr.io)
+	WaitIO( self.tr.io)
+	SetSignal(0, self.infoSignal())	-&gt;clear the signal, since WaitIO() may not
+	self.started := FALSE
+ENDPROC
+
+-&gt;Call this after start(), to wait for the timer to finish.
+PROC wait() OF cTimer
+	IF self.started = FALSE THEN Throw(&quot;EMU&quot;, &#x27;cTimer.wait(); the timer was not running&#x27;)
+	WaitIO(self.tr.io)
+	SetSignal(0, self.infoSignal())	-&gt;clear the signal, since WaitIO() may not
+	self.started := FALSE
+ENDPROC
+
+-&gt;Call this after receiving a signal indicating the timer has finished.
+PROC finished() OF cTimer
+	IF self.started = FALSE THEN Throw(&quot;EMU&quot;, &#x27;cTimer.finished(); the timer was not running&#x27;)
+	-&gt;AbortIO(self.tr.io)	-&gt;could call this, to be safe?
+	WaitIO(self.tr.io)
+	SetSignal(0, self.infoSignal())	-&gt;clear the signal, since WaitIO() may not
+	self.started := FALSE
+ENDPROC
+
+-&gt;This returns TRUE if the timer was started() &amp; has not been halt()ed or finished().
+PROC infoIsRunning() OF cTimer RETURNS isRunning:BOOL IS self.started
+
+-&gt;The signal you need to Wait() on.
+PROC infoSignal() OF cTimer RETURNS signal IS 1 SHL self.port.sigbit
+
+PROC infoSignalNum() OF cTimer RETURNS signal IS self.port.sigbit
+
+PROC end() OF cTimer
+	IF self.started THEN self.halt()
+	IF self.tr
+		CloseDevice(    self.tr.io)
+		DeleteIORequest(self.tr.io)
+	ENDIF
+	IF self.port THEN DeleteMsgPort(self.port)
+	SUPER self.end()
+ENDPROC
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

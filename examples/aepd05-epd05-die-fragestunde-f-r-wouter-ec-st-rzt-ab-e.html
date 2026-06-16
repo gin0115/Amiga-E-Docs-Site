@@ -1,0 +1,152 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>EC_stürzt_ab.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-aepd05.html">AEPD05</a> &rsaquo; EC_stürzt_ab.e</div><h1>File: <code>EC_stürzt_ab.e</code></h1><p class="meta">126 lines · project <a href="../examples/pkg-aepd05.html"><code>AEPD05</code></a></p><p class="pathctx">AEPD05/EPD05/Die_Fragestunde/Für_Wouter/EC_stürzt_ab.e</p><p class="prose">hallihallo. wenn dieses programm mit EC v2.1b compiliert wird, stürzt EC mit einem DEADEND 03 ab!!! Toll,was? Jedenfalls, wenn dieser Kommentar entfernt ist...</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/reqtools.html">reqtools</a></li></ul></div><h2>Source</h2><pre class="code">/* hallihallo. wenn dieses programm mit EC v2.1b compiliert wird,
+stürzt EC mit einem DEADEND 03 ab!!! Toll,was? Jedenfalls, wenn dieser
+Kommentar entfernt ist...*/
+MODULE &#x27;reqtools&#x27;,&#x27;intuition/intuition&#x27;,&#x27;intuition/screens&#x27;,&#x27;gadtools&#x27;,
+		&#x27;libraries/gadtools&#x27;, &#x27;graphics/text&#x27;
+
+ENUM FEHLER_NOGADTOOLS, FEHLER_NOVISUAL,FEHLER_NOMENUS
+
+DEF screentiefe, meinscr:PTR TO screen, meinwin:PTR TO window,
+	screenaufloesung
+
+PROC main() HANDLE
+
+DEF meineintmessage:intuimessage,
+	vinfo=NIL, menu=NIL,meineklasse,farbe,meincode, sig
+
+  sig := AllocSignal(-1)
+  IF sig=NIL THEN CleanUp(20)
+
+  reqtoolsbase:=OpenLibrary(&#x27;reqtools.library&#x27;,37)
+  IF reqtoolsbase=0
+	WriteF(&#x27;reqtools.library v37 benötigt!&#x27;)
+	CleanUp(20)
+  ENDIF
+  gadtoolsbase := OpenLibrary(&#x27;gadtools.library&#x27;, 37)
+  IF gadtoolsbase=NIL THEN Raise(FEHLER_NOGADTOOLS)
+
+  screentiefe := RtEZRequestA(&#x27;Bitte Farbanzahl wählen&#x27;,&#x27;2|4|8|16&#x27;,0,0,0)
+  IF screentiefe=0 THEN screentiefe := 4
+
+  screenaufloesung := RtEZRequestA(&#x27;Bitte Auflösung wählen, niy&#x27;,&#x27;LoRes|MedRes&#x27;,0,0,0)
+
+  meinscr := OpenScreenTagList(NIL,
+  [SA_DEPTH,screentiefe,SA_PUBNAME,&#x27;meinscr&#x27;,SA_PUBSIG,sig,
+   SA_PUBTASK,NIL,SA_TITLE,&#x27;meinscr&#x27;,NIL])
+
+  PubScreenStatus(meinscr,0)
+  SetDefaultPubScreen(&#x27;meinscr&#x27;) /* === SA_TITLE === SA_PUBNAME */
+  SetPubScreenModes(SHANGHAI)
+
+
+  meinwin := OpenWindowTagList(NIL,
+  [WA_TITLE,&#x27;TinyDraw&#x27;,WA_IDCMP,IDCMP_RAWKEY+IDCMP_CLOSEWINDOW+IDCMP_MOUSEMOVE+IDCMP_GADGETUP+IDCMP_MOUSEBUTTONS+IDCMP_MENUPICK,
+   WA_FLAGS,WFLG_ACTIVATE+WFLG_CLOSEGADGET,WA_CUSTOMSCREEN,meinscr,
+   WA_REPORTMOUSE,TRUE,NIL])
+
+  IF(vinfo := GetVisualInfoA(meinscr, NIL)) = NIL THEN Raise(FEHLER_NOVISUAL)
+
+  IF (menu := CreateMenusA([NM_TITLE,0,&#x27;Project&#x27;,0,0,0,0,
+	NM_ITEM,	0,	&#x27;Laden&#x27;,		0,	0,0,0,
+	NM_ITEM, 	0,	&#x27;Speichern&#x27;,	0,	0,0,0,
+	NM_ITEM,	0,	NM_BARLABEL,	0,	0,0,0,
+	NM_ITEM,	0,	&#x27;Ende&#x27;,			&#x27;E&#x27;,0,0,0,
+	NM_TITLE,	0,	&#x27;Verschiedenes&#x27;,0,	0,0,0,
+	NM_ITEM,	0,	&#x27;Farbwahl/-änderung&#x27;,		&#x27;f&#x27;,0,0,0,
+	0,0,0,0,0,0,0]:newmenu,NIL)) = NIL THEN Raise(FEHLER_NOMENUS)
+  IF LayoutMenusA(menu,vinfo,NIL)=FALSE THEN Raise(FEHLER_NOMENUS)
+
+  IF SetMenuStrip(meinwin,menu)=FALSE THEN Raise(FEHLER_NOMENUS)
+  Gt_RefreshWindow(meinwin,NIL)
+
+  REPEAT
+	WaitPort(meinwin.userport)
+	meineintmessage := GetMsg(meinwin.userport)
+	meineklasse := meineintmessage.class
+	meincode := meineintmessage.code
+
+	SELECT meineklasse
+	  CASE IDCMP_MOUSEMOVE
+		IF meincode = 104 /* LMBdown */
+		  Draw(meinwin.rport,meineintmessage.mousex,meineintmessage.mousey)
+	  CASE IDCMP_MENUPICK
+		handle_menus(meincode)
+	  CASE IDCMP_MOUSEBUTTONS
+		Move(meinwin.rport,meineintmessage.mousex,meineintmessage.mousey)
+		WritePixel(meinwin.rport,meineintmessage.mousex,meineintmessage.mousey)
+	ENDSELECT
+  UNTIL meineklasse = IDCMP_CLOSEWINDOW
+
+
+  ClearMenuStrip(meinwin)
+  FreeMenus(menu)
+  CloseWindow(meinwin)
+  FreeVisualInfo(vinfo)
+  CloseScreen(meinscr)
+  CloseLibrary(reqtoolsbase)
+  IF gadtoolsbase THEN CloseLibrary(gadtoolsbase)
+  SetDefaultPubScreen(NIL)
+  WriteF(&#x27;Einen schönen Tag noch!\n&#x27;)
+  CleanUp(0)
+EXCEPT
+  CloseLibrary(reqtoolsbase)
+  IF meinwin THEN ClearMenuStrip(meinwin)
+  IF menu THEN FreeMenus(menu)
+  IF vinfo THEN FreeVisualInfo(vinfo)
+  IF(meinwin) THEN CloseWindow(meinwin)
+  IF gadtoolsbase THEN CloseLibrary(gadtoolsbase)
+  IF meinscr
+    SetDefaultPubScreen(NIL)
+	CloseScreen(meinscr)
+  ENDIF
+  WriteF(&#x27;Fehler Nummer %d\n&#x27;,exception)
+  CleanUp(20) 
+
+ENDPROC
+
+
+PROC handle_menus(code)
+DEF titel,item,subitem,gadnummer,zkette[50]:STRING,farbe
+
+  titel := (code AND %11111) /* Bits 0-4 */
+  item := ((code/32) AND %111111) /* Bits 5-11 */
+  subitem := ((code/2048) AND %11111) /* Bits 11-15 */
+
+  IF (code &lt; 65535)
+	SELECT titel
+	  CASE 1
+		SELECT item
+		  CASE 0 /* farben */
+		    farbe := RtPaletteRequestA(&#x27;Bitte neue Farbe wählen:&#x27;,meinscr,0)
+		    IF(farbe &gt;-1) THEN SetAPen(meinwin.rport,farbe)
+		ENDSELECT
+	ENDSELECT
+  ENDIF
+ENDPROC
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

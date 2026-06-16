@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Timer.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-portable.html">PortablE</a> &rsaquo; Timer.e</div><h1>File: <code>Timer.e</code></h1><p class="meta">66 lines · project <a href="../examples/pkg-portable.html"><code>PortablE</code></a></p><p class="pathctx">PortablE/PortablE/Examples/std/Shell/Timer.e</p><p class="prose">Timer.e 28-07-16 by Christopher Steven Handley.</p><h2>Source</h2><pre class="code">/* Timer.e 28-07-16 by Christopher Steven Handley.
+*/
+/*
+	This program times how long it takes to run the supplied Shell command.
+*/
+
+MODULE &#x27;std/pShellParameters&#x27;, &#x27;std/pShell&#x27;, &#x27;std/pTime&#x27;
+
+/* Shell arguments definition */
+STATIC shellArgs = &#x27;Command/F/A&#x27;
+-&gt;index:            0
+
+PROC main() RETURNS ret
+	DEF command:ARRAY OF CHAR
+	DEF before:BIGVALUE, after:BIGVALUE
+	DEF loopsPerSec, loops, subSec
+	
+	-&gt;parse parameters
+	IF ParseParams(shellArgs) = FALSE THEN Raise(&quot;ARGS&quot;)
+	command := GetParam(0)
+	
+	-&gt;wait for start of next second
+	before := CurrentTime(/*zone0local1utc2quick*/ 2)
+	WHILE CurrentTime(2) = before DO EMPTY
+	before++
+	
+	-&gt;perform request
+	-&gt;before := CurrentTime(2)
+	IF ExecuteCommand(command) = FALSE THEN Throw(&quot;EXE&quot;, command)
+	after := CurrentTime(2)
+	
+	-&gt;measure how long until next second
+	loops := 0
+	WHILE CurrentTime(2) = after DO loops++
+	
+	-&gt;calibrate sub-second measurement
+	after++
+	loopsPerSec := 0
+	WHILE CurrentTime(2) = after DO loopsPerSec++	-&gt;count number of loops in one second
+	after--
+	
+	subSec := Bounds(loopsPerSec - loops * 100 / loopsPerSec, 0, 100-1)
+	Print(&#x27;The command took \d.\d[2] seconds to complete.\n&#x27;, after - before !!VALUE, subSec)
+FINALLY
+	SELECT exception
+	CASE 0
+		ret := SHELL_RET_OK
+	CASE &quot;ERR&quot;
+		-&gt;(error already reported) so finish gracefully
+		ret := SHELL_RET_ERROR
+	CASE &quot;ARGS&quot;
+		-&gt;(error already reported) so finish gracefully
+		IF exceptionInfo THEN Print(&#x27;ERROR:  \s\n&#x27;, exceptionInfo)
+		ret := SHELL_RET_ERROR
+	CASE &quot;EXE&quot;
+		Print(&#x27;ERROR: Failed to execute \s\n&#x27;, exceptionInfo)
+		ret := SHELL_RET_ERROR
+	CASE &quot;MEM&quot;
+		Print(&#x27;Ran out of memory\n&#x27;)
+		ret := SHELL_RET_FAIL
+	DEFAULT
+		PrintException()
+		ret := SHELL_RET_FAIL
+	ENDSELECT
+ENDPROC
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

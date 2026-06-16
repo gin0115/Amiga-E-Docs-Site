@@ -1,0 +1,247 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>3-2-8.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-aepd38.html">AEPD38</a> &rsaquo; 3-2-8.e</div><h1>File: <code>3-2-8.e</code></h1><p class="meta">221 lines · project <a href="../examples/pkg-aepd38.html"><code>AEPD38</code></a></p><p class="pathctx">AEPD38/EPD38/Programme/Picticon/Source/3-2-8.e</p><p class="prose">open drop-app-<a href="../modules/icon.html">icon</a> <a href="../modules/image.html">image</a> (Either default, or filename) place app <a href="../modules/icon.html">icon</a> <a href="../modules/image.html">image</a> onto <a href="../modules/workbench.html">workbench</a> enter loop double click, ask to quit. dropped <a href="../modules/image.html">image</a> loadimage if 8 planes save 3 planes if 3 planes save 8 planes endloop</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/nodes.html">exec/nodes</a></li></ul></div><h2>Source</h2><pre class="code">/*
+  open drop-app-icon image (Either default, or filename)
+  place app icon image onto workbench
+  enter loop
+    double click, ask to quit.
+    dropped image
+      loadimage
+      if 8 planes
+        save 3 planes
+      if 3 planes
+        save 8 planes
+  endloop
+*/
+
+OPT OSVERSION=39
+
+MODULE	&#x27;exec/nodes&#x27;,&#x27;exec/ports&#x27;,&#x27;exec/types&#x27;,&#x27;exec/memory&#x27;,
+				&#x27;intuition/intuition&#x27;,
+				&#x27;dos/dos&#x27;,&#x27;dos/dosextens&#x27;,&#x27;workbench/workbench&#x27;,
+				&#x27;workbench/startup&#x27;,&#x27;wb&#x27;,&#x27;icon&#x27;,&#x27;Asl&#x27;,&#x27;libraries/Asl&#x27;
+
+	DEF appport=NIL:PTR TO mp
+	DEF appflag=NIL
+	DEF appicon,newproj[250]:STRING
+	DEF lockname[250]:STRING,newlock=NIL
+	DEF fname[250]:STRING
+	DEF appobj:PTR TO diskobject
+	DEF oldchoice
+	DEF sleepobject=NIL:PTR TO diskobject
+	DEF appobject:PTR TO diskobject
+	DEF filename[250]:STRING
+	DEF amsg:PTR TO appmessage
+	DEF argptr:PTR TO wbarg
+	DEF args:PTR TO wbarg
+	DEF scratch
+	DEF appname[250]:STRING
+	DEF wb:PTR TO wbstartup
+	DEF olddir
+	DEF toolobject:PTR TO diskobject
+
+PROC main()
+	IF (workbenchbase:=OpenLibrary(&#x27;workbench.library&#x27;,0))
+		IF (iconbase:=OpenLibrary(&#x27;icon.library&#x27;,0))
+			IF (aslbase:=OpenLibrary(&#x27;asl.library&#x27;,0))
+
+				IF wbmessage&lt;&gt;NIL
+					wb:=wbmessage;args:=wb.arglist
+					olddir:=CurrentDir(args.lock)
+					IF args.name&gt;0
+						GetCurrentDirName(appname,250)
+					ENDIF
+				ENDIF
+				StrAdd(appname,&#x27;328_DropImage&#x27;,ALL)
+
+				IF (sleepobject:=GetDiskObjectNew(appname))=NIL
+					sleepobject:=GetDefDiskObject(WBTOOL)
+				ENDIF
+				IF sleepobject
+					sleepobject.type:=NIL
+					appobject:=sleepobject
+					IF (appport:=CreateMsgPort())
+						IF (appicon:=AddAppIconA(0,0,&#x27;3-2-8&#x27;,appport,0,appobject,NIL))&lt;&gt;NIL
+							WHILE appflag=NIL
+								WaitPort(appport)
+								WHILE (amsg:=GetMsg(appport))&lt;&gt;NIL
+									IF amsg.numargs=0
+										IF EasyRequestArgs(0, [20, 0, &#x27;3-2-8&#x27;, &#x27;COPYRIGHT ®1994 by Chad Randall\n\nDo you wish to quit?&#x27;,&#x27;Ok|Cancel&#x27;], 0, 0)
+											appflag:=TRUE
+										ENDIF
+									ELSE
+										argptr:=amsg.arglist
+										FOR scratch:=1 TO amsg.numargs
+											StrCopy(newproj,argptr.name,ALL)
+											newlock:=argptr.lock
+											IF newlock
+												NameFromLock(newlock,lockname,250)
+												processname(filename,lockname,newproj)
+												toggleiconplanes(filename)
+											ENDIF
+											argptr:=argptr+(SIZEOF wbarg)
+										ENDFOR
+									ENDIF
+									ReplyMsg(amsg)
+								ENDWHILE
+							ENDWHILE
+							RemoveAppIcon(appicon)
+							WHILE (amsg:=GetMsg(appport))&lt;&gt;NIL
+								ReplyMsg(amsg)
+							ENDWHILE
+						ENDIF
+						DeleteMsgPort(appport)
+					ENDIF
+					FreeDiskObject(sleepobject);sleepobject:=NIL
+				ENDIF
+				CloseLibrary(aslbase)
+			ENDIF
+			CloseLibrary(iconbase)
+		ENDIF
+		CloseLibrary(workbenchbase)
+	ENDIF
+ENDPROC
+
+PROC stripinfo(name)
+	DEF comp1[6]:STRING,comp2[6]:STRING
+
+	StrCopy(comp1,&#x27;.INFO&#x27;,ALL)
+	MidStr(comp2,name,StrLen(name)-5,5)
+	UpperStr(comp2)
+	IF StrCmp(comp1,comp2,5)
+		MidStr(name,name,0,(StrLen(name)-5))
+	ENDIF
+ENDPROC
+
+PROC processname(name,dir,file)
+
+	DEF wish[20]:STRING
+
+	StrCopy(name,dir,ALL)
+	IF StrLen(file)            /* IF a file (NOT DISK/DRAWER) */
+		RightStr(wish,name,1)
+		IF StrCmp(wish,&#x27;:&#x27;,1)=NIL       /*  DISK:DIR/NAME */
+			StrAdd(name,&#x27;/&#x27;,ALL)
+		ENDIF
+		StrAdd(name,file,ALL)
+	ELSE
+		RightStr(wish,name,1)
+		IF StrCmp(wish,&#x27;:&#x27;,1)        /* DISK:  (so add disk) */
+			StrAdd(name,&#x27;disk&#x27;,ALL)
+		ENDIF
+		IF StrCmp(wish,&#x27;/&#x27;,1)        /* DISK:DIR/DIR/  (delete &#x27;/&#x27; */
+			MidStr(name,name,0,StrLen(name)-1)
+		ENDIF
+	ENDIF
+	MidStr(wish,name,0,1)
+	IF StrCmp(wish,&#x27;/&#x27;,1)
+		MidStr(name,name,1,ALL)
+	ENDIF	
+	stripinfo(name)
+ENDPROC
+
+PROC toggleiconplanes(name)
+	DEF diskobj:PTR TO diskobject
+	DEF icongad:PTR TO gadget
+	DEF regimage:PTR TO image,selimage:PTR TO image
+	DEF sizetmp,sizetmp2,tmpbuf,tmpbuf2,oldtmp,oldtmp2
+	DEF bufptr,bufptr2,dummy,scratch
+
+	IF (diskobj:=GetDiskObject(name))
+		IF ((icongad:=diskobj.gadget))
+			regimage:=icongad.gadgetrender
+			selimage:=icongad.selectrender
+
+			IF regimage.depth=3
+				regimage.depth:=8
+				IF selimage THEN selimage.depth:=8
+
+				sizetmp:=((((regimage.width+15)/16)*2)*regimage.height*8)+1000
+				sizetmp2:=((((selimage.width+15)/16)*2)*selimage.height*8)+1000
+				tmpbuf:=AllocMem(sizetmp,MEMF_CHIP OR MEMF_CLEAR)
+				tmpbuf2:=AllocMem(sizetmp,MEMF_CHIP OR MEMF_CLEAR)
+
+				bufptr:=regimage.imagedata
+				bufptr2:=tmpbuf
+				FOR scratch:=1 TO ((((regimage.width+15)/16)*2)*regimage.height*3)
+					PutChar(bufptr2,Char(bufptr))
+					bufptr:=bufptr+1
+					bufptr2:=bufptr2+1
+				ENDFOR
+
+				FOR dummy:=3 TO 7
+					bufptr:=regimage.imagedata+((((regimage.width+15)/16)*2)*2*regimage.height)
+					FOR scratch:=1 TO ((((regimage.width+15)/16)*2)*regimage.height)
+						PutChar(bufptr2,Char(bufptr))
+						bufptr:=bufptr+1
+						bufptr2:=bufptr2+1
+					ENDFOR
+				ENDFOR
+
+				IF selimage
+					bufptr:=selimage.imagedata
+					bufptr2:=tmpbuf2
+					FOR scratch:=1 TO ((((selimage.width+15)/16)*2)*selimage.height*3)
+						PutChar(bufptr2,Char(bufptr))
+						bufptr:=bufptr+1
+						bufptr2:=bufptr2+1
+					ENDFOR
+
+					FOR dummy:=3 TO 7
+						bufptr:=selimage.imagedata+((((selimage.width+15)/16)*2)*2*selimage.height)
+						FOR scratch:=1 TO ((((selimage.width+15)/16)*2)*selimage.height)
+							PutChar(bufptr2,Char(bufptr))
+							bufptr:=bufptr+1
+							bufptr2:=bufptr2+1
+						ENDFOR
+					ENDFOR
+				ENDIF
+
+				oldtmp:=regimage.imagedata
+				IF selimage THEN oldtmp2:=selimage.imagedata
+				regimage.imagedata:=tmpbuf
+				IF selimage THEN selimage.imagedata:=tmpbuf2
+
+				PutDiskObject(name,diskobj)
+
+				regimage.depth:=3
+				IF selimage THEN selimage.depth:=3
+				regimage.imagedata:=oldtmp
+				IF selimage THEN selimage.imagedata:=oldtmp2
+			ENDIF
+			IF regimage.depth=8
+				regimage.depth:=3
+				IF selimage THEN selimage.depth:=3
+				PutDiskObject(name,diskobj)
+				regimage.depth:=8
+				IF selimage THEN selimage.depth:=8
+			ENDIF
+		ENDIF
+	ENDIF
+	IF diskobj THEN FreeDiskObject(diskobj)
+ENDPROC
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

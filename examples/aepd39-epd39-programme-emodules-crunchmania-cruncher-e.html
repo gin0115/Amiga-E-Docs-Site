@@ -1,0 +1,512 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>cruncher.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-aepd39.html">AEPD39</a> &rsaquo; cruncher.e</div><h1>File: <code>cruncher.e</code></h1><p class="meta">486 lines · project <a href="../examples/pkg-aepd39.html"><code>AEPD39</code></a></p><p class="pathctx">AEPD39/EPD39/Programme/Emodules/crunchmania/cruncher.e</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/dos.html">dos/dos</a></li></ul></div><h2>Source</h2><pre class="code">OPT OSVERSION=37
+OPT PREPROCESS
+
+/*
+*-- AutoRev header do NOT edit!
+*
+*   Project         :   file cruncher based on CrM.library
+*   File            :   cruncher.e
+*   Copyright       :   © 1995 Piotr Gapinski
+*   Author          :   Piotr Gapinski
+*   Creation Date   :   29.12.95
+*   Current version :   1.1
+*   Translator      :   AmigaE v3.1+
+*
+*   REVISION HISTORY
+*
+*   Date          Version         Comment
+*   ---------     -------         ------------------------------------------
+*   17.12.95      0.9             to many exceptions...
+*   26.12.95      0.91            decrunch opt not work
+*   28.12.95      1.0             decrunch fixed, tooltypes improved
+*   29.12.95      1.1             crunch hook added
+*
+*-- REV_END --*
+*/
+
+MODULE &#x27;dos/dos&#x27;,&#x27;dos/dosextens&#x27;,
+       &#x27;intuition/intuition&#x27;,&#x27;intuition/screens&#x27;,
+       &#x27;exec/lists&#x27;,&#x27;exec/nodes&#x27;,
+       &#x27;libraries/crm&#x27;,&#x27;crm&#x27;,
+       &#x27;libraries/reqtools&#x27;,&#x27;reqtools&#x27;,
+       &#x27;libraries/reqtools&#x27;,&#x27;reqtools&#x27;,
+       &#x27;utility/tagitem&#x27;,&#x27;utility/hooks&#x27;,
+       &#x27;tools/easygui&#x27;,
+       &#x27;tools/exceptions&#x27;,&#x27;tools/constructors&#x27;,
+       &#x27;Fabio/ttparse_oo&#x27;,
+       &#x27;other/ecode&#x27;
+
+#define PROGRAMVERSION &#x27;$VER: Cruncher 1.1 (29.12.95)&#x27;
+-&gt;#define SIMPLEGUI 1
+#define REQTOOLSNAME &#x27;reqtools.library&#x27;
+#define REQTOOLSVERSION 38
+
+OBJECT guiprefs
+  gh:PTR TO guihandle
+  scr:PTR TO screen
+  crunch:PTR TO cmcrunchstruct
+  data:PTR TO dataheader
+  freq:PTR TO rtfilerequester
+  hook:PTR TO hook
+  filegad,listgad,hookgad
+  mem,len
+  status,count
+  messages:PTR TO lh
+  filename[40]:ARRAY OF CHAR
+ENDOBJECT
+
+ENUM ERR_TTYPE,ERR_OK,ERR_ARGS,ERR_CRMLIB,ERR_REQLIB,ERR_CRMSTRUCT,
+     ERR_REQSTRUCT,ERR_NOMEM,ERR_NOFILE,ERR_NOSIZE,ERR_READ,ERR_WRITE,
+     ERR_CRUNCH,ERR_STATUS
+ENUM ARG_SCREEN,NUMARGS
+ENUM STATUS_WAIT,STATUS_CRUNCHED,STATUS_DECRUNCHED
+
+PROC main() HANDLE
+  DEF rdargs=0,args[NUMARGS]:LIST,templ,
+      scr=0,scrname[40]:STRING,
+      gp=NIL:PTR TO guiprefs,res=-1,
+      ttype:PTR TO ttparse
+  DEF file,list,hook
+
+  IF wbmessage
+    NEW ttype.ttparse(TRUE)
+    IF ttype.error() THEN Raise(ERR_TTYPE)
+    StrCopy(scrname,ttype.get(&#x27;PUBSCREEN&#x27;))
+    END ttype
+  ELSE
+    templ:=&#x27;PUBSCREEN/K&#x27;
+    IF (rdargs:=ReadArgs(templ,args,NIL))=NIL THEN Raise(ERR_ARGS)
+    StrCopy(scrname,args[ARG_SCREEN])
+    FreeArgs(rdargs)
+  ENDIF
+  scr:=LockPubScreen(scrname)
+  IF scr=NIL
+    scrname:=NIL
+    LockPubScreen(scrname)
+  ENDIF
+  IF (crmbase:=OpenLibrary(CRMNAME,CRMVERSION))=NIL THEN Raise(ERR_CRMLIB)
+  IF (reqtoolsbase:=OpenLibrary(REQTOOLSNAME,
+      REQTOOLSVERSION))=NIL THEN Raise(ERR_REQLIB)
+
+  gp:=New(SIZEOF guiprefs)
+  gp.data:=New(SIZEOF dataheader)
+  gp.hook:=New(SIZEOF hook)
+  gp.scr:=scr
+  gp.crunch:=CmAllocCrunchStructA(
+       [CMCS_ALGO,CM_LZH /*OR CM_SAMPLE*/ OR CMF_OVERLAY OR CMF_LEDFLASH,
+       TAG_DONE])
+  IF gp.crunch=NIL THEN Raise(ERR_CRMSTRUCT)
+  gp.freq:=RtAllocRequestA(RT_FILEREQ,NIL)
+  IF gp.freq=NIL THEN Raise(ERR_REQSTRUCT)
+  gp.messages:=newlist()
+
+#ifdef SIMPLEGUI
+  gp.gh:=guiinit(&#x27;Cruncher  (c)Piotr Gapinski&#x27;,
+      [EQROWS,
+        file:=[TEXT,NIL,&#x27;File:&#x27;,TRUE,3],
+        [EQCOLS,
+          [SBUTTON,{load},&#x27;Load&#x27;],
+          [SBUTTON,{save},&#x27;Save&#x27;],
+          [SBUTTON,{info},&#x27;About&#x27;],
+          [SBUTTON,{delete},&#x27;Delete&#x27;]
+        ],
+        [BAR],
+        [EQCOLS,
+          [TEXT,&#x27; Messages:&#x27;,NIL,FALSE,3],
+          [SPACEH],
+          [SBUTTON,{clear},&#x27;Clear&#x27;]
+        ],
+        list:=[LISTV,{dummy},NIL,40,14,gp.messages,TRUE,0,0],
+        hook:=[TEXT,NIL,NIL,TRUE,3]
+    ],gp,scr)
+#endif
+
+#ifndef SIMPLEGUI
+  gp.gh:=guiinit(&#x27;Cruncher  (c)Piotr Gapinski&#x27;,
+    [ROWS,
+      [BEVEL,
+        [EQROWS,
+          file:=[TEXT,NIL,&#x27;File:&#x27;,TRUE,3],
+          [COLS,
+            [BEVELR,
+              [EQCOLS,
+                [SBUTTON,{load},&#x27;Load&#x27;],
+                [SBUTTON,{save},&#x27;Save&#x27;],
+                [SBUTTON,{info},&#x27;About&#x27;]
+              ]
+            ],
+            [BEVELR,[SBUTTON,{delete},&#x27;Delete&#x27;]]
+          ]
+        ]
+      ],
+      [BEVELR,
+        [EQROWS,
+          [EQCOLS,
+            [TEXT,&#x27; Messages:&#x27;,NIL,FALSE,3],
+            [SPACEH],
+            [SBUTTON,{clear},&#x27;Clear&#x27;]
+          ],
+          list:=[LISTV,{dummy},NIL,40,12,gp.messages,TRUE,0,0],
+          [BEVEL,
+          hook:=[TEXT,NIL,NIL,FALSE,3]
+          ]
+        ]
+      ]
+    ],gp,scr)
+#endif
+
+  gp.filegad:=file
+  gp.listgad:=list
+  gp.hookgad:=hook
+  IF gp.gh&lt;&gt;NIL THEN gp.gh.wnd.flags:=gp.gh.wnd.flags OR WFLG_RMBTRAP
+
+  info(gp)  -&gt; say hello :)
+
+  WHILE res&lt;0
+    Wait(gp.gh.sig)
+    res:=guimessage(gp.gh)
+  ENDWHILE
+EXCEPT DO
+  IF gp.gh THEN cleangui(gp.gh)
+  IF scr THEN UnlockPubScreen(scrname,scr)
+  IF gp
+    IF gp.crunch THEN CmFreeCrunchStruct(gp.crunch)
+    IF gp.freq THEN RtFreeRequest(gp.freq)
+    IF gp.messages THEN freelist(gp.messages,TRUE)
+    IF gp.data THEN Dispose(gp.data)
+    IF gp.hook THEN Dispose(gp.hook)
+    Dispose(gp)
+  ENDIF
+  IF crmbase THEN CloseLibrary(crmbase)
+  IF reqtoolsbase&lt;&gt;NIL THEN CloseLibrary(reqtoolsbase)
+  IF exception
+    SELECT exception
+    CASE ERR_TTYPE
+      WriteF(&#x27;ToolType Parser Error: \d\n&#x27;, ttype.error())
+    CASE ERR_ARGS
+      WriteF(&#x27;Bad args! (try &quot;cruncher ?&quot;)\n&#x27;)
+    CASE ERR_CRMLIB
+      WriteF(&#x27;Couldn\at open crm.library!\n&#x27;)
+    CASE ERR_REQLIB
+      WriteF(&#x27;Couldn\at open reqtools.library!\n&#x27;)
+    CASE ERR_CRMSTRUCT
+      WriteF(&#x27;Couldn\at allocate struct (crm)!\n&#x27;)
+    CASE ERR_REQSTRUCT
+      WriteF(&#x27;Couldn\at allocate struct (reqtools)!\n&#x27;)
+    DEFAULT
+      WriteF(&#x27;maybe no free memory?\n&#x27;);
+      report_exception()
+      WriteF(&#x27;LEVEL: main()\n&#x27;)
+    ENDSELECT
+  ENDIF
+ENDPROC
+
+PROC load(gp:PTR TO guiprefs) HANDLE
+  DEF handle=NIL,lock=NIL,dir=0,guilock=0,selected
+
+  selected:=RtFileRequestA(gp.freq,gp.filename,&#x27;Load file...&#x27;,
+    [RT_UNDERSCORE,&quot;_&quot;,RT_LOCKWINDOW,TRUE,RT_PUBSCRNAME,gp.scr,
+     RT_WINDOW,gp.gh.wnd,
+     RTFI_OKTEXT,&#x27;_Load&#x27;,TAG_DONE])
+  IF selected&lt;&gt;0
+    guilock:=RtLockWindow(gp.gh.wnd)
+    IF gp.status&lt;&gt;STATUS_WAIT
+      IF gp.mem THEN Dispose(gp.mem)
+      gp.mem:=NIL
+      gp.status:=STATUS_WAIT
+    ENDIF
+    settext(gp.gh,gp.filegad,gp.filename)
+    lock:=Lock(gp.freq.dir,ACCESS_READ)
+    dir:=CurrentDir(lock)
+
+    addinfo(gp,&#x27;loading &quot;\s&quot; ...&#x27;,gp.filename)
+    IF (handle:=Open(gp.filename,MODE_OLDFILE))=NIL THEN Raise(ERR_NOFILE)
+    IF (Read(handle,gp.data,SIZEOF dataheader))&lt;&gt;SIZEOF dataheader THEN
+        Raise(ERR_READ)
+
+    IF (CmCheckCrunched(gp.data))=0
+      crunch(gp,handle)
+    ELSE
+      decrunch(gp,handle)
+    ENDIF
+  ELSE
+    settext(gp.gh,gp.filegad,NIL)
+    addinfo(gp,&#x27;nothing to load, no file selected&#x27;)
+  ENDIF
+EXCEPT DO
+  settext(gp.gh,gp.hookgad,NIL)
+  IF guilock THEN RtUnlockWindow(gp.gh.wnd,guilock)
+  IF handle THEN Close(handle)
+  IF lock
+    IF dir THEN CurrentDir(dir)
+    UnLock(lock)
+  ENDIF
+  IF exception
+    SELECT exception
+    CASE ERR_NOFILE
+      addinfo(gp,&#x27;aborted, file not found!&#x27;)
+    CASE ERR_NOSIZE
+      addinfo(gp,&#x27;aborted, file is empty!&#x27;)
+    CASE ERR_READ
+      addinfo(gp,&#x27;aborted, error while reading!&#x27;)
+    CASE ERR_NOMEM
+      addinfo(gp,&#x27;aborted, no free memory, file to big&#x27;)
+    CASE ERR_CRUNCH
+      addinfo(gp,&#x27;aborted, (de)crunch failed!&#x27;)
+    DEFAULT
+      report_exception()
+      WriteF(&#x27;LEVEL: load()\n&#x27;)
+    ENDSELECT
+    IF gp.status&lt;&gt;STATUS_WAIT
+      IF gp.mem THEN Dispose(gp.mem)
+      gp.mem:=NIL
+      gp.status:=STATUS_WAIT
+    ENDIF
+  ENDIF
+ENDPROC
+
+PROC save(gp:PTR TO guiprefs) HANDLE
+  DEF handle=0,lock=0,dir=0,guilock=0,selected
+
+  IF gp.status=STATUS_WAIT THEN Raise(ERR_STATUS)
+  selected:=RtFileRequestA(gp.freq,gp.filename,&#x27;Save file as...&#x27;,
+    [RT_UNDERSCORE,&quot;_&quot;,RT_LOCKWINDOW,TRUE,RT_PUBSCRNAME,gp.scr,
+     RT_WINDOW,gp.gh.wnd,RTFI_FLAGS,FREQF_SAVE OR FREQF_NOBUFFER,
+     RTFI_OKTEXT,&#x27;_Save&#x27;,TAG_DONE])
+  IF selected&lt;&gt;0
+    guilock:=RtLockWindow(gp.gh.wnd)
+    lock:=Lock(gp.freq.dir,ACCESS_READ)
+    dir:=CurrentDir(lock)
+    addinfo(gp,&#x27;  saving as &quot;\s&quot;&#x27;,gp.filename)
+    IF (handle:=Open(gp.filename,MODE_NEWFILE))=NIL THEN Raise(ERR_NOFILE)
+    IF gp.status=STATUS_CRUNCHED
+      IF (Write(handle,gp.data,SIZEOF dataheader))&lt;&gt;SIZEOF dataheader THEN
+        Raise(ERR_WRITE)
+    ENDIF
+    IF (Write(handle,gp.mem+gp.data.minsecdist,gp.len))&lt;&gt;gp.len THEN Raise(ERR_WRITE)
+    addinfo(gp,&#x27;OK, saved&#x27;)
+  ELSE
+    addinfo(gp,&#x27;saving aborted&#x27;)
+  ENDIF
+EXCEPT DO
+  IF guilock THEN RtUnlockWindow(gp.gh.wnd,guilock)
+  IF lock
+    CurrentDir(dir)
+    UnLock(lock)
+  ENDIF
+  IF handle THEN Close(handle)
+  IF exception
+    SELECT exception
+    CASE ERR_STATUS
+      addinfo(gp,&#x27;nothing to save, buffer is empty!&#x27;)
+    CASE ERR_NOFILE
+      addinfo(gp,&#x27;aborted, can\at create file!&#x27;)
+    CASE ERR_WRITE
+      addinfo(gp,&#x27;aborted, error while writing!&#x27;)
+    DEFAULT
+      report_exception()
+      WriteF(&#x27;LEVEL: save()\n&#x27;)
+    ENDSELECT
+  ENDIF
+ENDPROC
+
+PROC crunch(gp:PTR TO guiprefs,handle)
+  DEF mem,size,newsize
+
+  Seek(handle,0,OFFSET_END)
+  size:=Seek(handle,0,OFFSET_BEGINNING)
+  gp.len:=size
+  mem:=New(size)
+  gp.mem:=mem
+  IF mem=NIL THEN Raise(ERR_NOMEM)
+  IF (Read(handle,mem,size))&lt;&gt;size THEN Raise(ERR_READ)
+  addinfo(gp,&#x27;  OK.&#x27;)
+
+  gp.crunch.src:=mem
+  gp.crunch.srclen:=size
+  gp.crunch.dest:=mem
+  gp.crunch.destlen:=size
+  gp.crunch.datahdr:=gp.data
+
+  gp.hook.entry:=eCode({crunchhook})
+  gp.hook.subentry:=NIL
+  gp.hook.data:=gp
+  gp.crunch.displayhook:=gp.hook
+  gp.crunch.displaystep:=1024
+
+  addinfo(gp,&#x27;  C R U N C H I N G&#x27;)
+  newsize:=CmCrunchData(gp.crunch)
+
+  gp.len:=newsize
+  IF newsize=NIL THEN Raise(ERR_CRUNCH)
+  addinfo(gp,&#x27;  original len=\d&#x27;,size)
+  addinfo(gp,&#x27;  crunched len=\d&#x27;,newsize)
+  gp.status:=STATUS_CRUNCHED
+ENDPROC
+
+PROC decrunch(gp:PTR TO guiprefs,handle)
+  DEF orig,crun,mem,buffsize
+
+  orig:=gp.data.originallen
+  crun:=gp.data.crunchedlen
+  gp.len:=orig
+  buffsize:=orig+gp.data.minsecdist
+  mem:=New(buffsize)
+  gp.mem:=mem
+  IF mem=NIL THEN Raise(ERR_NOMEM)
+  IF (Read(handle,mem,crun))&lt;&gt;crun THEN Raise(ERR_READ)
+  addinfo(gp,&#x27;  OK.&#x27;)
+  addinfo(gp,&#x27;  D E C R U N C H I N G&#x27;)
+  IF (CmDecrunch(mem,mem+gp.data.minsecdist,gp.data))=NIL THEN Raise(ERR_CRUNCH)
+  addinfo(gp,&#x27;  crunched len=\d&#x27;,crun)
+  addinfo(gp,&#x27;  original len=\d&#x27;,orig)
+  gp.status:=STATUS_DECRUNCHED
+ENDPROC
+
+PROC info(gp:PTR TO guiprefs)
+  addinfo(gp,&#x27;*&#x27;)
+  addinfo(gp,PROGRAMVERSION)
+  addinfo(gp,&#x27;file cruncher based on CrM.library&#x27;)
+  addinfo(gp,&#x27;   (c)1995 by Piotr Gapinski&#x27;)
+  addinfo(gp,&#x27;            email&#x27;)
+  addinfo(gp,&#x27;  kolo8@sparc10.ely.pg.gda.pl&#x27;)
+  addinfo(gp,&#x27;            snail&#x27;)
+  addinfo(gp,&#x27;    Gutkowo,ul.Stokowa 19,&#x27;)
+  addinfo(gp,&#x27;    11-041 Olsztyn, Poland&#x27;)
+  addinfo(gp,NIL)
+  addinfo(gp,&#x27;CrM.library is (c) by Thomas Schwarz&#x27;)
+  addinfo(gp,&#x27;*&#x27;)
+ENDPROC
+
+PROC delete(gp:PTR TO guiprefs)
+  DEF lock=0,dir=0,answer,selected
+
+  selected:=RtFileRequestA(gp.freq,gp.filename,&#x27;Delete file...&#x27;,
+    [RT_UNDERSCORE,&quot;_&quot;,RT_LOCKWINDOW,TRUE,RT_PUBSCRNAME,gp.scr,
+     RT_WINDOW,gp.gh.wnd,RTFI_FLAGS,FREQF_SAVE OR FREQF_NOBUFFER,
+     RTFI_OKTEXT,&#x27;_Delete&#x27;,TAG_DONE])
+  IF selected&lt;&gt;0
+    lock:=Lock(gp.freq.dir,ACCESS_READ)
+    dir:=CurrentDir(lock)
+    answer:=easygui(&#x27;Request&#x27;,
+      [ROWS,
+        [TEXT,&#x27; Delete?&#x27;,NIL,FALSE,30],
+        [TEXT,&#x27; Are you sure?&#x27;,NIL,FALSE,30],
+        [BAR],
+        [EQCOLS,
+          [SBUTTON,0,&#x27;Delete&#x27;],
+          [SPACEH],
+          [SBUTTON,1,&#x27;Cancel&#x27;]
+      ]
+    ],gp,gp.scr)
+    IF answer=0
+      addinfo(gp,&#x27;deleting &quot;\s&quot;...&#x27;,gp.filename)
+      addinfo(gp,IF DeleteFile(gp.filename) THEN &#x27;OK, deleted&#x27; ELSE &#x27;error!&#x27;)
+    ELSE
+      addinfo(gp,&#x27;deleting aborted&#x27;)
+    ENDIF
+  ENDIF
+  IF lock
+    IF dir THEN CurrentDir(dir)
+    UnLock(lock)
+  ENDIF
+ENDPROC
+
+PROC clear(gp:PTR TO guiprefs)
+  setlistvlabels(gp.gh,gp.listgad,-1)
+  freelist(gp.messages)
+  setlistvlabels(gp.gh,gp.listgad,gp.messages)
+  gp.count:=0
+ENDPROC
+
+CONST MAX_MESSAGE = 40
+PROC addinfo(gp:PTR TO guiprefs,format:PTR TO CHAR,data=NIL)
+  DEF node:PTR TO ln,str,temp[40]:STRING
+
+  IF (node:=New(SIZEOF ln))=NIL THEN Raise(ERR_NOMEM)
+  IF format&lt;&gt;NIL
+    IF data&lt;&gt;NIL
+      StringF(temp,format,data)
+    ELSE
+      StrCopy(temp,format)
+    ENDIF
+    IF (str:=String(StrLen(temp)))=NIL THEN Raise(ERR_NOMEM)
+    StrCopy(str,temp)
+    node.name:=str
+  ENDIF
+  setlistvlabels(gp.gh,gp.listgad,-1)
+  gp.count:=gp.count+1
+  IF gp.count&gt;=MAX_MESSAGE
+    gp.count:=MAX_MESSAGE
+    freenode(gp.messages)
+  ENDIF
+  AddTail(gp.messages,node)
+  setlistvlabels(gp.gh,gp.listgad,gp.messages)
+ENDPROC
+
+PROC freelist(list:PTR TO lh,all=FALSE)
+  IF list=NIL THEN RETURN     -&gt; already de-allocated
+  REPEAT
+  UNTIL freenode(list)=FALSE
+  IF all=TRUE THEN END list   -&gt; use only with &#x27;constructors.m&#x27; lists
+ENDPROC
+
+PROC freenode(list:PTR TO lh)
+  DEF node:PTR TO ln
+
+  node:=RemHead(list)
+  IF node&lt;&gt;0
+    DisposeLink(node.name)
+    Dispose(node)
+    RETURN TRUE
+  ENDIF
+ENDPROC FALSE
+
+PROC crunchhook()
+  DEF stats:PTR TO cmcurrentstats,
+      gp:PTR TO guiprefs,
+      thishook:PTR TO hook,
+      temp[40]:STRING,var
+
+  MOVE.L A0,thishook
+  MOVE.L A1,stats
+  gp:=thishook.data
+  var:=Mul(stats.togo,100)
+  StringF(temp,&#x27; Complete \d %&#x27;,100-Div(var,gp.len))
+  settext(gp.gh,gp.hookgad,temp)
+ENDPROC TRUE
+
+PROC dummy()
+ENDPROC
+CHAR PROGRAMVERSION
+/*EE folds
+-1
+44 12 52 137 55 61 58 42 61 31 64 16 67 12 70 31 73 4 77 21 80 4 83 8 86 11 
+EE folds*/
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

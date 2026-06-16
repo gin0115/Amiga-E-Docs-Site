@@ -1,0 +1,150 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>DeleteModuleCache.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-portable.html">PortablE</a> &rsaquo; DeleteModuleCache.e</div><h1>File: <code>DeleteModuleCache.e</code></h1><p class="meta">124 lines · project <a href="../examples/pkg-portable.html"><code>PortablE</code></a></p><p class="pathctx">PortablE/PortablE/DeleteModuleCache.e</p><p class="prose">DeleteModuleCache.e 16.10.2022 by Christopher Steven Handley.</p><h2>Source</h2><pre class="code">/* DeleteModuleCache.e 16.10.2022 by Christopher Steven Handley.
+*/
+/*
+	This program recursively deletes all .PEM (module cache) files.
+*/
+
+MODULE &#x27;std/pShellParameters&#x27;, &#x27;std/pShell&#x27;, &#x27;std/cPath&#x27;
+
+PRIVATE
+/* Shell arguments definition */
+STATIC shellArgs = &#x27;Folder, Verbose/S&#x27;
+-&gt;index:            0       1
+PUBLIC
+
+PROC main() RETURNS ret
+	DEF hostFolder:ARRAY OF CHAR, folder:OWNS STRING, temp:OWNS STRING, verbose:BOOL
+	
+	-&gt;parse parameters
+	IF ParseParams(shellArgs) = FALSE THEN Raise(&quot;ARGS&quot;)
+	hostFolder := GetParam(0)
+	verbose    := GetParam(1) &lt;&gt; NILA
+	
+	IF hostFolder = NILA THEN hostFolder := &#x27;PEmodules:&#x27;
+	
+	-&gt;perform request
+	temp := ImportDirPath(hostFolder)
+	folder := ExpandPath(temp) ; END temp
+	DeleteModuleCache(folder, verbose)
+	
+	Print(&#x27;Finished deleting module cache files.\n&#x27;)
+FINALLY
+	SELECT exception
+	CASE 0
+		ret := 0
+	CASE &quot;ARGS&quot;
+		-&gt;(error already reported) so finish gracefully
+		IF exceptionInfo THEN Print(&#x27;ERROR:  \s\n&#x27;, exceptionInfo)
+		ret := 10
+	CASE &quot;BRK&quot;
+		Print(&#x27;User break\n&#x27;)
+		ret := 10
+	CASE &quot;MEM&quot;
+		Print(&#x27;ERROR:  Ran out of memory\n&#x27;)
+		ret := 20
+	DEFAULT
+		PrintException()
+		ret := 20
+	ENDSELECT
+	
+	END folder, temp
+ENDPROC
+
+PROC DeleteModuleCache(folder:STRING, verbose:BOOL)
+	DEF shrunkPath:OWNS STRING, pemodulesPath:OWNS STRING, pemodules:ARRAY OF CHAR
+	DEF cacheFolder:OWNS STRING, cacheBasePath:ARRAY OF CHAR, pos
+	
+	cacheBasePath := &#x27;PEmodules:/PE/cache/&#x27;
+	
+	-&gt;UNexpand any &#x27;PEmodules:/&#x27; part of path
+	pemodules := &#x27;PEmodules:/&#x27;
+	pemodulesPath := ExpandPath(pemodules)
+	IF StrCmpPath(folder, pemodulesPath, EstrLen(pemodulesPath))
+		NEW shrunkPath[StrLen(pemodules) + EstrLen(folder) - EstrLen(pemodulesPath)]
+		StrCopy(shrunkPath, pemodules)
+		StrAdd( shrunkPath, folder, ALL, EstrLen(pemodulesPath))
+		folder := shrunkPath
+	ENDIF
+	
+	-&gt;convert folder path to cach path
+	pos := InStr(folder, &#x27;:&#x27;)
+	IF pos = -1 THEN Throw(&quot;BUG&quot;, &#x27;DeleteModuleCache(); no &quot;:&quot; in expanded path&#x27;)
+	NEW cacheFolder[StrLen(cacheBasePath) + EstrLen(folder)]
+	StrCopy(cacheFolder, cacheBasePath)
+	StrAdd( cacheFolder, folder, pos)
+	StrAdd( cacheFolder, folder, ALL, pos+1)
+	
+	-&gt;delete cache files
+	verboseDelete := verbose
+	RecurseDir(   cacheFolder, funcDeleteAll)	-&gt;delete files
+	DeleteDirPath(cacheFolder)					-&gt;delete folders
+	
+	IF StrCmpPath(pemodulesPath, folder, EstrLen(folder)) AND (EstrLen(folder) &lt; EstrLen(pemodulesPath))
+		-&gt;(folder contains PEmodules: (but folder not PEmodules) so delete PEmodules cache too)
+		END cacheFolder
+		cacheFolder := StrJoin(cacheBasePath, &#x27;PEmodules/&#x27;)
+		RecurseDir(   cacheFolder, funcDeleteAll)	-&gt;delete files
+		DeleteDirPath(cacheFolder)					-&gt;delete folders
+	ENDIF
+	
+	-&gt;delete old-style cache files (this will be removed eventually)
+	verboseDelete := verbose
+	RecurseDir(folder, funcDeletePEM)	-&gt;was: Print(&#x27;# NOT deleting old-style cache.\n&#x27;)
+FINALLY
+	END shrunkPath, pemodulesPath
+	END cacheFolder
+ENDPROC
+
+PRIVATE
+DEF verboseDelete:BOOL
+PUBLIC
+
+FUNC funcDeletePEM(filePath:STRING) OF funcRecurseFile
+	DEF hostPath:OWNS STRING
+	
+	IF StrCmpPath(&#x27;.pem&#x27;, filePath, ALL, 0, EstrLen(filePath) - STRLEN)
+		-&gt;(file ends in .pem) so delete it
+		IF DeletePath(filePath) AND verboseDelete
+			Print(&#x27;Deleted &quot;\s&quot;\n&#x27;, hostPath := ExportPath(filePath)) ; END hostPath
+		ENDIF
+	ENDIF
+FINALLY
+	END hostPath
+ENDFUNC
+
+FUNC funcDeleteAll(filePath:STRING) OF funcRecurseFile
+	DEF hostPath:OWNS STRING
+	
+	IF DeletePath(filePath) AND verboseDelete
+		Print(&#x27;Deleted &quot;\s&quot;\n&#x27;, hostPath := ExportPath(filePath)) ; END hostPath
+	ENDIF
+FINALLY
+	END hostPath
+ENDFUNC
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

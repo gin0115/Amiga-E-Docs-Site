@@ -1,0 +1,199 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>TestTextLabel.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-e-modules01.html">e-modules01</a> &rsaquo; TestTextLabel.e</div><h1>File: <code>TestTextLabel.e</code></h1><p class="meta">173 lines · project <a href="../examples/pkg-e-modules01.html"><code>e-modules01</code></a></p><p class="pathctx">e-modules01/emodules/textlabel/TestTextLabel.e</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/intuition.html">intuition/intuition</a></li></ul></div><h2>Source</h2><pre class="code">OPT OSVERSION=37
+OPT PREPROCESS
+
+/*
+*-- AutoRev header do NOT edit!
+*
+*   Project         :   Test program for textlabel.image
+*   File            :   testtextlabel.e
+*   Copyright       :   © 1993,1994 by hartmut Goebel
+*   Author          :   Piotr Gapinski
+*   Creation Date   :   04.01.96
+*   Current version :   2.2
+*   Translator      :   AmigaE v3.1+
+*
+*   REVISION HISTORY
+*
+*   Date         Version         Comment
+*   --------     -------         ------------------------------------------
+*   18.07.95     2.1             AOberon version by hartmut Goebel [hG]
+*   04.01.96     2.2             AmigaE version
+*
+*-- REV_END --*
+*/
+
+MODULE  &#x27;intuition/intuition&#x27;,&#x27;intuition/icclass&#x27;,
+        &#x27;intuition/screens&#x27;,&#x27;intuition/imageclass&#x27;,
+        &#x27;intuition/classusr&#x27;,&#x27;intuition/gadgetclass&#x27;,
+        &#x27;utility/tagitem&#x27;,
+        &#x27;libraries/textlabel&#x27;,
+        &#x27;tools/exceptions&#x27;
+
+#define PROGRAMVERSION &#x27;$VER: TestTextLabel 2.2 (04.01.96)&#x27;
+
+ENUM  ERR_OK,ERR_KICK,ERR_NOLIB,ERR_STRUCT,ERR_NOMEM
+CONST NUMIMAGES     = 5,
+      LEFTOFFSET    = 20,
+      RIGHTOFFSET   = 20,
+      LABELHEIGHT   = 20,
+      IMAGEDISTANCE = 4
+
+DEF   textlabelbase=NIL:PTR TO classlibrary,    -&gt; must be defined!
+      drawinfo=NIL:PTR TO drawinfo
+
+PROC main() HANDLE
+  DEF scr=NIL:PTR TO screen,
+      frame=NIL:PTR TO image,
+      gad=NIL:PTR TO gadget,
+      win=NIL:PTR TO window,
+      images[NUMIMAGES]:ARRAY OF LONG,
+      im:PTR TO image,
+      width,i
+
+  IF KickVersion(37)=FALSE THEN Raise(ERR_KICK)
+  IF (textlabelbase:=OpenLibrary(TEXTLABELIMAGE,
+      TEXTLABELVERSION))=NIL THEN Raise(ERR_NOLIB)
+  scr:=LockPubScreen(NIL);
+  IF (drawinfo:=GetScreenDrawInfo(scr))=NIL THEN Raise(ERR_STRUCT);
+  width := 0
+  FOR i:=0 TO NUMIMAGES-1
+    IF (im:=makeimage(i))=NIL THEN Raise(ERR_NOMEM)
+    images[i]:=im
+    IF width&lt;im.width THEN width:=im.width
+  ENDFOR
+
+  frame:=NewObjectA(NIL,FRAMEICLASS,
+                    [IA_FRAMETYPE,FRAME_BUTTON,TAG_DONE]:tagitem)
+
+  gad:=NewObjectA(NIL,FRBUTTONCLASS,
+                    [GA_TOP,30,
+                     GA_LEFT,LEFTOFFSET,
+                     GA_WIDTH,40,
+                     GA_HEIGHT,80,
+                     GA_IMAGE,frame,
+                     GA_LABELIMAGE,images[],
+                     TAG_DONE]:tagitem)
+
+  IF width&lt;gad.width THEN width:=gad.width
+  win:=OpenWindowTagList(NIL,
+            [WA_PUBSCREEN,scr,
+             WA_TOP,48,
+             WA_LEFT,140,
+             WA_INNERWIDTH,width+LEFTOFFSET-scr.wborleft+RIGHTOFFSET-scr.wborright,
+             WA_INNERHEIGHT,180,
+             WA_TITLE,&#x27;TestTextLabel&#x27;,
+             WA_FLAGS,WFLG_DEPTHGADGET OR WFLG_DRAGBAR OR WFLG_CLOSEGADGET,
+             WA_IDCMP,IDCMP_CLOSEWINDOW,
+             WA_GADGETS,gad,
+             TAG_DONE])
+  UnlockPubScreen(NIL,scr);
+  IF win&lt;&gt;NIL
+    FOR i:=0 TO NUMIMAGES-1
+      DrawImageState(win.rport,images[i],0,0,IDS_NORMAL,drawinfo);
+    ENDFOR
+    waitclose(win)
+    FreeScreenDrawInfo(win.wscreen,drawinfo);
+  ENDIF
+EXCEPT DO
+  FOR i:=0 TO NUMIMAGES-1
+    EXIT images[i]=NIL
+    DisposeObject(images[i])
+  ENDFOR
+  IF gad THEN DisposeObject(gad)
+  IF frame THEN DisposeObject(frame)
+  IF win THEN CloseWindow(win)
+  IF textlabelbase THEN CloseLibrary(textlabelbase)
+  IF exception
+    SELECT exception
+    CASE ERR_KICK
+      WriteF(&#x27;Wrong kickstart version, require v37+!\n&#x27;)
+    CASE ERR_NOLIB
+      WriteF(&#x27;Couldn\at open \s!\n&#x27;,TEXTLABELIMAGE)
+    CASE ERR_STRUCT
+      WriteF(&#x27;memory error!\n&#x27;)
+    CASE ERR_NOMEM
+      WriteF(&#x27;memory error!\n&#x27;)
+    DEFAULT
+      report_exception()
+      WriteF(&#x27;LEVEL: main()\n&#x27;)
+    ENDSELECT
+  ENDIF
+ENDPROC
+
+PROC makeimage(num)
+  DEF im:PTR TO image,
+      tags[NUMIMAGES]:LIST,
+      texts[NUMIMAGES]:LIST
+  texts:=[                                 -&gt; shortcut
+          &#x27; _yellow submarine &#x27;,           -&gt;   &quot;_&quot;
+          &#x27; M_MMassivholz &#x27;,               -&gt;   &quot;_&quot;
+          &#x27; Really??  &#x27;,                   -&gt;   &quot;?&quot;
+          &#x27; Logik und Berechenbar-keit &#x27;,  -&gt;   &quot;-&quot;
+          &#x27; kolo8@@sparc10.ely.pg.gda.pl &#x27; -&gt;   &quot;@&quot;
+         ]
+  tags:=[
+         [TLA_ADJUSTMENT,TLADJUST_HLEFT,TAG_DONE],
+         [TLA_FGPEN,TEXTPEN,TAG_DONE],
+         [TLA_UNDERSCORE,&quot;?&quot;,TAG_DONE],
+         [TLA_UNDERSCORE,&quot;-&quot;,TAG_DONE],
+         [TLA_UNDERSCORE,&quot;@&quot;,TAG_DONE]
+        ]
+
+  im:=NewObjectA(textlabelbase.class,NIL,
+        [
+         TLA_TEXT,texts[num],
+         TLA_LEFT,LEFTOFFSET,
+         TLA_TOP,Mul(LABELHEIGHT,num)+50,
+         TLA_DRAWINFO,drawinfo,
+         TLA_ADJUSTMENT,TLADJUST_HLEFT,
+         TAG_MORE,tags[num]
+        ]:tagitem)
+ENDPROC im
+
+PROC waitclose(win:PTR TO window)
+  DEF msg:PTR TO intuimessage,class
+
+  LOOP
+    WaitPort(win.userport)
+    msg:=GetMsg(win.userport)
+    WHILE msg&lt;&gt;NIL
+      class:=msg.class
+      ReplyMsg(msg);
+      IF class=IDCMP_CLOSEWINDOW THEN RETURN;
+      msg:=GetMsg(win.userport);
+    ENDWHILE
+  ENDLOOP
+ENDPROC
+
+CHAR PROGRAMVERSION,0
+/*EE folds
+-1
+123 27 126 12 
+EE folds*/
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

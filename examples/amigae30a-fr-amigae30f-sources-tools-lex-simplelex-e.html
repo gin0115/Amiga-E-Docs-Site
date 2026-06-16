@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>simplelex.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-amigae30a-fr.html">amigae30a_fr</a> &rsaquo; simplelex.e</div><h1>File: <code>simplelex.e</code></h1><p class="meta">66 lines · project <a href="../examples/pkg-amigae30a-fr.html"><code>amigae30a_fr</code></a></p><p class="pathctx">amigae30a_fr/AmigaE30f/Sources/Tools/Lex/simplelex.e</p><p class="prose">module lex très simple</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/ctype.html">tools/ctype</a></li></ul></div><h2>Source</h2><pre class="code">-&gt; module lex très simple
+
+OPT MODULE
+
+MODULE &#x27;tools/ctype&#x27;
+
+DEF begin, cur, end, free, line, comment            -&gt; privé
+
+EXPORT PROC lex_init(start,size,freeform=FALSE,onelinecomment=-2)
+  end:=(begin:=cur:=start)+size; free:=freeform; line:=1
+  comment:=onelinecomment
+ENDPROC
+
+EXPORT ENUM LEX_EOF=256, LEX_EOL, LEX_INTEGER, LEX_IDENT,
+            LEX_STRINGA, LEX_STRINGQ
+
+EXPORT PROC lex()
+  DEF a,b,c
+  LOOP
+    SELECT 256 OF c:=cur[]++
+      CASE &quot;\n&quot;
+        IF cur&gt;end THEN RETURN (cur:=end) BUT LEX_EOF
+        line++
+        IF free=FALSE THEN RETURN LEX_EOL
+      CASE &quot; &quot;, &quot;\t&quot;
+        /* les espaces, ne font rien */
+      CASE &quot;0&quot; TO &quot;9&quot;, &quot;$&quot;, &quot;%&quot;, &quot;-&quot;
+        a,b:=Val(cur-1)
+        IF b=0 THEN RETURN c
+        cur:=cur+b-1
+        RETURN LEX_INTEGER, a
+      CASE &quot;a&quot; TO &quot;z&quot;, &quot;A&quot; TO &quot;Z&quot;, &quot;_&quot;
+        a:=cur; c:=cur[]
+        WHILE isalnum(c) OR (c=&quot;_&quot;) DO cur++ BUT c:=cur[]
+        RETURN LEX_IDENT,a
+      CASE &quot;\q&quot;, &quot;\a&quot;
+        a:=cur
+        WHILE (a[]&lt;&gt;c) AND (a[]&lt;&gt;&quot;\n&quot;) DO a++
+        IF a[]=&quot;\n&quot; THEN RETURN c
+        b:=cur
+        cur:=a+1
+        RETURN IF c=&quot;\a&quot; THEN LEX_STRINGQ ELSE LEX_STRINGA, b
+      DEFAULT
+        IF c=comment
+          WHILE cur[]++&lt;&gt;&quot;\n&quot;
+          ENDWHILE
+          line++
+        ELSE
+          RETURN c
+        ENDIF
+    ENDSELECT
+  ENDLOOP
+ENDPROC
+
+EXPORT PROC lex_curline() IS line
+EXPORT PROC lex_current() IS cur
+
+EXPORT PROC lex_getline(s)
+  DEF b,e
+  b:=e:=cur
+  WHILE b[]--&lt;&gt;&quot;\n&quot; DO NOP
+  b++
+  WHILE e[]&lt;&gt;&quot;\n&quot; DO e++
+  StrCopy(s,b,e-b)
+ENDPROC cur-b
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

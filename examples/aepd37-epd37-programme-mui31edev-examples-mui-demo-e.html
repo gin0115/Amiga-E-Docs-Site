@@ -1,0 +1,697 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>MUI-Demo.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-aepd37.html">AEPD37</a> &rsaquo; MUI-Demo.e</div><h1>File: <code>MUI-Demo.e</code></h1><p class="meta">671 lines · project <a href="../examples/pkg-aepd37.html"><code>AEPD37</code></a></p><p class="pathctx">AEPD37/EPD37/Programme/mui31Edev/Examples/MUI-Demo.e</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/muimaster.html">muimaster</a></li></ul></div><h2>Source</h2><pre class="code">  ‹57 bytes of embedded binary/non-text data elided›
+  ‹67 bytes of embedded binary/non-text data elided›
+  ‹65 bytes of embedded binary/non-text data elided›
+  ‹79 bytes of embedded binary/non-text data elided›
+  ‹81 bytes of embedded binary/non-text data elided›
+  ‹89 bytes of embedded binary/non-text data elided›
+  ‹93 bytes of embedded binary/non-text data elided›
+  ‹71 bytes of embedded binary/non-text data elided›
+  ‹15 bytes of embedded binary/non-text data elided›
+  ‹73 bytes of embedded binary/non-text data elided›
+  ‹17 bytes of embedded binary/non-text data elided›
+  ‹107 bytes of embedded binary/non-text data elided›
+  ‹91 bytes of embedded binary/non-text data elided›
+  ‹89 bytes of embedded binary/non-text data elided›
+  ‹17 bytes of embedded binary/non-text data elided›
+  ‹49 bytes of embedded binary/non-text data elided›
+  ‹95 bytes of embedded binary/non-text data elided›
+  ‹63 bytes of embedded binary/non-text data elided›
+  ‹866 bytes of embedded binary/non-text data elided›
+** Easy use of MUI-custom-classes in E.
+** Written by Jan Hendrik Schulz
+**
+** Usage: Simply use eMui_CreateCustomClass() instead of
+**        the original Mui_CreateCustomClass()-function.
+**        Your dispatcher-function should look like this:
+**
+**        PROC myDispatcher(cl:PTR TO iclass,obj,msg:PTR TO msg)
+**            DEF methodID
+**
+**            methodID:=msg.methodid
+**            SELECT methodID
+**                CASE ...
+**                ...
+**            ENDSELECT
+**
+**            RETURN doSuperMethodA(cl,obj,msg)
+**        ENDPROC
+******************************************************/
+
+OPT MODULE
+
+MODULE &#x27;muimaster&#x27;, &#x27;libraries/mui&#x27;, &#x27;intuition/classes&#x27;
+
+OBJECT data
+  user:LONG         -&gt; for userdata (use iclass.userdata[] instead of iclass.userdata)
+  dispfunc:LONG     -&gt; holds the address of the dispatcher-function
+  storea4:LONG      -&gt; A4 is stored here
+ENDOBJECT
+
+EXPORT PROC eMui_CreateCustomClass(base,supername,supermcc,datasize,dispfunc) HANDLE
+  DEF mem:PTR TO data, 
+      mcc:PTR TO mui_customclass
+  
+  NEW mem                     -&gt; get some memory
+  
+  IF (mcc:=Mui_CreateCustomClass(base,supername,supermcc,datasize,{dispentry}))=NIL
+    END mem
+    RETURN NIL
+  ENDIF
+  
+  MOVE.L mem,A0               -&gt; ptr to data to A0
+  MOVE.L mcc,A1               -&gt; ptr to mui_customclass to A1
+  MOVE.L 24(A1),A1            -&gt; ptr to iclass to A1
+  MOVE.L A0,36(A1)            -&gt; store ptr to data in iclass.userdata
+  MOVE.L A4,8(A0)             -&gt; store A4 in data.storea4
+  MOVE.L dispfunc,4(A0)       -&gt; store address of dispfunc in data.dispfunc
+  
+EXCEPT
+  RETURN NIL
+ENDPROC mcc
+
+dispentry:
+  MOVEM.L D2-D7/A2-A6,-(A7)   -&gt; save registers to stack
+  
+  MOVE.L  A0,-(A7)            -&gt; PTR TO iclass as PROC-arg to stack
+  MOVE.L  A2,-(A7)            -&gt; the object as PROC-arg
+  MOVE.L  A1,-(A7)            -&gt; the message as PROC-arg
+  
+  MOVE.L  36(A0),A1           -&gt; iclass.userdate to A1
+  MOVE.L  8(A1),A4            -&gt; data.storea4 to A4
+  MOVE.L  4(A1),A0            -&gt; data.dispfunc to A0
+  JSR     (A0)                -&gt; jump to dispfunc
+  
+  LEA     12(A7),A7           -&gt; reset stack
+  MOVEM.L (A7)+,D2-D7/A2-A6   -&gt; restore registers
+  RTS                         -&gt; return to caller
+
+  ‹1823 bytes of embedded binary/non-text data elided›
+  ‹239 bytes of embedded binary/non-text data elided›
+  ‹2131 bytes of embedded binary/non-text data elided›
+  ‹15 bytes of embedded binary/non-text data elided›
+  ‹31 bytes of embedded binary/non-text data elided›
+  ‹101 bytes of embedded binary/non-text data elided›
+  ‹1164 bytes of embedded binary/non-text data elided›
+
+Press RETURN to close this window.
+  ‹48 bytes of embedded binary/non-text data elided›
+using default viewer
+  ‹372 bytes of embedded binary/non-text data elided›
+  ‹73 bytes of embedded binary/non-text data elided›
+  ‹77 bytes of embedded binary/non-text data elided›
+  ‹1212 bytes of embedded binary/non-text data elided›
+  ‹94 bytes of embedded binary/non-text data elided›
+  ‹45 bytes of embedded binary/non-text data elided›
+  ‹91 bytes of embedded binary/non-text data elided›
+  ‹29 bytes of embedded binary/non-text data elided›
+  ‹50 bytes of embedded binary/non-text data elided›
+  ‹70 bytes of embedded binary/non-text data elided›
+  ‹178 bytes of embedded binary/non-text data elided›
+  ‹36 bytes of embedded binary/non-text data elided›
+				    TextFrame,
+				    MUIA_Background, MUII_FILL,
+				End,
+				Child, RectangleObject,
+				    TextFrame,
+				    MUIA_Background, MUII_SHADOW,
+				End,
+			    End,
+			    Child, HGroup,
+				Child, RectangleObject,
+				    TextFrame,
+				    MUIA_Background, MUII_SHADOWBACK,
+				End,
+				Child, RectangleObject,
+				    TextFrame,
+				    MUIA_Background, MUII_SHADOWFILL,
+				End,
+				Child, RectangleObject,
+				    TextFrame,
+				    MUIA_Background, MUII_SHADOWSHINE,
+				End,
+			    End,
+			    Child, HGroup,
+				Child, RectangleObject,
+				    TextFrame,
+				    MUIA_Background, MUII_FILLBACK,
+				End,
+				Child, RectangleObject,
+				    TextFrame,
+				    MUIA_Background, MUII_SHINEBACK,
+				End,
+				Child, RectangleObject,
+				    TextFrame,
+				    MUIA_Background, MUII_FILLSHINE,
+				End,
+			    End,
+			End,
+		    End,
+		End,
+
+	    SubWindow,
+		wi_Groups := WindowObject,
+		    MUIA_Window_Title, &#x27;Groups&#x27;,
+		    MUIA_Window_ID, &quot;GRPS&quot;,
+		    WindowContents, VGroup,
+			Child, list(in_Groups),
+			Child, HGroup,
+			    GroupFrameT(&#x27;Group Types&#x27;),
+			    Child, HGroup,
+				GroupFrameT(&#x27;Horizontal&#x27;),
+				Child, RectangleObject, TextFrame, End,
+				Child, RectangleObject, TextFrame, End,
+				Child, RectangleObject, TextFrame, End,
+			    End,
+			    Child, VGroup,
+				GroupFrameT(&#x27;Vertical&#x27;),
+				Child, RectangleObject, TextFrame, End,
+				Child, RectangleObject, TextFrame, End,
+				Child, RectangleObject, TextFrame, End,
+			    End,
+			    Child, ColGroup(3),
+				GroupFrameT(&#x27;Array&#x27;),
+				Child, RectangleObject, TextFrame, End,
+				Child, RectangleObject, TextFrame, End,
+				Child, RectangleObject, TextFrame, End,
+				Child, RectangleObject, TextFrame, End,
+				Child, RectangleObject, TextFrame, End,
+				Child, RectangleObject, TextFrame, End,
+				Child, RectangleObject, TextFrame, End,
+				Child, RectangleObject, TextFrame, End,
+				Child, RectangleObject, TextFrame, End,
+			    End,
+			End,
+			Child, HGroup,
+			    GroupFrameT(&#x27;Different Weights&#x27;),
+			    Child, TextObject,
+				TextFrame,
+				MUIA_Background, MUII_TextBack,
+				MUIA_Text_Contents, &#x27;\ec25 kg&#x27;,
+				MUIA_Weight, 25,
+			    End,
+			    Child, TextObject,
+				TextFrame,
+				MUIA_Background, MUII_TextBack,
+				MUIA_Text_Contents, &#x27;\ec50 kg&#x27;,
+				MUIA_Weight, 50,
+			    End,
+			    Child, TextObject,
+				TextFrame,
+				MUIA_Background, MUII_TextBack,
+				MUIA_Text_Contents, &#x27;\ec75 kg&#x27;,
+				MUIA_Weight, 75,
+			    End,
+			    Child, TextObject,
+				TextFrame,
+				MUIA_Background, MUII_TextBack,
+				MUIA_Text_Contents, &#x27;\ec100 kg&#x27;,
+				MUIA_Weight, 100,
+			    End,
+			End,
+			Child, HGroup,
+			    GroupFrameT(&#x27;Fixed &amp; Variable Sizes&#x27;),
+			    Child, TextObject,
+				TextFrame,
+				MUIA_Background, MUII_TextBack,
+				MUIA_Text_Contents, &#x27;fixed&#x27;,
+				MUIA_Text_SetMax, MUI_TRUE,
+			    End,
+			    Child, TextObject,
+				TextFrame,
+				MUIA_Background, MUII_TextBack,
+				MUIA_Text_Contents, &#x27;\ecfree&#x27;,
+				MUIA_Text_SetMax, FALSE,
+			    End,
+			    Child, TextObject,
+				TextFrame,
+				MUIA_Background, MUII_TextBack,
+				MUIA_Text_Contents, &#x27;fixed&#x27;,
+				MUIA_Text_SetMax, MUI_TRUE,
+			    End,
+			    Child, TextObject,
+				TextFrame,
+				MUIA_Background, MUII_TextBack,
+				MUIA_Text_Contents, &#x27;\ecfree&#x27;,
+				MUIA_Text_SetMax, FALSE,
+			    End,
+			    Child, TextObject,
+				TextFrame,
+				MUIA_Background, MUII_TextBack,
+				MUIA_Text_Contents, &#x27;fixed&#x27;,
+				MUIA_Text_SetMax, MUI_TRUE,
+			    End,
+			End,
+		    End,
+		End,
+
+	    SubWindow,
+		wi_Frames := WindowObject,
+		    MUIA_Window_Title, &#x27;Frames&#x27;,
+		    MUIA_Window_ID, &quot;FRMS&quot;,
+		    WindowContents, VGroup,
+			Child, list(in_Frames),
+			Child, ColGroup(2),
+			    Child, TextObject,
+				ButtonFrame,
+				InnerSpacing(2,1),
+				MUIA_Background, MUII_TextBack,
+				MUIA_Text_Contents, &#x27;\ecButton&#x27;,
+			    End,
+			    Child, TextObject,
+				ImageButtonFrame,
+				InnerSpacing(2,1),
+				MUIA_Background, MUII_TextBack,
+				MUIA_Text_Contents, &#x27;\ecImageButton&#x27;,
+			    End,
+			    Child, TextObject,
+				TextFrame,
+				InnerSpacing(2,1),
+				MUIA_Background, MUII_TextBack,
+				MUIA_Text_Contents, &#x27;\ecText&#x27;,
+			    End,
+			    Child, TextObject,
+				StringFrame,
+				InnerSpacing(2,1),
+				MUIA_Background, MUII_TextBack,
+				MUIA_Text_Contents, &#x27;\ecString&#x27;,
+			    End,
+			    Child, TextObject,
+				ReadListFrame,
+				InnerSpacing(2,1),
+				MUIA_Background, MUII_TextBack,
+				MUIA_Text_Contents, &#x27;\ecReadList&#x27;,
+			    End,
+			    Child, TextObject,
+				InputListFrame,
+				InnerSpacing(2,1),
+				MUIA_Background, MUII_TextBack,
+				MUIA_Text_Contents, &#x27;\ecInputList&#x27;,
+			    End,
+			    Child, TextObject,
+				PropFrame,
+				InnerSpacing(2,1),
+				MUIA_Background, MUII_TextBack,
+				MUIA_Text_Contents, &#x27;\ecProp Gadget&#x27;,
+			    End,
+			    Child, TextObject,
+				GroupFrame,
+				InnerSpacing(2,1),
+				MUIA_Background, MUII_TextBack,
+				MUIA_Text_Contents, &#x27;\ecGroup&#x27;,
+			    End,
+			End,
+		    End,
+		End,
+
+	    SubWindow,
+		wi_Images := WindowObject,
+		    MUIA_Window_Title, &#x27;Images&#x27;,
+		    MUIA_Window_ID, &quot;IMGS&quot;,
+		    WindowContents, VGroup,
+			Child, list(in_Images),
+			Child, HGroup,
+			    Child, ColGroup(2),
+				GroupFrameT(&#x27;Some Images&#x27;),
+				Child, Label(&#x27;ArrowUp:&#x27;),    Child, image(MUII_ArrowUp),
+				Child, Label(&#x27;ArrowDown:&#x27;),  Child, image(MUII_ArrowDown),
+				Child, Label(&#x27;ArrowLeft:&#x27;),  Child, image(MUII_ArrowLeft),
+				Child, Label(&#x27;ArrowRight:&#x27;), Child, image(MUII_ArrowRight),
+				Child, Label(&#x27;RadioButton:&#x27;),Child, image(MUII_RadioButton),
+				Child, Label(&#x27;File:&#x27;),       Child, image(MUII_PopFile),
+				Child, Label(&#x27;HardDisk:&#x27;),   Child, image(MUII_HardDisk),
+				Child, Label(&#x27;Disk:&#x27;),       Child, image(MUII_Disk),
+				Child, Label(&#x27;Chip:&#x27;),       Child, image(MUII_Chip),
+				Child, Label(&#x27;Drawer:&#x27;),     Child, image(MUII_Drawer),
+			    End,
+			    Child, VGroup,
+				GroupFrameT(&#x27;Scale Engine&#x27;),
+				Child, VSpace(0),
+				Child, HGroup,
+				    Child, scaledImage(MUII_RadioButton,1,17, 9),
+				    Child, scaledImage(MUII_RadioButton,1,20,12),
+				    Child, scaledImage(MUII_RadioButton,1,23,15),
+				    Child, scaledImage(MUII_RadioButton,1,26,18),
+				    Child, scaledImage(MUII_RadioButton,1,29,21),
+				End,
+				Child, VSpace(0),
+				Child, HGroup,
+				    Child, scaledImage(MUII_CheckMark,1,13, 7),
+				    Child, scaledImage(MUII_CheckMark,1,16,10),
+				    Child, scaledImage(MUII_CheckMark,1,19,13),
+				    Child, scaledImage(MUII_CheckMark,1,22,16),
+				    Child, scaledImage(MUII_CheckMark,1,25,19),
+				    Child, scaledImage(MUII_CheckMark,1,28,22),
+				End,
+				Child, VSpace(0),
+				Child, HGroup,
+				    Child, scaledImage(MUII_PopFile,0,12,10),
+				    Child, scaledImage(MUII_PopFile,0,15,13),
+				    Child, scaledImage(MUII_PopFile,0,18,16),
+				    Child, scaledImage(MUII_PopFile,0,21,19),
+				    Child, scaledImage(MUII_PopFile,0,24,22),
+				    Child, scaledImage(MUII_PopFile,0,27,25),
+				End,
+				Child, VSpace(0),
+			    End,
+			End,
+		    End,
+		End,
+
+	    SubWindow,
+		wi_Master := WindowObject,
+		    MUIA_Window_Title, &#x27;MUI-Demo&#x27;,
+		    MUIA_Window_ID,    &quot;MAIN&quot;,
+		    WindowContents, VGroup,
+			Child, TextObject,
+			    GroupFrame,
+			    MUIA_Background, MUII_SHADOWFILL,
+			    MUIA_Text_Contents, &#x27;\ec\e8MUI - \ebM\enagic\ebU\enser\ebI\ennterface\nwritten 1992-94 by Stefan Stuntz&#x27;,
+			End,
+			Child, list(in_Master),
+			Child, VGroup,
+			    GroupFrameT(&#x27;Available Demos&#x27;),
+			    Child, HGroup,
+				MUIA_Group_SameWidth, MUI_TRUE,
+				Child, bt_Groups    := SimpleButton(&#x27;_Groups&#x27;),
+				Child, bt_Frames    := SimpleButton(&#x27;_Frames&#x27;),
+				Child, bt_Backfill  := SimpleButton(&#x27;_Backfill&#x27;),
+			    End,
+			    Child, HGroup,
+				MUIA_Group_SameWidth, MUI_TRUE,
+				Child, bt_Notify    := SimpleButton(&#x27;_Notify&#x27;),
+				Child, bt_Listviews := SimpleButton(&#x27;_Listviews&#x27;),
+				Child, bt_Cycle     := SimpleButton(&#x27;_Cycle&#x27;),
+			    End,
+			    Child, HGroup,
+				MUIA_Group_SameWidth, MUI_TRUE,
+				Child, bt_Images    := SimpleButton(&#x27;_Images&#x27;),
+				Child, bt_String    := SimpleButton(&#x27;_Strings&#x27;),
+				Child, bt_Quit      := SimpleButton(&#x27;_Quit&#x27;),
+			    End,
+			End,
+		    End,
+		End,
+	    End
+
+
+/*
+** See if the application was created.
+**
+** Note that we do not need any
+** error control for the sub objects since every error
+** will automatically be forwarded to the parent object
+** and cause this one to fail too.
+*/
+
+   IF ap_Demo=NIL THEN Raise(ER_APP)
+
+
+
+/*
+** Here comes the notifcation magic. Notifying means:
+** When an attribute of an object changes, then please change
+** another attribute of another object (accordingly) or send
+** a method to another object.
+*/
+
+/*
+** Lets bind the sub windows to the corresponding button
+** of the master window.
+*/
+
+   doMethod(bt_Frames   ,[MUIM_Notify,MUIA_Pressed,FALSE,wi_Frames   ,3,MUIM_Set,MUIA_Window_Open,MUI_TRUE])
+   doMethod(bt_Images   ,[MUIM_Notify,MUIA_Pressed,FALSE,wi_Images   ,3,MUIM_Set,MUIA_Window_Open,MUI_TRUE])
+   doMethod(bt_Notify   ,[MUIM_Notify,MUIA_Pressed,FALSE,wi_Notify   ,3,MUIM_Set,MUIA_Window_Open,MUI_TRUE])
+   doMethod(bt_Listviews,[MUIM_Notify,MUIA_Pressed,FALSE,wi_Listviews,3,MUIM_Set,MUIA_Window_Open,MUI_TRUE])
+   doMethod(bt_Groups   ,[MUIM_Notify,MUIA_Pressed,FALSE,wi_Groups   ,3,MUIM_Set,MUIA_Window_Open,MUI_TRUE])
+   doMethod(bt_Backfill ,[MUIM_Notify,MUIA_Pressed,FALSE,wi_Backfill ,3,MUIM_Set,MUIA_Window_Open,MUI_TRUE])
+   doMethod(bt_Cycle    ,[MUIM_Notify,MUIA_Pressed,FALSE,wi_Cycle    ,3,MUIM_Set,MUIA_Window_Open,MUI_TRUE])
+   doMethod(bt_String   ,[MUIM_Notify,MUIA_Pressed,FALSE,wi_String   ,3,MUIM_Set,MUIA_Window_Open,MUI_TRUE])
+   doMethod(bt_Quit     ,[MUIM_Notify,MUIA_Pressed,FALSE,ap_Demo,2,MUIM_Application_ReturnID,MUIV_Application_ReturnID_Quit])
+
+
+/*
+** Automagically remove a window when the user hits the close gadget.
+*/
+
+   doMethod(wi_Images   ,[MUIM_Notify,MUIA_Window_CloseRequest,MUI_TRUE,wi_Images   ,3,MUIM_Set,MUIA_Window_Open,FALSE])
+   doMethod(wi_Frames   ,[MUIM_Notify,MUIA_Window_CloseRequest,MUI_TRUE,wi_Frames   ,3,MUIM_Set,MUIA_Window_Open,FALSE])
+   doMethod(wi_Notify   ,[MUIM_Notify,MUIA_Window_CloseRequest,MUI_TRUE,wi_Notify   ,3,MUIM_Set,MUIA_Window_Open,FALSE])
+   doMethod(wi_Listviews,[MUIM_Notify,MUIA_Window_CloseRequest,MUI_TRUE,wi_Listviews,3,MUIM_Set,MUIA_Window_Open,FALSE])
+   doMethod(wi_Groups   ,[MUIM_Notify,MUIA_Window_CloseRequest,MUI_TRUE,wi_Groups   ,3,MUIM_Set,MUIA_Window_Open,FALSE])
+   doMethod(wi_Backfill ,[MUIM_Notify,MUIA_Window_CloseRequest,MUI_TRUE,wi_Backfill ,3,MUIM_Set,MUIA_Window_Open,FALSE])
+   doMethod(wi_Cycle    ,[MUIM_Notify,MUIA_Window_CloseRequest,MUI_TRUE,wi_Cycle    ,3,MUIM_Set,MUIA_Window_Open,FALSE])
+   doMethod(wi_String   ,[MUIM_Notify,MUIA_Window_CloseRequest,MUI_TRUE,wi_String   ,3,MUIM_Set,MUIA_Window_Open,FALSE])
+
+
+/*
+** Closing the master window forces a complete shutdown of the application.
+*/
+
+   doMethod(wi_Master,[MUIM_Notify,MUIA_Window_CloseRequest,MUI_TRUE,ap_Demo,2,MUIM_Application_ReturnID,MUIV_Application_ReturnID_Quit])
+
+
+/*
+** This connects the prop gadgets in the notification demo window.
+*/
+
+   doMethod(pr_PropA,[MUIM_Notify,MUIA_Prop_First,MUIV_EveryTime,pr_PropH,3,MUIM_Set,MUIA_Prop_First,MUIV_TriggerValue])
+   doMethod(pr_PropA,[MUIM_Notify,MUIA_Prop_First,MUIV_EveryTime,pr_PropV,3,MUIM_Set,MUIA_Prop_First,MUIV_TriggerValue])
+   doMethod(pr_PropH,[MUIM_Notify,MUIA_Prop_First,MUIV_EveryTime,pr_PropL,3,MUIM_Set,MUIA_Prop_First,MUIV_TriggerValue])
+   doMethod(pr_PropH,[MUIM_Notify,MUIA_Prop_First,MUIV_EveryTime,pr_PropR,3,MUIM_Set,MUIA_Prop_First,MUIV_TriggerValue])
+   doMethod(pr_PropV,[MUIM_Notify,MUIA_Prop_First,MUIV_EveryTime,pr_PropT,3,MUIM_Set,MUIA_Prop_First,MUIV_TriggerValue])
+   doMethod(pr_PropV,[MUIM_Notify,MUIA_Prop_First,MUIV_EveryTime,pr_PropB,3,MUIM_Set,MUIA_Prop_First,MUIV_TriggerValue])
+
+   doMethod(pr_PropA ,[MUIM_Notify,MUIA_Prop_First   ,MUIV_EveryTime,ga_Gauge2,3,MUIM_Set,MUIA_Gauge_Current,MUIV_TriggerValue])
+   doMethod(ga_Gauge2,[MUIM_Notify,MUIA_Gauge_Current,MUIV_EveryTime,ga_Gauge1,3,MUIM_Set,MUIA_Gauge_Current,MUIV_TriggerValue])
+   doMethod(ga_Gauge2,[MUIM_Notify,MUIA_Gauge_Current,MUIV_EveryTime,ga_Gauge3,3,MUIM_Set,MUIA_Gauge_Current,MUIV_TriggerValue])
+
+
+/*
+** And here we connect cycle gadgets, radio buttons and the list in the
+** cycle &amp; radio window.
+*/
+
+   doMethod(cy_Computer,[MUIM_Notify,MUIA_Cycle_Active,MUIV_EveryTime,mt_Computer,3,MUIM_Set,MUIA_Radio_Active,MUIV_TriggerValue])
+   doMethod(cy_Printer ,[MUIM_Notify,MUIA_Cycle_Active,MUIV_EveryTime,mt_Printer ,3,MUIM_Set,MUIA_Radio_Active,MUIV_TriggerValue])
+   doMethod(cy_Display ,[MUIM_Notify,MUIA_Cycle_Active,MUIV_EveryTime,mt_Display ,3,MUIM_Set,MUIA_Radio_Active,MUIV_TriggerValue])
+   doMethod(mt_Computer,[MUIM_Notify,MUIA_Radio_Active,MUIV_EveryTime,cy_Computer,3,MUIM_Set,MUIA_Cycle_Active,MUIV_TriggerValue])
+   doMethod(mt_Printer ,[MUIM_Notify,MUIA_Radio_Active,MUIV_EveryTime,cy_Printer ,3,MUIM_Set,MUIA_Cycle_Active,MUIV_TriggerValue])
+   doMethod(mt_Display ,[MUIM_Notify,MUIA_Radio_Active,MUIV_EveryTime,cy_Display ,3,MUIM_Set,MUIA_Cycle_Active,MUIV_TriggerValue])
+   doMethod(mt_Computer,[MUIM_Notify,MUIA_Radio_Active,MUIV_EveryTime,lv_Computer,3,MUIM_Set,MUIA_List_Active ,MUIV_TriggerValue])
+   doMethod(lv_Computer,[MUIM_Notify,MUIA_List_Active ,MUIV_EveryTime,mt_Computer,3,MUIM_Set,MUIA_Radio_Active,MUIV_TriggerValue])
+
+
+/*
+** This one makes us receive input ids from several list views.
+*/
+
+   doMethod(lv_Volumes ,[MUIM_Notify,MUIA_Listview_DoubleClick,MUI_TRUE,ap_Demo,2,MUIM_Application_ReturnID,ID_NEWVOL])
+   doMethod(lv_Brian   ,[MUIM_Notify,MUIA_List_Active,MUIV_EveryTime,ap_Demo,2,MUIM_Application_ReturnID,ID_NEWBRI])
+
+
+/*
+** Now lets set the TAB cycle chain for some of our windows.
+*/
+
+   doMethod(wi_Master   ,[MUIM_Window_SetCycleChain,bt_Groups,bt_Frames,bt_Backfill,bt_Notify,bt_Listviews,bt_Cycle,bt_Images,bt_String,NIL])
+   doMethod(wi_Listviews,[MUIM_Window_SetCycleChain,lv_Directory,lv_Volumes,NIL])
+   doMethod(wi_Cycle    ,[MUIM_Window_SetCycleChain,mt_Computer,mt_Printer,mt_Display,cy_Computer,cy_Printer,cy_Display,lv_Computer,NIL])
+   doMethod(wi_String   ,[MUIM_Window_SetCycleChain,st_Brian,NIL])
+
+
+/*
+** Set some start values for certain objects.
+*/
+
+   doMethod(lv_Computer,[MUIM_List_Insert,cya_Computer,-1,MUIV_List_Insert_Bottom])
+   doMethod(lv_Brian   ,[MUIM_List_Insert,lvt_Brian,-1,MUIV_List_Insert_Bottom])
+   set(lv_Computer,MUIA_List_Active,0)
+   set(lv_Brian   ,MUIA_List_Active,0)
+   set(st_Brian   ,MUIA_String_AttachedList,lv_Brian)
+
+
+/*
+** Everything&#x27;s ready, lets launch the application. We will
+** open the master window now.
+*/
+
+   set(wi_Master,MUIA_Window_Open,MUI_TRUE);
+
+
+/*
+** This is the main loop. As you can see, it does just nothing.
+** Everything is handled by MUI, no work for the programmer.
+**
+** The only thing we do here is to react on a double click
+** in the volume list (which causes an ID_NEWVOL) by setting
+** a new directory name for the directory list. If you want
+** to see a real file requester with MUI, wait for the
+** next release of MFR :-)
+*/
+
+
+   running := TRUE  /* Not for MUI -&gt; no need to use MUI_TRUE */
+
+   WHILE running
+
+      result := doMethod(ap_Demo, [MUIM_Application_Input, {signal} ])
+
+      SELECT result
+
+	 CASE MUIV_Application_ReturnID_Quit
+	    running := FALSE
+
+	 CASE ID_NEWVOL
+	    doMethod(lv_Volumes, [MUIM_List_GetEntry, MUIV_List_GetEntry_Active, {buf} ])
+	    set(lv_Directory, MUIA_Dirlist_Directory, buf)
+
+	 CASE ID_NEWBRI
+	    get(lv_Brian, MUIA_List_Active, {buf} )
+	    set(st_Brian, MUIA_String_Contents, lvt_Brian[buf] )
+
+	 CASE ID_ABOUT
+	    Mui_RequestA(ap_Demo, wi_Master, 0, NIL, &#x27;OK&#x27;, &#x27;MUI-Demo\n© 1992-94 by Stefan Stuntz&#x27;,NIL)
+
+      ENDSELECT
+
+      IF signal THEN Wait(signal)
+
+   ENDWHILE
+
+/*
+** Call the exception handling with ER_NON, this will dispose the
+** application object, close &quot;muimaster.library&quot; and end the program.
+*/
+
+  Raise(ER_NON)
+
+EXCEPT
+  IF ap_Demo THEN Mui_DisposeObject(ap_Demo)
+  IF muimasterbase THEN CloseLibrary(muimasterbase)
+  
+  SELECT exception
+    CASE ER_MUILIB
+      WriteF(&#x27;Failed to open \s.\n&#x27;,MUIMASTER_NAME)
+      CleanUp(20)
+
+    CASE ER_APP
+      WriteF(&#x27;Failed to create application.\n&#x27;)
+      CleanUp(20)
+      
+  ENDSELECT
+ENDPROC 0
+
+
+/*
+** Some PROCs as replacement for macros
+*/
+
+PROC list(ftxt)
+    DEF obj
+    obj :=  ListviewObject,
+	MUIA_Weight, 50,
+	MUIA_Listview_Input, FALSE,
+	MUIA_Listview_List,FloattextObject,
+	    MUIA_Frame, MUIV_Frame_ReadList,
+	    MUIA_Floattext_Text, ftxt,
+	    MUIA_Floattext_TabSize, 4,
+	    MUIA_Floattext_Justify, MUI_TRUE,
+	End,
+    End
+ENDPROC obj
+
+PROC image(nr)
+    DEF obj
+    obj := ImageObject,
+	MUIA_Image_Spec, nr,
+    End
+ENDPROC obj
+
+PROC scaledImage(nr,s,x,y)
+    DEF obj
+    obj := ImageObject,
+	MUIA_Image_Spec, nr,
+	MUIA_FixWidth, x,
+	MUIA_FixHeight,y,
+	MUIA_Image_FreeHoriz, MUI_TRUE,
+	MUIA_Image_FreeVert,  MUI_TRUE,
+	MUIA_Image_State, s,
+    End
+ENDPROC obj
+
+PROC hprop()
+    DEF obj
+    obj := PropObject,
+	PropFrame,
+	MUIA_Prop_Horiz, MUI_TRUE,
+	MUIA_FixHeight, 8,
+	MUIA_Prop_Entries, 111,
+	MUIA_Prop_Visible, 10,
+    End
+ENDPROC obj
+
+PROC vprop()
+    DEF obj
+    obj := PropObject,
+	PropFrame,
+	MUIA_Prop_Horiz, FALSE,
+	MUIA_FixWidth , 8,
+	MUIA_Prop_Entries, 111,
+	MUIA_Prop_Visible, 10,
+    End
+ENDPROC obj
+
+
+/*
+** doMethod (written by Wouter van Oortmerssen)
+*/
+
+PROC doMethod( obj:PTR TO object, msg:PTR TO msg )
+
+	DEF h:PTR TO hook, o:PTR TO object, dispatcher
+
+	IF obj
+		o := obj-SIZEOF object	/* instance data is to negative offset */
+		h := o.class
+		dispatcher := h.entry	/* get dispatcher from hook in iclass */
+		MOVEA.L h,A0
+		MOVEA.L msg,A1
+		MOVEA.L obj,A2		/* probably should use CallHookPkt, but the */
+		MOVEA.L dispatcher,A3	/*   original code (DoMethodA()) doesn&#x27;t. */
+		JSR (A3)		/* call classDispatcher() */
+		MOVE.L D0,o
+		RETURN o
+	ENDIF
+ENDPROC NIL
+
+/*
+** This is the end...
+*/
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

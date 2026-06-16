@@ -1,0 +1,266 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Ufo.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-ufo-src.html">ufo_src</a> &rsaquo; Ufo.e</div><h1>File: <code>Ufo.e</code></h1><p class="meta">240 lines · project <a href="../examples/pkg-ufo-src.html"><code>ufo_src</code></a></p><p class="pathctx">ufo_src/UFO/Ufo.e</p><p class="prose">* Første forsøk på total bruka av MBob.(32 frames) * Startet: 14.april 1998 * Klokka: 0:49 * Versjon: 0.12 * Siste oppdatering: 21.april 1998</p><h2>Source</h2><pre class="code">-&gt;* Første forsøk på total bruka av MBob.(32 frames)
+-&gt;* Startet: 14.april 1998
+-&gt;* Klokka: 0:49
+-&gt;* Versjon: 0.12
+-&gt;* Siste oppdatering: 21.april 1998
+
+MODULE &#x27;gms/dpkernel&#x27;,&#x27;gms/dpkernel/dpkernel&#x27;,&#x27;gms/graphics/pictures&#x27;,&#x27;gms/files/files&#x27;,
+       &#x27;gms/screens&#x27;,&#x27;gms/system/register&#x27;,&#x27;gms/system/modules&#x27;,&#x27;gms/input/joydata&#x27;,
+       &#x27;gms/graphics/screens&#x27;,&#x27;gms/blitter&#x27;,&#x27;gms/graphics/blitter&#x27;
+
+ENUM NONE,ERR_LIB,ERR_SMOD,ERR_BMOD,ERR_JOY,ERR_SCR,
+     ERR_LOAD,ERR_RESTORE,ERR_BOB,ERR_PIC,ERR_NBE
+
+CONST AMT_IMAGES=10,
+      MBE_SIZEOF=SIZEOF mbentry
+
+DEF scr        :PTR TO screen,
+    tmpscr     :PTR TO screen,
+    joy        :PTR TO joydata,
+    rstore     :PTR TO restore,
+    scrmod     :PTR TO module,
+    bltmod     :PTR TO module,
+    ship       :PTR TO mbob,
+    back       :PTR TO picture,
+    backfile   :PTR TO filename,
+    shipfile   :PTR TO filename,
+    shipframes :PTR TO framelist,
+    shippic    :PTR TO picture,
+    simages    :PTR TO mbentry
+
+DEF shield,
+    energy,
+    xpos,ypos,
+    frame=0
+
+PROC init_all()
+  backfile := [ID_FILENAME, &#x27;Gfx/PANEL001.Hi&#x27; ]:filename
+  shipfile := [ID_FILENAME, &#x27;Ships/Ship001/UFO001.Hi&#x27; ]:filename
+
+  shipframes:=[  48,0,  1*48,0,  2*48,0,  3*48,0,  4*48,0,  5*48,0,  6*48,0,  7*48,0,  8*48,0,  9*48,0,  10*48,0,  11*48,0,  12*48,0,  13*48,0,
+                 48,20, 1*48,20, 2*48,20, 3*48,20, 4*48,20, 5*48,20, 6*48,20, 7*48,20, 8*48,20, 9*48,20, 10*48,20, 11*48,20, 12*48,20, 13*48,20,
+                 48,40, 1*48,40, 2*48,40, 3*48,40, -1,-1]:framelist
+
+  IF (dpkbase:=OpenLibrary(&#x27;GMS:libs/dpkernel.library&#x27;,0))=NIL THEN Raise(ERR_LIB)
+
+  IF (scrmod:=Init([TAGS_MODULE,NIL,
+      MODA_NUMBER,    MOD_SCREENS,
+      MODA_TABLETYPE, JMP_AMIGAE,
+      TAGEND], NIL))=NIL THEN Raise(ERR_SMOD)
+      scrbase:=scrmod.modbase
+
+  IF (bltmod:=Init([TAGS_MODULE,NIL,
+      MODA_NUMBER,    MOD_BLITTER,
+      MODA_TABLETYPE, JMP_AMIGAE,
+      TAGEND], NIL))=NIL THEN Raise(ERR_BMOD)
+      bltbase:=bltmod.modbase
+
+  IF (tmpscr:=scr:=Init([TAGS_SCREEN, NIL,
+       GSA_BitmapTags, NIL,
+       BMA_AmtColours, 64,
+       TAGEND, NIL,
+       TAGEND],NIL))=NIL THEN Raise(ERR_SCR)
+
+  IF (joy := Get(ID_JOYDATA))=NIL THEN Raise(ERR_JOY)
+  joy.port:= 2
+  IF (Init(joy,NIL))=NIL THEN Raise(ERR_JOY)
+
+  IF (back:=Load(backfile,ID_PICTURE))=NIL THEN Raise(ERR_LOAD)
+  IF (scr:=Get(ID_SCREEN))=NIL THEN Raise(ERR_SCR)
+ENDPROC
+
+PROC main() HANDLE
+  WriteF(&#x27;Loading...&#x27;)
+  init_all()
+
+  CopyStructure(back,scr)
+  scr.attrib  := SCR_DBLBUFFER
+
+  IF (Init(scr,NIL))=NIL THEN Raise(ERR_SCR)
+  Copy(back.bitmap,scr.bitmap)
+
+  IF tmpscr THEN Free(tmpscr)
+
+  Copy(back.bitmap,scr.bitmap)
+  CopyBuffer(scr,BUFFER2,BUFFER1)
+
+  IF (rstore:=Init([TAGS_RESTORE,NIL,
+                    RSA_Entries,AMT_IMAGES,
+                    RSA_Buffers,2,
+                    TAGEND],scr))=NIL THEN Raise(ERR_RESTORE)
+
+  -&gt; MBob-start
+  IF (shippic:=Init([TAGS_PICTURE,NIL,
+                     PCA_Source,shipfile,
+                       PCA_BitmapTags, NIL,
+                       BMA_MemType,    MEM_BLIT,
+                       TAGEND,         NIL,
+                     TAGEND],NIL))=NIL THEN Raise(ERR_PIC)
+
+  IF (simages:=AllocMemBlock(MBE_SIZEOF*AMT_IMAGES,MEM_DATA))=NIL THEN Raise(ERR_NBE)
+
+  IF (ship:=Init([TAGS_MBOB,NIL,
+                  MBA_AmtEntries, AMT_IMAGES,
+                  MBA_GfxCoords,  shipframes,
+                  MBA_Width,      40,
+                  MBA_Height,     20,
+                  MBA_Attrib,     BBF_RESTORE OR BBF_GENMASKS OR BBF_CLIP,
+                  MBA_Source,     shippic,
+                  MBA_EntrySize,  MBE_SIZEOF,
+                  MBA_EntryList,  simages,
+                  TAGEND],scr))=NIL THEN Raise(ERR_BOB)
+
+  Show(scr)
+
+  demo()
+
+  Raise(NONE)
+EXCEPT DO
+  IF (joy)     THEN Free(joy)
+  IF (ship)    THEN Free(ship)
+  IF (simages) THEN FreeMemBlock(simages)
+  IF (rstore)  THEN Free(rstore)
+  IF (scr)     THEN Free(scr)
+  IF (back)    THEN Free(back)
+  IF (shippic) THEN Free(shippic)
+  IF (bltmod)  THEN Free(bltmod)
+  IF (scrmod)  THEN Free(scrmod)
+  CloseDPK()
+
+  SELECT exception
+    CASE ERR_LIB;     WriteF(&#x27;\nError: Opening dpkernel.library\n&#x27;)
+    CASE ERR_SMOD;    WriteF(&#x27;\nError: Init() (Screen-module)\n&#x27;)
+    CASE ERR_BMOD;    WriteF(&#x27;\nError: Init() (Blitter-module)\n&#x27;)
+    CASE ERR_JOY;     WriteF(&#x27;\nError: Init() (JoyData-object)\n&#x27;)
+    CASE ERR_SCR;     WriteF(&#x27;\nError: Opening screen\n&#x27;)
+    CASE ERR_LOAD;    WriteF(&#x27;\nError: Loading background-picture\n&#x27;)
+    CASE ERR_RESTORE; WriteF(&#x27;\nError: Init() (Restore-object)\n&#x27;)
+    CASE ERR_BOB;     WriteF(&#x27;\nError: Init() (Blitter Object)\n&#x27;)
+    CASE NONE;        WriteF(&#x27;\nUser Exit\n&#x27;)
+  ENDSELECT
+  CleanUp(0)
+ENDPROC
+
+PROC updatepanel()
+  shield:=1
+  energy:=1
+ENDPROC
+
+PROC demo()
+  DEF anim=0,key,
+      keystr[2]:STRING,
+      speed=0,
+      -&gt; compute speed vars
+      rangle,step,rframe,xadd,
+      yadd,arcconst,arcangle,
+      lastframe
+
+  -&gt; NOTE! 360/AntFrames
+  step:=11.25
+
+  setup_bobs()
+  xpos := simages[0].xcoord!
+  ypos := simages[0].ycoord!
+
+  lastframe:=17
+  REPEAT
+    Activate(rstore)
+    DrawBob(ship)
+    WaitAVBL()
+    SwapBuffers(scr)
+
+    Query(joy)
+
+    IF (joy.xchange &lt; 0) THEN anim := -1
+    IF (joy.xchange &gt; 0) THEN anim := 1
+    IF (joy.ychange &lt; 0) THEN INC speed
+    IF (joy.ychange &gt; 0) THEN speed := 0
+
+    IF (anim &lt;&gt; 0)
+      IF (anim  = -1) THEN DEC frame
+      IF (anim  = 1)  THEN INC frame
+      IF (frame &gt; 31) THEN frame:=0
+      IF (frame &lt; 0)  THEN frame:=31
+      simages[0].frame := frame
+    ENDIF
+
+    anim:=0
+
+    IF (speed &gt; 0)
+      IF (lastframe = simages[0].frame) THEN JUMP noframe
+      lastframe := simages[0].frame
+
+      rframe := simages[0].frame!
+      rangle := !step*rframe
+      IF (rangle = 0.0)
+        arcangle := 0.0
+        JUMP noangle
+      ENDIF
+      arcconst := !180.00/rangle
+      arcangle := !3.14/arcconst
+
+      noangle:
+      xadd := Fcos(arcangle)
+      yadd := Fsin(arcangle)
+      xadd := (xadd*-1.0)*1.0
+      yadd := (yadd*-1.0)*1.0
+      noframe:
+    ENDIF
+
+    xpos:=!xpos+xadd
+    ypos:=!ypos+yadd
+
+    IF !xpos &lt; (-ship.width!)  THEN xpos:=scr.width!
+    IF !xpos &gt; (scr.width!)    THEN xpos:=(-ship.width!)
+    IF !ypos &lt; (-ship.height!) THEN ypos:=scr.height!
+    IF !ypos &gt; (scr.height!)   THEN ypos:=(-ship.height!)
+
+    simages[0].xcoord := !xpos!
+    simages[0].ycoord := !ypos!
+
+  UNTIL (joy.buttons AND JD_FIRE1)
+
+  updatepanel()
+ENDPROC
+
+PROC setup_bobs()
+  DEF i
+
+  simages[0].xcoord := 150
+  simages[0].ycoord := 150
+  simages[0].frame  := 0
+
+  FOR i:=1 TO AMT_IMAGES
+    simages[i].xcoord := FastRandom(scr.width)
+    simages[i].ycoord := FastRandom(scr.height)
+    simages[i].frame  := FastRandom(31)
+  ENDFOR
+ENDPROC
+
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Ecode.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-aepd03.html">AEPD03</a> &rsaquo; Ecode.e</div><h1>File: <code>Ecode.e</code></h1><p class="meta">97 lines · project <a href="../examples/pkg-aepd03.html"><code>AEPD03</code></a></p><p class="pathctx">AEPD03/EPD03/Amiga_E-Programme/compiler/PModule/Ecode.e</p><h2>Source</h2><pre class="code">
+DEF labels=0
+
+PROC codeW (s)
+     writeString(s)
+ENDPROC /* codeW */
+
+PROC codeWL(s)
+     codeW(s); writeLn()
+ENDPROC /* codeWL */
+
+PROC codeDCL(var)   /* Speicher für var reservieren */
+     codeW(var); codeWL(&#x27;: DC.L 0&#x27;)
+ENDPROC /* codeDCL */
+
+PROC codeMOVEvarD0(var)     /* var nach D0 kopieren */
+     codeW(&#x27;    MOVE.L  &#x27;); codeW(var); codeWL(&#x27;,D0&#x27;)
+ENDPROC /* codeMOVEvarD0 */
+
+PROC codeMOVEconstD0(c)      /* Konstante c nach D0 laden */
+     codeW(&#x27;    MOVE.L  #&#x27;); writeInt(c); codeWL(&#x27;,D0&#x27;)
+ENDPROC /* codeMOVEconstD0 */
+
+PROC codeMOVED0var(name)       /* D0 in D0 kopieren */
+     codeW(&#x27;    MOVE.L  D0,&#x27;); codeWL(name)
+ENDPROC /* codeMOVED0var */
+
+PROC codeMOVED0D1()
+     codeWL(&#x27;    MOVE.L  D0,D1&#x27;)
+ENDPROC /* codeMOVED0D1 */
+
+PROC codeADDD1D0()
+     codeWL(&#x27;    ADD.L   D1,D0&#x27;)
+ENDPROC /* ADDD1D0 */
+
+PROC codeNEGD0()
+     codeWL(&#x27;    NEG.L   D0&#x27;   )
+ENDPROC /* codeNEGD0 */
+
+PROC codeTSTD0()
+     codeWL(&#x27;    TST.L   D0&#x27;   )
+ENDPROC /* codeTSTD0 */
+
+PROC codeGetLabel() RETURN (labels++)        /* neues Label anfordern */
+
+PROC codeLabel(l)                   /* Label &lt;l&gt; ausgeben */
+     codeW(&#x27;L&#x27;); writeHex(l); codeWL(&#x27;:&#x27;)
+ENDPROC /* Label */
+
+PROC codeBLE(l)                       /* BLE &lt;l&gt; erzeugen */
+     codeW(&#x27;    BLE     L&#x27;); writeHex(l); codeWL(&#x27; &#x27;)
+ENDPROC /* codeBLE */
+
+PROC codeBRA(l)                       /* BRA &lt;l&gt; erzeugen */
+     codeW(&#x27;    BRA     L&#x27;); writeHex(l); codeWL(&#x27; &#x27;)
+ENDPROC /*  BRA */
+
+PROC codeprintD0()                           /* Wert von D0 ausgeben */
+
+  codeWL(&#x27;    LEA     _format,A0&#x27;)
+  codeWL(&#x27;    MOVE.L  A0,D1     &#x27;)
+  codeWL(&#x27;    LEA     _print,A0 &#x27;)
+  codeWL(&#x27;    MOVE.L  A0,D2     &#x27;)
+  codeWL(&#x27;    MOVE.L  D0,(A0)   &#x27;)
+  codeWL(&#x27;    MOVE.L  _dos,A6   &#x27;)
+  codeWL(&#x27;    JSR     -954(A6)  &#x27;)
+ENDPROC /* PrintD0 */
+
+PROC codeStartUp(start)       /* Dos-Library öffnen, etc. */
+
+  codeWL(&#x27;_dos:      DC.L    0              &#x27;)
+  codeWL(&#x27;_dosname:  DC.B    &quot;dos.library&quot;,0&#x27;)
+  codeWL(&#x27;_format:   DC.B    &quot;%ld&quot;,10,0     &#x27;)
+  codeWL(&#x27;           DS.L    0              &#x27;)
+  codeWL(&#x27;_print:    DC.L    0              &#x27;)
+  codeLabel(start)
+  codeWL(&#x27;    LEA     _dosname,A1           &#x27;);
+  codeWL(&#x27;    MOVE.L  #37,D0                &#x27;);
+  codeWL(&#x27;    MOVE.L  $4,A6                 &#x27;);
+  codeWL(&#x27;    JSR     -552(A6)              &#x27;);
+  codeWL(&#x27;    TST.L   D0                    &#x27;);
+  codeWL(&#x27;    BNE.S   _ok                   &#x27;);
+  codeWL(&#x27;    RTS                           &#x27;);
+  codeWL(&#x27;_ok:                              &#x27;);
+  codeWL(&#x27;    MOVE.L  D0,_dos               &#x27;);
+ENDPROC /* StartUp */
+
+PROC codeCleanUp()                    /* Dos-Library schließen, etc. */
+
+  codeWL(&#x27;    MOVE.L  _dos,A1  &#x27;);
+  codeWL(&#x27;    MOVE.L  $4,A6    &#x27;);
+  codeWL(&#x27;    JSR     -414(A6) &#x27;);
+  codeWL(&#x27;    MOVE.L  #0,D0    &#x27;);
+  codeWL(&#x27;    RTS              &#x27;);
+  codeWL(&#x27;    END              &#x27;);
+ENDPROC /* CleanUp */
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

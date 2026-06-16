@@ -1,0 +1,127 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>GadToolsDemo.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-amigae30a-fr.html">amigae30a_fr</a> &rsaquo; GadToolsDemo.e</div><h1>File: <code>GadToolsDemo.e</code></h1><p class="meta">101 lines · project <a href="../examples/pkg-amigae30a-fr.html"><code>amigae30a_fr</code></a></p><p class="pathctx">amigae30a_fr/AmigaE30f/Sources/Reqs/GadToolsDemo.e</p><p class="prose">Démo de la <a href="../modules/gadtools.html">gadtools</a></p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/intuition.html">intuition/intuition</a></li></ul></div><h2>Source</h2><pre class="code">/*Démo de la gadtools */
+
+ENUM NONE,ER_OPENLIB,ER_WB,ER_VISUAL,ER_CONTEXT,ER_GADGET,ER_WINDOW,ER_MENUS
+
+MODULE &#x27;intuition/intuition&#x27;, &#x27;gadtools&#x27;, &#x27;libraries/gadtools&#x27;,
+       &#x27;intuition/gadgetclass&#x27;, &#x27;exec/nodes&#x27;, &#x27;intuition/screens&#x27;
+
+DEF scr=NIL:PTR TO screen,
+    visual=NIL,
+    wnd=NIL:PTR TO window,
+    glist=NIL,offy,g,
+    type,infos,listv:PTR TO LONG,menu
+
+PROC main() HANDLE
+  openinterface()
+  REPEAT
+    wait4message()
+    TextF(10,150+offy,&#x27;type: \d[3], info: \h[4]&#x27;,type,infos)
+  UNTIL type=IDCMP_CLOSEWINDOW
+  Raise(NONE)
+EXCEPT
+  closeinterface()
+  IF exception&gt;0 THEN WriteF(&#x27;Nepeut pas \s !\n&#x27;,
+    ListItem([&#x27;&#x27;,&#x27;ouvrir la &quot;gadtools.library&quot; v37&#x27;,&#x27;locker le workbench&#x27;,
+              &#x27;prendre les &quot;visual infos&quot;&#x27;,&#x27;créé le &quot;context&quot;&#x27;,&#x27;créé les &quot;gadgets&quot;&#x27;,
+              &#x27;ouvrir la fenêtre&#x27;,&#x27;allouer les menus&#x27;],exception))
+ENDPROC
+
+PROC openinterface()
+  IF (gadtoolsbase:=OpenLibrary(&#x27;gadtools.library&#x27;,37))=NIL THEN
+    Raise(ER_OPENLIB)
+  IF (scr:=LockPubScreen(&#x27;Workbench&#x27;))=NIL THEN Raise(ER_WB)
+  IF (visual:=GetVisualInfoA(scr,NIL))=NIL THEN Raise(ER_VISUAL)
+  offy:=scr.wbortop+Int(scr.rastport+58)+1
+  IF (g:=CreateContext({glist}))=NIL THEN Raise(ER_CONTEXT)
+  IF (menu:=CreateMenusA([1,0,&#x27;Project&#x27;,0,0,0,0,
+    2,0,&#x27;Charger&#x27;,&#x27;l&#x27;,0,0,0,
+    2,0,&#x27;Sauver&#x27;,&#x27;s&#x27;,0,0,0,
+    2,0,&#x27;Bla -&gt;&#x27;,0,0,0,0,
+    3,0,&#x27;aaargh&#x27;,&#x27;a&#x27;,0,0,0,
+    3,0,&#x27;hmmm&#x27;,&#x27;h&#x27;,0,0,0,
+    2,0,&#x27;Quitter&#x27;,&#x27;q&#x27;,0,0,0,
+    0,0,0,0,0,0,0]:newmenu,NIL))=NIL THEN Raise(ER_MENUS)
+  IF LayoutMenusA(menu,visual,NIL)=FALSE THEN Raise(ER_MENUS)
+  IF (g:=CreateGadgetA(SCROLLER_KIND,g,
+    [scr.wborleft+20,offy+9,155,22,NIL,NIL,1,0,visual,0]:newgadget,
+    [GTSC_TOP,2,
+     GTSC_VISIBLE,3,
+     GTSC_TOTAL,10,
+     GTSC_ARROWS,22,
+     PGA_FREEDOM,LORIENT_HORIZ,
+     GA_RELVERIFY,TRUE,
+     GA_IMMEDIATE,TRUE,0]))=NIL THEN Raise(ER_GADGET)
+  listv:=[0,0,0,0]; listv[0]:=listv+4; listv[2]:=listv
+  AddTail(listv,[0,0,0,0,&#x27;aaaargh&#x27;]:ln)
+  AddTail(listv,[0,0,0,0,&#x27;hmmmm&#x27;]:ln)
+  IF (g:=CreateGadgetA(LISTVIEW_KIND,g,
+    [scr.wborleft+20,offy+40,155,100,NIL,NIL,2,0,visual,0]:newgadget,
+    [GTLV_SCROLLWIDTH,20,
+     GTLV_LABELS,listv,0]))=NIL THEN Raise(ER_GADGET)
+  IF (wnd:=OpenW(10,15,200,offy+165,$304 OR SCROLLERIDCMP,$E,
+    &#x27;Démo gadtools en E&#x27;,NIL,1,glist))=NIL THEN Raise(ER_WINDOW)
+  IF SetMenuStrip(wnd,menu)=FALSE THEN Raise(ER_MENUS)
+  Gt_RefreshWindow(wnd,NIL)
+ENDPROC
+
+PROC closeinterface()
+  IF wnd THEN ClearMenuStrip(wnd)
+  IF menu THEN FreeMenus(menu)
+  IF visual THEN FreeVisualInfo(visual)
+  IF wnd THEN CloseWindow(wnd)
+  IF glist THEN FreeGadgets(glist)
+  IF scr THEN UnlockPubScreen(NIL,scr)
+  IF gadtoolsbase THEN CloseLibrary(gadtoolsbase)
+ENDPROC
+
+PROC wait4message()
+  DEF mes:PTR TO intuimessage,g:PTR TO gadget
+  REPEAT
+    type:=0
+    IF mes:=Gt_GetIMsg(wnd.userport)
+      type:=mes.class
+      IF type=IDCMP_MENUPICK
+        infos:=mes.code
+      ELSEIF (type=IDCMP_GADGETDOWN) OR (type=IDCMP_GADGETUP)
+        g:=mes.iaddress
+        infos:=g.gadgetid
+      ELSEIF type=IDCMP_REFRESHWINDOW
+        Gt_BeginRefresh(wnd)
+        Gt_EndRefresh(wnd,TRUE)
+        type:=0
+      ELSEIF type&lt;&gt;IDCMP_CLOSEWINDOW
+        type:=0
+      ENDIF
+      Gt_ReplyIMsg(mes)
+    ELSE
+      Wait(-1)
+    ENDIF
+  UNTIL type
+ENDPROC
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

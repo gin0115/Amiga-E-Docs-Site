@@ -1,0 +1,199 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>cd.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-typedmodules.html">TypedModules</a> &rsaquo; cd.e</div><h1>File: <code>cd.e</code></h1><p class="meta">173 lines · project <a href="../examples/pkg-typedmodules.html"><code>TypedModules</code></a></p><p class="pathctx">TypedModules/TypedModulesV40Src/devices/cd.e</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/nodes.html">exec/nodes</a></li></ul></div><h2>Source</h2><pre class="code">OPT MODULE
+OPT EXPORT
+
+MODULE &#x27;exec/nodes&#x27;
+
+CONST CD_RESET=1,
+      CD_READ=2,
+      CD_WRITE=3,
+      CD_UPDATE=4,
+      CD_CLEAR=5,
+      CD_STOP=6,
+      CD_START=7,
+      CD_FLUSH=8,
+      CD_MOTOR=9,
+      CD_SEEK=10,
+      CD_FORMAT=11,
+      CD_REMOVE=12,
+      CD_CHANGENUM=13,
+      CD_CHANGESTATE=14,
+      CD_PROTSTATUS=15,
+      CD_GETDRIVETYPE=18,
+      CD_GETNUMTRACKS=19,
+      CD_ADDCHANGEINT=20,
+      CD_REMCHANGEINT=21,
+      CD_GETGEOMETRY=22,
+      CD_EJECT=23,
+      CD_INFO=32,
+      CD_CONFIG=33,
+      CD_TOCMSF=34,
+      CD_TOCLSN=35,
+      CD_READXL=36,
+      CD_PLAYTRACK=37,
+      CD_PLAYMSF=38,
+      CD_PLAYLSN=39,
+      CD_PAUSE=40,
+      CD_SEARCH=41,
+      CD_QCODEMSF=42,
+      CD_QCODELSN=43,
+      CD_ATTENUATE=44,
+      CD_ADDFRAMEINT=45,
+      CD_REMFRAMEINT=46,
+      CDERR_OPENFAIL=-1,
+      CDERR_ABORTED=-2,
+      CDERR_NOCMD=-3,
+      CDERR_BADLENGTH=-4,
+      CDERR_BADADDRESS=-5,
+      CDERR_UNITBUSY=-6,
+      CDERR_SELFTEST=-7,
+      CDERR_NOTSPECIFIED=20,
+      CDERR_NOSECHDR=21,
+      CDERR_BADSECPREAMBLE=22,
+      CDERR_BADSECID=23,
+      CDERR_BADHDRSUM=24,
+      CDERR_BADSECSUM=25,
+      CDERR_TOOFEWSECS=26,
+      CDERR_BADSECHDR=27,
+      CDERR_WRITEPROT=28,
+      CDERR_NODISK=29,
+      CDERR_SEEKERROR=30,
+      CDERR_NOMEM=31,
+      CDERR_BADUNITNUM=32,
+      CDERR_BADDRIVETYPE=33,
+      CDERR_DRIVEINUSE=34,
+      CDERR_POSTRESET=35,
+      CDERR_BADDATATYPE=36,
+      CDERR_INVALIDSTATE=37,
+      CDERR_PHASE=42,
+      CDERR_NOBOARD=50,
+      TAGCD_PLAYSPEED=1,
+      TAGCD_READSPEED=2,
+      TAGCD_READXLSPEED=3,
+      TAGCD_SECTORSIZE=4,
+      TAGCD_XLECC=5,
+      TAGCD_EJECTRESET=6
+
+OBJECT cdinfo
+  playspeed:INT  -&gt; This is unsigned
+  readspeed:INT  -&gt; This is unsigned
+  readxlspeed:INT  -&gt; This is unsigned
+  sectorsize:INT  -&gt; This is unsigned
+  xlecc:INT  -&gt; This is unsigned
+  ejectreset:INT  -&gt; This is unsigned
+  reserved1[4]:ARRAY OF INT  -&gt; Array is unsigned
+  maxspeed:INT  -&gt; This is unsigned
+  audioprecision:INT  -&gt; This is unsigned
+  status:INT  -&gt; This is unsigned
+  reserved2[4]:ARRAY OF INT  -&gt; Array is unsigned
+ENDOBJECT
+
+CONST CDSTSB_CLOSED=0,
+      CDSTSB_DISK=1,
+      CDSTSB_SPIN=2,
+      CDSTSB_TOC=3,
+      CDSTSB_CDROM=4,
+      CDSTSB_PLAYING=5,
+      CDSTSB_PAUSED=6,
+      CDSTSB_SEARCH=7,
+      CDSTSB_DIRECTION=8,
+      CDSTSF_CLOSED=1,
+      CDSTSF_DISK=2,
+      CDSTSF_SPIN=4,
+      CDSTSF_TOC=8,
+      CDSTSF_CDROM=$10,
+      CDSTSF_PLAYING=$20,
+      CDSTSF_PAUSED=$40,
+      CDSTSF_SEARCH=$80,
+      CDSTSF_DIRECTION=$100,
+      CDMODE_NORMAL=0,
+      CDMODE_FFWD=1,
+      CDMODE_FREV=2
+
+OBJECT rmsf
+  reserved:CHAR
+  minute:CHAR
+  second:CHAR
+  frame:CHAR
+ENDOBJECT
+
+OBJECT lsnmsf
+-&gt; a) next is unioned with &quot;lsn:LONG&quot;
+  msf:rmsf
+ENDOBJECT
+
+OBJECT cdxl
+  node:mln
+  buffer:PTR TO CHAR
+  length:LONG
+  actual:LONG
+  intdata:LONG
+  intcode:LONG
+ENDOBJECT
+
+OBJECT tocsummary
+  firsttrack:CHAR
+  lasttrack:CHAR
+  leadout:lsnmsf
+ENDOBJECT
+
+OBJECT tocentry
+  ctladr:CHAR
+  track:CHAR
+  position:lsnmsf
+ENDOBJECT
+
+OBJECT cdtoc
+-&gt; a) next is unioned with &quot;summary:tocsummary&quot;
+  entry:tocentry
+ENDOBJECT
+
+OBJECT qcode
+  ctladr:CHAR
+  track:CHAR
+  index:CHAR
+  zero:CHAR
+  trackposition:lsnmsf
+  diskposition:lsnmsf
+ENDOBJECT
+
+CONST CTLADR_CTLMASK=$F0,
+      CTL_CTLMASK=$D0,
+      CTL_2AUD=0,
+      CTL_2AUDEMPH=$10,
+      CTL_4AUD=$80,
+      CTL_4AUDEMPH=$90,
+      CTL_DATA=$40,
+      CTL_COPYMASK=$20,
+      CTL_COPY=$20,
+      CTLADR_ADRMASK=$F,
+      ADR_POSITION=1,
+      ADR_UPC=2,
+      ADR_ISRC=3,
+      ADR_HYBRID=5
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

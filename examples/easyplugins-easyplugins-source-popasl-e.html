@@ -1,0 +1,394 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>popasl.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-easyplugins.html">EasyPLUGINs</a> &rsaquo; popasl.e</div><h1>File: <code>popasl.e</code></h1><p class="meta">368 lines · project <a href="../examples/pkg-easyplugins.html"><code>EasyPLUGINs</code></a></p><p class="pathctx">EasyPLUGINs/EasyPLUGINs/source/popasl.e</p><p class="prose">** ** <a href="../modules/popasl.html">popasl</a> <a href="../modules/easygui.html#const-plugin">PLUGIN</a> ** ** Copyright: Ralph Wermke of Digital Innovations ** EMail : wermke@gryps1.rz.uni-greifswald.de ** WWW : http://di.home.pages.de ** ** Version : 1.2 ** Date : 10-Feb-1998 ** ** ProgramID: 0007 ** ** History: ** 10-Nov-1997: [1.0] ** - initial release ** 15-Nov-1997: [1.0.1] **</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/easygui.html">tools/easygui</a></li></ul></div><h2>Source</h2><pre class="code">/*
+**
+** popasl PLUGIN
+**
+** Copyright: Ralph Wermke of Digital Innovations
+** EMail    : wermke@gryps1.rz.uni-greifswald.de
+** WWW      : http://di.home.pages.de
+**
+** Version  : 1.2
+** Date     : 10-Feb-1998
+**
+** ProgramID: 0007
+**
+** History:
+**    10-Nov-1997:      [1.0]
+**       - initial release
+**    15-Nov-1997:      [1.0.1]
+**       - object name changed to popasl_plugin
+**    15-Dec-1997:      [1.1]
+**       - two new tags added
+**         PLA_PopAsl_ButtonOnRight    [I..]
+**         PLA_PopAsl_NoFontExtension  [I..]
+**    10-Feb-1998:      [1.2]
+**       - two new tags added
+**         PLA_PopAsl_UserData         [ISG]
+**         PLA_PopAsl_Title            [IS.]
+**
+*/
+
+OPT OSVERSION=38
+OPT PREPROCESS
+OPT MODULE
+
+MODULE &#x27;tools/easygui&#x27;,&#x27;tools/textlen&#x27;,
+       &#x27;graphics/text&#x27;,
+       &#x27;intuition/intuition&#x27;,&#x27;intuition/gadgetclass&#x27;,
+       &#x27;utility/tagitem&#x27;,&#x27;utility&#x27;,
+       &#x27;gadtools&#x27;,
+       &#x27;libraries/gadtools&#x27;,&#x27;libraries/asl&#x27;,
+       &#x27;asl&#x27;
+
+EXPORT OBJECT popasl_plugin OF plugin PRIVATE
+   string      : PTR TO LONG
+   type
+   disabled
+
+   gad_str     : PTR TO gadget
+   gad_bt      : PTR TO gadget
+   id_str
+   id_bt
+   bt_width
+   bt_text     : PTR TO CHAR
+   buttonright
+   noext
+   imsg        : PTR TO intuimessage
+
+   ta          : PTR TO textattr
+
+   title       :PTR TO CHAR
+   userdata
+
+ENDOBJECT
+
+-&gt; TAG_USER  | PROG_ID&lt;&lt;16 | TAG_VALUE
+-&gt; $80000000 |   $0007&lt;&lt;16 | 0...
+
+EXPORT ENUM PLA_PopAsl_Disabled=$80070001,
+            PLA_PopAsl_Contents,
+            PLA_PopAsl_GadgetID,
+            PLA_PopAsl_ButtonText,
+            PLA_PopAsl_Type,
+            PLA_PopAsl_ButtonOnRight,
+            PLA_PopAsl_NoFontExtension,
+            PLA_PopAsl_Title,
+            PLA_PopAsl_UserData
+
+EXPORT ENUM PLV_PopAsl_Type_Drawer=0,
+            PLV_PopAsl_Type_File,
+            PLV_PopAsl_Type_Font
+-&gt;     ,PLV_PopAsl_Type_Screen
+
+
+-&gt;-- Constructor/ Destructor ---------------------------------
+
+-&gt;&gt;&gt; popasl::popasl (Constructor)
+PROC popasl(tags=NIL:PTR TO tagitem) OF popasl_plugin
+DEF x, s:PTR TO CHAR, title:PTR TO CHAR, type
+
+   IF utilitybase:=OpenLibrary(&#x27;utility.library&#x27;, 37)
+      self.disabled     :=GetTagData(PLA_PopAsl_Disabled, FALSE, tags)
+
+      s                 :=GetTagData(PLA_PopAsl_Contents, &#x27;&#x27;, tags)
+      self.string       :=String(StrLen(s)+1); StrCopy(self.string, s)
+
+      self.id_bt        :=GetTagData(PLA_PopAsl_GadgetID, And(Shr(self,4),$FFFF), tags)
+      self.type         :=GetTagData(PLA_PopAsl_Type, PLV_PopAsl_Type_Drawer, tags)
+      self.bt_text      :=GetTagData(PLA_PopAsl_ButtonText, NIL, tags)
+      self.buttonright  :=GetTagData(PLA_PopAsl_ButtonOnRight, FALSE, tags)
+      self.noext        :=GetTagData(PLA_PopAsl_NoFontExtension, FALSE, tags)
+
+      type:=self.type
+
+      SELECT type
+
+        CASE PLV_PopAsl_Type_Drawer;    title:=&#x27;Select Drawer&#x27;
+        CASE PLV_PopAsl_Type_File;      title:=&#x27;Select File&#x27;
+        CASE PLV_PopAsl_Type_Font;      title:=&#x27;Select Font&#x27;
+
+      ENDSELECT
+
+      self.title        :=GetTagData(PLA_PopAsl_Title, title, tags)
+      self.userdata     :=GetTagData(PLA_PopAsl_UserData, NIL, tags)
+
+      IF (self.bt_text=NIL)
+         x:=self.type
+         SELECT x
+            CASE PLV_PopAsl_Type_Drawer
+               self.bt_text:=&#x27;Path...&#x27;
+            CASE PLV_PopAsl_Type_File
+               self.bt_text:=&#x27;File...&#x27;
+            CASE PLV_PopAsl_Type_Font
+               self.bt_text:=&#x27;Font...&#x27;
+-&gt;            CASE PLV_PopAsl_Type_Screen
+-&gt;               self.bt_text:=&#x27;Screen...&#x27;
+            DEFAULT
+               Raise(&quot;TYPE&quot;)
+         ENDSELECT
+      ENDIF
+
+      self.id_str:=self.id_bt+1
+
+      CloseLibrary(utilitybase)
+   ELSE
+      Raise(&quot;util&quot;)
+   ENDIF
+
+ENDPROC
+-&gt;&lt;&lt;
+
+-&gt;&gt;&gt; popasl::end (Destructor)
+PROC end() OF popasl_plugin
+   IF self.string THEN DisposeLink(self.string)
+ENDPROC
+-&gt;&lt;&lt;
+
+-&gt;-- overridden methods --------------------------------------
+
+-&gt;&gt;&gt; popasl::will_resize
+PROC will_resize() OF popasl_plugin IS RESIZEX
+-&gt;&lt;&lt;
+
+-&gt;&gt;&gt; popasl::min_size
+PROC min_size(ta:PTR TO textattr, fh) OF popasl_plugin
+   self.bt_width:=textlen(self.bt_text,ta)+8
+ENDPROC (self.bt_width+(fh*8)),(fh+6)
+-&gt;&lt;&lt;
+
+-&gt;&gt;&gt; popasl::gtrender
+PROC gtrender(gl, vis, ta:PTR TO textattr, x, y, xs, ys, win:PTR TO window) OF popasl_plugin
+DEF ng_bt, ng_str
+
+   IF self.buttonright
+      ng_bt :=[x+xs-self.bt_width+1, y, self.bt_width, ys, self.bt_text, ta, self.id_bt, 0, vis, 0]:newgadget
+      ng_str:=[x, y, xs-self.bt_width, ys, NIL, ta, self.id_str, 0, vis, 0]:newgadget
+   ELSE
+      ng_bt :=[x, y, self.bt_width, ys, self.bt_text, ta, self.id_bt, 0, vis, 0]:newgadget
+      ng_str:=[x+self.bt_width+1, y, xs-self.bt_width, ys, NIL, ta, self.id_str, 0, vis, 0]:newgadget
+   ENDIF
+
+   self.gad_bt:=CreateGadgetA(BUTTON_KIND, gl,
+                              ng_bt,
+                              [GA_DISABLED, self.disabled, TAG_DONE])
+
+   self.gad_str:=CreateGadgetA(STRING_KIND, self.gad_bt,
+                               ng_str,
+                               [GA_DISABLED, self.disabled,
+                                GTST_MAXCHARS, 350,
+                                GTST_STRING, self.string,
+                                TAG_DONE])
+ENDPROC self.gad_str
+-&gt;&lt;&lt;
+
+-&gt;&gt;&gt; popasl::clear_render
+PROC clear_render(win:PTR TO window) OF popasl_plugin
+
+    DEF buffer:REG
+
+    buffer:=self.gad_str.specialinfo::stringinfo.buffer
+
+    IF self.string THEN DisposeLink(self.string)
+
+    self.string:=String(StrLen(buffer)+1)
+
+    StrCopy(self.string, buffer)
+
+ENDPROC
+-&gt;&lt;&lt;
+
+-&gt;&gt;&gt; popasl::message_test
+PROC message_test(imsg:PTR TO intuimessage, win:PTR TO window) OF popasl_plugin
+
+   self.imsg:=0
+   IF imsg.class=IDCMP_GADGETUP
+      IF (imsg.iaddress=self.gad_bt) OR (imsg.iaddress=self.gad_str)
+         self.imsg:=imsg
+         RETURN TRUE
+      ENDIF
+   ENDIF
+
+ENDPROC FALSE
+-&gt;&lt;&lt;
+
+-&gt;&gt;&gt; popasl::message_action
+PROC message_action(class, qual, code, win:PTR TO window) OF popasl_plugin
+DEF filereq:PTR TO filerequester, fontreq:PTR TO fontrequester,
+    res, len, buffer:REG, tags, x, s1=NIL:PTR TO CHAR, reqtype,
+    s=NIL:PTR TO CHAR
+
+   IF self.imsg
+      buffer:=self.gad_str.specialinfo::stringinfo.buffer
+      IF self.imsg.iaddress=self.gad_bt
+         IF (aslbase:=OpenLibrary(&#x27;asl.library&#x27;, 38))
+            self.set(PLA_PopAsl_Disabled, TRUE)
+            x:=self.type
+            SELECT x
+               CASE PLV_PopAsl_Type_Drawer
+                  reqtype:=ASL_FILEREQUEST
+                  tags:=[ASLFR_WINDOW, win,
+                         ASLFR_SLEEPWINDOW, TRUE,
+                         ASLFR_TITLETEXT, self.title,
+                         ASLFR_INITIALDRAWER, buffer,
+                         ASLFR_DRAWERSONLY, TRUE,
+                         TAG_DONE]
+               CASE PLV_PopAsl_Type_File
+                  reqtype:=ASL_FILEREQUEST
+                  s1:=PathPart(buffer)-1
+                  s1:=String(len:=(s1-buffer)+2)
+                  StrCopy(s1, buffer, len-1)
+                  tags:=[ASLFR_WINDOW, win,
+                         ASLFR_SLEEPWINDOW, TRUE,
+                         ASLFR_TITLETEXT, self.title,
+                         ASLFR_INITIALFILE, FilePart(buffer),
+                         ASLFR_INITIALDRAWER, s1,
+                         TAG_DONE]
+               CASE PLV_PopAsl_Type_Font
+                  reqtype:=ASL_FONTREQUEST
+                  s1:=PathPart(buffer)
+                  len:=s1-buffer
+                  IF len  -&gt; name/size
+                     s1:=String(len)
+                     StrCopy(s1, buffer,len)
+                  ELSE    -&gt; name
+                     s1:=String(StrLen(buffer)+2)
+                     StrCopy(s1, buffer)
+                  ENDIF
+                  x:=Val(FilePart(buffer), {len})
+                  tags:=[ASLFO_WINDOW, win,
+                         ASLFO_SLEEPWINDOW, TRUE,
+                         ASLFO_TITLETEXT, self.title,
+                         ASLFO_INITIALNAME, s1,
+                         ASLFO_INITIALSIZE, IF len&gt;0 THEN x ELSE 8,
+                         TAG_DONE]
+            ENDSELECT
+            IF (filereq:=AllocAslRequest(reqtype, NIL))
+               res:=AslRequest(filereq, tags)
+
+               IF res
+                  IF self.string THEN DisposeLink(self.string)
+
+                  x:=self.type
+                  SELECT x
+                     CASE PLV_PopAsl_Type_Drawer
+                        self.string:=String(StrLen(filereq.drawer)+1)
+                        StrCopy(self.string, filereq.drawer)
+                     CASE PLV_PopAsl_Type_File
+                        self.string:=String(len:=(StrLen(filereq.drawer)+StrLen(filereq.file)+2))
+                        StrCopy(self.string, filereq.drawer)
+                        AddPart(self.string, filereq.file, len)
+                        SetStr(self.string, StrLen(self.string))
+                     CASE PLV_PopAsl_Type_Font
+                        fontreq:=filereq
+                        s:=fontreq.attr::textattr.name
+                        self.string:=String(StrLen(s)+1+6)
+                        IF self.noext
+                           len:=InStr(s,&#x27;.font&#x27;)
+                           IF len&lt;&gt;-1 THEN s[len]:=0
+                        ENDIF
+                        StringF(self.string, &#x27;\s/\d&#x27;, s,fontreq.attr::textattr.ysize)
+                        IF self.noext THEN s[len]:=&quot;.&quot;
+                  ENDSELECT
+
+                  Gt_SetGadgetAttrsA(self.gad_str,self.gh.wnd,NIL,[GTST_STRING,self.string,TAG_DONE])
+               ENDIF
+               FreeAslRequest(filereq)
+            ELSE
+               Raise(&quot;AREQ&quot;)
+            ENDIF
+            self.set(PLA_PopAsl_Disabled, FALSE)
+            CloseLibrary(aslbase)
+         ELSE
+            Raise(&quot;ASL&quot;)
+         ENDIF
+         IF s1 THEN DisposeLink(s1)
+         -&gt; don&#x27;t call action function on cancel
+         IF res=0 THEN RETURN FALSE
+      ELSE
+         IF self.imsg.iaddress=self.gad_str
+-&gt;            IF code=9
+-&gt;            ELSE
+               IF self.string THEN DisposeLink(self.string)
+               self.string:=String(StrLen(buffer)+1)
+               StrCopy(self.string, buffer)
+-&gt;            ENDIF
+         ENDIF
+      ENDIF
+   ENDIF
+
+ENDPROC TRUE
+-&gt;&lt;&lt;
+
+-&gt;-- new methods ---------------------------------------------
+
+-&gt;&gt;&gt; popasl::set
+PROC set(attr, value) OF popasl_plugin
+DEF x
+
+   SELECT attr
+      CASE PLA_PopAsl_Disabled
+         self.disabled:=value
+         Gt_SetGadgetAttrsA(self.gad_bt,self.gh.wnd,NIL,[GA_DISABLED,self.disabled,TAG_DONE])
+         Gt_SetGadgetAttrsA(self.gad_str,self.gh.wnd,NIL,[GA_DISABLED,self.disabled,TAG_DONE])
+      CASE PLA_PopAsl_Contents
+         IF value
+            IF self.string THEN DisposeLink(self.string)
+            self.string:=String(StrLen(value)+1)
+            StrCopy(self.string, value)
+            Gt_SetGadgetAttrsA(self.gad_str,self.gh.wnd,NIL,[GTST_STRING,self.string,TAG_DONE])
+         ENDIF
+      CASE PLA_PopAsl_Title
+        IF value THEN self.title:=value ELSE self.title:=&#x27;&#x27;
+      CASE PLA_PopAsl_UserData
+         self.userdata:=value
+   ENDSELECT
+
+ENDPROC
+-&gt;&lt;&lt;
+
+-&gt;&gt;&gt; popasl::get
+PROC get(attr) OF popasl_plugin
+
+   SELECT attr
+      CASE PLA_PopAsl_UserData
+         RETURN self.userdata, TRUE
+      CASE PLA_PopAsl_Contents
+         self.clear_render(NIL)      -&gt; copy input buffer to self.string
+         RETURN self.string, TRUE
+      CASE PLA_PopAsl_Disabled
+         RETURN self.disabled, TRUE
+   ENDSELECT
+
+ENDPROC -1, FALSE
+-&gt;&lt;&lt;
+
+
+
+
+
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

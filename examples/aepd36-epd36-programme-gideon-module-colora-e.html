@@ -1,0 +1,225 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Colora.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-aepd36.html">AEPD36</a> &rsaquo; Colora.e</div><h1>File: <code>Colora.e</code></h1><p class="meta">199 lines · project <a href="../examples/pkg-aepd36.html"><code>AEPD36</code></a></p><p class="pathctx">AEPD36/EPD36/Programme/gideon/Module/Colora.e</p><p class="prose">-- ------------------------------------------------------------ -- * * -- Modul......: Farben -- * * -- Autor......: Daniel Kasmeroglu (Gideon) -- * * -- Version....: 2.0 -- * * -- ------------------------------------------------------------ --</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/view.html">graphics/view</a></li></ul></div><h2>Source</h2><pre class="code">/* -- ------------------------------------------------------------ -- *
+ * -- Modul......: Farben                                          -- *
+ * -- Autor......: Daniel Kasmeroglu (Gideon)                      -- * 
+ * -- Version....: 2.0                                             -- *
+ * -- ------------------------------------------------------------ -- */
+
+OPT MODULE
+
+MODULE &#x27;graphics/view&#x27;,
+       &#x27;intuition/screens&#x27;,
+       &#x27;exec/memory&#x27;
+
+
+EXPORT CONST COL_ZYKLUS = 1,   -&gt; die ganze Farbpalette
+             COL_FARBE  = 2    -&gt; nur eine Farbe
+
+
+EXPORT OBJECT colora PRIVATE
+  viewport : PTR TO viewport   -&gt; Zeiger auf den Viewport eines Screens
+  alte     : PTR TO INT        -&gt; Liste um alte Farbwerte zu speichern
+  laenge   : INT               -&gt; Speicherbedarf festhalten
+  anzahl   : CHAR              -&gt; Anzahl der Farben
+  allo     : CHAR              -&gt; Schutzflag
+ENDOBJECT
+
+
+-&gt; -- ---------------------------------------------------------------
+-&gt; -- Konstruktor:
+
+PROC col_InitColora(col_screen:PTR TO screen) OF colora
+DEF col_drinfo : PTR TO drawinfo
+DEF col_num
+
+  -&gt; erst einmal in Erfahrung bringen wieviel Farben der Screen hat
+  col_drinfo      := GetScreenDrawInfo(col_screen)
+  col_num         := col_drinfo.depth
+  FreeScreenDrawInfo(col_screen,col_drinfo)
+
+  -&gt; maximal 32 Farben (werde die Farbzahl später erweiteren)
+  SELECT col_num
+    CASE 1   ; self.anzahl := 2
+    CASE 2   ; self.anzahl := 4
+    CASE 3   ; self.anzahl := 8
+    CASE 4   ; self.anzahl := 16
+    CASE 5   ; self.anzahl := 32
+  ENDSELECT
+
+  self.laenge     := self.anzahl * 2
+  self.viewport   := col_screen.viewport
+
+  -&gt; Speicher beschaffen
+  self.alte       := AllocMem(self.laenge,MEMF_PUBLIC)
+  IF self.alte &lt;&gt; NIL 
+    self.allo := TRUE 
+    CopyMemQuick(self.viewport.colormap.colortable,self.alte,self.laenge)
+  ELSE 
+    self.allo := FALSE
+  ENDIF
+
+ENDPROC
+
+
+-&gt; -- ---------------------------------------------------------------
+-&gt; -- Boolesche Methode:
+
+-&gt; existiert eine Liste der alten Farbwerte
+PROC col_ColoraExist() OF colora IS self.allo = 255 -&gt; = TRUE für CHARs
+
+
+-&gt; -- ---------------------------------------------------------------
+-&gt; -- Methode zur Freigabe des Speichers:
+
+PROC col_FreeColora() OF colora
+
+  -&gt; wenn Liste existiert, alles Löschen
+  IF self.col_ColoraExist() = TRUE
+    FreeMem(self.alte,self.laenge)
+    self.allo := FALSE
+  ENDIF
+
+ENDPROC
+
+
+-&gt; -- ---------------------------------------------------------------
+-&gt; -- Methode zur Wiederherstellung der alten Palette:
+
+PROC col_Restore() OF colora
+
+  -&gt; hiermit kann man die alten Farben des Screens wiederherstellen,
+  -&gt; sofern vom Programmierer erwünscht
+  IF self.col_ColoraExist() = TRUE
+    LoadRGB4(self.viewport,self.alte,self.anzahl)
+  ENDIF
+
+ENDPROC
+
+
+-&gt; -- ---------------------------------------------------------------
+-&gt; -- Methoden zur Rotation der Farben:
+
+PROC col_ShiftOne() OF colora
+
+-&gt; Scheiße, ich will endlich Methoden verstecken können
+-&gt; Diese Methode ist nur eine Hilfsprozedur
+
+DEF col_ptr : PTR TO INT
+DEF col_col
+
+  -&gt; Tabellen-Zeiger [muß man nicht benutzen]
+  col_ptr   := self.viewport.colormap.colortable
+
+  -&gt; 1. Farbwert speichern
+  col_col   := col_ptr[0]
+
+  -&gt; alle nachfolgenden Farbwerte um ein Feld zurückkopieren
+  -&gt; ACHTUNG: CopyMemQuick funktioniert hier nicht [Mod(x,4)=0 :-2]
+  CopyMem(col_ptr+2,col_ptr,self.laenge-2)
+
+  -&gt; Letzter Eintrag erhält den &quot;ehemaligen&quot; ersten Farbwert
+  col_ptr[self.anzahl-1] := col_col
+
+  -&gt; Farben aktualisieren
+  LoadRGB4(self.viewport,col_ptr,self.anzahl)
+
+ENDPROC
+
+
+PROC col_Shift(anz,mod=COL_ZYKLUS,delay=0) OF colora
+-&gt; Das ist das Zentrum allen Übels ;-)
+
+DEF col_lauf1,col_lauf2
+
+  -&gt; muß natürlich existieren
+  IF self.col_ColoraExist() = FALSE THEN RETURN FALSE
+
+
+  IF mod = COL_FARBE
+
+    -&gt; nur &lt;anz&gt; Farben verschieben
+    FOR col_lauf1 := 1 TO anz
+      self.col_ShiftOne()
+      Delay(delay)
+    ENDFOR
+
+  ELSE
+
+    -&gt; &lt;anz&gt; Zyklen durchlaufen
+    FOR col_lauf1 := 1 TO anz
+
+      -&gt; ein Zyklus = alle Farben
+      FOR col_lauf2 := 1 TO self.anzahl
+        self.col_ShiftOne()
+        Delay(delay)
+      ENDFOR
+
+    ENDFOR
+
+  ENDIF
+
+ENDPROC
+
+
+-&gt; -- ---------------------------------------------------------------
+-&gt; -- Methode zum Setzen von Farben:
+
+PROC col_SetCols(fun_r:PTR TO LONG,fun_g:PTR TO LONG,fun_b:PTR TO LONG) OF colora
+
+-&gt; Mit dieser Methode kann man Farben berechnen lassen.
+-&gt; Einfach Formeln mit den Indices übergeben.
+
+DEF col_ptr : PTR TO INT
+DEF col_wert,col_lauf,col_ende
+
+  -&gt; ohne Palettenkopie geht hier gar nichts
+  IF self.col_ColoraExist() = FALSE THEN RETURN
+
+  col_ptr  := self.viewport.colormap.colortable
+  col_ende := self.anzahl-1
+
+  FOR col_lauf := 0 TO col_ende
+    -&gt; Berechnung des Farbwerts
+    col_wert := (fun_r(col_lauf)*256) + (fun_g(col_lauf)*16) + fun_b(col_lauf)
+    col_ptr[col_lauf] := col_wert
+  ENDFOR
+  LoadRGB4(self.viewport,col_ptr,self.anzahl)
+
+ENDPROC
+
+
+-&gt; -- ---------------------------------------------------------------
+-&gt; -- Destruktor:
+
+PROC end() OF colora                 -&gt; Destructor
+  self.col_FreeColora()
+ENDPROC
+
+
+CHAR &#x27;$VER: Colora.M (E-Modul) v2.0 (c) Copyrights by Daniel Kasmeroglu&#x27;,0
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

@@ -1,0 +1,657 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>AmigaE-GUI.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-amigae-gui.html">AmigaE-Gui</a> &rsaquo; AmigaE-GUI.e</div><h1>File: <code>AmigaE-GUI.e</code></h1><p class="meta">631 lines · project <a href="../examples/pkg-amigae-gui.html"><code>AmigaE-Gui</code></a></p><p class="pathctx">AmigaE-Gui/AmigaE-GUI.e</p><p class="prose">************************************************************************ :Programm. AmigaE-GUI.e :Description. Gui for AmigaE :Autor. Friedhelm Bunk :EC-Version. EC3.1 :OS. &gt; 2.0 :PRG-Version. 2.122 ************************************************************************</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/gadtools.html">gadtools</a></li></ul></div><h2>Source</h2><pre class="code">/*************************************************************************
+
+:Programm.      AmigaE-GUI.e
+:Description.   Gui for AmigaE
+
+:Autor.         Friedhelm Bunk
+:EC-Version.     EC3.1    
+:OS.            &gt; 2.0 
+:PRG-Version.   2.122
+
+
+*************************************************************************/
+
+
+OPT OSVERSION=37
+
+MODULE &#x27;gadtools&#x27;,&#x27;libraries/gadtools&#x27;,&#x27;intuition/intuition&#x27;,&#x27;amigaguide&#x27;,
+       &#x27;libraries/amigaguide&#x27;,&#x27;intuition/screens&#x27;, &#x27;intuition/gadgetclass&#x27;,
+       &#x27;graphics/text&#x27;,&#x27;dos/datetime&#x27;,&#x27;utility/date&#x27;,&#x27;dos/dos&#x27;,&#x27;Asl&#x27;,
+       &#x27;libraries/Asl&#x27;,&#x27;dos/dostags&#x27;,&#x27;workbench/startup&#x27;,&#x27;icon&#x27;,
+       &#x27;workbench/workbench&#x27;,&#x27;intuition/icclass&#x27;,&#x27;intuition/imageclass&#x27;,
+       &#x27;other/testcpu&#x27;,&#x27;exec/memory&#x27;
+
+
+OBJECT makes
+s             
+ENDOBJECT
+
+ENUM NONE,NOCONTEXT,NOGADGET,NOWB,NOVISUAL,OPENGT,NOWINDOW,NOMENUS,OPENASL,
+     OPENIC,OPENGUIDE,OPENGTX,NOFILEI,NOBUFFER
+DEF	wnd:PTR TO window,wnd1:PTR TO window,scr:PTR TO screen,mymess,
+	project0glist,project1glist,starts[255]:STRING,mysys[120]:STRING,
+	zeiger[10]:ARRAY OF LONG,visual=NIL,zu,myrast,mysave,
+	bn[24]:ARRAY OF makes,ioi[255]:STRING,menu,mytime,myrexx,
+        y,type,infos,offx,offy,tattr,fh,mpx,altstd,mycon,auszahl,myImage:image,
+        my2mage:image
+
+
+PROC copyImageToChip( data, intsize)
+  DEF size, mem
+  size:=intsize * SIZEOF INT
+  mem:=NewM(size, MEMF_CHIP)
+  CopyMemQuick(data, mem, size)
+ENDPROC mem
+
+
+PROC main()
+FOR y:=0 TO 25
+  bn[y].s:=String(250)
+ENDFOR 
+
+VOID &#x27;$VER:AmigaE-GUI © F.Bunk  V2.122  (09.02.1998)&#x27; 
+  mpx:=1
+  lade()
+  mpx:=Val(bn[17].s,NIL)
+myImage:=[0, 0, 23, 14, 2, copyImageToChip({imagedata2},(3*8+4)*2), %0011, 0, NIL]:image
+my2mage:=[0, 0, 23, 14, 2, copyImageToChip({imagedata1},(3*8+4)*2), %0011, 0, NIL]:image
+zu:=TRUE
+systeminfo()
+StringF(mysys,&#x27;\s         \s\nKickstart \d.\d    Workbench \d.\d&#x27;,mycpu,myfpu,myver,myrev,mywbv,mywbr)
+StringF(bn[23].s,&#x27;AmigaE-GUI V 2.122 (09.02.1998 )\n © F.Bunk 1996-98\n Uses Images. Thanks Daniel\n\s&#x27;,mysys)
+IF reporterr(setupscreen())=0
+   reporterr(openproject0window())
+   SetTopaz(8)   
+   Colour(1,0)
+   mytime:=1
+   mydate()
+   mytime:=Val(bn[10].s,NIL)   
+   TextF(378,offy+11,&#x27; OPTIONS&#x27;)
+   tooltype() 
+ mymess:=wnd 
+TextF(offx+367,offy+45,&#x27;System Information:&#x27;)
+TextF(offx+333,offy+55,&#x27;\s         \s&#x27;,mycpu,myfpu)
+TextF(offx+307,offy+65,&#x27;Kickstart \d.\d    Workbench \d.\d&#x27;,myver,myrev,mywbv,mywbr)
+ REPEAT
+   mydate()
+   wait4message(mymess)
+   UNTIL type=IDCMP_CLOSEWINDOW
+    IF mysave=1 THEN speicher()
+    makeclosewn(wnd)
+    stdout:=altstd
+    Close(mycon)  
+    closeproject0window()
+   ENDIF
+ENDPROC
+
+
+PROC setupscreen()
+  IF (iconbase:=OpenLibrary(&#x27;icon.library&#x27;,37))=NIL THEN RETURN OPENIC
+  IF (gadtoolsbase:=OpenLibrary(&#x27;gadtools.library&#x27;,37))=NIL THEN RETURN OPENGT
+  IF (aslbase:=OpenLibrary(&#x27;asl.library&#x27;,37))=NIL THEN RETURN OPENASL 
+  IF (amigaguidebase:=OpenLibrary(&#x27;amigaguide.library&#x27;,33))=NIL THEN RETURN OPENGUIDE 
+  IF (scr:=LockPubScreen(&#x27;Workbench&#x27;))=NIL THEN RETURN NOWB
+  IF (visual:=GetVisualInfoA(scr,NIL))=NIL THEN RETURN NOVISUAL
+  offy:=scr.wbortop+Int(scr.rastport+58)+1
+  offx:=scr.wborleft
+  tattr:=[&#x27;topaz.font&#x27;,8,0,0]:textattr
+ENDPROC
+
+
+PROC openproject0window()
+  DEF g:PTR TO gadget
+  IF (g:=CreateContext({project0glist}))=NIL THEN RETURN NOCONTEXT
+  IF (menu:=CreateMenusA([1,0,&#x27;Project&#x27;,0,0,0,0,
+    2,0,&#x27;Save ENVARC:&#x27;,&#x27;s&#x27;,$0,0,0,
+    2,0,&#x27;About..&#x27;,&#x27;l&#x27;,$0,0,0,
+    2,0,&#x27;Quit&#x27;,&#x27;q&#x27;,$0,0,0,
+    1,0,&#x27;Work&#x27;,0,$0,0,0,
+    2,0,&#x27;Editor&#x27;,&#x27;e&#x27;,$0,0,0,
+    2,0,&#x27;EC&#x27;,&#x27;c&#x27;,$0,0,0,
+    2,0,&#x27;Run&#x27;,&#x27;r&#x27;,$0,0,0,
+    2,0,&#x27;DeBug&#x27;,&#x27;d&#x27;,$0,0,0,
+    2,0,&#x27;AProf&#x27;,&#x27;p&#x27;,$0,0,0,
+    2,0,&#x27;FlushC&#x27;,&#x27;f&#x27;,$0,0,0,
+    2,0,&#x27;HELP&#x27;,&#x27;h&#x27;,$0,0,0,
+    1,0,&#x27;REXX&#x27;,0,$0,0,0,
+    2,0,&#x27;Rexx Command&#x27;,&#x27;x&#x27;,$0,0,0,
+         0,0,0,0,0,0,0]:newmenu,NIL))=NIL THEN RETURN NOMENUS
+  IF LayoutMenusA(menu,visual,NIL)=FALSE THEN RETURN NOMENUS
+  IF (g:=CreateGadgetA(STRING_KIND,g,
+    [offx+31,offy+87,214,14,&#x27;Source&#x27;,tattr,3,4,visual,0]:newgadget,
+    [GTST_STRING,bn[3].s,
+     GTST_MAXCHARS,250,
+     NIL]))=NIL THEN RETURN NOGADGET
+   zeiger[3]:=g
+ IF (g:=CreateGadgetA(STRING_KIND,g,
+    [offx+278,offy+87,232,14,&#x27;Program&#x27;,tattr,4,4,visual,0]:newgadget,
+    [GTST_STRING,bn[4].s,
+     GTST_MAXCHARS,250,
+     NIL]))=NIL THEN RETURN NOGADGET
+   zeiger[4]:=g
+ IF (g:=CreateGadgetA(STRING_KIND,g,
+    [offx+325,offy+14,195,14,&#x27;EC&#x27;,tattr,21,1,visual,0]:newgadget,
+    [GTST_STRING,bn[15].s,
+     GTST_MAXCHARS,250,
+     NIL]))=NIL THEN RETURN NOGADGET
+ IF (g:=CreateGadgetA(GENERIC_KIND,g,
+    [offx+7,offy+87,23,14,NIL,NIL,9,16,visual,NIL]:newgadget,
+    [NIL]))=NIL THEN RETURN NOGADGET
+ g.flags:=6
+ g.activation:=1
+ g.gadgetrender:=my2mage
+ g.selectrender:=myImage
+  IF (g:=CreateGadgetA(GENERIC_KIND,g,
+    [offx+254,offy+87,23,14,NIL,NIL,10,16,visual,NIL]:newgadget,
+    [NIL]))=NIL THEN RETURN NOGADGET
+ g.flags:=6
+ g.activation:=1
+ g.gadgetrender:=my2mage
+ g.selectrender:=myImage
+ tattr:=[&#x27;topaz.font&#x27;,8,2,0]:textattr
+IF (g:=CreateGadgetA(BUTTON_KIND,g,
+    [offx+530,offy+87,96,14,&#x27;Open Prefs&#x27;,tattr,30,16,visual,0]:newgadget,
+    [NIL]))=NIL THEN RETURN NOGADGET
+  IF (g:=CreateGadgetA(BUTTON_KIND,g,
+    [offx+20,offy+28,60,13,&#x27;E C&#x27;,tattr,14,16,visual,0]:newgadget,
+    [NIL]))=NIL THEN RETURN NOGADGET
+  IF (g:=CreateGadgetA(BUTTON_KIND,g,
+    [offx+20,offy+10,60,13,&#x27;Editor&#x27;,tattr,13,16,visual,0]:newgadget,
+    [NIL]))=NIL THEN RETURN NOGADGET
+  IF (g:=CreateGadgetA(BUTTON_KIND,g,
+    [offx+100,offy+10,60,13,&#x27;R U N&#x27;,tattr,15,16,visual,0]:newgadget,
+    [NIL]))=NIL THEN RETURN NOGADGET
+  IF (g:=CreateGadgetA(BUTTON_KIND,g,
+    [offx+100,offy+28,60,13,&#x27;BeBug&#x27;,tattr,16,16,visual,0]:newgadget,
+    [NIL]))=NIL THEN RETURN NOGADGET
+  IF (g:=CreateGadgetA(BUTTON_KIND,g,
+    [offx+20,offy+46,60,13,&#x27;AProf&#x27;,tattr,17,16,visual,0]:newgadget,
+    [NIL]))=NIL THEN RETURN NOGADGET
+  IF (g:=CreateGadgetA(BUTTON_KIND,g,
+    [offx+100,offy+46,60,13,&#x27;FlushC&#x27;,tattr,18,16,visual,0]:newgadget,
+    [NIL]))=NIL THEN RETURN NOGADGET
+  IF (g:=CreateGadgetA(BUTTON_KIND,g,
+    [offx+195,offy+10,60,13,&#x27;HELP&#x27;,tattr,19,16,visual,0]:newgadget,
+    [NIL]))=NIL THEN RETURN NOGADGET
+  IF (g:=CreateGadgetA(BUTTON_KIND,g,
+    [offx+195,offy+28,60,13,&#x27;About&#x27;,tattr,22,16,visual,0]:newgadget,
+    [NIL]))=NIL THEN RETURN NOGADGET
+mycon:=Open(&#x27;CON:0/0/640/80/GUI_Output &#x27;,1006)
+altstd:=stdout
+stdout:=mycon
+ tattr:=[&#x27;topaz.font&#x27;,8,0,0]:textattr
+IF (wnd:=OpenW(0,75,639,offy+127,$40036F,$100E,
+   &#x27;AmigaE-GUI 2.122&#x27;,NIL,1,project0glist))=NIL THEN RETURN NOWINDOW
+IF SetMenuStrip(wnd,menu)=FALSE THEN RETURN NOMENUS 
+ DrawBevelBoxA(wnd.rport,offx+294,offy+3,238,28,[GT_VISUALINFO,visual,NIL])
+ DrawBevelBoxA(wnd.rport,offx+8,offy+110,612,14,[GT_VISUALINFO,visual,GTBB_FRAMETYPE,
+ BBFT_RIDGE,GTBB_RECESSED,NIL])
+ DrawBevelBoxA(wnd.rport,offx+8,offy+3,167,63,[GT_VISUALINFO,visual,NIL])
+ DrawBevelBoxA(wnd.rport,offx+185,offy+3,80,44,[GT_VISUALINFO,visual,GTBB_RECESSED,NIL])
+ DrawBevelBoxA(wnd.rport,offx+294,offy+35,300,34,[GT_VISUALINFO,visual,NIL])
+ Gt_RefreshWindow(wnd,NIL)
+myrast:=stdrast
+ENDPROC
+
+
+PROC openproject1window()
+  DEF g:PTR TO gadget
+project1glist:=0
+ tattr:=[&#x27;topaz.font&#x27;,8,2,0]:textattr
+  IF (g:=CreateContext({project1glist}))=NIL THEN RETURN NOCONTEXT
+  IF (g:=CreateGadgetA(BUTTON_KIND,g,
+    [offx+525,offy+76,104,14,&#x27;Close Prefs&#x27;,tattr,31,16,visual,0]:newgadget,
+    [NIL]))=NIL THEN RETURN NOGADGET
+ tattr:=[&#x27;topaz.font&#x27;,8,0,0]:textattr
+ IF (g:=CreateGadgetA(STRING_KIND,g,
+    [offx+33,offy+17,180,14,&#x27;Editor&#x27;,tattr,1,4,visual,0]:newgadget,
+    [GTST_STRING,bn[1].s,
+     GTST_MAXCHARS,250,
+     NIL]))=NIL THEN RETURN NOGADGET
+   zeiger[1]:=g
+  IF (g:=CreateGadgetA(STRING_KIND,g,
+    [offx+33,offy+49,180,14,&#x27;EC&#x27;,tattr,2,4,visual,0]:newgadget,
+    [GTST_STRING,bn[2].s,
+     GTST_MAXCHARS,250,
+     NIL]))=NIL THEN RETURN NOGADGET
+   zeiger[2]:=g
+ IF (g:=CreateGadgetA(STRING_KIND,g,
+    [offx+270,offy+17,180,14,&#x27;E-Guide&#x27;,tattr,5,4,visual,0]:newgadget,
+    [GTST_STRING,bn[5].s,
+     GTST_MAXCHARS,250,
+     NIL]))=NIL THEN RETURN NOGADGET
+   zeiger[5]:=g
+ IF (g:=CreateGadgetA(STRING_KIND,g,
+    [offx+270,offy+49,180,14,&#x27;Rexx Script&#x27;,tattr,34,4,visual,0]:newgadget,
+    [GTST_STRING,bn[13].s,
+     GTST_MAXCHARS,250,
+     NIL]))=NIL THEN RETURN NOGADGET
+   zeiger[9]:=g
+ IF (g:=CreateGadgetA(GENERIC_KIND,g,
+    [offx+9,offy+49,23,14,NIL,NIL,8,16,visual,NIL]:newgadget,
+    [NIL]))=NIL THEN RETURN NOGADGET
+  g.flags:=6
+  g.activation:=1
+  g.gadgetrender:=my2mage
+  g.selectrender:=myImage
+ IF (g:=CreateGadgetA(GENERIC_KIND,g,
+    [offx+246,offy+17,23,14,NIL,NIL,11,16,visual,NIL]:newgadget,
+    [NIL]))=NIL THEN RETURN NOGADGET
+  g.flags:=6
+  g.activation:=1
+  g.gadgetrender:=my2mage
+  g.selectrender:=myImage
+ IF (g:=CreateGadgetA(GENERIC_KIND,g,
+    [offx+9,offy+17,23,14,NIL,NIL,7,0,visual,NIL]:newgadget,
+    [NIL]))=NIL THEN RETURN NOGADGET
+  g.flags:=6
+  g.activation:=1
+  g.gadgetrender:=my2mage
+  g.selectrender:=myImage
+ IF (g:=CreateGadgetA(CYCLE_KIND,g,
+    [offx+524,offy+20,96,14,&#x27;SAVE TO&#x27;,tattr,20,4,visual,0]:newgadget,
+    [GTCY_LABELS,[&#x27;ENVARC:&#x27;,&#x27;ENV:&#x27;,0],GTCY_ACTIVE,mpx,
+     NIL]))=NIL THEN RETURN NOGADGET
+ IF (g:=CreateGadgetA(CHECKBOX_KIND,g,
+    [offx+594,offy+40,26,14,&#x27;Time :&#x27;,tattr,32,1,visual,0]:newgadget,[GTCB_CHECKED,mytime,
+    NIL]))=NIL THEN RETURN NOGADGET
+  IF (g:=CreateGadgetA(CHECKBOX_KIND,g,
+    [offx+594,offy+60,26,14,&#x27;Auto Save :&#x27;,tattr,33,1,visual,0]:newgadget,[GTCB_CHECKED,mysave,
+    NIL]))=NIL THEN RETURN NOGADGET
+IF (g:=CreateGadgetA(CHECKBOX_KIND,g,
+    [offx+380,offy+73,26,14,&#x27; Rexx + EC&#x27;,tattr,35,1,visual,0]:newgadget,[GTCB_CHECKED,myrexx,
+    NIL]))=NIL THEN RETURN NOGADGET
+IF (wnd1:=OpenW(0,91,639,offy+93,$36F,$1004,
+   &#x27;GUI_Prefs&#x27;,NIL,1,project1glist))=NIL THEN RETURN NOWINDOW
+Gt_RefreshWindow(wnd1,NIL)
+ENDPROC
+
+
+PROC tooltype()
+DEF lock,y,wb:PTR TO wbstartup,args:PTR TO wbarg,
+    k[15]:STRING,mydisk:PTR TO diskobject,wo
+lock:=GetProgramDir()
+IF lock
+ y:=NameFromLock(lock,bn[19].s,250)
+ StrCopy(bn[25].s,bn[19].s,ALL)
+ENDIF
+mydisk:=NIL
+IF wbmessage	
+  wb:=wbmessage
+  args:=wb.arglist
+  AddPart(bn[19].s,args[].name++,250) 
+  mydisk:=GetDiskObject(bn[19].s)
+ENDIF
+
+
+
+IF mydisk
+k:=&#x27;EMODULES&#x27;
+wo:=FindToolType(mydisk.tooltypes,k)
+IF wo
+StrCopy(bn[21].s,wo,ALL)
+ENDIF
+FreeDiskObject(mydisk)
+ENDIF
+ IF StrLen(bn[21].s)&gt;1
+  y:=AssignLate(&#x27;EMODULES&#x27;,bn[21].s)
+ ENDIF
+ENDPROC
+
+
+PROC wait4message(win:PTR TO window)
+  DEF mes:PTR TO intuimessage,g:PTR TO gadget,helf:PTR TO stringinfo,
+      menur,menup,menug,zpoint,ypoint[254]:STRING
+  zu:=FALSE 
+REPEAT
+    type:=0
+    IF mes:=Gt_GetIMsg(win.userport)
+       type:=mes.class
+      IF type=IDCMP_MENUPICK    /* For Menus */
+        infos:=mes.code
+         menur:=infos AND 31      
+         menup:=(Shr(infos,5)) AND 63
+          menug:=(menur*10)+menup+1
+        IF menug
+          auszahl:=menug+1002
+          auswerte()
+        ENDIF
+      ELSEIF (type=IDCMP_GADGETUP) OR (type=IDCMP_GADGETDOWN)
+         g:=mes.iaddress
+         infos:=g.gadgetid
+       IF infos&lt;6
+         helf:=g.specialinfo
+         StrCopy(bn[infos].s,helf.buffer,ALL)
+          IF infos=3
+            StrCopy(bn[12].s,bn[3].s,(StrLen(bn[3].s)-2))
+          ENDIF
+          IF infos=2
+             zpoint:=FilePart(bn[2].s)
+             StrCopy(ypoint,bn[2].s,(EstrLen(bn[2].s)-StrLen(zpoint)))
+             StrCopy(bn[6].s,ypoint,ALL)
+             IF (AddPart(bn[6].s,&#x27;AProf&#x27;,250))=NIL THEN RETURN NOBUFFER
+             StrCopy(bn[7].s,ypoint,ALL)
+             IF (AddPart(bn[7].s,&#x27;FlushCache&#x27;,250))=NIL THEN RETURN NOBUFFER
+             StrCopy(bn[8].s,ypoint,ALL)
+             IF (AddPart(bn[8].s,&#x27;EDBG&#x27;,250))=NIL THEN RETURN NOBUFFER
+          ENDIF
+        ELSEIF infos&lt;12
+         aslfiler()
+        ELSEIF infos=32
+         mytime:=mes.code
+         StringF(bn[10].s,&#x27;\d&#x27;,mytime)
+        ELSEIF infos=33
+         mysave:=mes.code
+         StringF(bn[11].s,&#x27;\d&#x27;,mysave)
+        ELSEIF infos=35
+         myrexx:=mes.code
+         StringF(bn[16].s,&#x27;\d&#x27;,myrexx)
+       ELSEIF infos=34
+         helf:=g.specialinfo
+         StrCopy(bn[13].s,helf.buffer,ALL)
+       ELSEIF infos=21
+         helf:=g.specialinfo
+         StrCopy(bn[15].s,helf.buffer,ALL)
+       ELSEIF infos=20
+         mpx:=mes.code
+         StringF(bn[17].s,&#x27;\d&#x27;,mpx)
+      ELSEIF infos&gt;12
+         auszahl:=infos+1000
+         IF infos=22 
+          auszahl:=1004
+         ENDIF
+         auswerte()
+         win:=mymess 
+     ENDIF
+      ELSEIF type=IDCMP_REFRESHWINDOW
+         Gt_BeginRefresh(win)
+         Gt_EndRefresh(win,TRUE)
+      ENDIF
+       Gt_ReplyIMsg(mes)
+       IF zu=TRUE
+        closeproject1window()
+        zu:=FALSE
+       ENDIF
+    ELSE
+  WaitPort(win.userport)
+     ENDIF
+  UNTIL type
+ENDPROC
+
+
+PROC mydate()
+DEF dt:datetime,ds:PTR TO datestamp
+DEF day[50]:ARRAY,date[50]:ARRAY,time[50]:ARRAY
+y:=SetStdRast(myrast)
+IF mytime=1
+  ds:=DateStamp(dt.stamp)
+  dt.format:=3            /* Set to 1 for Intern or 2 for USA */
+  dt.flags:=0
+  dt.strday:=day
+  dt.strdate:=date
+  dt.strtime:=time
+  IF DateToStr(dt)
+  TextF(offx+370,offy+120,&#x27;\s  \s  \s&#x27;,day,date,time)
+  ENDIF
+ENDIF
+TextF(offx+20,offy+120,&#x27; Chip: \d[4] KByte   Fast: \d[6] KByte&#x27;,Div((AvailMem($2)),1024),Div((AvailMem($4)),1024))
+ENDPROC
+
+
+PROC auswerte()
+DEF zpoint,ypoint[254]:STRING,mylock,oldlock
+ SELECT auszahl
+   CASE 1031
+         mymess:=wnd
+         zu:=TRUE
+   CASE 1030
+         reporterr(openproject1window())
+         mymess:=wnd1
+         zu:=FALSE
+   CASE 1013
+        StringF(starts,&#x27;Run &quot;\s&quot; &quot;\s&quot;&#x27;,bn[1].s,bn[3].s)
+        SystemTagList(starts,[SYS_INPUT,stdout,SYS_OUTPUT,0,NIL,NIL])  
+        WriteF(&#x27;\n&#x27;)
+   CASE 1014
+        IF myrexx=1
+         StringF(starts,&#x27;Run SYS:REXXC/RX \s &quot;\s&quot;&#x27;,bn[13].s,bn[3].s)
+         SystemTagList(starts,[SYS_INPUT,stdout,SYS_OUTPUT,0,NIL,NIL])   
+        ENDIF
+        StringF(starts,&#x27;Run &quot;\s&quot; \s &quot;\s&quot;&#x27;,bn[2].s,bn[15].s,bn[12].s)
+        SystemTagList(starts,[SYS_INPUT,stdout,SYS_OUTPUT,0,NIL,NIL])  
+        WriteF(&#x27;\n&#x27;)
+   CASE 1015
+        StringF(starts,&#x27;Run &quot;\s&quot;&#x27;,bn[4].s)
+        SystemTagList(starts,[SYS_INPUT,stdout,SYS_OUTPUT,0,NIL,NIL])  
+        WriteF(&#x27;\n&#x27;)
+   CASE 1016
+/*  You must do so to run EDBG   */
+             zpoint:=FilePart(bn[12].s)
+             StrCopy(bn[20].s,bn[12].s,(EstrLen(bn[12].s)-StrLen(zpoint)))
+             mylock:=Lock(bn[20].s,ACCESS_READ)
+             oldlock:=CurrentDir(mylock)
+             RightStr(ypoint,bn[12].s,(EstrLen(bn[12].s)-EstrLen(bn[20].s)))
+       StringF(starts,&#x27;Run &quot;\s&quot; &quot;\s&quot;&#x27;,bn[8].s,bn[12].s)
+       SystemTagList(starts,[SYS_INPUT,stdout,SYS_OUTPUT,0,NIL,NIL])  
+            zpoint:=CurrentDir(oldlock)
+            UnLock(mylock)
+      WriteF(&#x27;\n&#x27;)
+   CASE 1017
+        StringF(starts,&#x27;Run &quot;\s&quot; &quot;\s&quot;&#x27;,bn[6].s,bn[4].s)
+        SystemTagList(starts,[SYS_INPUT,stdout,SYS_OUTPUT,0,NIL,NIL]) 
+        WriteF(&#x27;\n&#x27;)
+   CASE 1018
+        StringF(starts,&#x27;Run &quot;\s&quot;&#x27;,bn[7].s)
+        SystemTagList(starts,[SYS_INPUT,stdout,SYS_OUTPUT,0,NIL,NIL]) 
+   CASE 1019
+        WriteF(&#x27;Bitte Warten! Start der Help-Datei  !\n&#x27;)
+        guidm()
+        WriteF(&#x27;Help-Datei beendet !\n&#x27;)  /*Starten einer AmigaguideDatei*/
+   CASE 1023
+        StringF(starts,&#x27;Run SYS:REXXC/RX \s &quot;\s&quot;&#x27;,bn[13].s,bn[3].s)
+        SystemTagList(starts,[SYS_INPUT,stdout,SYS_OUTPUT,0,NIL,NIL]) 
+   CASE 1004
+        EasyRequestArgs(0,[20,0,&#x27;Infos&#x27;,&#x27;\s&#x27;,&#x27;Weiter&#x27;],0,[bn[23].s])
+   CASE 1003
+        mpx:=0
+        speicher()
+        mpx:=Val(bn[17].s,NIL)
+   CASE 1005
+    type:=IDCMP_CLOSEWINDOW
+ ENDSELECT
+ENDPROC
+
+
+PROC aslfiler()   
+ DEF req:PTR TO filerequester
+ IF req:=AllocFileRequest()
+  IF AslRequest(req,[ASL_HAIL,&#x27;Bitte Wählen&#x27;,ASL_DIR,bn[9].s,ASL_HEIGHT,180,NIL])
+    StrCopy(bn[9].s,req.drawer,ALL)
+    StrCopy(bn[25].s,bn[infos-6].s,ALL)
+    StrCopy(bn[infos-6].s,req.drawer,ALL)
+    IF (AddPart(bn[infos-6].s,req.file,250))=NIL THEN RETURN NOBUFFER
+    SetStr(bn[infos-6].s,StrLen(bn[infos-6].s))
+   IF infos=8
+    StrCopy(bn[6].s,req.drawer,ALL)
+    IF (AddPart(bn[6].s,&#x27;AProf&#x27;,250))=NIL THEN RETURN NOBUFFER
+    StrCopy(bn[7].s,req.drawer,ALL)
+    IF (AddPart(bn[7].s,&#x27;FlushCache&#x27;,250))=NIL THEN RETURN NOBUFFER
+    StrCopy(bn[8].s,req.drawer,ALL)
+    IF (AddPart(bn[8].s,&#x27;EDBG&#x27;,250))=NIL THEN RETURN NOBUFFER
+   ENDIF
+   IF infos=9
+    RightStr(bn[24].s,bn[3].s,2)
+    IF StrCmp(bn[24].s,&#x27;.e&#x27;,ALL)
+      StrCopy(bn[4].s,bn[3].s,(StrLen(bn[3].s)-2))
+      StrCopy(bn[12].s,bn[3].s,(StrLen(bn[3].s)-2))
+      Gt_SetGadgetAttrsA(zeiger[4],wnd,0,[GTST_STRING,bn[4].s,NIL,NIL])
+    ELSE
+      StrCopy(bn[3].s,bn[25].s,ALL)
+      WriteF(&#x27;\e[33m\e[1mKein AmigaE-Source ! Cancel Operation. Neu Auswählen !\e[0m\n&#x27;)
+    ENDIF
+   ENDIF
+  ENDIF
+  IF infos&lt;12 
+   Gt_SetGadgetAttrsA(zeiger[infos-6],mymess,0,[GTST_STRING,bn[infos-6].s,NIL,NIL])
+  ENDIF
+  FreeFileRequest(req)
+ ENDIF
+ENDPROC
+
+
+PROC guidm()   /* Run Amigaguidedatas*/
+DEF ja, myg:newamigaguide,mxlock,ueberg[255]:STRING,xxy
+xxy:=FilePart(bn[5].s)
+MidStr(ueberg,bn[5].s,0,EstrLen(bn[5].s)-StrLen(xxy)-1)
+mxlock:=Lock(ueberg,ACCESS_READ)
+myg.lock:=mxlock
+myg.screen:=0
+myg.pubscreen:=0
+myg.hostport:=0
+myg.clientport:=0
+myg.basename:=0
+myg.flags:=2
+myg.context:=0
+myg.extens:=0
+myg.client:=0
+myg.name:=xxy
+myg.node:=0
+myg.line:=0
+ja:=OpenAmigaGuideA(myg,NIL)
+CloseAmigaGuide(ja)
+UnLock(mxlock)
+ENDPROC
+
+
+PROC auswahl() 
+ IF mpx=1
+   StrCopy(bn[22].s,&#x27;ENV:Setup_GUI&#x27;,ALL)
+  ELSE 
+   StrCopy(bn[22].s,&#x27;ENVARC:Setup_GUI&#x27;,ALL)
+ ENDIF
+ENDPROC
+
+
+PROC lade()
+auswahl()
+IF FileLength(bn[22].s)&gt;0
+fh:=Open(bn[22].s,MODE_OLDFILE)
+FOR y:=1 TO 17
+    ReadStr(fh,ioi)
+    StrCopy(bn[y].s,ioi,ALL)
+  ENDFOR
+Close(fh)
+ELSEIF mpx=1
+mpx:=2
+lade()
+ENDIF
+myrexx:=Val(bn[16].s,NIL)
+mysave:=Val(bn[11].s,NIL)
+ENDPROC
+
+
+PROC speicher()
+auswahl()
+fh:=Open(bn[22].s,1006)
+ FOR y:=1 TO 17
+  StringF(ioi,&#x27;\s\n&#x27;,bn[y].s)
+  Fputs(fh,ioi)
+ ENDFOR
+Close(fh)
+ENDPROC
+
+
+PROC closeproject1window()
+  IF wnd1 THEN makeclosewn(wnd1)
+  IF project1glist THEN FreeGadgets(project1glist)
+  wnd1:=0
+ENDPROC
+
+
+PROC closeproject0window()
+  IF wnd1 THEN closeproject1window()
+  IF wnd THEN ClearMenuStrip(wnd)
+  IF menu THEN FreeMenus(menu) 
+  IF visual THEN FreeVisualInfo(visual)
+  IF project0glist THEN FreeGadgets(project0glist)
+  IF scr THEN UnlockPubScreen(NIL,scr)
+  IF aslbase THEN CloseLibrary(aslbase)
+  IF gadtoolsbase THEN CloseLibrary(gadtoolsbase)
+  IF iconbase THEN CloseLibrary(iconbase)
+  IF amigaguidebase THEN CloseLibrary(amigaguidebase)
+ENDPROC
+
+
+PROC makeclosewn(win:PTR TO window)
+DEF mes:PTR TO intuimessage
+Forbid()                           
+ WHILE mes:=GetMsg(win.userport)
+  IF mes.idcmpwindow=win
+   Remove(mes)
+   ReplyMsg(mes)
+  ENDIF
+ ENDWHILE
+ModifyIDCMP(win,NIL)
+Permit()
+CloseW(win)
+ENDPROC
+
+
+PROC reporterr(er)
+  DEF erlist:PTR TO LONG
+  IF er
+    erlist:=[&#x27;get context&#x27;,&#x27;create gadget&#x27;,&#x27;lock wb&#x27;,&#x27;get visual infos&#x27;,
+      &#x27;open &quot;gadtools.library&quot; v37+&#x27;,&#x27;open window&#x27;,&#x27;create menus&#x27;,
+      &#x27;open &quot;Asl.library&quot;&#x27;,&#x27;open &quot;Icon.library&quot;&#x27;,&#x27;open &quot;AmigaGuide.library&quot;&#x27;,
+      &#x27;open &quot;GadToolsBox.library&quot;&#x27;,&#x27; Help ! Puffer für FileName zu klein&#x27;]
+    EasyRequestArgs(0,[20,0,0,&#x27;Could not \s!&#x27;,&#x27;ok&#x27;],0,[erlist[er-1]])
+  ENDIF
+ENDPROC er
+
+
+imagedata1:
+  INT $0000,$0200,$0000,$0600,$000F,$0600,$0010,$8600
+  INT $0FE0,$4600,$0FF0,$4600,$080F,$C600,$0800,$4600
+  INT $0800,$4600,$0800,$4600,$0800,$4600,$0FFF,$C600
+  INT $0000,$0600,$7FFF,$FE00
+  INT $FFFF,$FC00,$C000,$0000,$C000,$0000,$C000,$0000
+  INT $C000,$0000,$C000,$0000,$C7E0,$0000,$C555,$0000
+  INT $C6AA,$0000,$C555,$0000,$C6AA,$0000,$C000,$0000
+  INT $C000,$0000,$8000,$0000
+imagedata2:
+  INT $FFFF,$FC00,$FFFF,$F800,$FFFF,$F800,$FFF0,$F800
+  INT $FFE0,$7800,$FFF0,$7800,$F80F,$F800,$F800,$7800
+  INT $F800,$7800,$F800,$7800,$F800,$7800,$FFFF,$F800
+  INT $FFFF,$F800,$8000,$0000
+  INT $0000,$0200,$3FFF,$FE00,$3FF0,$FE00,$3FE0,$7E00
+  INT $3000,$3E00,$3000,$3E00,$37E0,$3E00,$3555,$3E00
+  INT $36AA,$3E00,$3555,$3E00,$36AA,$3E00,$3000,$3E00
+  INT $3FFF,$FE00,$7FFF,$FE00
+
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

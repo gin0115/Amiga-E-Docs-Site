@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>determine.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-e-modules01.html">e-modules01</a> &rsaquo; determine.e</div><h1>File: <code>determine.e</code></h1><p class="meta">87 lines · project <a href="../examples/pkg-e-modules01.html"><code>e-modules01</code></a></p><p class="pathctx">e-modules01/emodules/unpack/determine.e</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/unpack.html">libraries/unpack</a></li></ul></div><h2>Source</h2><pre class="code">OPT PREPROCESS
+
+/*
+*-- AutoRev header do NOT edit!
+*
+*   Project         :   find out which cruncher are used
+*   File            :   determine.e
+*   Copyright       :   © 1996 Piotr Gapinski
+*   Author          :   Piotr Gapinski
+*   Creation Date   :   05.01.96
+*   Current version :   1.0
+*   Translator      :   AmigaE v3.1+
+*
+*   REVISION HISTORY
+*
+*   Date          Version         Comment
+*   ---------     -------         ------------------------------------------
+*   05.01.96      1.0             first release
+*
+*-- REV_END --*
+*/
+
+MODULE &#x27;libraries/unpack&#x27;,&#x27;unpack&#x27;,
+       &#x27;tools/exceptions&#x27;
+
+#define PROGRAMVERSION &#x27;$VER: determine_file 1.0 (05.01.96)&#x27;
+
+ENUM ERR_OK,ERR_ARGS,ERR_NOLIB,ERR_STRUCT,ERR_NOMEM
+ENUM ARG_FILE,NUMARGS
+
+PROC main() HANDLE
+  DEF info=NIL:PTR TO unpackinfo
+  DEF rdargs=0,args[NUMARGS]:LIST,templ,filename[208]:STRING,
+      crunchtype,typename
+
+  templ:=&#x27;FILE/A&#x27;
+  IF (rdargs:=ReadArgs(templ,args,NIL))=NIL THEN Raise(ERR_ARGS)
+  StrCopy(filename,args[ARG_FILE])
+  FreeArgs(rdargs)
+
+  IF (unpackbase:=OpenLibrary(UNPACKNAME,39))=NIL THEN Raise(ERR_NOLIB)
+  IF (info:=UpAllocCInfo())=NIL THEN Raise(ERR_STRUCT)
+
+  IF (UpDetermineFile(info,filename))&lt;&gt;0
+    WriteF(&#x27;FILENAME: \s\n&#x27;,info.filename)
+    crunchtype:=info.crunchtype
+    SELECT crunchtype
+    CASE CRU_ARCHIVE
+      typename:=&#x27;Archive (Lha, Zoo Etc.)&#x27;
+    CASE CRU_DATA
+      typename:=&#x27;Data File&#x27;
+    CASE CRU_OBJECT
+      typename:=&#x27;Object File&#x27;
+    CASE CRU_OBJECT2
+      typename:=&#x27;2 Segment Object File&#x27;
+    CASE CRU_TRACK
+      typename:=&#x27;Track File (DMS)&#x27;
+    DEFAULT
+      typename:=&#x27;UNKNOWN&#x27;
+    ENDSELECT
+    WriteF(&#x27;    TYPE: \s\n&#x27;,typename)
+    WriteF(&#x27;CRUNCHED: \s\n&#x27;,info.crunchername)
+  ELSE
+    WriteF(&#x27;Error: \s\n&#x27;,info.errormsg)
+  ENDIF
+EXCEPT DO
+  IF info THEN UpFreeCInfo(info)
+  IF unpackbase THEN CloseLibrary(unpackbase)
+  IF exception
+    SELECT exception
+    CASE ERR_ARGS
+      WriteF(&#x27;Bad args!!! (try &quot;determine ?&quot;)\n&#x27;)
+    CASE ERR_NOLIB
+      WriteF(&#x27;You need the \s V39+\n&#x27;,UNPACKNAME)
+    CASE ERR_STRUCT
+      WriteF(&#x27;No free memory!\n&#x27;)
+    CASE ERR_NOMEM
+      WriteF(&#x27;No free memory!\n&#x27;)
+    DEFAULT
+      report_exception()
+      WriteF(&#x27;LEVEL: main()\n&#x27;)
+    ENDSELECT
+  ENDIF
+ENDPROC
+
+CHAR PROGRAMVERSION,0
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

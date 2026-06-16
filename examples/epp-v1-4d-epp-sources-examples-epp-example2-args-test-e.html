@@ -1,0 +1,143 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>args_Test.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-epp-v1-4d.html">epp-v1_4d</a> &rsaquo; args_Test.e</div><h1>File: <code>args_Test.e</code></h1><p class="meta">117 lines · project <a href="../examples/pkg-epp-v1-4d.html"><code>epp-v1_4d</code></a></p><p class="pathctx">epp-v1_4d/EPP/Sources/Examples/EPP_Example2/args_Test.e</p><p class="prose">************************************************************************</p><h2>Source</h2><pre class="code">/**************************************************************************/
+/*                                                                        */
+/* This is the cammand-line argument code for my program Fill.            */
+/* Unfortunately, I didn&#x27;t have EPP when I wrote Fill, else it would have */
+/* looked like this.                                                      */
+/*                                                                        */
+/**************************************************************************/
+
+PMODULE &#x27;PMODULES:commandLineArgs&#x27;
+
+
+/* Exceptions in main program. */
+ENUM ER_NONE,
+     ER_USAGE,
+     ER_MEM
+
+
+CONST MAX_ARG_BUFSIZE = 100,
+      MAX_ARG_ERRORMARGIN = 20
+
+
+/* Default options which can be over-ridden via command line. */
+DEF optionIsSet_CopyOnly = FALSE,
+    argBufSize = 20,
+    argErrorMargin = 0,
+    argDestPath = NIL
+
+
+
+PROC parseCommandLineArguments () HANDLE
+  DEF argIndex = 1,
+      char,
+      theArg, nextArg
+
+  theArg := String (StrLen (arg))
+  IF theArg = NIL THEN Raise (ER_MEM)
+
+  nextArg := String (StrLen (arg))
+  IF nextArg = NIL THEN Raise (ER_MEM)
+
+  /* I used theArg and nextArg because I have to make sure the last arg  */
+  /* goes into argDestPath, so if there is another arg to put in nextArg */
+  /* then theArg must be an option.                                      */
+
+  WHILE getArg (theArg, argIndex)
+
+    INC argIndex
+    IF getArg (nextArg, argIndex)  /* If there is another, theArg must be an option. */
+      char := theArg [0]
+
+      IF char = &quot;-&quot;
+        char := theArg [1]
+
+        IF char = &quot;c&quot;
+          optionIsSet_CopyOnly := TRUE
+        ELSEIF char = &quot;b&quot;
+          /* Use nextArg just to save storage. */
+          MidStr (nextArg, theArg, 2, ALL)
+          argBufSize := Val (nextArg, NIL)
+          IF argBufSize &lt;=0 THEN Raise (ER_USAGE)
+          IF argBufSize &gt; MAX_ARG_BUFSIZE THEN argBufSize := MAX_ARG_BUFSIZE
+        ELSEIF char =  &quot;e&quot;
+          /* Use nextArg just to save storage. */
+          MidStr (nextArg, theArg, 2, ALL)
+          argErrorMargin := Val (nextArg, NIL)
+          IF argErrorMargin &lt;=0 THEN Raise (ER_USAGE)
+          IF argErrorMargin &gt; MAX_ARG_ERRORMARGIN THEN argErrorMargin := MAX_ARG_ERRORMARGIN
+        ENDIF
+      ELSE  /* Too many arguments. */
+        Raise (ER_USAGE)
+      ENDIF
+    ELSE  /* Last arg, must be DestPath. */
+      argDestPath := String (StrLen (theArg))
+      IF argDestPath = NIL THEN Raise (ER_MEM)
+      StrCopy (argDestPath, theArg, ALL)
+    ENDIF
+  ENDWHILE
+
+  Dispose (theArg)
+  Dispose (nextArg)
+
+EXCEPT
+
+  IF theArg THEN Dispose (theArg)
+  IF nextArg THEN Dispose (nextArg)
+  Raise (exception)
+
+ENDPROC
+  /* parseCommandLineArguments */
+
+
+
+
+PROC main () HANDLE
+  IF arg [] = 0 THEN Raise (ER_USAGE)
+
+  parseCommandLineArguments ()
+
+  WriteF (&#x27;\n  Destination Path is \a\s\a.&#x27;, argDestPath)
+  WriteF (&#x27;\n  Copy Only Option is \sset.&#x27;,
+          IF optionIsSet_CopyOnly THEN &#x27;&#x27; ELSE &#x27;not &#x27;)
+  WriteF (&#x27;\n  Buffer Size is \a\d\a.&#x27;, argBufSize)
+  WriteF (&#x27;\n  Error Margin is \a\d\a.\n\n&#x27;, argErrorMargin)
+
+  CleanUp (0)
+
+EXCEPT
+
+  SELECT exception
+    CASE ER_USAGE;  WriteF (&#x27;\n\n  Usage:  Args [-c] [-b###] [-e##] dest-path\n\n&#x27;)
+    CASE ER_MEM;    WriteF (&#x27;\n\n  Insufficient memory.\n\n&#x27;)
+  ENDSELECT
+
+  CleanUp (exception)
+
+ENDPROC
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

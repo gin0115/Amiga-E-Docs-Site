@@ -1,0 +1,618 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>mand1_funcs.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-ignite-unf-mos-r2.html">ignite-unf-mos-r2</a> &rsaquo; mand1_funcs.e</div><h1>File: <code>mand1_funcs.e</code></h1><p class="meta">592 lines · project <a href="../examples/pkg-ignite-unf-mos-r2.html"><code>ignite-unf-mos-r2</code></a></p><p class="pathctx">ignite-unf-mos-r2/ignite-unf-mos/source/ignite/stuff/mand1_funcs.e</p><h2>Source</h2><pre class="code">
+#define FloatMin(x,y) (IF ! (x) &lt; (y) THEN x ELSE y)
+#define FloatMax(x,y) (IF ! (x) &gt; (y) THEN x ELSE y)
+
+OBJECT mandret
+   r:DOUBLE, g:DOUBLE, b:DOUBLE -&gt; 0..1
+ENDOBJECT
+
+#define GETTRESH !fx*fx+(!fy*fy) * tresh
+
+PROC mandSimple(fx:REAL,fy:REAL,fxc:REAL,fyc:REAL,tresh:REAL,iters:LONG,ret:PTR TO mandret)
+  DEF a:DOUBLE, b:DOUBLE, t, x:DOUBLE, y:DOUBLE
+  x := fx
+  y := fy
+  tresh := Fabs(GETTRESH)
+  t := 0
+  WHILE (t++&lt;iters) AND (!x*x+(!y*y)&lt;tresh) -&gt;(!Fabs(x)+Fabs(y)&lt;3.0)
+    a := !x*x
+    b := !y*y
+    y:=!x+x*y+fyc
+    x:=!a-b+fxc
+  ENDWHILE
+  t := t! / (iters!)
+  ret.r := t
+  ret.g := t
+  ret.b := t
+ENDPROC
+
+
+-&gt; http://linas.org/art-gallery/escape/escape.html
+PROC mandSmooth(fx:REAL,fy:REAL,fxc:REAL,fyc:REAL,tresh:REAL,iters:LONG,ret:PTR TO mandret)
+  DEF a:DOUBLE, b:DOUBLE, ft:DOUBLE, t, x:DOUBLE, y:DOUBLE
+  x := fx
+  y := fy
+  tresh := GETTRESH
+  t := 0
+  WHILE (t++&lt;iters) AND (!x*x+(!y*y)&lt;tresh)
+    a := !x*x
+    b := !y*y
+    y:=!x+x*y+fyc
+    x:=!a-b+fxc
+  ENDWHILE
+
+  IF ! x*x+(!y*y) &gt; tresh
+
+  -&gt; following code is the magic..
+   a := !x*x
+   b := !y*y
+   y:=!x+x*y+fyc
+   x:=!a-b+fxc
+   a := !x*x
+   b := !y*y
+   y:=!x+x*y+fyc
+   x:=!a-b+fxc
+
+   a := Fsqrt(!x*x+(!y*y))
+   ft := t! - (!Flog(Flog(a)) / Flog(2.0))
+   ft := ! ft / (iters!)
+
+  ELSE
+   ft := 0.5
+  ENDIF
+
+  ret.r := ft
+  ret.g := ft
+  ret.b := ft
+
+ENDPROC
+
+PROC square(x:DOUBLE) (DOUBLE) IS !x*x*x*x
+
+PROC test8(fx:REAL,fy:REAL,fxc:REAL,fyc:REAL,tresh:REAL,iters:LONG,ret:PTR TO mandret)
+  DEF x:DOUBLE,y:DOUBLE
+  DEF rz0:DOUBLE, rz1:DOUBLE, rz:DOUBLE
+  DEF gz0:DOUBLE, gz1:DOUBLE, gz:DOUBLE
+  DEF bz0:DOUBLE, bz1:DOUBLE, bz:DOUBLE
+  DEF ft:DOUBLE
+  DEF fr=0.0:DOUBLE, fg=0.0:DOUBLE, fb=0.0:DOUBLE
+  DEF fri=0.1:DOUBLE, fgi=0.1:DOUBLE, fbi=0.1:DOUBLE
+  DEF a
+
+
+  x := fx
+  y := fy
+  tresh :=  GETTRESH
+
+  -&gt;tresh2 := !x*x+(!y*y) / treshhold
+
+
+  FOR a := 0 TO iters-1
+
+    rz0 := !x*x
+    rz1 := !y*y
+    rz := !rz0+rz1
+
+    y:=(!x+x*y+fyc)
+    x:=(!rz0-rz1+fxc)
+
+    gz0 := !x*x
+    gz1 := !y*y
+    gz := !gz0+gz1
+
+    y:=(!x+x*y+fyc)
+    x:=(!gz0-gz1+fxc)
+
+    bz0 := !x*x
+    bz1 := !y*y
+    bz := !bz0+bz1
+
+    y:=(!x+x*y+fyc)
+    x:=(!bz0-bz1+fxc)
+
+    IF (!rz&gt;tresh) AND (!gz&gt;tresh) AND (!bz&gt;tresh) THEN JUMP outside8
+
+       -&gt;fr := ! fr + (!Fsqrt(!rz/tresh))
+       -&gt;fg := ! fg + (!Fsqrt(!gz/tresh))
+       -&gt;fb := ! fb + (!Fsqrt(!bz/tresh))
+
+       fr := ! fr + Fsqrt(!(tresh)*0.1/rz)
+       fg := ! fg + Fsqrt(!(tresh)*0.1/gz)
+       fb := ! fb + Fsqrt(!(tresh)*0.1/bz)
+
+       -&gt;fr := ! fr + (!(!tresh/rz)*0.05)
+       -&gt;fg := ! fg + (!(!tresh/gz)*0.05)
+       -&gt;fb := ! fb + (!(!tresh/bz)*0.05)
+
+       -&gt;fr := ! fr + (!Fsqrt(!(tresh)/(rz))*(iters!-fr/(iters!)))
+       -&gt;fg := ! fg + (!Fsqrt(!(tresh)/(gz))*(iters!-fg/(iters!)))
+       -&gt;fb := ! fb + (!Fsqrt(!(tresh)/(bz))*(iters!-fb/(iters!)))
+
+       -&gt;fr := ! fr + (!tresh*rz)
+       -&gt;fg := ! fg + (!tresh*gz)
+       -&gt;fb := ! fb + (!tresh*bz)
+
+       fri := ! fri + (!(!rz/tresh)*10.1)
+       fgi := ! fgi + (!(!gz/tresh)*10.1)
+       fbi := ! fbi + (!(!bz/tresh)*10.1)
+
+  ENDFOR
+
+  ret.r := !fri / (iters!)
+
+  ret.g := !fgi / (iters!)
+
+  ret.b := !fbi / (iters!)
+
+  RETURN
+
+outside8:
+
+   ft := ! (!Fsqrt(iters!) / (iters!))
+
+   ret.r := !fr / (iters!)
+
+   ret.g := !fg / (iters!)
+
+   ret.b := !fb / (iters!)
+
+
+ENDPROC
+
+PROC test9(fx:REAL,fy:REAL,fxc:REAL,fyc:REAL,tresh:REAL,iters:LONG,ret:PTR TO mandret)
+  DEF x:DOUBLE,y:DOUBLE
+  DEF rz0:DOUBLE, rz1:DOUBLE, rz:DOUBLE
+  DEF gz0:DOUBLE, gz1:DOUBLE, gz:DOUBLE
+  DEF bz0:DOUBLE, bz1:DOUBLE, bz:DOUBLE
+  DEF ft:DOUBLE
+  DEF fr=0.0:DOUBLE, fg=0.0:DOUBLE, fb=0.0:DOUBLE
+  DEF a
+  DEF orz=0.0:DOUBLE, ogz=0.0:DOUBLE, obz=0.0:DOUBLE
+
+
+  x := fx
+  y := fy
+  tresh :=  GETTRESH
+
+  -&gt;tresh2 := !x*x+(!y*y) / treshhold
+
+
+  FOR a := 0 TO iters-1
+
+    rz0 := !x*x
+    rz1 := !y*y
+    rz := !rz0+rz1
+
+    y:=(!x+x*y+fyc)
+    x:=(!rz0-rz1+fxc)
+
+    gz0 := !x*x
+    gz1 := !y*y
+    gz := !gz0+gz1
+
+    y:=(!x+x*y+fyc)
+    x:=(!gz0-gz1+fxc)
+
+    bz0 := !x*x
+    bz1 := !y*y
+    bz := !bz0+bz1
+
+    y:=(!x+x*y+fyc)
+    x:=(!bz0-bz1+fxc)
+
+    EXIT (!rz&gt;tresh) AND (!gz&gt;tresh) AND (!bz&gt;tresh)
+
+    fr := ! fr + (!orz/(!rz))
+    fg := ! fg + (!ogz/(!gz))
+    fb := ! fb + (!obz/(!bz))
+
+    -&gt;fr := ! fr + FloatMin(!orz/tresh/Fsqrt(!rz/tresh), 1.0)
+    -&gt;fg := ! fg + FloatMin(!ogz/tresh/Fsqrt(!gz/tresh), 1.0)
+    -&gt;fb := ! fb + FloatMin(!obz/tresh/Fsqrt(!bz/tresh), 1.0)
+
+    orz := rz
+    ogz := gz
+    obz := bz
+
+  ENDFOR
+
+
+      ret.r := !fr / (iters!)
+
+      ret.g := !fg / (iters!)
+
+      ret.b := !fb / (iters!)
+
+
+ENDPROC
+
+PROC test10(fx:REAL,fy:REAL,fxc:REAL,fyc:REAL,tresh:REAL,iters:LONG,ret:PTR TO mandret)
+  DEF x:DOUBLE,y:DOUBLE
+  DEF rz0:DOUBLE, rz1:DOUBLE, rz:DOUBLE
+  DEF gz0:DOUBLE, gz1:DOUBLE, gz:DOUBLE
+  DEF bz0:DOUBLE, bz1:DOUBLE, bz:DOUBLE
+  DEF ft:DOUBLE
+  DEF fr=0.0:DOUBLE, fg=0.0:DOUBLE, fb=0.0:DOUBLE
+  DEF a
+  DEF orz=0.0:DOUBLE, ogz=0.0:DOUBLE, obz=0.0:DOUBLE
+
+
+  x := fx
+  y := fy
+
+  tresh := GETTRESH
+
+  -&gt;tresh2 := !x*x+(!y*y) / treshhold
+
+
+  FOR a := 0 TO iters-1
+
+    rz0 := !x*x
+    rz1 := !y*y
+    rz := !rz0+rz1
+
+    y:=(!x+x*y+fyc)
+    x:=(!rz0-rz1+fxc)
+
+    gz0 := !x*x
+    gz1 := !y*y
+    gz := !gz0+gz1
+
+    y:=(!x+x*y+fyc)
+    x:=(!gz0-gz1+fxc)
+
+    bz0 := !x*x
+    bz1 := !y*y
+    bz := !bz0+bz1
+
+    y:=(!x+x*y+fyc)
+    x:=(!bz0-bz1+fxc)
+
+
+    IF !rz&gt;tresh
+       fr := ! fr + (!tresh/rz)
+    ELSE
+       fr := ! fr + (!orz/rz)
+    ENDIF
+
+    IF !gz&gt;tresh
+       fg := ! fg + (!tresh/gz)
+    ELSE
+       fg := ! fg + (!gz/ogz)
+    ENDIF
+
+    IF !bz&gt;tresh
+       fb := ! fb + (!tresh/bz)
+    ELSE
+       fb := ! fb + (!bz/obz)
+    ENDIF
+
+    orz := rz
+    ogz := gz
+    obz := bz
+
+  ENDFOR
+
+  ret.r := !fr / (iters!)
+
+  ret.g := !fg / (iters!)
+
+  ret.b := !fb / (iters!)
+
+
+ENDPROC
+
+PROC test11_(fx:REAL,fy:REAL,fxc:REAL,fyc:REAL,tresh:REAL,iters:LONG,ret:PTR TO mandret)
+  DEF x:DOUBLE,y:DOUBLE
+  DEF rz0:DOUBLE, rz1:DOUBLE, rz:DOUBLE
+  DEF gz0:DOUBLE, gz1:DOUBLE, gz:DOUBLE
+  DEF bz0:DOUBLE, bz1:DOUBLE, bz:DOUBLE
+  DEF ft:DOUBLE
+  DEF fr=0.0:DOUBLE, fg=0.0:DOUBLE, fb=0.0:DOUBLE
+  DEF a
+  DEF orz=0.0:DOUBLE, ogz=0.0:DOUBLE, obz=0.0:DOUBLE
+
+
+  x := fx
+  y := fy
+
+  tresh := GETTRESH
+
+  -&gt;tresh2 := !x*x+(!y*y) / treshhold
+
+
+  FOR a := 0 TO iters-1
+
+    rz0 := !x*x
+    rz1 := !y*y
+    rz := !rz0+rz1
+
+    y:=(!x+x*y+fyc)
+    x:=(!rz0-rz1+fxc)
+
+    gz0 := !x*x
+    gz1 := !y*y
+    gz := !gz0+gz1
+
+    y:=(!x+x*y+fyc)
+    x:=(!gz0-gz1+fxc)
+
+    bz0 := !x*x
+    bz1 := !y*y
+    bz := !bz0+bz1
+
+    y:=(!x+x*y+fyc)
+    x:=(!bz0-bz1+fxc)
+
+    -&gt;EXIT (!rz&gt;tresh) AND (!gz&gt;tresh) AND (!bz&gt;tresh)
+    EXIT (!gz &gt; (!rz*tresh)) AND (!bz &gt; (!gz*tresh))
+
+
+    /*IF !rz &gt; tresh
+       fr := !fr - (!tresh/rz)
+    ELSE*/IF !rz &gt; orz
+       fr := ! fr + (!orz/rz)
+    ELSE
+       fr := ! fr + (!rz/orz)
+    ENDIF
+
+    /*IF !gz &gt; tresh
+       fg := !fg - (!tresh/gz)
+    ELSE*/IF !gz &gt; ogz
+       fg := ! fg + (!ogz/gz)
+    ELSE
+       fg := ! fg + (!gz/ogz)
+    ENDIF
+
+    /*IF !bz &gt; tresh
+       fb := !fb - (!tresh/bz)
+    ELSE*/IF !bz &gt; obz
+       fb := ! fb + (!obz/bz)
+    ELSE
+       fb := ! fb + (!bz/obz)
+    ENDIF
+
+    orz := rz
+    ogz := gz
+    obz := bz
+
+  ENDFOR
+
+  ret.r := !fr / (iters!)
+
+  ret.g := !fg / (iters!)
+
+  ret.b := !fb / (iters!)
+
+
+ENDPROC
+
+PROC test11(fx:REAL,fy:REAL,fxc:REAL,fyc:REAL,tresh:REAL,iters:LONG,ret:PTR TO mandret)
+  DEF x:DOUBLE,y:DOUBLE
+  DEF rz0:DOUBLE, rz1:DOUBLE, rz:DOUBLE
+  DEF gz0:DOUBLE, gz1:DOUBLE, gz:DOUBLE
+  DEF bz0:DOUBLE, bz1:DOUBLE, bz:DOUBLE
+  DEF ft:DOUBLE
+  DEF fr=0.0:DOUBLE, fg=0.0:DOUBLE, fb=0.0:DOUBLE
+  DEF a
+  DEF orz=0.0:DOUBLE, ogz=0.0:DOUBLE, obz=0.0:DOUBLE
+
+
+  x := fx
+  y := fy
+
+  tresh := tresh-&gt;GETTRESH
+
+  -&gt;tresh2 := !x*x+(!y*y) / treshhold
+
+
+  FOR a := 0 TO iters-1
+
+    rz0 := !x*x
+    rz1 := !y*y
+    rz := !rz0+rz1
+
+    y:=(!x+x*y+fyc)
+    x:=(!rz0-rz1+fxc)
+
+    gz0 := !x*x
+    gz1 := !y*y
+    gz := !gz0+gz1
+
+    y:=(!x+x*y+fyc)
+    x:=(!gz0-gz1+fxc)
+
+    bz0 := !x*x
+    bz1 := !y*y
+    bz := !bz0+bz1
+
+    y:=(!x+x*y+fyc)
+    x:=(!bz0-bz1+fxc)
+
+    -&gt;EXIT (!rz&gt;tresh) AND (!gz&gt;tresh) AND (!bz&gt;tresh)
+    -&gt;EXIT (!gz &gt; (!rz*tresh)) AND (!bz &gt; (!gz*tresh))
+
+
+    IF (!rz &gt; tresh) AND (!gz &gt; tresh) AND (!bz &gt; tresh)
+       fr := !fr + (!tresh/rz)
+       fg := !fg + (!tresh/gz)
+       fb := !fb + (!tresh/bz)
+    ELSE
+       fr := ! fr + (!1.0/tresh*rz)
+       fg := ! fg + (!1.0/tresh*gz)
+       fb := ! fb + (!1.0/tresh*bz)
+    ENDIF
+
+
+    orz := rz
+    ogz := gz
+    obz := bz
+
+  ENDFOR
+
+  ret.r := !fr / (iters!)
+
+  ret.g := !fg / (iters!)
+
+  ret.b := !fb / (iters!)
+
+
+ENDPROC
+
+
+-&gt; Z + C
+PROC testZC(fx:REAL,fy:REAL,fxc:REAL,fyc:REAL,tresh:REAL,iters:LONG,ret:PTR TO mandret)
+  DEF x:DOUBLE, y:DOUBLE, a:DOUBLE, b:DOUBLE, t=0
+  DEF dir=-1, count=0
+
+  x := (!fx)
+  y := (!fy)
+  tresh := !(!x*x+(!y*y)) + (!fxc*fxc+(!fyc*fyc)) * tresh
+
+  WHILE (t++ &lt; iters) AND (!x*x+(!y*y) &lt; tresh)
+    -&gt;a := ! x*x/(!x-y)  + (!fxc)
+    -&gt;b := ! y*y/(!x-y)  + (!fyc)
+    -&gt;a := ! x*x-(!y) + (!fxc)
+    -&gt;b := ! x-(!y*y) + (!fyc)
+    -&gt;a := ! (!x*x)-(!y) + (!fxc)
+    -&gt;b := ! (!y*y)-(!x) + (!fyc)
+    a := ! Fexp(x) * Fcos(y) * fxc
+    b := ! Fexp(x) * Fsin(y) * fyc
+    x := a
+    y := b
+  ENDWHILE
+
+  -&gt;fr := ! Fabs(Fpow(!fy,fx)) / 2.0
+
+  ret.r := t!/(iters!)
+  ret.g := t!/(iters!)
+  ret.b := t!/(iters!)
+
+ENDPROC
+
+-&gt; frequence
+PROC testF(fx:REAL,fy:REAL,fxc:REAL,fyc:REAL,tresh:REAL,iters:LONG,ret:PTR TO mandret)
+  DEF x:DOUBLE, y:DOUBLE, a:DOUBLE, b:DOUBLE, t=0
+  DEF xdr=1, ydr=-1,  xfc=0, yfc=0
+  DEF fmin:DOUBLE, fmax:DOUBLE
+
+  x := (!fx)
+  y := (!fy)
+
+  -&gt;fmin := !x*x+(!y*y)
+  -&gt;fmax := fmin
+
+  tresh := !(!x*x+(!y*y)) + (!fxc*fxc+(!fyc*fyc)) * tresh
+
+  WHILE (t++ &lt; iters) AND (!x*x+(!y*y) &lt; tresh)
+    a := !x*x-(!y*y) + fxc
+    b := !2.0*x*y + fyc
+
+    IF xdr = -1
+       IF !a &gt; x
+         xfc++
+         xdr := 1
+       ENDIF
+    ELSE
+      IF !a &lt; x
+         xfc++
+         xdr := -1
+      ENDIF
+    ENDIF
+
+    IF ydr = -1
+       IF !b &gt; y
+         yfc++
+         ydr := 1
+       ENDIF
+    ELSE
+      IF !b &lt; y
+         yfc++
+         ydr := -1
+      ENDIF
+    ENDIF
+
+
+    x := a
+    y := b
+
+  ENDWHILE
+
+  -&gt;fr := ! Fabs(Fpow(!fy,fx)) / 2.0
+  IF !x*x+(!y*y) &gt; tresh
+      ret.r := t!/(iters!)
+      ret.g := t!/(iters!)
+      ret.b := t!/(iters!)
+  ELSE
+      -&gt;ret.r := !Fsqrt(xfc*xfc+(yfc*yfc)!)/(iters!)
+      -&gt;ret.g := !Fsqrt(xfc*xfc+(yfc*yfc)!)/(iters!)
+      -&gt;ret.b := !Fsqrt(xfc*xfc+(yfc*yfc)!)/(iters!)
+      ret.r := xfc!/(iters!)
+      ret.g := yfc!/(iters!)
+      ret.b := !Fsqrt(xfc*xfc+(yfc*yfc)!)/(iters!)
+  ENDIF
+
+
+ENDPROC
+
+PROC test12(fx:REAL,fy:REAL,fxc:REAL,fyc:REAL,tresh:REAL,iters:LONG,ret:PTR TO mandret)
+  DEF x:DOUBLE, y:DOUBLE, a:DOUBLE, b:DOUBLE, t=0
+  DEF afc=0.0:DOUBLE, adc=0
+
+  x := (!fx)
+  y := (!fy)
+
+  tresh := !(!x*x+(!y*y)) + (!fxc*fxc+(!fyc*fyc)) * tresh
+
+  WHILE (t++ &lt; iters) AND (!x*x+(!y*y) &lt; tresh)
+    a := !x*x-(!y*y) + fxc
+    b := !2.0*x*y + fyc
+
+    afc := ! afc + Fabs(!a+b-(!x*x+(!y*y)))
+
+    IF !a+b &gt; (!x*x+(!y*y))
+       adc++
+    ENDIF
+
+    x := a
+    y := b
+  ENDWHILE
+
+  IF t &lt; iters
+      ret.r := (!adc/(t!))
+      ret.g := (!adc/(t!))
+      ret.b := (!adc/(t!))
+  ELSE
+      ret.r := !afc/(iters!)
+      ret.g := !afc/(iters!)
+      ret.b := !afc/(iters!)
+  ENDIF
+
+
+ENDPROC</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

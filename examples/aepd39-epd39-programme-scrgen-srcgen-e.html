@@ -1,0 +1,594 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>SrcGen.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-aepd39.html">AEPD39</a> &rsaquo; SrcGen.e</div><h1>File: <code>SrcGen.e</code></h1><p class="meta">568 lines · project <a href="../examples/pkg-aepd39.html"><code>AEPD39</code></a></p><p class="pathctx">AEPD39/EPD39/Programme/ScrGen/SrcGen.e</p><p class="prose">GenGTXSource-E: SrcGen GadToolBox source generator for E You&#x27;ll be needing GadToolBox v2.0 or higher, and have the gadtoolsbox.<a href="../modules/library.html">library</a> that comes with it in your LIBS:. now, with GTB, make some simple example (just a <a href="../modules/window.html">window</a> with a few <a href="../modules/gadgets.html">gadgets</a>/<a href="../modules/menus.html">menus</a> etc.), save it as &quot;bla&quot; (filename will be &quot;bla.gui&quot;</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/gtx.html">gtx</a></li></ul></div><h2>Source</h2><pre class="code">/* GenGTXSource-E: SrcGen GadToolBox source generator for E
+
+You&#x27;ll be needing GadToolBox v2.0 or higher, and have the gadtoolsbox.library
+that comes with it in your LIBS:.  now, with GTB, make some simple example
+(just a window with a few gadgets/menus etc.), save it as &quot;bla&quot; (filename will
+be &quot;bla.gui&quot;), and type:
+
+1&gt; SrcGen bla
+1&gt; EC bla
+1&gt; bla
+
+&quot;bla.e&quot; contains the routines for opening your interface, as well
+as some routines to handle idcmpmessages, errors etc., and a dummy
+&quot;main&quot; that just waits for one selection. here you can put in
+your own code. see the commandline template how to stop SrcGen from
+generating these routines.
+
+That&#x27;s all there&#x27;s to it. If you have problems, just check the
+source that has been generated.
+
+TODO:
+   - check and implement all possible tags
+   - Wait4Message &lt;-&gt; IDCMP                 ???
+   - hotkey support?
+
+   - Tags in []:newgadget
+   - IDCMP-Flags in OpenWindow()
+   - ZeichenModi bei PrintIText() (z.B. JAM1,JAM2 ...)
+*/
+
+OPT OSVERSION=37
+
+ENUM NONE,NOMEM,BADARGS,NOGTXLIB,LOADGUI,NOGUI,NOWINDOWS,NOFILEOUT
+SET HASGADGETS,HASMENUS
+
+MODULE &#x27;gtx&#x27;, &#x27;gadtoolsbox/forms&#x27;, &#x27;gadtoolsbox/gui&#x27;, &#x27;gadtoolsbox/gtxbase&#x27;,
+       &#x27;nofrag&#x27;, &#x27;libraries/gadtools&#x27;, &#x27;utility&#x27;, &#x27;intuition/gadgetclass&#x27;,
+       &#x27;intuition/intuition&#x27;, &#x27;graphics/text&#x27;
+
+DEF guiptr: guidata,
+    wlist: windowlist,
+    kinds:PTR TO LONG,
+    gttags1:PTR TO LONG,gttags2:PTR TO LONG,gatags:PTR TO LONG,
+    pgatags:PTR TO LONG,latags:PTR TO LONG,strtags:PTR TO LONG,
+    watags:PTR TO LONG,
+    win[100]:LIST,
+    infile[100]:STRING,outfile[100]:STRING,
+    mainf=FALSE,erf=FALSE,mesf=FALSE,layoutf=TRUE,scrf=TRUE,
+    lastkind,wname
+
+PROC main() HANDLE
+  DEF myargs:PTR TO LONG,rdargs=NIL,chain=NIL,gbase:PTR TO gtxbase,valid=NIL,
+      pos
+
+  myargs:=[0,0,0,0,0,0]
+  IF (rdargs:=ReadArgs(&#x27;GUIFILE/A,MAIN/S,ERR/S,MES/S,NOSCR/S,NOLAYOUT/S&#x27;,
+      myargs,NIL))=NIL THEN Raise(BADARGS)
+  WriteF(&#x27;Amiga E GadToolsBox SourceGenerator v0.9 (c) 1995 $#%!\n&#x27;)
+  IF (gtxbase:=OpenLibrary(&#x27;gadtoolsbox.library&#x27;,0))=NIL THEN Raise(NOGTXLIB)
+  IF myargs[1] THEN mainf:=TRUE    /* generate PROC main() */
+  IF myargs[2] THEN erf:=TRUE      /* error report function */
+  IF myargs[3] THEN mesf:=TRUE     /* wait4message() */
+  IF myargs[4] THEN scrf:=FALSE    /* own Screen */
+  IF myargs[5] THEN layoutf:=FALSE /* no layout: ALL tags on one line */
+  StrCopy(infile,myargs[0],ALL)
+  infile:=TrimStr(infile)                 -&gt; fuehrende Leerzeichen entfernen
+  StrCopy(outfile,infile,ALL)
+  IF (pos:=InStr(outfile,&#x27;.gui&#x27;,0))&gt;-1    -&gt; Endung &#x27;.gui&#x27; entfernen
+    SetStr(outfile,pos)
+    StrAdd(outfile,&#x27;.e&#x27;,ALL)
+  ELSE
+    StrAdd(infile,&#x27;.gui&#x27;,ALL)
+    StrAdd(outfile,&#x27;.e&#x27;,ALL)
+  ENDIF
+  gbase:=gtxbase
+  nofragbase:=gbase.nofragbase
+  utilitybase:=gbase.utilitybase
+  IF (chain:=GetMemoryChain(4096))=NIL THEN Raise(NOMEM)
+  IF GtX_LoadGUIA(chain,infile,[RG_GUI,guiptr,RG_WINDOWLIST,wlist,
+     RG_VALID,{valid},NIL]) THEN Raise(LOADGUI)
+  IF (valid AND VLF_GUI)=0 THEN Raise(NOGUI)
+  IF (valid AND VLF_WINDOWLIST)=0 THEN Raise(NOWINDOWS)
+  WriteF(&#x27;Generating source...\n\n&#x27;)
+  generate()
+  Raise(NONE)
+EXCEPT
+  IF valid AND VLF_WINDOWLIST THEN GtX_FreeWindows(chain,wlist)
+  IF chain THEN FreeMemoryChain(chain,TRUE)
+  IF gtxbase THEN CloseLibrary(gtxbase)
+  IF rdargs THEN FreeArgs(rdargs)
+  WriteF(&#x27;\s!\n&#x27;,ListItem([&#x27;Done&#x27;,
+  &#x27;Out of Memory&#x27;,
+  &#x27;Bad args&#x27;,
+  &#x27;Could not open gadtoolsbox library&#x27;,
+  &#x27;Problems reading GUI file&#x27;,
+  &#x27;missing GUI definition&#x27;,
+  &#x27;missing window definitions&#x27;,
+  &#x27;problems while writing E source&#x27;],exception))
+ENDPROC
+
+PROC generate()
+  DEF fh
+  IF ( fh:=Open(outfile,NEWFILE) )=NIL THEN Raise(NOFILEOUT)
+  fh:=SetStdOut(fh)
+  initlists()
+  WriteF(&#x27;/* E Source generated by SRCGEN v0.9 */\n\n&#x27;)
+  IF Not(mainf) THEN WriteF(&#x27;OPT MODULE\n&#x27;)
+  WriteF(&#x27;OPT OSVERSION=37\n\n&#x27; +
+         &#x27;MODULE &#x27;&#x27;gadtools&#x27;&#x27;,&#x27;&#x27;libraries/gadtools&#x27;&#x27;,\n&#x27;+
+         &#x27;       &#x27;&#x27;intuition/intuition&#x27;&#x27;, &#x27;&#x27;intuition/screens&#x27;&#x27;,&#x27;+
+         &#x27; &#x27;&#x27;intuition/gadgetclass&#x27;&#x27;,\n&#x27; +
+         &#x27;       &#x27;&#x27;graphics/text&#x27;&#x27;,&#x27;&#x27;graphics/rastport&#x27;&#x27;,\n&#x27;+
+         &#x27;       &#x27;&#x27;diskfont&#x27;&#x27;,\n&#x27; +
+         &#x27;       &#x27;&#x27;utility/tagitem&#x27;&#x27;\n\n&#x27;+
+         &#x27;ENUM NONE,NOCONTEXT,NOGADGET,NOWB,NOVISUAL,&#x27;+
+         &#x27;OPENGT,OPENDF,NOWINDOW,NOMENUS,NOSCR,NOFONT\n\n&#x27;)
+  WriteF(&#x27;DEF&#x27;)
+  checkwindows()
+  IF mesf THEN WriteF(&#x27;\tinfos:PTR TO gadget,\n&#x27;)
+  WriteF(&#x27;\tscr:PTR TO screen,\n\tvisual,\n\toffx,offy,tattr:PTR TO textattr\n\n&#x27;)
+  IF scrf THEN genscreenstuff()
+  genwindows()
+  genmain()
+  Close(SetStdOut(fh))
+ENDPROC
+
+PROC genwindows()
+  DEF w:PTR TO projectwindow,wnum=0
+  w:=wlist.first
+  WHILE w.next
+    wname:=w.name
+    lastkind:=-1
+    IF Not(mainf) THEN WriteF(&#x27;EXPORT &#x27;)
+    WriteF(&#x27;PROC open\swindow()\n&#x27;,wname)
+    WriteF(&#x27;  DEF g:PTR TO gadget\n&#x27;)
+    WriteF(&#x27;  IF (g:=CreateContext({\sglist}))=NIL THEN RETURN NOCONTEXT\n&#x27;,wname)
+    gengadgets(w)
+    IF win[wnum] AND HASMENUS
+      WriteF(&#x27;  IF (\smenus:=CreateMenusA([&#x27;,wname)
+      genmenus(w.menus)
+      WriteF(&#x27;0,0,0,0,0,0,0]:newmenu,NIL))=NIL THEN RETURN NOMENUS\n&#x27;)
+      WriteF(&#x27;  IF LayoutMenusA(\smenus,visual,NIL)=FALSE THEN RETURN NOMENUS\n&#x27;,
+             wname)
+    ENDIF
+    WriteF(&#x27;  IF (\swnd:=OpenWindowTagList(NIL,&#x27;,wname)
+    WriteF(IF layoutf THEN &#x27;\n    [&#x27; ELSE &#x27;[&#x27;)
+    createtags(w.tags)
+    IF win[wnum] AND HASGADGETS
+      WriteF(&#x27;WA_GADGETS,\sglist,&#x27;,wname)
+      IF layoutf THEN WriteF(&#x27;\n     &#x27;)
+    ENDIF
+    WriteF(&#x27;NIL]))=NIL THEN RETURN NOWINDOW\n&#x27;)
+    IF w.windowtext THEN gentexts(w.windowtext)
+    genboxes(w)
+    IF win[wnum] AND HASMENUS
+      WriteF(&#x27;  IF SetMenuStrip(\swnd,\smenus)=FALSE THEN RETURN NOMENUS\n&#x27;,
+             wname,wname)
+    ENDIF
+    WriteF(&#x27;  Gt_RefreshWindow(\swnd,NIL)\n&#x27;,wname)
+    WriteF(&#x27;ENDPROC NIL,\swnd\t-&gt;kein Fehler, WindowPtr\n\n&#x27;,wname)
+    IF Not(mainf) THEN WriteF(&#x27;EXPORT &#x27;)
+    WriteF(&#x27;PROC close\swindow()\n&#x27;,wname)
+    IF win[wnum] AND HASMENUS
+      WriteF(&#x27;  IF \swnd THEN ClearMenuStrip(\swnd)\n&#x27;,wname,wname)
+      WriteF(&#x27;  IF \smenus THEN FreeMenus(\smenus)\n&#x27;,wname,wname)
+    ENDIF
+    WriteF(&#x27;  IF \swnd THEN CloseWindow(\swnd)\n&#x27;,wname,wname)
+    WriteF(&#x27;  IF \sglist THEN FreeGadgets(\sglist)\n&#x27;,wname,wname)
+    WriteF(&#x27;ENDPROC\n\n&#x27;)
+    w:=w.next
+    INC wnum
+  ENDWHILE
+ENDPROC
+
+PROC gengadgets(w:PTR TO projectwindow)
+  DEF egl:PTR TO extgadgetlist,eng:PTR TO extnewgadget,ng:PTR TO newgadget,kind
+  egl:=w.gadgets; eng:=egl.first
+  IF eng=NIL THEN RETURN
+  WHILE eng.next
+    ng:=eng.newgadget                     /* offx,offy */
+    kind:=eng.kind
+    WriteF(&#x27;  IF (g:=CreateGadgetA(\s,g,&#x27;,kinds[kind])
+    IF layoutf THEN WriteF(&#x27;\n    &#x27;)
+    WriteF(&#x27;[offx+\d,offy+\d,\d,\d,&#x27;&#x27;\s&#x27;&#x27;,&#x27; +
+           &#x27;tattr,\d,\d,visual,0]:newgadget,&#x27;,
+           ng.leftedge,ng.topedge,ng.width,ng.height,ng.gadgettext,
+           ng.gadgetid,ng.flags)
+    WriteF(IF layoutf THEN &#x27;\n    [&#x27; ELSE &#x27;[&#x27;)
+    createtags(eng.tags)
+    WriteF(&#x27;NIL]))=NIL THEN RETURN NOGADGET\n&#x27;)
+    lastkind:=kind
+    eng:=eng.next
+  ENDWHILE
+ENDPROC
+
+PROC genmenus(eml:PTR TO extmenulist)
+  DEF enm:PTR TO extnewmenu,nm:PTR TO newmenu,ckey[10]:STRING
+  enm:=eml.first
+  IF enm=NIL THEN RETURN
+  WHILE enm.next
+    nm:=enm.newmenu
+    IF nm.commkey THEN StringF(ckey,&#x27;&#x27;&#x27;\s&#x27;&#x27;&#x27;,nm.commkey) ELSE StrCopy(ckey,&#x27;0&#x27;,ALL)
+    WriteF(&#x27;\d,0,&#x27;,nm.type)
+    WriteF(IF StrCmp(enm.menutitle,&#x27;NM_BARLABEL&#x27;) THEN &#x27;-1&#x27; ELSE &#x27;&#x27;&#x27;\s&#x27;&#x27;&#x27;,
+           enm.menutitle)
+    WriteF(&#x27;,\s,$\h,\d,\d,&#x27;,ckey,nm.flags,nm.mutualexclude,nm.userdata)
+    IF layoutf THEN WriteF(&#x27;\n    &#x27;)
+    IF enm.items THEN genmenus(enm.items)
+    enm:=enm.next
+  ENDWHILE
+ENDPROC
+
+PROC gentexts(i:PTR TO intuitext)
+  WriteF(&#x27;  PrintIText(\swnd.rport,&#x27;,wname)
+  IF layoutf THEN WriteF(&#x27;\n    &#x27;)
+  WriteF(&#x27;[\d,\d,\d,\d,\d,tattr,&#x27;&#x27;\s&#x27;&#x27;,NIL]&#x27; +
+         &#x27;:intuitext,offx,offy)\n&#x27;,i.frontpen,i.backpen,
+         i.drawmode,i.leftedge,i.topedge,i.itext)
+  IF i.nexttext THEN gentexts(i.nexttext)
+ENDPROC
+
+PROC genboxes(w:PTR TO projectwindow)
+  DEF bl:PTR TO bevellist,bb:PTR TO bevelbox
+  bl:=w.boxes; bb:=bl.first
+  IF bb=NIL THEN RETURN
+  WHILE bb.next
+    WriteF(&#x27;  DrawBevelBoxA(\swnd.rport,\d+offx,\d+offy,\d,\d,&#x27;,
+           wname,bb.left,bb.top,bb.width,bb.height)
+    IF layoutf THEN WriteF(&#x27;\n    &#x27;)
+    WriteF(&#x27;[GT_VISUALINFO,visual,&#x27;)
+    IF bb.flags AND BBF_RECESSED THEN WriteF(&#x27;GTBB_RECESSED,1,&#x27;)
+    WriteF(&#x27;NIL])\n&#x27;)
+    bb:=bb.next
+  ENDWHILE
+ENDPROC
+
+PROC createtags(taglist)
+  DEF tag:PTR TO LONG,item,str1=NIL,v:PTR TO LONG,type=0,
+      tmp,autoadjust=TRUE
+
+  WHILE tag:=NextTagItem({taglist})
+    item:=tag[0]
+    IF (item&gt;GT_TAGBASE) AND (GT_TAGBASE+65&gt;item)
+      item:=item-GT_TAGBASE
+      IF (item&gt;=4) AND (item&lt;=24)
+        item:=item-4*2
+        str1:=gttags1[item]
+        type:=gttags1[item+1]
+      ELSEIF (item&gt;=38) AND (item&lt;=64)
+        item:=item-38*2
+        str1:=gttags2[item]
+        type:=gttags2[item+1]
+      ENDIF
+    ELSEIF (item&gt;GA_DUMMY) AND (GA_DUMMY+25&gt;item)
+      item:=item-GA_DUMMY-1*2
+      str1:=gatags[item]
+      type:=gatags[item+1]
+    ELSEIF (item&gt;PGA_DUMMY) AND (PGA_DUMMY+11&gt;item)
+      item:=item-PGA_DUMMY-1*2
+      str1:=pgatags[item]
+      type:=pgatags[item+1]
+    ELSEIF (item&gt;STRINGA_DUMMY) AND (STRINGA_DUMMY+$13&gt;item)
+      item:=item-STRINGA_DUMMY-1*2
+      str1:=strtags[item]
+      type:=strtags[item+1]
+    ELSEIF (item&gt;LAYOUTA_DUMMY) AND (LAYOUTA_DUMMY+25&gt;item)
+      item:=item-LAYOUTA_DUMMY-1*2
+      str1:=latags[item]
+      type:=latags[item+1]
+    ELSEIF (item&gt;=$80000064) AND (item&lt;=$80000092)
+      item:=item-$80000064*2
+      str1:=watags[item]
+      type:=watags[item+1]
+    ENDIF
+    IF ((tmp:=InStr(str1,&#x27;WA_AUTOADJUST&#x27;,0))&gt;-1)
+      IF (autoadjust=TRUE)
+        autoadjust:=FALSE
+      ELSE
+        JUMP no_more_autoadjust
+      ENDIF
+    ENDIF
+    WriteF(IF str1 THEN str1 ELSE &#x27;$\h&#x27;,tag[0])
+    WriteF(&#x27;,&#x27;)
+    v:=tag[1]
+    /* 0=num, 1=(list), 2=array of text, 3=text, 4=&quot;NIL&quot;, 5=&quot;tattr&quot;, 6=&quot;visual&quot;
+       7=&quot;g/NIL&quot;, 8=(ptr to menu), 9=&quot;scr&quot;, 10=&quot;_&quot;, 11=&quot;+offx&quot;, 12=&quot;+offy&quot; */
+    SELECT type
+      CASE 0
+        WriteF(IF (v&gt;=-100) AND (v&lt;=500) THEN &#x27;\d&#x27; ELSE &#x27;$\h&#x27;,v)
+      CASE 2
+        WriteF(&#x27;[&#x27;)
+        WHILE v[]
+          WriteF(&#x27;&#x27;&#x27;\s&#x27;&#x27;,&#x27;,v[])
+          v++
+        ENDWHILE
+        WriteF(&#x27;0]&#x27;)
+      CASE 3;  IF ((tmp:=StrLen(v))=0) THEN WriteF(&#x27;NIL&#x27;) ELSE WriteF(&#x27;&#x27;&#x27;\s&#x27;&#x27;&#x27;,v)
+      CASE 5;  WriteF(&#x27;tattr&#x27;)
+      CASE 6;  WriteF(&#x27;visual&#x27;)
+      CASE 7;  WriteF(IF lastkind=STRING_KIND THEN &#x27;g&#x27; ELSE &#x27;NIL&#x27;)
+      CASE 9;  WriteF(&#x27;scr&#x27;)
+      CASE 10; WriteF(&#x27;&quot;_&quot;&#x27;)
+      CASE 11; WriteF(&#x27;offx+\d&#x27;,v)
+      CASE 12; WriteF(&#x27;offy+\d&#x27;,v)
+      DEFAULT; WriteF(&#x27;NIL&#x27;)
+    ENDSELECT
+    WriteF(&#x27;,&#x27;)
+    IF layoutf THEN WriteF(&#x27;\n     &#x27;)
+ no_more_autoadjust:
+  ENDWHILE
+ENDPROC
+
+PROC checkwindows()
+  DEF w:PTR TO projectwindow,wname,fl,x
+  w:=wlist.first
+  WHILE w.next
+    wname:=w.name
+    LowerStr(wname)
+    fl:=0
+    WriteF(&#x27;\t\swnd:PTR TO window,\n&#x27;,wname)
+    x:=Long(w.menus)
+    IF ^x
+      fl:=HASMENUS
+      WriteF(&#x27;\t\smenus,\n&#x27;,wname)
+    ENDIF
+    x:=Long(w.gadgets)
+    IF ^x
+      fl:=fl OR HASGADGETS
+    ENDIF
+    WriteF(&#x27;\t\sglist,\n&#x27;,wname)
+    ListAdd(win,[fl],ALL)
+    w:=w.next
+  ENDWHILE
+ENDPROC
+
+PROC checkclosedwindows()
+  DEF w:PTR TO projectwindow,wname
+  w:=wlist.first
+  WHILE w.next
+    wname:=w.name
+    LowerStr(wname)
+    WriteF(&#x27;    close\swindow()\n&#x27;,wname)
+    w:=w.next
+  ENDWHILE
+ENDPROC
+
+PROC checkcolors(colors:PTR TO colorspec)
+  DEF tmp
+  IF ((tmp:=colors[].colorindex)&lt;&gt;-1)
+    WriteF(&#x27;      SA_COLORS,[&#x27;)
+    WHILE ((tmp:=colors[].colorindex)&lt;&gt;-1)
+      WriteF(&#x27;\d,\d,\d,\d,&#x27;,colors.colorindex,colors.red,colors.green,colors.blue)
+      IF layoutf THEN WriteF(&#x27;\n                 &#x27;)
+      colors++
+    ENDWHILE
+    WriteF(&#x27;-1]:colorspec,\n&#x27;)
+  ENDIF
+        -&gt; ansonsten WB-Farben ... aber wie ?
+ENDPROC
+
+PROC genscreenstuff()
+  DEF sname[MAXSCREENTITLE]:STRING,
+      fname[FONTNAMELENGTH]:STRING,font:PTR TO textattr,
+      colors,tmp
+
+  IF Not(mainf) THEN WriteF(&#x27;EXPORT &#x27;)
+  WriteF(&#x27;PROC setupscreen()\n&#x27;)
+  IF (guiptr.flags0 AND GU0F_WORKBENCH)&lt;&gt;NIL
+    WriteF(&#x27;  IF (gadtoolsbase:=OpenLibrary(&#x27;&#x27;gadtools.library&#x27;&#x27;,37))=NIL &#x27;+
+           &#x27;THEN RETURN OPENGT\n&#x27;)
+    WriteF(&#x27;  IF (diskfontbase:=OpenLibrary(&#x27;&#x27;diskfont.library&#x27;&#x27;,0))=NIL &#x27; +
+           &#x27;THEN RETURN OPENDF\n&#x27;)
+    WriteF(&#x27;  IF (scr:=LockPubScreen(&#x27;&#x27;Workbench&#x27;&#x27;))=NIL THEN RETURN NOWB\n&#x27;)
+    WriteF(&#x27;  IF (visual:=GetVisualInfoA(scr,NIL))=NIL THEN RETURN NOVISUAL\n&#x27;)
+    WriteF(&#x27;  tattr:=scr.font\n&#x27;)
+    WriteF(&#x27;  offy:=scr.wbortop+scr.rastport.txheight-tattr.ysize-2\n&#x27;)
+  ELSE
+    WriteF(&#x27;  DEF dummy,colors,wbscr\n\n&#x27;)
+    WriteF(&#x27;  IF (gadtoolsbase:=OpenLibrary(&#x27;&#x27;gadtools.library&#x27;&#x27;,37))=NIL &#x27;+
+           &#x27;THEN RETURN OPENGT\n&#x27;)
+    WriteF(&#x27;  IF (diskfontbase:=OpenLibrary(&#x27;&#x27;diskfont.library&#x27;&#x27;,0))=NIL &#x27; +
+           &#x27;THEN RETURN OPENDF\n&#x27;)
+
+    font:=guiptr.font
+    StrCopy(fname,font.name,ALL)
+    WriteF(&#x27;  tattr:=[&#x27;&#x27;\s&#x27;&#x27;,\d,\d,$\z\h[2]]:textattr\n&#x27;,
+            fname,font.ysize,font.style,font.flags)
+    IF (font.flags=FPF_DISKFONT)
+      WriteF(&#x27;  IF (dummy:=OpenDiskFont(tattr))=NIL THEN RETURN NOFONT\n&#x27;)
+    ENDIF
+
+    StrCopy(sname,guiptr.screentitle,ALL)
+    IF ((tmp:=EstrLen(sname))=0)
+      StrCopy(sname,&#x27;NIL&#x27;,ALL)
+    ELSE
+      StringF(sname,&#x27;&#x27;&#x27;\s&#x27;&#x27;&#x27;,sname)
+    ENDIF
+
+    colors:=guiptr.colors
+    WriteF(&#x27;  IF (scr:=OpenS(\d,\d,\d,$\z\h[8],\s,\n&#x27;,
+            guiptr.width,guiptr.height,guiptr.depth,guiptr.displayid,sname)
+    WriteF(&#x27;      [SA_LEFT,\d,SA_TOP,\d,SA_OVERSCAN,\d,\n&#x27;,
+            guiptr.left,guiptr.top,guiptr.overscan)
+
+    IF (guiptr.flags0 AND GU0F_AUTOSCROLL)&lt;&gt;NIL
+      WriteF(&#x27;      SA_AUTOSCROLL,TRUE,\n&#x27;)
+    ENDIF
+
+    checkcolors(colors)
+
+    WriteF(&#x27;      SA_FONT,tattr,SA_SHOWTITLE,FALSE,&#x27;)
+    WriteF(&#x27;TAG_DONE]))=NIL THEN RETURN NOSCR\n&#x27;)
+    WriteF(&#x27;  IF (wbscr:=LockPubScreen(&#x27;&#x27;Workbench&#x27;&#x27;))=NIL THEN RETURN NOWB\n&#x27;)
+    WriteF(&#x27;  IF (visual:=GetVisualInfoA(wbscr,NIL))=NIL THEN RETURN NOVISUAL\n&#x27;)
+    WriteF(&#x27;  UnlockPubScreen(NIL,wbscr)\n&#x27;)
+    WriteF(&#x27;  offy:=scr.wbortop+scr.rastport.txheight-tattr.ysize-2\n&#x27;)
+  ENDIF
+  WriteF(&#x27;ENDPROC\n\n&#x27;)
+
+  IF Not(mainf) THEN WriteF(&#x27;EXPORT &#x27;)
+  WriteF(&#x27;PROC closedownscreen()\n&#x27;)
+  WriteF(&#x27;  IF visual THEN FreeVisualInfo(visual)\n&#x27;)
+  IF (guiptr.flags0 AND GU0F_WORKBENCH)&lt;&gt;NIL
+    WriteF(&#x27;  IF scr THEN UnlockPubScreen(NIL,scr)\n&#x27;)
+  ELSE
+    WriteF(&#x27;  IF scr THEN CloseS(scr)\n&#x27;)
+  ENDIF
+  WriteF(&#x27;  IF gadtoolsbase THEN CloseLibrary(gadtoolsbase)\n&#x27;)
+  WriteF(&#x27;  IF diskfontbase THEN CloseLibrary(diskfontbase)\n&#x27;)
+  WriteF(&#x27;ENDPROC\n\n&#x27;)
+ENDPROC
+
+PROC genmain()
+  DEF w:PTR TO projectwindow,wname
+  IF mesf
+    IF Not(mainf) THEN WriteF(&#x27;EXPORT &#x27;)
+    WriteF(&#x27;PROC wait4message(win:PTR TO window)\n&#x27; +
+      &#x27;  DEF mes:PTR TO intuimessage,type\n&#x27; +
+      &#x27;  REPEAT\n&#x27; +
+      &#x27;    type:=0\n&#x27; +
+      &#x27;    IF mes:=Gt_GetIMsg(win.userport)\n&#x27; +
+      &#x27;      type:=mes.class\n&#x27; +
+      &#x27;      IF type=IDCMP_MENUPICK\n&#x27; +
+      &#x27;        infos:=mes.code\n&#x27; +
+      &#x27;      ELSEIF (type=IDCMP_GADGETDOWN) OR (type=IDCMP_GADGETUP)\n&#x27; +
+      &#x27;        infos:=mes.iaddress\n&#x27; +
+      &#x27;      ELSEIF type=IDCMP_REFRESHWINDOW\n&#x27; +
+      &#x27;        Gt_BeginRefresh(win)\n&#x27; +
+      &#x27;        Gt_EndRefresh(win,TRUE)\n&#x27; +
+      &#x27;        type:=0\n&#x27; +
+      &#x27;      ELSEIF type&lt;&gt;IDCMP_CLOSEWINDOW  /* remove these if you like */\n&#x27; +
+      &#x27;        type:=0\n&#x27; +
+      &#x27;      ENDIF\n&#x27; +
+      &#x27;      Gt_ReplyIMsg(mes)\n&#x27; +
+      &#x27;    ELSE\n&#x27; +
+      &#x27;      WaitPort(win.userport)\n&#x27; +
+      &#x27;    ENDIF\n&#x27; +
+      &#x27;  UNTIL type\n&#x27; +
+      &#x27;ENDPROC type\n\n&#x27;)
+  ENDIF
+  IF erf
+    IF Not(mainf) THEN WriteF(&#x27;EXPORT &#x27;)
+    WriteF(&#x27;PROC reporterr(er)\n  DEF erlist:PTR TO LONG\n  IF er\n&#x27; +
+      &#x27;    erlist:=[&#x27;&#x27;get context&#x27;&#x27;,&#x27;&#x27;create gadget&#x27;&#x27;,&#x27;&#x27;lock wb&#x27;&#x27;,&#x27;&#x27;get visual&#x27; +
+      &#x27; infos&#x27;&#x27;,\n      &#x27;&#x27;open &quot;gadtools.library&quot; v37+&#x27;&#x27;,&#x27; +
+      &#x27;&#x27;&#x27;open &quot;diskfont.library&quot;&#x27;&#x27;,\n&#x27; +
+      &#x27;      &#x27;&#x27;open window&#x27;&#x27;,&#x27;&#x27;create menus&#x27;&#x27;,&#x27;&#x27;open screen&#x27;&#x27;,\n&#x27; +
+      &#x27;      &#x27;&#x27;open font&#x27;&#x27;]\n&#x27; +
+      &#x27;    EasyRequestArgs(0,[20,0,0,&#x27;&#x27;Could not \\s!&#x27;&#x27;,&#x27;&#x27;ok&#x27;&#x27;],0,[erlist[er-1]])\n&#x27;)
+    checkclosedwindows()
+    WriteF(&#x27;    closedownscreen()\n  ENDIF\nENDPROC er\n\n&#x27;)
+  ENDIF
+  IF mainf
+    WriteF(&#x27;PROC main()\n  &#x27;)
+    WriteF(IF erf THEN &#x27;IF reporterr(setupscreen())=0\n&#x27; ELSE &#x27;IF setupscreen()=0\n&#x27;)
+    w:=wlist.first
+    WHILE w.next
+      wname:=w.name
+      WriteF(IF erf THEN &#x27;    reporterr(open\swindow())\n&#x27; ELSE &#x27;    open\swindow()\n&#x27;,
+             wname)
+      WriteF(IF mesf THEN &#x27;    wait4message(\swnd)\n&#x27; ELSE &#x27;    Delay(500)\n&#x27;,wname)
+      WriteF(&#x27;    close\swindow()\n&#x27;,wname)
+      WriteF(&#x27;    IF CtrlC() THEN JUMP x\n&#x27;)
+      w:=w.next
+    ENDWHILE
+    WriteF(&#x27;  ENDIF\n  x: closedownscreen()\nENDPROC\n\n&#x27;)
+  ENDIF
+ENDPROC
+
+PROC initlists()
+
+  kinds:=[&#x27;GENERIC_KIND&#x27;,&#x27;BUTTON_KIND&#x27;,&#x27;CHECKBOX_KIND&#x27;,&#x27;INTEGER_KIND&#x27;,
+          &#x27;LISTVIEW_KIND&#x27;,&#x27;MX_KIND&#x27;,&#x27;NUMBER_KIND&#x27;,&#x27;CYCLE_KIND&#x27;,&#x27;PALETTE_KIND&#x27;,
+          &#x27;SCROLLER_KIND&#x27;,&#x27;RESERVED_KIND&#x27;,&#x27;SLIDER_KIND&#x27;,&#x27;STRING_KIND&#x27;,&#x27;TEXT_KIND&#x27;]
+
+  /* GT_TAGBASE 4-23 */
+
+  gttags1:=[&#x27;GTCB_CHECKED&#x27;,0,&#x27;GTLV_TOP&#x27;,0,&#x27;GTLV_LABELS&#x27;,1,&#x27;GTLV_READONLY&#x27;,0,
+            &#x27;GTLV_SCROLLWIDTH&#x27;,0,&#x27;GTMX_LABELS&#x27;,2,&#x27;GTMX_ACTIVE&#x27;,0,&#x27;GTTX_TEXT&#x27;,3,
+            &#x27;GTTX_COPYTEXT&#x27;,0,&#x27;GTNM_NUMBER&#x27;,0,&#x27;GTCY_LABELS&#x27;,2,&#x27;GTCY_ACTIVE&#x27;,0,
+            &#x27;GTPA_DEPTH&#x27;,0,&#x27;GTPA_COLOR&#x27;,0,&#x27;GTPA_COLOROFFSET&#x27;,0,
+            &#x27;GTPA_INDICATORWIDTH&#x27;,0,&#x27;GTPA_INDICATORHEIGHT&#x27;,0,&#x27;GTSC_TOP&#x27;,0,
+            &#x27;GTSC_TOTAL&#x27;,0,&#x27;GTSC_VISIBLE&#x27;,0]
+
+  /* GT_TAGBASE 38-64 */
+
+  gttags2:=[&#x27;GTSL_MIN&#x27;,0,&#x27;GTSL_MAX&#x27;,0,&#x27;GTSL_LEVEL&#x27;,0,&#x27;GTSL_MAXLEVELLEN&#x27;,0,
+            &#x27;GTSL_LEVELFORMAT&#x27;,3,&#x27;GTSL_LEVELPLACE&#x27;,0,&#x27;GTSL_DISPFUNC&#x27;,4,
+            &#x27;GTST_STRING&#x27;,3,&#x27;GTST_MAXCHARS&#x27;,0,&#x27;GTIN_NUMBER&#x27;,0,
+            &#x27;GTIN_MAXCHARS&#x27;,0,&#x27;GTMN_TEXTATTR&#x27;,5,&#x27;GTMN_FRONTPEN&#x27;,0,
+            &#x27;GTBB_RECESSED&#x27;,0,&#x27;GT_VISUALINFO&#x27;,6,&#x27;GTLV_SHOWSELECTED&#x27;,7,
+            &#x27;GTLV_SELECTED&#x27;,0,&#x27;GT_RESERVED0&#x27;,0,&#x27;GT_RESERVED1&#x27;,0,
+            &#x27;GTTX_BORDER&#x27;,0,&#x27;GTNM_BORDER&#x27;,0,&#x27;GTSC_ARROWS&#x27;,0,&#x27;GTMN_MENU&#x27;,8,
+            &#x27;GTMX_SPACING&#x27;,0,&#x27;GTMN_FULLMENU&#x27;,0,&#x27;GTMN_SECONDARYERROR&#x27;,4,
+            &#x27;GT_UNDERSCORE&#x27;,10]
+
+  /* GA_DUMMY 1-$24 */
+
+  gatags:=[&#x27;GA_LEFT&#x27;,0,&#x27;GA_RELRIGHT&#x27;,0,&#x27;GA_TOP&#x27;,0,&#x27;GA_RELBOTTOM&#x27;,0,
+           &#x27;GA_WIDTH&#x27;,0,&#x27;GA_RELWIDTH&#x27;,0,&#x27;GA_HEIGHT&#x27;,0,&#x27;GA_RELHEIGHT&#x27;,0,
+           &#x27;GA_TEXT&#x27;,0,&#x27;GA_IMAGE&#x27;,0,&#x27;GA_BORDER&#x27;,0,&#x27;GA_SELECTRENDER&#x27;,0,
+           &#x27;GA_HIGHLIGHT&#x27;,0,&#x27;GA_DISABLED&#x27;,0,&#x27;GA_GZZGADGET&#x27;,0,&#x27;GA_ID&#x27;,0,
+           &#x27;GA_USERDATA&#x27;,0,&#x27;GA_SPECIALINFO&#x27;,0,&#x27;GA_SELECTED&#x27;,0,
+           &#x27;GA_ENDGADGET&#x27;,0,&#x27;GA_IMMEDIATE&#x27;,0,&#x27;GA_RELVERIFY&#x27;,0,
+           &#x27;GA_FOLLOWMOUSE&#x27;,0,&#x27;GA_RIGHTBORDER&#x27;,0,&#x27;GA_LEFTBORDER&#x27;,0,
+           &#x27;GA_TOPBORDER&#x27;,0,&#x27;GA_BOTTOMBORDER&#x27;,0,&#x27;GA_TOGGLESELECT&#x27;,0,
+           &#x27;GA_SYSGADGET&#x27;,0,&#x27;GA_SYSGTYPE&#x27;,0,&#x27;GA_PREVIOUS&#x27;,0,&#x27;GA_NEXT&#x27;,0,
+           &#x27;GA_DRAWINFO&#x27;,0,&#x27;GA_INTUITEXT&#x27;,0,&#x27;GA_LABELIMAGE&#x27;,0,&#x27;GA_TABCYCLE&#x27;,0]
+
+  /* PGADUMMY, 1-$A */
+
+  pgatags:=[&#x27;PGA_FREEDOM&#x27;,0,&#x27;PGA_BORDERLESS&#x27;,0,&#x27;PGA_HORIZPOT&#x27;,0,
+            &#x27;PGA_HORIZBODY&#x27;,0,&#x27;PGA_VERTPOT&#x27;,0,&#x27;PGA_VERTBODY&#x27;,0,&#x27;PGA_TOTAL&#x27;,0,
+            &#x27;PGA_VISIBLE&#x27;,0,&#x27;PGA_TOP&#x27;,0,&#x27;PGA_NEWLOOK&#x27;,0]
+
+  /* STRINGA_DUMMY, 1-$13 */
+
+  strtags:=[&#x27;STRINGA_MAXCHARS&#x27;,0,&#x27;STRINGA_BUFFER&#x27;,0,&#x27;STRINGA_UNDOBUFFER&#x27;,0,
+            &#x27;STRINGA_WORKBUFFER&#x27;,0,&#x27;STRINGA_BUFFERPOS&#x27;,0,&#x27;STRINGA_DISPPOS&#x27;,0,
+            &#x27;STRINGA_ALTKEYMAP&#x27;,0,&#x27;STRINGA_FONT&#x27;,0,&#x27;STRINGA_PENS&#x27;,0,
+            &#x27;STRINGA_ACTIVEPENS&#x27;,0,&#x27;STRINGA_EDITHOOK&#x27;,0,&#x27;STRINGA_EDITMODES&#x27;,0,
+            &#x27;STRINGA_REPLACEMODE&#x27;,0,&#x27;STRINGA_FIXEDFIELDMODE&#x27;,0,
+            &#x27;STRINGA_NOFILTERMODE&#x27;,0,&#x27;STRINGA_JUSTIFICATION&#x27;,0,
+            &#x27;STRINGA_LONGVAL&#x27;,0,&#x27;STRINGA_TEXTVAL&#x27;,0,&#x27;STRINGA_EXITHELP&#x27;,0]
+
+  /* LAYOUTA_DUMMY 1-3 */
+
+  latags:=[&#x27;LAYOUTA_LAYOUTOBJ&#x27;,0,&#x27;LAYOUTA_SPACING&#x27;,0,&#x27;LAYOUTA_ORIENTATION&#x27;,0]
+
+  /* $8000000, $64-$92 */
+
+  watags:=[&#x27;WA_LEFT&#x27;,0,&#x27;WA_TOP&#x27;,0,&#x27;WA_WIDTH&#x27;,11,&#x27;WA_HEIGHT&#x27;,12,&#x27;WA_DETAILPEN&#x27;,0,
+           &#x27;WA_BLOCKPEN&#x27;,0,&#x27;WA_IDCMP&#x27;,0,&#x27;WA_FLAGS&#x27;,0,&#x27;WA_GADGETS&#x27;,0,
+           &#x27;WA_CHECKMARK&#x27;,0,&#x27;WA_TITLE&#x27;,3,&#x27;WA_SCREENTITLE&#x27;,0,
+           &#x27;WA_CUSTOMSCREEN&#x27;,9,&#x27;WA_SUPERBITMAP&#x27;,0,&#x27;WA_MINWIDTH&#x27;,0,
+           &#x27;WA_MINHEIGHT&#x27;,0,&#x27;WA_MAXWIDTH&#x27;,0,&#x27;WA_MAXHEIGHT&#x27;,0,&#x27;WA_INNERWIDTH&#x27;,0,
+           &#x27;WA_INNERHEIGHT&#x27;,0,&#x27;WA_PUBSCREENNAME&#x27;,0,&#x27;WA_PUBSCREEN&#x27;,0,
+           &#x27;WA_PUBSCREENFALLBACK&#x27;,0,&#x27;WA_WINDOWNAME&#x27;,0,&#x27;WA_COLORS&#x27;,0,
+           &#x27;WA_ZOOM&#x27;,0,&#x27;WA_MOUSEQUEUE&#x27;,0,&#x27;WA_BACKFILL&#x27;,0,&#x27;WA_RPTQUEUE&#x27;,0,
+           &#x27;WA_SIZEGADGET&#x27;,0,&#x27;WA_DRAGBAR&#x27;,0,&#x27;WA_DEPTHGADGET&#x27;,0,
+           &#x27;WA_CLOSEGADGET&#x27;,0,&#x27;WA_BACKDROP&#x27;,0,&#x27;WA_REPORTMOUSE&#x27;,0,
+           &#x27;WA_NOCAREREFRESH&#x27;,0,&#x27;WA_BORDERLESS&#x27;,0,&#x27;WA_ACTIVATE&#x27;,0,
+           &#x27;WA_RMBTRAP&#x27;,0,&#x27;WA_WBENCHWINDOW&#x27;,0,&#x27;WA_SIMPLEREFRESH&#x27;,0,
+           &#x27;WA_SMARTREFRESH&#x27;,0,&#x27;WA_SIZEBRIGHT&#x27;,0,&#x27;WA_SIZEBBOTTOM&#x27;,0,
+           &#x27;WA_AUTOADJUST&#x27;,0,&#x27;WA_GIMMEZEROZERO&#x27;,0,&#x27;WA_MENUHELP&#x27;,0]
+
+ENDPROC
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

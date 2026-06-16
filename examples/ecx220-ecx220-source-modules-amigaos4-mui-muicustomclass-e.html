@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>muicustomclass.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-ecx220.html">ecx220</a> &rsaquo; muicustomclass.e</div><h1>File: <code>muicustomclass.e</code></h1><p class="meta">71 lines · project <a href="../examples/pkg-ecx220.html"><code>ecx220</code></a></p><p class="pathctx">ecx220/ecx220/source/modules/amigaos4/mui/muicustomclass.e</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/muimaster.html">muimaster</a></li></ul></div><h2>Source</h2><pre class="code">OPT AMIGAOS4, MODULE, PREPROCESS
+-&gt; mui/muicustomclass.e
+-&gt; edited for powerpc abox by LS 2003,04
+-&gt; OS4 version by LS 2008
+
+/*****************************************************
+** Easy use of MUI-custom-classes in E.
+** Written by Jan Hendrik Schulz
+**
+** Usage: Simply use eMui_CreateCustomClass() instead of
+**        the original Mui_CreateCustomClass()-function.
+**        Your dispatcher-function should look like this:
+**
+**        PROC myDispatcher(cl:PTR TO iclass,obj,msg:PTR TO msg)
+**            DEF methodID
+**
+**            methodID:=msg.methodid
+**            SELECT methodID
+**                CASE ...
+**                ...
+**            ENDSELECT
+**
+**            RETURN doSuperMethodA(cl,obj,msg)
+**        ENDPROC
+******************************************************/
+
+MODULE &#x27;muimaster&#x27;, &#x27;libraries/mui&#x27;, &#x27;intuition/classes&#x27;
+
+OBJECT data
+  user:LONG         -&gt; for userdata (use iclass.userdata[] instead of iclass.userdata)
+  dispfunc:LONG     -&gt; holds the address of the dispatcher-function
+  globreg:LONG      -&gt; R13 is stored here
+ENDOBJECT
+
+EXPORT PROC eMui_CreateCustomClass(base,supername,supermcc,datasize,dispfunc) HANDLE
+  DEF mem:PTR TO data,
+      mcc:PTR TO mui_customclass
+
+  mcc := Mui_CreateCustomClass(base,supername,supermcc,datasize,{dispentry})
+  IF mcc = NIL THEN RETURN NIL
+
+  NEW mem        -&gt; get some memory
+
+  mem.globreg := R13
+  mem.dispfunc := dispfunc
+  mcc.mcc_class.userdata := mem
+
+EXCEPT
+
+  RETURN NIL
+
+ENDPROC mcc
+
+PROC dispentry()
+   DEF r13
+   STW R13, r13 -&gt; save globreg
+   LWZ R6, .userdata(R3:iclass) -&gt; iclass.userdata
+   LWZ R13, .globreg(R6:data) -&gt; setup globreg
+   LWZ R0, .dispfunc(R6:data)  -&gt; dispfunc
+   MTSPR 9, R0
+   BCCTRL 20, 0   -&gt; call dispatcher PROC
+   LWZ R13, r13 -&gt; restore globreg
+ENDPROC R3
+
+
+
+
+
+
+
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

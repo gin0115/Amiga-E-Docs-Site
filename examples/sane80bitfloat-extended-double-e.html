@@ -1,0 +1,223 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>extended_double.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-sane80bitfloat.html">sane80bitFloat</a> &rsaquo; extended_double.e</div><h1>File: <code>extended_double.e</code></h1><p class="meta">197 lines · project <a href="../examples/pkg-sane80bitfloat.html"><code>sane80bitFloat</code></a></p><p class="pathctx">sane80bitFloat/extended_double.e</p><p class="prose">This module is a raw extract from the MusicIn &#x27;<a href="../modules/common.html">common</a>.c/h&#x27; source found on aminet in the archive: MusicIn.lha . It has been ported to AmigaE by Deniil 715! Every character from the C-source was intact when I left it with <a href="../modules/exception.html">exception</a> for blanklines and spaces.</p><h2>Source</h2><pre class="code">-&gt; This module is a raw extract from the MusicIn &#x27;common.c/h&#x27;
+-&gt; source found on aminet in the archive: MusicIn.lha .
+-&gt; It has been ported to AmigaE by Deniil 715!
+-&gt; Every character from the C-source was intact when I left it
+-&gt; with exception for blanklines and spaces.
+
+OPT MODULE
+
+/***********************************************************************
+*
+*  Routines to convert between the Apple SANE extended floating point
+*  format and the IEEE double precision floating point format.
+*
+***********************************************************************/
+
+/*
+*** Apple&#x27;s 80-bit SANE extended has the following format:
+
+ 1       15      1            63
++-+-------------+-+-----------------------------+
+|s|       e     |i|            f                |
++-+-------------+-+-----------------------------+
+  msb        lsb   msb                       lsb
+
+The value v of the number is determined by these fields as follows:
+If 0 &lt;= e &lt; 32767,              then v = (-1)^s * 2^(e-16383) * (i.f).
+If e == 32767 and f == 0,       then v = (-1)^s * (infinity), regardless of i.
+If e == 32767 and f != 0,       then v is a NaN, regardless of i.
+
+*** IEEE Draft Standard 754 Double Precision has the following format:
+
+MSB
++-+---------+-----------------------------+
+|1| 11 Bits |           52 Bits           |
++-+---------+-----------------------------+
+ ^     ^                ^
+ |     |                |
+ Sign  Exponent         Mantissa
+*/
+
+/* Double and SANE Floating Point Type Definitions */
+
+/*
+typedef struct  IEEE_DBL_struct {
+    unsigned long   hi;
+    unsigned long   lo;
+} IEEE_DBL;
+*/
+
+EXPORT OBJECT ieee_dbl
+ hi:LONG
+ lo:LONG
+ENDOBJECT
+
+/*
+typedef struct  SANE_EXT_struct {
+    unsigned long   l1;
+    unsigned long   l2;
+    unsigned short  s1;
+} SANE_EXT;
+*/
+
+EXPORT OBJECT sane_ext
+ l1:LONG
+ l2:LONG
+ s1:INT
+ENDOBJECT
+
+/***********************************************************************
+*
+*  double_to_extended()
+*
+*  Purpose:     Convert from IEEE double precision format to SANE
+*               extended format.
+*
+*  Passed:      Pointer to the double precision number and a pointer to
+*               what will hold the Apple SANE extended format value.
+*
+*  Outputs:     The SANE extended format pointer will be filled with
+*               the converted value.
+*
+*  Returned:    Nothing. (E-version returns ext-ptr for convenience)
+*
+***********************************************************************/
+
+-&gt;void double_to_extended(pd, ps)
+-&gt;double *pd;
+-&gt;char ps[10];
+-&gt;{
+EXPORT PROC double_to_extended(p_dbl:PTR TO ieee_dbl,p_ext:PTR TO sane_ext)
+
+-&gt;register unsigned long  top2bits;
+-&gt;register unsigned short *ps2;
+-&gt;register IEEE_DBL       *p_dbl;
+-&gt;register SANE_EXT       *p_ext;
+ DEF top2bits
+
+-&gt;#ifdef  MACINTOSH
+
+-&gt;        x96tox80(pd, (extended *) ps);
+
+-&gt;#else
+
+-&gt;   p_dbl = (IEEE_DBL *) pd;
+-&gt;   p_ext = (SANE_EXT *) ps;
+
+-&gt;   top2bits = p_dbl-&gt;hi &amp; 0xc0000000;
+ top2bits:=p_dbl.hi AND $c0000000
+
+-&gt;   p_ext-&gt;l1 = ((p_dbl-&gt;hi &gt;&gt; 4) &amp; 0x3ff0000) | top2bits;
+ p_ext.l1:=shr(p_dbl.hi,4) AND $3ff0000 OR top2bits
+
+-&gt;   p_ext-&gt;l1 |= ((p_dbl-&gt;hi &gt;&gt; 5) &amp; 0x7fff) | 0x8000;
+ p_ext.l1:=shr(p_dbl.hi,5) AND $7fff OR $8000 OR p_ext.l1
+
+-&gt;   p_ext-&gt;l2 = (p_dbl-&gt;hi &lt;&lt; 27) &amp; 0xf8000000;
+ p_ext.l2:=Shl(p_dbl.hi,27) AND $f8000000
+
+-&gt;   p_ext-&gt;l2 |= ((p_dbl-&gt;lo &gt;&gt; 5) &amp; 0x07ffffff);
+ p_ext.l2:=shr(p_dbl.lo,5) AND $07ffffff OR p_ext.l2
+
+-&gt;   ps2 = (unsigned short *) &amp; (p_dbl-&gt;lo);
+-&gt;   ps2++;
+-&gt;   p_ext-&gt;s1 = (*ps2 &lt;&lt; 11) &amp; 0xf800;
+ p_ext.s1:=Shl(p_dbl.lo,11) AND $f800
+
+-&gt;#endif
+
+-&gt;}
+ENDPROC p_ext
+
+/***********************************************************************
+*
+*  extended_to_double()
+*
+*  Purpose:     Convert from SANE extended format to IEEE double
+*               precision format.
+*
+*  Passed:      Pointer to the Apple SANE extended format value and a
+*               pointer to what will hold the IEEE double precision number.
+*
+*  Outputs:     The IEEE double precision format pointer will be filled
+*               with the converted value.
+*
+*  Returned:    Nothing. (E-version return dbl-ptr for convenience)
+*
+***********************************************************************/
+
+-&gt;void extended_to_double(ps, pd)
+-&gt;char ps[10];
+-&gt;double *pd;
+-&gt;{
+EXPORT PROC extended_to_double(p_ext:PTR TO sane_ext,p_dbl:PTR TO ieee_dbl)
+
+-&gt;register unsigned long  top2bits;
+-&gt;register IEEE_DBL       *p_dbl;
+-&gt;register SANE_EXT       *p_ext;
+ DEF top2bits
+
+-&gt;#ifdef  MACINTOSH
+
+-&gt;   x80tox96((extended *) ps, pd);
+
+-&gt;#else
+
+-&gt;   p_dbl = (IEEE_DBL *) pd;
+-&gt;   p_ext = (SANE_EXT *) ps;
+
+-&gt;   top2bits = p_ext-&gt;l1 &amp; 0xc0000000;
+ top2bits:=p_ext.l1 AND $c0000000
+
+-&gt;   p_dbl-&gt;hi = ((p_ext-&gt;l1 &lt;&lt; 4) &amp; 0x3ff00000) | top2bits;
+ p_dbl.hi:=Shl(p_ext.l1,4) AND $3ff00000 OR top2bits
+
+-&gt;   p_dbl-&gt;hi |= (p_ext-&gt;l1 &lt;&lt; 5) &amp; 0xffff0;
+ p_dbl.hi:=Shl(p_ext.l1,5) AND $ffff0 OR p_dbl.hi
+
+-&gt;   p_dbl-&gt;hi |= (p_ext-&gt;l2 &gt;&gt; 27) &amp; 0x1f;
+ p_dbl.hi:=shr(p_ext.l2,27) AND $1f OR p_dbl.hi
+
+-&gt;   p_dbl-&gt;lo = (p_ext-&gt;l2 &lt;&lt; 5) &amp; 0xffffffe0;
+ p_dbl.lo:=Shl(p_ext.l2,5) AND $ffffffe0
+
+-&gt;   p_dbl-&gt;lo |= (unsigned long) ((p_ext-&gt;s1 &gt;&gt; 11) &amp; 0x1f);
+ p_dbl.lo:=shr(p_ext.s1,11) AND $1f OR p_dbl.lo
+
+-&gt;#endif
+
+-&gt;}
+ENDPROC p_dbl
+
+-&gt; this is for E has no Logic shift right, just arithmetic
+PROC shr(x,y)
+ MOVE.L x,D0
+ MOVE.L y,D1
+ LSR.L  D1,D0
+ENDPROC D0</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

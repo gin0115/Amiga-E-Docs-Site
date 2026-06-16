@@ -1,0 +1,160 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>cx.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-portable.html">PortablE</a> &rsaquo; cx.e</div><h1>File: <code>cx.e</code></h1><p class="meta">134 lines · project <a href="../examples/pkg-portable.html"><code>PortablE</code></a></p><p class="pathctx">PortablE/PortablE/PEmodules/amigalib/cx.e</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/commodities.html">commodities</a></li><li><a href="../modules/keymap.html">devices/keymap</a></li></ul></div><h2>Source</h2><pre class="code">OPT MODULE
+
+OPT PREPROCESS
+
+MODULE &#x27;commodities&#x27;,
+       &#x27;icon&#x27;,
+       &#x27;devices/inputevent&#x27;,
+       &#x27;libraries/commodities&#x27;
+MODULE &#x27;devices/keymap&#x27;, &#x27;exec/ports&#x27;
+
+PROC userFilter(tt:ARRAY OF ARRAY OF CHAR, action_name:ARRAY OF CHAR, default_descr)
+  DEF desc
+  desc := NIL
+  IF (iconbase=NIL) OR (cxbase=NIL) THEN RETURN NIL
+  IF tt THEN desc:=FindToolType(tt, action_name)
+ENDPROC CxFilter(IF desc THEN desc ELSE default_descr)
+
+PROC hotKey(description:ARRAY OF CHAR, port:PTR TO mp, id)
+  DEF filter:PTR TO CXOBJ
+  IF cxbase=NIL THEN RETURN NIL
+  IF filter:=CxFilter(description)
+    AttachCxObj(filter, CxSender(port, id))
+    AttachCxObj(filter, CxTranslate(NIL))
+    IF CxObjError(filter)
+      DeleteCxObjAll(filter)
+      filter:=NIL
+    ENDIF
+  ENDIF
+ENDPROC filter
+
+PROC freeIEvents(events:PTR TO inputevent)
+  DEF next:PTR TO inputevent
+  WHILE events
+    next:=events.nextevent
+    END events
+    events:=next
+  ENDWHILE
+ENDPROC
+
+ENUM ERR_NONE, ERR_ESC, ERR_ANGLE
+
+PROC invertStringRev(str:ARRAY OF CHAR, km:PTR TO keymap)
+  DEF events:PTR TO inputevent, c:CHAR, curr:PTR TO inputevent, ie:PTR TO inputevent
+  DEF i
+  i := 0
+  IF cxbase=NIL THEN RETURN NIL
+  IF str
+    IF str[i]
+      curr:=(events:=NEW ie)
+      c:=str[i++]
+      REPEAT
+        IF c=&quot;&lt;&quot;
+          str:=doangle(str, curr)
+          i:=0
+        ELSE
+          IF c=&quot;\\&quot; THEN c:=doesc(str[i++])
+          InvertKeyMap(c, curr, km)
+        ENDIF
+        IF c:=str[i++]
+          curr.nextevent:=NEW ie
+          curr:=ie
+        ENDIF
+      UNTIL c=NIL
+    ENDIF
+  ENDIF
+  RETURN events
+FINALLY
+  IF exception
+    freeIEvents(events)
+    events := NIL
+  ENDIF
+ENDPROC events
+
+PROC invertString(str:ARRAY OF CHAR, km:PTR TO keymap)
+  DEF events:PTR TO inputevent, c:CHAR, prev:PTR TO inputevent
+  DEF i
+  i := 0
+  IF cxbase=NIL THEN RETURN NIL
+  IF str
+    IF str[i]
+      WHILE c:=str[i++]
+        prev:=events
+        NEW events
+        events.nextevent:=prev
+        IF c=&quot;&lt;&quot;
+          str:=doangle(str, events)
+          i := 0
+        ELSE
+          IF c=&quot;\\&quot; THEN c:=doesc(str[i++])
+          InvertKeyMap(c, events, km)
+        ENDIF
+      ENDWHILE
+    ENDIF
+  ENDIF
+  RETURN events
+FINALLY
+  IF exception
+    freeIEvents(events)
+    events := NIL
+  ENDIF
+ENDPROC events
+
+PRIVATE
+PROC doesc(c:CHAR)
+  SELECT &quot;u&quot; OF c
+  CASE &quot;\q&quot;, &quot;&#x27;&quot;, &quot;&lt;&quot;, &quot;\\&quot;
+    RETURN c
+  CASE &quot;0&quot;
+    RETURN 0
+  CASE &quot;n&quot;, &quot;r&quot;
+    RETURN &quot;\b&quot;
+  CASE &quot;t&quot;
+    RETURN &quot;\t&quot;
+  DEFAULT
+    Raise(ERR_ESC)
+  ENDSELECT
+ENDPROC c
+
+PROC doangle(str:ARRAY OF CHAR, events:PTR TO inputevent)
+  DEF s:ARRAY OF CHAR, c:CHAR, ix:inputxpression
+  DEF i
+  i := 0
+  s:=str
+  WHILE s[i] AND (s[i]&lt;&gt;&quot;&gt;&quot;) DO i++
+  IF c:=s[i] THEN s[i]:=0
+  IF ParseIX(str, ix)&lt;&gt;0 THEN Raise(ERR_ANGLE)
+  events.class:=ix.class
+  events.code:=ix.code
+  events.qualifier:=ix.qualifier
+  s[i]:=c
+  i++
+ENDPROC s
+PUBLIC
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

@@ -1,0 +1,625 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>PEGCC.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-portable.html">PortablE</a> &rsaquo; PEGCC.e</div><h1>File: <code>PEGCC.e</code></h1><p class="meta">599 lines · project <a href="../examples/pkg-portable.html"><code>PortablE</code></a></p><p class="pathctx">PortablE/PortablE/Examples/std/Shell/PEGCC.e</p><p class="prose">PEGCC.e 23.11.2022 by Christopher Steven Handley.</p><h2>Source</h2><pre class="code">/* PEGCC.e 23.11.2022 by Christopher Steven Handley.
+*/
+/*
+	This program calls PortablE followed by G++, to compile PE code with one command.
+	Unless the SingleTargetFile switch is used, each module will be individually compiled.
+	(But SingleTargetFile is always enabled when ClassicMode is enabled.)
+*/
+
+OPT PREPROCESS
+MODULE &#x27;*DeleteModuleCache&#x27;
+MODULE &#x27;std/pShellParameters&#x27;, &#x27;std/pShell&#x27;, &#x27;std/cPath&#x27;, &#x27;std/pTime&#x27;
+MODULE &#x27;CSH/pFile&#x27;, &#x27;CSH/pGeneral&#x27;, &#x27;CSH/pString&#x27;
+
+#define ClassicMode
+
+/* Shell arguments definition */
+STATIC shellArgs = &#x27;Source/A, TargetDir/K, TargetOS=OS, OptOptimise/S, OptPointer/S, OptAmigaE/S, OptNoPtrToChar/S, NoOptInline/S, NoListOptim/S, RefreshCache/S, NoOptInlineVarargs/S, LeaveTargetFile=LeaveCppFile/S, NoStrip/S, Debug/S, GccOpts/F/K, Run/S, RunUsing=Using/K, RunParams=Params/F/K&#x27; #ifndef ClassicMode +
+-&gt;index:            0         1            2            3              4             5            6                 7              8              9               10                    11                              12         13       14           15     16                17           
+                 &#x27;, SingleTargetFile/S, OldGCC/S&#x27;
+-&gt;                  18                  19
+#endif
+
+CONST DEBUG = FALSE
+
+PROC main() RETURNS ret
+	DEF hostSource:ARRAY OF CHAR, source:STRING, sourceName:ARRAY OF CHAR, baseSource:STRING, i
+	DEF hostTargetDir:ARRAY OF CHAR, targetDir:STRING
+	DEF targetOS:ARRAY OF CHAR
+	DEF targetFile:STRING, hostTargetFile:STRING
+	DEF parsedModulesList:STRING, hostParsedModulesList:STRING
+	DEF    allModulesList:STRING,    hostAllModulesList:STRING
+	DEF     exeFile:STRING,     exeFileUnstripped:STRING
+	DEF hostExeFile:STRING, hostExeFileUnstripped:STRING
+	DEF execute:STRING, binPath:ARRAY OF CHAR, cmdGCC:ARRAY OF CHAR, cmdStrip:ARRAY OF CHAR, peDirectOpts:STRING, peOpts:STRING
+	DEF leaveTargetFile:BOOL, noStrip:BOOL, debug:BOOL, run:BOOL, runUsing:ARRAY OF CHAR, runParams:ARRAY OF CHAR, singleTargetFile:BOOL, oldGCC:BOOL, gccOpts:STRING, gccOptsOrig:ARRAY OF CHAR, stripOpts:ARRAY OF CHAR
+	DEF temp:STRING, gccMode
+	
+	IF DEBUG THEN Print(&#x27;WARNING: DEBUG mode is enabled.\n&#x27;)
+	
+	-&gt;parse parameters
+	IF ParseParams(shellArgs) = FALSE THEN Raise(&quot;ARGS&quot;)
+	hostSource       := GetParam( 0)
+	hostTargetDir    := GetParam( 1)
+	targetOS         := GetParam( 2) ; IF targetOS = NILA THEN targetOS := pe_TargetOS
+	leaveTargetFile  := GetParam(11) &lt;&gt; NILA
+	noStrip          := GetParam(12) &lt;&gt; NILA
+	debug            := GetParam(13) &lt;&gt; NILA
+	gccOptsOrig      := GetParam(14)
+	run              := GetParam(15) &lt;&gt; NILA
+	runUsing         := GetParam(16)
+	runParams        := GetParam(17)
+	#ifndef ClassicMode
+		singleTargetFile := GetParam(18) &lt;&gt; NILA
+		oldGCC           := GetParam(19) &lt;&gt; NILA
+		IF StrCmp(targetOS, pe_TargetOS) = FALSE THEN singleTargetFile := TRUE	-&gt;as supporting this will need extra work when cross-compiling
+	#else
+		singleTargetFile := TRUE
+		oldGCC           := FALSE
+	#endif
+	IF gccOptsOrig = NILA        THEN gccOptsOrig := &#x27;&#x27;
+	IF StrCmp(gccOptsOrig, &#x27;&quot;&quot;&#x27;) THEN gccOptsOrig := &#x27;&#x27;		-&gt;work-around a quirk of &#x27;std/pShell&#x27; that means it adds quote marks for an empty string (which will confuse GCC)
+	IF StrCmp(gccOptsOrig, &#x27;\&#x27;\&#x27;&#x27;) THEN gccOptsOrig := &#x27;&#x27;	-&gt;not sure where single quote marks come from...
+	gccOpts := CopyStr(gccOptsOrig)
+	
+	-&gt;handle debug mode
+	IF debug
+		noStrip := TRUE
+		leaveTargetFile := TRUE
+		
+		IF singleTargetFile OR NOT StrCmp(targetOS, &#x27;MorphOS&#x27;)
+			gccOpts := strAppend(PASS gccOpts, &#x27; -g&#x27;)
+		ENDIF
+	ENDIF
+	
+	-&gt;decide GCC mode to use
+	IF oldGCC
+		gccMode := 2
+	ELSE
+		gccMode := 0		-&gt;supported values: 0,1,2
+		IF StrCmp(targetOS, &#x27;Windows&#x27;) THEN gccMode := 1
+		IF StrCmp(targetOS, &#x27;MorphOS&#x27;) THEN gccMode := 2
+	ENDIF
+	
+	-&gt;sanity check arguments
+	IF StrLen(hostSource) = 0 THEN Throw(&quot;ARGS&quot;, &#x27;Source parameter is empty&#x27;)
+	
+	-&gt;extract base file path (no extension), after converting host file path into a portable one
+	source := ImportFilePath(hostSource)
+	IF hostTargetDir
+		temp := ImportDirPath(hostTargetDir)
+	ELSE
+		temp := ExtractSubPath(source)
+	ENDIF
+	targetDir := ExpandPath(temp)		-&gt;GCC cannot handle some relative paths (e.g. to parent)
+	END temp
+	
+	sourceName := FindName(source)
+	baseSource := StrJoin(targetDir, sourceName)
+	IF InStr(FindName(baseSource), &#x27;.&#x27;) &lt;&gt; -1
+		-&gt;(file name contains an extension) so find &amp; strip extension
+		FOR i := EstrLen(baseSource)-1 TO 0 STEP -1; ENDFOR IF baseSource[i] = &quot;.&quot;
+		SetStr(baseSource, i)
+	ENDIF
+	
+	-&gt;generate paths
+	targetFile := StrJoin(baseSource, &#x27;.cpp&#x27;)
+	hostTargetFile := ExportPath(targetFile)
+	
+	exeFile := StrJoin(baseSource, IF StrCmp(targetOS, &#x27;Windows&#x27;) THEN &#x27;.exe&#x27; ELSE NILA)
+	hostExeFile := ExportPath(exeFile)
+	
+	IF noStrip
+		exeFileUnstripped := StrJoin(exeFile)
+	ELSE
+		exeFileUnstripped := StrJoin(baseSource, &#x27;_UNSTRIPPED&#x27;, IF StrCmp(targetOS, &#x27;Windows&#x27;) THEN &#x27;.exe&#x27; ELSE NILA)
+	ENDIF
+	hostExeFileUnstripped := ExportPath(exeFileUnstripped)
+	
+	-&gt;handle incremental compilation
+	IF singleTargetFile = FALSE
+		parsedModulesList := StrJoin(baseSource, &#x27;_parsed.list&#x27;)
+		   allModulesList := StrJoin(baseSource, &#x27;_all.list&#x27;)
+		hostParsedModulesList := ExportPath(parsedModulesList)
+		   hostAllModulesList := ExportPath(   allModulesList)
+		peOpts := StrJoin(&#x27; IndividualTargetModules ListParsedTargetModulesInFile &quot;&#x27;, hostParsedModulesList, &#x27;&quot; ListAllTargetModulesInFile &quot;&#x27;, hostAllModulesList, &#x27;&quot;&#x27;)
+	ENDIF
+	
+	-&gt;delete the files we will create
+	IF ExistsPath(targetFile)
+		IF NOT DeletePath(targetFile)	-&gt;this is required the for exists() check later, since we cannot check PortablE&#x27;s return code
+			Print(&#x27;ERROR: Failed to delete &quot;\s&quot;.\n&#x27;, hostTargetFile)
+			Raise(&quot;ERR&quot;)
+		ENDIF
+	ENDIF
+	IF ExistsPath(exeFile)
+		IF NOT DeletePath(exeFile)		-&gt;this is basically optional, but remember to disable the corresponding exists() check too
+			Print(&#x27;ERROR: Failed to delete &quot;\s&quot;.\n&#x27;, hostExeFile)
+			Raise(&quot;ERR&quot;)
+		ENDIF
+	ENDIF
+	
+	-&gt;call PortablE (which must be in the command path)
+	peDirectOpts := StrJoin(GetParam(3), &#x27; &#x27;, GetParam(4), &#x27; &#x27;, GetParam(5), &#x27; &#x27;, GetParam(6), &#x27; &#x27;, GetParam(7), &#x27; &#x27;, GetParam(8), &#x27; &#x27;, GetParam(9), &#x27; &#x27;, GetParam(10))
+	execute := StrJoin(&#x27;PortablE &quot;&#x27;, hostSource, &#x27;&quot; TargetFile &quot;&#x27;, hostTargetFile, &#x27;&quot; TargetOS=&#x27;, targetOS, &#x27; &#x27;, peDirectOpts, peOpts)
+-&gt;### TargetFile=&quot; does not work for some reason, at least when target contains a space
+	IF DEBUG THEN Print(&#x27;&gt; \s\n&#x27;, execute)
+	IF ExecuteCommand(execute) = FALSE THEN Throw(&quot;EXE&quot;, execute)
+	IF ExistsPath(targetFile) = FALSE THEN Raise(&quot;ERR&quot;)
+	END execute, peDirectOpts
+	Print(&#x27;\n&#x27;)
+	
+	-&gt;add GCC options that are the same whether or not cross-compiling
+	gccOpts := strAppend(PASS gccOpts, &#x27; -Wno-trigraphs&#x27;)
+	IF StrCmp(targetOS, &#x27;AmigaOS4&#x27;)
+		-&gt;prevent deprecation warnings
+		gccOpts := strAppend(PASS gccOpts, &#x27; -Wno-deprecated-declarations&#x27;)
+		
+		-&gt;prevent old SDK from wrongly adding 64KB padding (for paged binaries that AmigaOS4 doesn&#x27;t need)
+		gccOpts := strAppend(PASS gccOpts, &#x27; -N&#x27;)
+		
+-&gt;	ELSE IF StrCmp(targetOS, &#x27;AmigaOS3&#x27;)
+-&gt;	ELSE IF StrCmp(targetOS, &#x27;AROS&#x27;)
+-&gt;	ELSE IF StrCmp(targetOS, &#x27;MorphOS&#x27;)
+	ELSE IF StrCmp(targetOS, &#x27;Linux&#x27;)
+		-&gt;prevent warnings about (1) printf() format codes like %s not expecting a &#x27;long int&#x27; type, and (2) printf() having one too many arguments when Print() only has one parameter due to how Print() is implemented.
+		gccOpts := strAppend(PASS gccOpts, &#x27; -Wno-format&#x27;)
+		
+-&gt;	ELSE IF StrCmp(targetOS, &#x27;Windows&#x27;)
+	ENDIF
+	
+	-&gt;find the GCC &amp; strip command to use
+	stripOpts := &#x27;-s&#x27;
+	IF StrCmp(targetOS, pe_TargetOS)
+		-&gt;(not cross-compiling)
+		binPath  := &#x27;&#x27;
+		cmdGCC   := &#x27;g++&#x27;
+		cmdStrip := &#x27;strip&#x27;
+		
+		IF StrCmp(targetOS, &#x27;AmigaOS4&#x27;)
+			-&gt;work-around bug in SDK 54.16 where GCC &gt;= v8 fail to compile C++ code
+			IF ExistsPath(&#x27;SDK:/gcc/ppc-amigaos/bin/6.4.0/ppc-amigaos-c++-6&#x27;)
+				cmdGCC := &#x27;g++-6&#x27;
+			ENDIF
+			
+		ELSE IF StrCmp(targetOS, &#x27;Windows&#x27;)
+			IF ExistsPath(&#x27;C:/MinGW/bin/g++.exe&#x27;)
+				binPath := &#x27;C:\\MinGW\\bin\\&#x27;
+				cmdGCC  := &#x27;g++ -static-libgcc -static-libstdc++&#x27;
+				
+			ELSE IF ExistsPath(&#x27;C:/CrossCompiler/AmiDevCpp/bin/g++.exe&#x27;)
+				binPath := &#x27;C:\\CrossCompiler\\AmiDevCpp\\bin\\&#x27;
+				cmdGCC  := &#x27;g++ -I&quot;C:/CrossCompiler/AmiDevCpp/lib/gcc/mingw32/3.4.2/include&quot; -I&quot;C:/CrossCompiler/AmiDevCpp/include/c++/3.4.2/backward&quot; -I&quot;C:/CrossCompiler/AmiDevCpp/include/c++/3.4.2/mingw32&quot; -I&quot;C:/CrossCompiler/AmiDevCpp/include/c++/3.4.2&quot; -I&quot;C:/CrossCompiler/AmiDevCpp/include&quot; -I&quot;C:/CrossCompiler/AmiDevCpp/&quot; -I&quot;C:/CrossCompiler/AmiDevCpp/include/common/wx/msw&quot; -I&quot;C:/CrossCompiler/AmiDevCpp/include/common/wx/generic&quot; -I&quot;C:/CrossCompiler/AmiDevCpp/include/common/wx/fl&quot; -I&quot;C:/CrossCompiler/AmiDevCpp/include/common/wx/gizmos&quot; -I&quot;C:/CrossCompiler/AmiDevCpp/include/common/wx/html&quot; -I&quot;C:/CrossCompiler/AmiDevCpp/include/common/wx/mmedia&quot; -I&quot;C:/CrossCompiler/AmiDevCpp/include/common/wx/net&quot; -I&quot;C:/CrossCompiler/AmiDevCpp/include/common/wx/ogl&quot; -I&quot;C:/CrossCompiler/AmiDevCpp/include/common/wx/plot&quot; -I&quot;C:/CrossCompiler/AmiDevCpp/include/common/wx/protocol&quot; -I&quot;C:/CrossCompiler/AmiDevCpp/include/common/wx/stc&quot; -I&quot;C:/CrossCompiler/AmiDevCpp/include/common/wx/svg&quot; -I&quot;C:/CrossCompiler/AmiDevCpp/include/common/wx/xml&quot; -I&quot;C:/CrossCompiler/AmiDevCpp/include/common/wx/xrc&quot; -I&quot;C:/CrossCompiler/AmiDevCpp/include/common/wx&quot; -I&quot;C:/C&quot; -L&quot;C:/CrossCompiler/AmiDevCpp/lib&quot;&#x27;
+			ENDIF
+			
+		ELSE IF StrCmp(targetOS, &#x27;AROS&#x27;)
+			stripOpts := &#x27;--strip-unneeded --remove-section=.comment&#x27;	-&gt;Replace -s with this work-around: https://aros.sourceforge.io/sv/documentation/developers/app-dev/introduction.php
+			
+		ELSE IF StrCmp(targetOS, &#x27;MorphOS&#x27;)
+			cmdGCC := &#x27;g++ -noixemul -Wno-write-strings&#x27;
+		ENDIF
+		
+	ELSE IF StrCmp(pe_TargetOS, &#x27;Linux&#x27;)
+		-&gt;(cross-compiling on Linux)
+		IF StrCmp(targetOS, &#x27;AmigaOS4&#x27;)
+			binPath  := &#x27;&#x27;
+			gccOpts  := strAppend(PASS gccOpts, &#x27; -lgcc_eh -mcrt=clib2&#x27;)	-&gt;this needs to come AFTER the .cpp file
+			cmdGCC   := &#x27;ppc-amigaos-g++&#x27;		-&gt;OR &#x27;ppc-amigaos-gcc -lstdc++&#x27; withOUT -lgcc_eh -mcrt=clib2
+			cmdStrip := &#x27;ppc-amigaos-strip&#x27;
+			
+		ELSE IF StrCmp(targetOS, &#x27;AmigaOS3&#x27;)
+			binPath  := &#x27;&#x27;
+			cmdGCC   := &#x27;m68k-amigaos-g++&#x27;
+			cmdStrip := &#x27;m68k-amigaos-strip&#x27;
+			
+		ELSE IF StrCmp(targetOS, &#x27;Windows&#x27;)
+			binPath  := &#x27;&#x27;
+			cmdGCC   := &#x27;i686-w64-mingw32-g++ -static-libgcc -static-libstdc++&#x27;
+			cmdStrip := &#x27;i686-w64-mingw32-strip&#x27;
+			
+		ELSE IF StrCmp(targetOS, &#x27;AROS&#x27;)
+			binPath  := &#x27;&#x27;
+			cmdGCC   := &#x27;i386-aros-g++&#x27;
+			cmdStrip := &#x27;i386-aros-strip&#x27;
+			stripOpts := &#x27;--strip-unneeded --remove-section=.comment&#x27;			-&gt;Replace -s with this work-around: https://aros.sourceforge.io/sv/documentation/developers/app-dev/introduction.php
+			-&gt;An alternative work-around:
+			-&gt;IF noStrip = FALSE THEN gccOpts := strAppend(PASS gccOpts, &#x27; -s&#x27;)
+			-&gt;noStrip := TRUE		-&gt;So don&#x27;t use the strip command
+			
+		ELSE IF StrCmp(targetOS, &#x27;MorphOS&#x27;)
+			binPath  := &#x27;&#x27;
+			cmdGCC   := &#x27;ppc-morphos-g++ -noixemul -Wno-write-strings&#x27;
+			cmdStrip := &#x27;ppc-morphos-strip&#x27;
+		ELSE
+			Print(&#x27;Cross-compilation is not supported for &quot;\s&quot;.\n&#x27;, targetOS)
+			Raise(&quot;ERR&quot;)
+		ENDIF
+	ELSE
+		Print(&#x27;Cross-compilation is not supported on &quot;\s&quot;.\n&#x27;, pe_TargetOS)
+		Raise(&quot;ERR&quot;)
+	ENDIF
+	
+	-&gt;call GCC
+	IF singleTargetFile
+		/* old PEGCC behaviour (compile single C++ file for whole program) */
+		execute := StrJoin(binPath, cmdGCC, &#x27; &quot;&#x27;, hostTargetFile, &#x27;&quot; -o &quot;&#x27;, hostExeFileUnstripped, &#x27;&quot; &#x27;, gccOpts)		-&gt;NOTE: Can reduce AmigaOS4 executable size, but stops programs working on OS4.0, when use: , IF StrCmp(targetOS, &#x27;AmigaOS4&#x27;) THEN &#x27; -use-dynld&#x27; ELSE NILA)
+		IF DEBUG THEN Print(&#x27;&gt; \s\n&#x27;, execute)
+		IF ExecuteCommand(execute) = FALSE THEN Throw(&quot;EXE&quot;, execute)
+		IF ExistsPath(exeFileUnstripped) = FALSE
+			IF StrLen(gccOptsOrig) &gt; 0
+				Print(&#x27;NOTE: GCC failed to compile the generated C++ code, so please try using no GccOpts or run DeleteModuleCache.\n&#x27;)
+			ELSE
+				Print(&#x27;NOTE: GCC failed to compile the generated C++ code, so deleting the module cache in case this might help next time...\n&#x27;)
+				DeleteModuleCache(temp := NEW &#x27;PEmodules:/&#x27;, FALSE) ; END temp		-&gt;clear module cache, incase of a bug causing modules compiled for different programs to not work together correctly
+			ENDIF
+			Raise(&quot;ERR&quot;)
+		ENDIF
+		END execute
+	ELSE
+		/* new PEGCC behaviour (incrementally compile each module) */
+		incrementallyCompile(binPath, cmdGCC, gccMode, gccOpts, targetFile, exeFileUnstripped, parsedModulesList, allModulesList)
+		-&gt;DeletePath(parsedModulesList)
+		-&gt;DeletePath(   allModulesList)
+	ENDIF
+	
+	-&gt;call Strip to reduce executable size
+	IF noStrip
+		IF RenamePath(exeFileUnstripped, exeFile) = FALSE THEN Print(&#x27;Failed to rename executable.\n&#x27;)
+	ELSE
+		IF StrCmp(targetOS, &#x27;Windows&#x27;)
+			IF ExistsPath(&#x27;C:/MinGW/bin/strip.exe&#x27;)
+				binPath := &#x27;C:\\MinGW\\bin\\&#x27;
+				
+			ELSE IF ExistsPath(&#x27;C:/CrossCompiler/AmiDevCpp/bin/strip.exe&#x27;)
+				binPath := &#x27;C:\\CrossCompiler\\AmiDevCpp\\bin\\&#x27;
+			ELSE
+				binPath := &#x27;&#x27;
+			ENDIF
+		ELSE
+			binPath := &#x27;&#x27;
+		ENDIF
+		
+		execute := StrJoin(binPath, cmdStrip, &#x27; &#x27;, stripOpts, &#x27; &quot;&#x27;, hostExeFileUnstripped, &#x27;&quot; -o &quot;&#x27;, hostExeFile, &#x27;&quot;&#x27;)
+		
+		IF DEBUG THEN Print(&#x27;&gt; \s\n&#x27;, execute)
+		IF ExecuteCommand(execute) = FALSE THEN Throw(&quot;EXE&quot;, execute)
+		IF ExistsPath(exeFile) = FALSE
+			Print(&#x27;Failed to strip executable.\n&#x27;)
+			
+		ELSE IF DeletePath(exeFileUnstripped) = FALSE
+			-&gt;(failed to delete unstripped executable, perhaps due to Workbench/etc examining it a little while after it was created) so wait a little while &amp; then try again
+			delay(1+1)
+			DeletePath(exeFileUnstripped)
+		ENDIF
+		END execute
+	ENDIF
+	
+	IF leaveTargetFile = FALSE THEN DeletePath(targetFile)
+	IF ExistsPath(exeFile)
+		Print(&#x27;Successfully compiled program.\n&#x27;)
+		
+		IF run
+			IF StrCmp(targetOS, pe_TargetOS) = FALSE
+				Print(&#x27;Cannot run a cross-compiled executable!\n&#x27;)
+			ELSE
+				-&gt;(not cross-compiling)
+				execute := StrJoin(runUsing, IF runUsing THEN &#x27; &#x27; ELSE NILA, &#x27;&quot;&#x27;, hostExeFile, &#x27;&quot; &#x27;, runParams)
+				Print(&#x27;\n&gt; \s\n&#x27;, execute)
+				ExecuteCommand(execute)
+				END execute
+			ENDIF
+		ENDIF
+	ENDIF
+FINALLY
+	SELECT exception
+	CASE 0
+		ret := 0
+	CASE &quot;ERR&quot;
+		-&gt;(error already reported) so finish gracefully
+		ret := 10
+	CASE &quot;ARGS&quot;
+		-&gt;(error already reported) so finish gracefully
+		IF exceptionInfo THEN Print(&#x27;ERROR:  \s\n&#x27;, exceptionInfo)
+		ret := 10
+	CASE &quot;EXE&quot;
+		Print(&#x27;ERROR: Failed to execute \s\n&#x27;, exceptionInfo)
+		ret := 10
+	CASE &quot;MEM&quot;
+		Print(&#x27;Ran out of memory\n&#x27;)
+		ret := 20
+	DEFAULT
+		PrintException()
+		ret := 20
+	ENDSELECT
+	
+	IF parsedModulesList THEN IF DEBUG = FALSE THEN DeletePath(parsedModulesList)
+	IF    allModulesList THEN IF DEBUG = FALSE THEN DeletePath(   allModulesList)
+	
+	END source, baseSource
+	END targetDir
+	END targetFile, hostTargetFile
+	END     exeFile,     exeFileUnstripped
+	END hostExeFile, hostExeFileUnstripped
+	END parsedModulesList, hostParsedModulesList
+	END    allModulesList,    hostAllModulesList
+	END execute, peOpts, gccOpts
+	END temp
+ENDPROC
+
+PROC strAppend(base:OWNS STRING, append:ARRAY OF CHAR) RETURNS new:OWNS STRING
+	new := StrJoin(base, append)
+FINALLY
+	END base
+ENDPROC
+
+TYPE ARRAY_OF_CHAR IS ARRAY OF CHAR
+
+PROC incrementallyCompile(binPath:ARRAY OF CHAR, cmdGCC:ARRAY OF CHAR, gccMode, gccOpts:STRING, targetFile:STRING, exeFileUnstripped:STRING, parsedModulesListPath:STRING, allModulesListPath:STRING)
+	DEF gccOptsOld:STRING, gccOptsChanged:BOOL, gccOptsPath:STRING, gccOptsTime:BIGVALUE
+	DEF parsedModulesList:STRING, allModulesList:STRING
+	DEF parsedModule:STRING,      allModule:STRING
+	DEF objectPath:STRING, same:BOOL, compile:BOOL
+	DEF moduleName:STRING, cacheBase:STRING, pemodulesCacheBase:STRING, pos
+	DEF hostObjectPath:STRING, execute:STRING
+	DEF library:STRING, len, libNode:STRING
+	DEF libPath:STRING, hostLibPath:STRING, libList:STRING, libListTail:STRING, temp:STRING
+	DEF hostTargetFile:STRING, hostExeFileUnstripped:STRING
+	
+	-&gt;read last-used GccOpts, and update them if the new GccOpts are different
+	gccOptsPath := StrJoin(&#x27;PEmodules:/PE/cache/gccOpts_&#x27;, pe_TargetOS)
+	IF gccOptsOld := readLines(gccOptsPath)
+		gccOptsChanged := NOT StrCmp(gccOpts, gccOptsOld)
+	ELSE
+		-&gt;(no file) so object files are in an unknown state
+		gccOptsChanged := TRUE
+	ENDIF
+	IF gccOptsChanged THEN writeLines(gccOptsPath, gccOpts)
+	
+	-&gt;get time-stamp of the stored GccOpts, so that any object files older than it can be recompiled by GCC
+	gccOptsTime := getFileTime(gccOptsPath)
+	
+	-&gt;paths required for recreating friendly module name
+	temp := ExportPath(&#x27;PEmodules:/PE/cache/&#x27;)		-&gt;handle PortablE&#x27;s writeOneTargetModule()&#x27;s ExportPath() expanding the path on Windows but not on the Amiga
+	cacheBase := ImportDirPath(temp) ; END temp
+	pemodulesCacheBase := StrJoin(cacheBase, &#x27;PEmodules/&#x27;)
+	
+	-&gt;read files
+	parsedModulesList := readLines(parsedModulesListPath) ; IF DEBUG = FALSE THEN DeletePath(parsedModulesListPath)
+	   allModulesList := readLines(   allModulesListPath) ; IF DEBUG = FALSE THEN DeletePath(   allModulesListPath)
+	
+	-&gt;loop through all modules, compiling parsed modules, AND those missing their object file, AND those older than gccOptsTime
+	parsedModule := parsedModulesList
+	   allModule :=    allModulesList
+	REPEAT
+		-&gt;make path of module&#x27;s object file
+		objectPath := ImportFilePath(allModule)
+
+		SetStr( objectPath, EstrLen(objectPath) - StrLen(&#x27;.cpp&#x27;))
+		StrAdd( objectPath, &#x27;.o&#x27;)
+		
+		-&gt;check if module needs to be (re)compiled
+		same := IF parsedModule THEN StrCmp(allModule, parsedModule) ELSE FALSE
+		IF same
+			compile := TRUE
+			
+		ELSE IF ExistsPath(objectPath) = FALSE
+			compile := TRUE
+			
+		ELSE IF getFileTime(objectPath) &lt; gccOptsTime
+			compile := TRUE
+		ELSE
+			compile := FALSE
+		ENDIF
+		
+		-&gt;compile module
+		IF compile
+			-&gt;report compiling using friendly module name
+			IF StrCmpPath(objectPath, pemodulesCacheBase, EstrLen(pemodulesCacheBase))
+				-&gt;(object is in PEmodules part of cache) so it&#x27;s module name is just it&#x27;s path relative to that
+				NEW moduleName[EstrLen(objectPath) - EstrLen(pemodulesCacheBase)]
+				StrCopy(moduleName, objectPath, ALL, EstrLen(pemodulesCacheBase))
+				SetStr(moduleName, EstrLen(moduleName) - StrLen(&#x27;_CPP_&#x27;) - StrLen(pe_TargetOS) - StrLen(&#x27;.o&#x27;))
+				
+			ELSE IF StrCmpPath(objectPath, cacheBase, EstrLen(cacheBase))
+				-&gt;(object is another part of cache) so it&#x27;s module name is it&#x27;s relative path to that, but with a colon after volume
+				pos := InStr(objectPath, &#x27;/&#x27;, EstrLen(cacheBase))
+				IF pos &gt;= 0
+					pos := pos - EstrLen(cacheBase)
+					IF pos &lt;= 0 THEN Throw(&quot;BUG&quot;, &#x27;incrementallyCompile(); pos&lt;=0 for cacheBase&#x27;)
+					NEW moduleName[EstrLen(objectPath) - EstrLen(cacheBase) + 1]
+					StrCopy(moduleName, objectPath, pos, EstrLen(cacheBase))
+					StrAdd( moduleName, &#x27;:&#x27;)
+					StrAdd(moduleName, objectPath, ALL, EstrLen(cacheBase) + pos)
+					SetStr(moduleName, EstrLen(moduleName) - StrLen(&#x27;_CPP_&#x27;) - StrLen(pe_TargetOS) - StrLen(&#x27;.o&#x27;))
+				ELSE
+					-&gt;(not volume so this must be &#x27;tempUncachedHeader&#x27; or another special module) so don&#x27;t report it
+				ENDIF
+			ELSE
+				Throw(&quot;BUG&quot;, &#x27;incrementallyCompile(); unrecognised objectPath&#x27;)
+			ENDIF
+			
+			IF moduleName THEN Print(&#x27;Compiling module \&#x27;\s\&#x27;.\n&#x27;, moduleName)
+			
+			-&gt;compile target file
+			hostObjectPath := ExportPath(objectPath)
+			
+			IF ExistsPath(objectPath)
+				IF NOT DeletePath(objectPath)
+					Print(&#x27;ERROR: Failed to delete &quot;\s&quot;.\n&#x27;, hostObjectPath)
+					Raise(&quot;ERR&quot;)
+				ENDIF
+			ENDIF
+			
+			execute := StrJoin(binPath, cmdGCC, &#x27; -c &quot;&#x27;, allModule, &#x27;&quot; -o &quot;&#x27;, hostObjectPath, &#x27;&quot; &#x27;, gccOpts)
+			IF DEBUG THEN Print(&#x27;&gt; \s\n\n&#x27;, execute)
+			IF ExecuteCommand(execute) = FALSE THEN Throw(&quot;EXE&quot;, execute)
+			IF ExistsPath(objectPath) = FALSE THEN Raise(&quot;ERR&quot;)
+			END execute, hostObjectPath, moduleName
+		ENDIF
+		END objectPath
+		
+		-&gt;move to next module
+		allModule := Next(allModule)                    ; IF    allModule THEN IF EstrLen(   allModule) = 0 THEN    allModule := NILS	-&gt;handle empty line at end of file
+		IF same THEN parsedModule := Next(parsedModule) ; IF parsedModule THEN IF EstrLen(parsedModule) = 0 THEN parsedModule := NILS	-&gt;ditto
+	UNTIL allModule = NILS
+	
+	-&gt;make a &#x27;library&#x27; listing all the object files to be used
+	NEW libPath[EstrLen(targetFile) - StrLen(&#x27;.cpp&#x27;) + StrLen(&#x27;_o.list&#x27;)]
+	StrCopy(libPath, targetFile, EstrLen(targetFile) - StrLen(&#x27;.cpp&#x27;))
+	IF gccMode = 0
+		StrAdd(libPath, &#x27;_o.list&#x27;)
+		
+	ELSE IF gccMode = 2
+		StrAdd(libPath, &#x27;.a&#x27;)
+		DeletePath(libPath)
+	ENDIF
+	
+	hostLibPath := ExportPath(libPath)
+	
+	-&gt;loop through all modules, listing them in a temporary &#x27;library&#x27; (or a temporary real library if gccMode=2)
+	libList     := NILS
+	libListTail := NILS
+	allModule := allModulesList
+	REPEAT
+		-&gt;make path of module&#x27;s object file
+		hostObjectPath := StrJoin(&#x27;&quot;&#x27;, allModule)
+		SetStr(hostObjectPath, EstrLen(hostObjectPath) - StrLen(&#x27;.cpp&#x27;))
+		StrAdd(hostObjectPath, &#x27;.o&quot;&#x27;)
+		
+		IF gccMode = 0
+			-&gt;escape any backslashes (as seen in Windows paths)
+			IF InStr(hostObjectPath, &#x27;\\&#x27;) &lt;&gt; -1
+				temp := translateStr(hostObjectPath, [&#x27;\\&#x27;, &#x27;\\\\&#x27;, NILA]:ARRAY_OF_CHAR)
+				END hostObjectPath
+				hostObjectPath := PASS temp
+			ENDIF
+		ENDIF
+		
+		IF (gccMode = 0) OR (gccMode = 1)
+			-&gt;add module&#x27;s object file to library
+			IF libListTail = NILS
+				libListTail := hostObjectPath
+				libList     := PASS hostObjectPath
+			ELSE
+				temp := hostObjectPath
+				Link(libListTail, PASS hostObjectPath)
+				libListTail := temp
+			ENDIF
+			END hostObjectPath
+			
+		ELSE IF gccMode = 2
+			-&gt;add module&#x27;s object file to library
+			execute := StrJoin(binPath, &#x27;ar cq &quot;&#x27;, hostLibPath, &#x27;&quot; &#x27;, hostObjectPath)
+			IF DEBUG THEN Print(&#x27;&gt; \s\n&#x27;, execute)
+			IF ExecuteCommand(execute) = FALSE THEN Throw(&quot;EXE&quot;, execute)
+			END execute, hostObjectPath
+		ENDIF
+		
+		-&gt;move to next module
+		allModule := Next(allModule) ; IF allModule THEN IF EstrLen(allModule) = 0 THEN allModule := NILS	-&gt;handle empty line at end of file
+	UNTIL allModule = NILS
+	
+	IF gccMode = 0
+		IF writeLines(libPath, libList)= FALSE
+			Print(&#x27;ERROR: Failed to write &quot;\s&quot;.\n&#x27;, hostLibPath)
+			Raise(&quot;ERR&quot;)
+		ENDIF
+		END libList
+		library := StrJoin(&#x27;&quot;@&#x27;, hostLibPath, &#x27;&quot;&#x27;)
+		
+	ELSE IF gccMode = 1
+		-&gt;find size required to concatenate all object parameters
+		len := 0
+		libNode := libList
+		WHILE libNode
+			len := len + 1 + EstrLen(libNode)
+			libNode := Next(libNode)
+		ENDWHILE
+		
+		-&gt;perform concatenation
+		NEW library[len]
+		libNode := libList
+		WHILE libNode
+			IF libNode &lt;&gt; libList THEN StrAdd(library, &#x27; &#x27;)
+			StrAdd(library, libNode)
+			libNode := Next(libNode)
+		ENDWHILE
+		
+	ELSE IF gccMode = 2
+		library := StrJoin(&#x27;&quot;&#x27;, hostLibPath, &#x27;&quot;&#x27;)
+	ENDIF
+	
+	-&gt;finally compile main program
+	hostTargetFile        := ExportPath(targetFile)
+	hostExeFileUnstripped := ExportPath(exeFileUnstripped)
+	
+	execute := StrJoin(binPath, cmdGCC, &#x27; &quot;&#x27;, hostTargetFile, &#x27;&quot; &#x27;, library, &#x27; -o &quot;&#x27;, hostExeFileUnstripped, &#x27;&quot; &#x27;, gccOpts)
+	IF DEBUG THEN Print(&#x27;&gt; \s\n&#x27;, execute)
+	IF ExecuteCommand(execute) = FALSE THEN Throw(&quot;EXE&quot;, execute)
+	IF ExistsPath(exeFileUnstripped) = FALSE
+		DeleteModuleCache(temp := NEW &#x27;PEmodules:/&#x27;, FALSE) ; END temp		-&gt;clear module cache, incase of a bug causing modules compiled for different programs to not work together correctly
+		DeletePath(gccOptsPath)		-&gt;invalidate object files, incase they are corrupt (perhaps due to changing GCC version)
+		Raise(&quot;ERR&quot;)
+	ENDIF
+	END execute
+	
+	DeletePath(libPath)
+FINALLY
+	END gccOptsOld, gccOptsPath
+	END parsedModulesList, allModulesList
+	END objectPath
+	END moduleName, cacheBase, pemodulesCacheBase
+	END hostObjectPath, execute
+	END library, libNode
+	END libPath, hostLibPath, libList
+	END hostTargetFile, hostExeFileUnstripped
+ENDPROC
+
+PROC getFileTime(filePath:ARRAY OF CHAR) RETURNS time:BIGVALUE
+	DEF file:OWNS PTR TO cHostFile
+	
+	time := 0
+	
+	NEW file.new()
+	IF file.open(filePath, /*readOnly*/ TRUE)
+		time := file.getTime()
+		file.close()
+	ENDIF
+FINALLY
+	END file
+ENDPROC
+
+-&gt;a portable but nasty &amp; approximate way to wait (busy waiting)
+-&gt;NOTE: &#x27;std/pTime&#x27; needs to implement a proper delay function.
+PROC delay(timeInSecs)
+	DEF start:BIGVALUE
+	start := CurrentTime(/*zone0local1utc2quick*/ 2)
+	WHILE CurrentTime(/*zone0local1utc2quick*/ 2) &lt; (start + timeInSecs) DO EMPTY
+ENDPROC
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

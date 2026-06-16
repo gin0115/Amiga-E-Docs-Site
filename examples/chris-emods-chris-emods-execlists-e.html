@@ -1,0 +1,159 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>execlists.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-chris-emods.html">chris_emods</a> &rsaquo; execlists.e</div><h1>File: <code>execlists.e</code></h1><p class="meta">133 lines · project <a href="../examples/pkg-chris-emods.html"><code>chris_emods</code></a></p><p class="pathctx">chris_emods/Chris_emods/execlists.e</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/lists.html">exec/lists</a></li></ul></div><h2>Source</h2><pre class="code">OPT MODULE, REG = 5
+
+MODULE &#x27;exec/lists&#x27;, &#x27;exec/nodes&#x27;, &#x27;amigalib/lists&#x27;
+
+CONST DATASIZE = 512
+
+OBJECT nameNode
+  ln:ln
+  data[DATASIZE]:ARRAY
+ENDOBJECT
+
+CONST NAMENODE_ID=100
+
+EXPORT PROC addName(list:PTR TO lh, name, prednode = NIL:PTR TO ln)
+  DEF namenode:PTR TO nameNode
+  NEW namenode
+  -&gt; E-Note: copy *safely* to namenode.data
+  AstrCopy(namenode.data, name, DATASIZE)
+  namenode.ln.name := namenode.data
+  namenode.ln.type := NAMENODE_ID
+  namenode.ln.pri  := 0
+  IF prednode
+    Insert(list, namenode, prednode)
+  ELSE
+    AddTail(list, namenode)
+  ENDIF
+ENDPROC
+
+EXPORT PROC removeNode(list:PTR TO lh,num)
+  DEF node:PTR TO ln
+  IF node := getNode(list, num) THEN Remove(node)
+ENDPROC num
+
+
+EXPORT PROC freeNameNodes(list:PTR TO lh)
+  DEF worknode:PTR TO nameNode, nextnode
+  worknode := list.head
+  WHILE nextnode := worknode.ln.succ
+    END worknode
+    worknode := nextnode
+  ENDWHILE
+  newList(list)
+ENDPROC
+
+EXPORT PROC findNodeNumber(list:PTR TO lh, str)
+  DEF node:PTR TO ln, count = 0, found = FALSE
+
+  IF list.tailpred &lt;&gt; list
+    node  := list.head
+    WHILE (found = FALSE) AND (node.succ)
+      IF StrCmp(node.name, str)
+        found := TRUE
+      ELSE
+        node := node.succ
+        INC count
+      ENDIF
+    ENDWHILE
+  ENDIF
+ENDPROC IF found THEN count ELSE -1
+
+EXPORT PROC findNodeName(list:PTR TO lh, number)
+  DEF node:PTR TO ln
+  node := getNode(list, number)
+ENDPROC IF node THEN node.name ELSE NIL
+
+EXPORT PROC movelistnode2(l1:PTR TO lh, pos1, l2:PTR TO lh, pos2)
+  DEF newnode:PTR TO ln, prednode:PTR TO ln
+
+  IF newnode := getNode(l1, pos1)
+    IF (l1 = l2) AND (pos1 &lt; pos2) THEN INC pos2
+
+    IF pos2 &lt; 1
+      Remove(newnode)
+      AddHead(l2, newnode)
+
+      RETURN
+    ELSEIF prednode := getNode(l2, pos2 - 1)
+
+      IF newnode &lt;&gt; prednode
+        Remove(newnode)
+        Insert(l2, newnode, prednode)
+
+        IF (pos1 &lt; pos2)
+          RETURN (pos2 - 1)
+        ELSE
+          RETURN (pos2)
+        ENDIF
+      ENDIF
+    ELSE
+      RETURN (pos2 - 2)
+    ENDIF
+
+  ENDIF
+ENDPROC
+
+
+EXPORT PROC replacenode(list:PTR TO lh, str, num)
+  DEF node:PTR TO ln
+  IF countnodes(list) &gt;= num
+    node := getNode(list, num)
+    addName(list, str, node)
+    Remove(node)
+  ELSE
+    addName(list, str)
+  ENDIF
+ENDPROC
+
+EXPORT PROC countnodes(list:PTR TO lh)
+  DEF node:PTR TO ln, count = 0
+
+  IF list.tailpred &lt;&gt; list
+    node  := list.head
+    WHILE (node.succ)
+      node := node.succ
+      INC count
+    ENDWHILE
+  ENDIF
+ENDPROC count
+
+EXPORT PROC getNode(list:PTR TO lh, num)
+DEF node:PTR TO ln
+
+  IF (list.tailpred &lt;&gt; list) AND (num &gt;= 0)
+    node := list.head
+
+    WHILE (num-- &gt;= 0) AND (node.succ &lt;&gt; NIL)
+      node := node.succ
+    ENDWHILE
+
+    IF node.succ THEN RETURN node
+  ENDIF
+ENDPROC
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

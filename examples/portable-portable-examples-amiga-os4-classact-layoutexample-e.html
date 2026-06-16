@@ -1,0 +1,577 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>layoutexample.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-portable.html">PortablE</a> &rsaquo; layoutexample.e</div><h1>File: <code>layoutexample.e</code></h1><p class="meta">551 lines · project <a href="../examples/pkg-portable.html"><code>PortablE</code></a></p><p class="pathctx">PortablE/PortablE/Examples/Amiga/OS4_ClassAct/layoutexample.e</p><p class="prose">An old ClassAct example converted to PortablE. From http://aminet.net/package/dev/gui/ClassAct2Demo</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/window.html">classes/window</a></li><li><a href="../modules/types.html">exec/types</a></li><li><a href="../modules/boopsi.html">tools/boopsi</a></li><li><a href="../modules/constructors.html">tools/constructors</a></li></ul></div><h2>Source</h2><pre class="code">/* An old ClassAct example converted to PortablE.
+   From http://aminet.net/package/dev/gui/ClassAct2Demo */
+
+/*************************************************************************
+ * ClassAct Comprehensive Demo Program
+ * Copyright © 1995 Phantom Development Co.
+ *
+ * Translated from C to E by Eric Sauvageau.
+ */
+
+/*
+Changed from C version:  - Won&#x27;t output text when launched from WB.
+
+Notes:
+
+I must use an inithook function different from the one supplied by Wouter,
+because I need to be able to pass a third &quot;data&quot; argument.  The module
+is supplied in the ClassAct E API in modules/tools/inithook.m.
+
+If I can find the source code for it (unfortunately, I can&#x27;t even remember
+where I initialy got this module, neither who wrote it), I&#x27;ll add it to the
+classact_lib.m module.
+
+
+The GA_READONLY tag won&#x27;t properly accept TRUE (-1), so I supplied &quot;1&quot; as
+the data.  See the &quot;README&quot; for more on this problem.
+
+*/
+
+
+OPT NATIVE-&gt;###
+OPT AMIGAE
+OPT PREPROCESS
+
+MODULE &#x27;tools/constructors&#x27;
+MODULE &#x27;tools/boopsi&#x27;,&#x27;tools/inithook&#x27;
+
+MODULE &#x27;exec/types&#x27;,&#x27;exec/memory&#x27;,&#x27;intuition/intuition&#x27;,&#x27;exec/ports&#x27;,
+       &#x27;intuition/gadgetclass&#x27;,&#x27;intuition/icclass&#x27;,&#x27;libraries/gadtools&#x27;,
+       &#x27;graphics/gfxbase&#x27;,&#x27;graphics/text&#x27;,&#x27;graphics/gfxmacros&#x27;,
+       &#x27;utility/tagitem&#x27;,&#x27;workbench/startup&#x27;,&#x27;workbench/workbench&#x27;,
+       &#x27;intuition&#x27;,&#x27;graphics&#x27;,&#x27;exec&#x27;,&#x27;dos&#x27;,&#x27;diskfont&#x27;,&#x27;utility&#x27;,&#x27;wb&#x27;,&#x27;icon&#x27;,
+       &#x27;utility/hooks&#x27;,&#x27;intuition/classes&#x27;,&#x27;intuition/classusr&#x27;,
+       &#x27;exec/lists&#x27;,&#x27;exec/nodes&#x27;,&#x27;dos/rdargs&#x27;,&#x27;dos/dos&#x27;
+
+
+MODULE &#x27;classes/window&#x27;,&#x27;gadgets/listbrowser&#x27;,&#x27;listbrowser&#x27;,
+       &#x27;other/classact_macros&#x27;,&#x27;layout&#x27;,&#x27;gadgets/layout&#x27;,&#x27;images/bevel&#x27;,
+       &#x27;gadgets/chooser&#x27;,&#x27;chooser&#x27;,&#x27;images/label&#x27;,&#x27;label&#x27;,&#x27;window&#x27;,
+       &#x27;button&#x27;
+
+MODULE &#x27;tools/classact_lib&#x27;
+
+/* a simple button */
+#define AButton(a) ButtonObject, GA_TEXT, a, ButtonEnd
+#define DAButton(a) ButtonObject, GA_TEXT, a, GA_DISABLED, TRUE, ButtonEnd
+
+
+/**************************************************************************
+ * Some label arrays for the gadgets in this demo.
+ */
+
+DEF objtypes:PTR TO LONG,
+    objnames:PTR TO LONG
+
+
+/*************************************************************************
+ * ReadArgs
+ */
+ 
+#define TEMPLATE &#x27;S=SIMPLEREFRESH/S,NC=NOCAREREFRESH/S,ND=NDEFER/S&#x27;
+
+ENUM A_SIMPLE, A_NOCARE, A_NODEFER
+
+DEF arguments:PTR TO LONG
+
+
+-&gt; Must use separate vars because for some reason, EC chokes when you try
+-&gt; to assign a value to an array item in the middle of a list...  Will
+-&gt; have to notify Wouter about that bugger.
+-&gt; We will manually build the array later, to allow for easy handling like
+-&gt; provided in the C version.
+
+DEF g_objtype,
+    g_objlist,
+    g_top,
+    g_up,
+    g_down,
+    g_bottom,
+    g_sort,
+    g_new,
+    g_edit,
+    g_copy,
+    g_remove,
+    g_help,
+    g_save,
+    g_use,
+    g_test,
+    g_cancel
+
+
+ENUM G_OBJTYPE=1, G_OBJLIST, G_TOP, G_UP, G_DOWN, G_BOTTOM, G_SORT,
+     G_NEW, G_EDIT, G_COPY, G_REMOVE, G_HELP, G_SAVE, G_USE, G_TEST,
+     G_CANCEL,G_END
+
+DEF gl/*[18]*/: ARRAY OF LONG
+
+
+-&gt;
+-&gt; Initialize some stuff.
+-&gt;
+PROC init()
+   objtypes:=[&#x27;Exec&#x27;,&#x27;Image&#x27;,&#x27;Sound&#x27;,&#x27;Menu&#x27;,&#x27;Icon&#x27;,&#x27;Dock&#x27;,&#x27;Access&#x27;,NIL]
+   objnames:=[&#x27;ToolManager&#x27;,&#x27;ScreenMode&#x27;,&#x27;WBPattern&#x27;,NIL]
+
+   buttonbase :=openClass(&#x27;gadgets/button.gadget&#x27;,0)
+   listbrowserbase :=openClass(&#x27;gadgets/listbrowser.gadget&#x27;,0)
+   chooserbase :=openClass(&#x27;gadgets/chooser.gadget&#x27;,0)
+   windowbase :=openClass(&#x27;window.class&#x27;,0)
+   layoutbase :=openClass(&#x27;gadgets/layout.gadget&#x27;,0)
+   labelbase := openClass(&#x27;images/label.image&#x27;,0)
+
+   iconbase := OpenLibrary(&#x27;icon.library&#x27;,36)
+
+ENDPROC
+
+
+
+/*************************************************************************
+ * App message hook.
+ * Workbench App messages can be caught with a callback hook such as this.
+ * We&#x27;ll not worry about the app message type in this hook. Objects dropped
+ * on the window or on the icon (while iconified) will be added to the 
+ * listview.
+ */
+
+PROC appMsgFunc(hook:PTR TO hook, window:PTR TO object, msg:PTR TO appmessage)
+DEF win: PTR TO window, i, arg:PTR TO wbarg, l: PTR TO lh, n:PTR TO ln,
+    name[256]:STRING
+
+   i := msg.numargs
+   arg := msg.arglist
+   l := hook.data
+
+   GetAttr(WINDOW_WINDOW, window, ADDRESSOF win )
+
+
+-&gt; Detach the list for modifications.
+
+   SetGadgetAttrsA(g_objlist, win, NIL,[LISTBROWSER_LABELS, Not(0), TAG_END])
+		
+   WHILE i
+      /* Add the name of the icon to the listview. ListBrowser can copy the
+       * text into an internal buffer and thus let us not worry about the
+       * pointer validity.
+       */
+
+      DEC i
+
+      NameFromLock(arg.lock, name, 256)
+      AddPart(name,arg.name, 256)
+
+      IF (n := AllocListBrowserNodeA(1, [LBNCA_COPYTEXT, TRUE, LBNCA_TEXT, name, TAG_END])) THEN AddTail(l, n)
+
+      arg++
+
+   ENDWHILE
+
+-&gt; Reattach the list
+
+   SetGadgetAttrsA(g_objlist, win, NIL, [LISTBROWSER_LABELS, l, TAG_END])
+ENDPROC
+
+
+
+/*************************************************************************
+ * Main Program
+ */
+
+PROC main() HANDLE
+DEF objlist=NIL:PTR TO lh,
+    typelist:PTR TO lh,
+    args=NIL:PTR TO rdargs,
+    appport: PTR TO mp,
+    window=NIL:PTR TO object,
+    mainlayout:PTR TO window,
+    apphook:hook,
+    win:PTR TO window,
+    wsig, asig,done=FALSE,
+    sig,result,code,
+    tmp,tmp2,tmp3,
+    ids:PTR TO LONG,
+    dis=FALSE,i,
+    helptext[40]:STRING
+
+
+-&gt; Init some lists, and open the required gadgets/libraries.
+init()
+
+ids := [G_TOP, G_UP, G_DOWN, G_BOTTOM, G_EDIT, G_COPY, G_REMOVE, G_END ]
+
+arguments:=[0,0,0]
+IF (args := ReadArgs(TEMPLATE, arguments, NIL))=NIL THEN Raise(20)
+
+
+IF ((iconbase&lt;&gt;NIL) AND (buttonbase&lt;&gt;NIL) AND (listbrowserbase&lt;&gt;NIL) AND (chooserbase&lt;&gt;NIL) AND (windowbase&lt;&gt;NIL) AND (layoutbase&lt;&gt;NIL) AND (labelbase&lt;&gt;NIL))
+
+
+/*
+ * By checking first if we have a wbmessage, we prevent the opening of an
+ * output window when the program is launched from the Workbench.
+ */
+
+   IF wbmessage = NIL THEN WriteF(&#x27;\seferred \s refresh \s\n&#x27;, (IF arguments[A_NODEFER] THEN &#x27;Non-d&#x27; ELSE &#x27;D&#x27;), (IF arguments[A_SIMPLE] THEN &#x27;Simple&#x27; ELSE &#x27;Smart&#x27;), (IF arguments[A_NOCARE] THEN &#x27;(NoCare)&#x27; ELSE &#x27;&#x27;))
+
+   objlist := browserNodesA(objnames)
+   typelist := chooserLabelsA(objtypes)
+
+   /* By providing a message port you enable windowclass to handle iconification
+    * and appwindows. This port can shared by all the windows of your application.
+    */
+
+   appport := CreateMsgPort()
+
+   IF (objlist AND typelist AND appport)
+      inithook(apphook,CALLBACK appMsgFunc(),objlist)
+
+      /* Create a Window object with a Layout. When Window is asked to open itself,
+       * it will calculate how much space the Layout needs and size itself accordingly.
+       */
+
+
+      window := WindowObject,
+                   WA_IDCMP, IDCMP_RAWKEY,
+                   WA_TOP, 20,
+                   WA_LEFT, 20,
+                   WA_SIZEGADGET, TRUE,
+                   WA_DEPTHGADGET, TRUE,
+                   WA_DRAGBAR, TRUE,
+                   WA_CLOSEGADGET, TRUE,
+                   WA_ACTIVATE, TRUE,
+
+                   /* About window refreshes:
+                    * Because WindowClass and LayoutClass can, when used together, change the
+                    * normal Intuition practise of refreshing gadgets in the input.device context,
+                    * some rules about the refresh system change.
+                    * Deferred refresh works in both smart and simple refresh windows, but
+                    * if nocarerefresh is used, Intuition does not retain the damage regions
+                    * and any window damage will force the whole window to be refreshed.
+                    * This demo allows you to try combinations of refresh types.
+                    * In the normal case you can ignore this and let WindowClass and the user
+                    * decide what kind of refreshes they want. Nocare refresh can be
+                    * combined with smart refresh to provide a fast, but somewhat more memory
+                    * hungry refresh method. Simple refresh can save some memory but it&#x27;s
+                    * slower.
+                    */
+
+                   WA_SIMPLEREFRESH, arguments[A_SIMPLE],
+                   WA_NOCAREREFRESH, arguments[A_NOCARE],	
+                   WA_SMARTREFRESH, Not(arguments[A_SIMPLE]),
+				
+                   WA_TITLE, &#x27;ClassAct layout.gadget Example (ToolManager preferences mockup)&#x27;,
+                   WA_SCREENTITLE, &#x27;ClassAct Copyright 1995 Phantom Development LLC.&#x27;,
+				
+                   /* Turn on gadget help in the window 
+                    */
+				
+                   WINDOW_GADGETHELP, TRUE,
+				
+                   /* Add an iconification gadget. If you have this, you must listen to
+                    * WMHI_ICONIFY.
+                    */
+				 
+                   WINDOW_ICONIFYGADGET, TRUE,
+	
+                   /* This message port lets windowclass handle the icon and appwindow.
+                    */
+				 
+                   WINDOW_APPPORT, appport,
+                   WINDOW_APPWINDOW, TRUE,
+                   WINDOW_APPMSGHOOK, apphook,
+				
+                   /* The windowclass will automatically free the DiskObject used when
+                    * iconifying the window. If you do not provide a valid DiskObject,
+                    * windowclass will try to use env:sys/def_window.info or the default
+                    * project icon.
+                    */
+				
+                   WINDOW_ICON, GetDiskObject( &#x27;LayoutExample&#x27; ),
+                   WINDOW_ICONTITLE, &#x27;ClassAct Example&#x27;,
+			
+                   /* Below is the layout of the window 
+                    */
+			
+                   WINDOW_PARENTGROUP, mainlayout := VGroupObject,
+                      LAYOUT_SPACEOUTER, TRUE,
+                      LAYOUT_BEVELSTYLE, BVS_THIN,
+
+                      /* this tag instructs layout.gadget to defer GM_LAYOUT and GM_RENDER and ask
+                       * the windowclass to do them. This lessens the load on input.device 
+                       */
+
+                      LAYOUT_DEFERLAYOUT, Not(arguments[A_NODEFER]),
+
+                      /* A 1-of-n chooser using the labels list we made from the label array earlier 
+                       */
+
+                      StartMember, g_objtype := ChooserObject,
+                         CHOOSER_LABELS, typelist,
+                      EndMember,
+                      MemberLabel(&#x27;_Object Type&#x27;),
+
+                      /* Objects can be given arbitary weights within groups, and layout.gadget
+                       * will distribute space relative to the total weight of the group.
+                       * Here we set the button column to 0 weight which means minimum space.
+                       * Thus the listview gets all available extra space.
+                       */
+					
+                      StartHGroup, BAligned,
+
+                         StartMember, g_objlist := ListBrowserObject,
+                            LISTBROWSER_LABELS, objlist,
+                            LISTBROWSER_SHOWSELECTED, TRUE,
+                          EndMember,
+
+                          StartVGroup,
+                             StartMember, g_top := DAButton(&#x27;Top&#x27;),
+                             StartMember, g_up := DAButton(&#x27;Up&#x27;),
+                             StartMember, g_down := DAButton(&#x27;Down&#x27;),
+                             StartMember, g_bottom := DAButton(&#x27;Bottom&#x27;),
+                             StartMember, g_sort := AButton(&#x27;So_rt&#x27;),
+                          EndGroup,
+                          CHILD_WEIGHTEDWIDTH, 0,
+
+                          /* One way to keep the buttons constant size is to set the
+                           * group to stay at minimum size with a weight of 0. We could
+                           * also set the weight of each of the buttons to 0. That way
+                           * extra space would be distributed between the buttons
+                           * instead of all below. This looks better.
+                           */
+						
+                           CHILD_WEIGHTEDHEIGHT, 0,
+                        EndGroup,
+				
+                        /* two rows of buttons. EvenSized instructs layout.gadget that it
+                         * should make sure the minimum size of each matches, so that we
+                         * get four neat columns.
+                         * Again the weight is set to 0. When the window is resized, all
+                         * space is given to the listview.
+                         */
+				
+
+                         StartHGroup, EvenSized,
+                            StartMember, g_new := AButton(&#x27;_New...&#x27;),
+                            StartMember, g_edit := DAButton(&#x27;_Edit...&#x27;),
+                            StartMember, g_copy := DAButton(&#x27;Co_py&#x27;),
+                            StartMember, g_remove := DAButton(&#x27;Remove&#x27;),
+                         EndGroup,
+                         CHILD_WEIGHTEDHEIGHT, 0,
+			
+                         StartHGroup, EvenSized,
+                         StartMember, g_save := AButton(&#x27;_Save&#x27;),
+                         StartMember, g_use := AButton(&#x27;_Use&#x27;),
+                         StartMember, g_test := AButton(&#x27;_Test&#x27;),
+                         StartMember, g_cancel := AButton(&#x27;_Cancel&#x27;),
+                      EndGroup,
+                      CHILD_WEIGHTEDHEIGHT, 0,
+
+
+                      StartMember, g_help := ButtonObject,
+
+-&gt; See note in &quot;README&quot; concerning this tag and the use of &quot;1&quot; as the data
+-&gt; rather than the usual TRUE.
+
+                         GA_READONLY, 1,
+                         GA_TEXT, &#x27;Welcome to ClassAct demo!&#x27;,
+                      EndMember,
+                      CHILD_WEIGHTEDHEIGHT, 0,
+
+                   EndGroup,
+                EndWindow
+
+      IF window
+
+         /* Finish the gadgetarray initialisation. Set gadget IDs and release verify. 
+          * This is one way of avoiding boring repetition in the layout description
+          * taglist itself.
+          */
+
+-&gt; Let&#x27;s also generate the array of gadget pointers.  We couldn&#x27;t generate it
+-&gt; while we created gadgets because some bug (?) in EC prevents you to
+-&gt; assign a value to an item in an array while in the middle of a list.
+-&gt; Fortunately, it&#x27;s a breeze to do using E lists.
+
+         gl:=[NIL,      g_objtype, g_objlist, g_top,  g_up,     g_down,
+              g_bottom, g_sort,    g_new,     g_edit, g_copy,   g_remove,
+              g_help,   g_save,    g_use,     g_test, g_cancel, NIL]
+
+         i:=1
+
+         REPEAT
+            SetAttrsA(gl[i], [GA_ID, i, GA_RELVERIFY, TRUE, TAG_END])
+            INC i
+         UNTIL (i = G_END)
+
+         IF (win := CA_OpenWindow(window))
+            asig := Shl(1,appport.sigbit)
+
+            /* Now that the window has been opened, we can get the signal mask
+             * of its user port. If the program supported iconification and didn&#x27;t
+             * use a shared IDCMP port between all windows, this signal bit
+             * would have to be re-queried before each Wait().
+             */
+
+            GetAttr( WINDOW_SIGMASK, window, ADDRESSOF wsig )
+
+            WHILE (done = FALSE)
+               sig := Wait(wsig OR asig OR SIGBREAKF_CTRL_C)
+
+               IF (sig AND (wsig OR asig))
+
+                  /* Messages waiting at the window&#x27;s IDCMP port. Loop at WM_HANDLEINPUT
+                   * until all have been processed.
+                   */
+
+                  WHILE ((result := CA_HandleInput(window,ADDRESSOF code)) &lt;&gt; WMHI_LASTMSG)
+
+                    /* The return code of this method is two-part. The upper word describes the
+                     * class of the message (gadgetup, menupick, closewindow, iconify, etc),
+                     * and the lower word is a class-defined ID, currently in use in the
+                     * gadgetup and menupick return codes.
+                     * Switch on the class, then on the ID.
+                     */
+
+                     tmp := (result AND WMHI_CLASSMASK)
+
+                     SELECT tmp
+                        CASE WMHI_GADGETUP
+                             /* OK, got a gadgetup from something. Lets find out what the something is.
+                              * The code WORD to which a pointer was passed to WM_HANDLEINPUT has been
+                              * set to the Code value from the IDCMP_GADGETUP, in case we need it.
+                              */
+
+                             tmp2 := (result AND WMHI_GADGETMASK)
+                             SELECT tmp2
+
+                                CASE G_OBJLIST
+                                     /* User clicked on the listview 
+                                      */
+                                     IF (code = Not(0)) THEN dis := TRUE /* no node was selected */
+
+                                     i := 0
+                                     REPEAT
+                                        SetGadgetAttrsA( gl[ids[i]], win, NIL, [GA_DISABLED, dis, TAG_END])
+                                        RefreshGList( gl[ids[i]], win, NIL, 1 )
+                                        INC i
+                                     UNTIL (ids[i] = G_END)
+                             ENDSELECT
+
+                        CASE WMHI_GADGETHELP
+
+                             /* A gadget help message informs the application about the gadget
+                              * under the mouse pointer. The code WORD is set to the value the
+                              * gadget returned. Result code contains the ID of the gadget, 
+                              * or NULL (not in the window) or WMHI_GADGETMASK (not over a gadget).
+                              */
+
+                             tmp3 := (result AND WMHI_GADGETMASK)
+
+                             SELECT tmp3
+
+                                CASE G_OBJTYPE ; StrCopy(helptext,&#x27;Choose object type&#x27;)
+                                CASE G_OBJLIST ; StrCopy(helptext,&#x27;Choose object to modify&#x27;)
+                                CASE G_TOP     ; StrCopy(helptext,&#x27;Move object to top&#x27;)
+                                CASE G_UP      ; StrCopy(helptext,&#x27;Move object upwards&#x27;)
+                                CASE G_DOWN    ; StrCopy(helptext,&#x27;Move object downwards&#x27;)
+                                CASE G_BOTTOM  ; StrCopy(helptext,&#x27;Move object to bottom&#x27;)
+                                CASE G_SORT    ; StrCopy(helptext,&#x27;Sort object list&#x27;)
+                                CASE G_NEW     ; StrCopy(helptext,&#x27;Create new object&#x27;)
+                                CASE G_EDIT    ; StrCopy(helptext,&#x27;Edit object&#x27;)
+                                CASE G_COPY    ; StrCopy(helptext,&#x27;Make a new copy of object&#x27;)
+                                CASE G_REMOVE  ; StrCopy(helptext,&#x27;Delete the object&#x27;)
+                                CASE G_HELP    ; StrCopy(helptext,&#x27;Hey there ;)&#x27;)
+                                CASE G_SAVE    ; StrCopy(helptext,&#x27;Save settings&#x27;)
+                                CASE G_USE     ; StrCopy(helptext,&#x27;Use these settings&#x27;)
+                                CASE G_TEST    ; StrCopy(helptext,&#x27;Test these settings&#x27;)
+                                CASE G_CANCEL  ; StrCopy(helptext,&#x27;Cancel changes&#x27;)
+                                DEFAULT        ; StrCopy(helptext,&#x27; &#x27;)
+                             ENDSELECT
+
+                             IF (SetGadgetAttrsA(gl[G_HELP], win, NIL, [GA_TEXT, helptext, TAG_END] )) THEN RefreshGList(gl[G_HELP], win, NIL, 1)
+
+
+                        CASE WMHI_CLOSEWINDOW
+                             /* The window close gadget was hit. Time to die...
+                              */
+                             done := TRUE
+
+                        CASE WMHI_ICONIFY
+                             /* Window requests that it be iconified. Handle this event as
+                              * soon as possible. The window is not iconified automatically to
+                              * give you a chance to make note that the window pointer will be 
+                              * invalid before the window closes. It also allows you to free
+                              * resources only needed when the window is open, if you wish to.
+                              */
+                             IF (CA_Iconify( window )) THEN win := NIL
+								 
+                        CASE WMHI_UNICONIFY
+                             /* The window should be reopened. If you had free&#x27;d something
+                              * on iconify, now is the time to re-allocate it, before calling
+                              * CA_OpenWindow.
+                              */
+                             win := CA_OpenWindow( window )
+
+                     ENDSELECT
+                  ENDWHILE
+
+               ELSEIF (sig AND SIGBREAKF_CTRL_C)
+                  done := TRUE
+               ENDIF
+
+            ENDWHILE
+
+            /* Close the window and dispose of all attached gadgets 
+             */
+            DisposeObject( window )
+         ENDIF
+      ENDIF
+   ENDIF
+
+   IF appport THEN DeleteMsgPort(appport)
+
+   /* NIL is valid input for these helper functions, so no need to check.
+    */
+   freeChooserLabels( typelist )
+   freeBrowserNodes( objlist )
+
+   FreeArgs(args)
+ENDIF
+
+EXCEPT DO
+
+   IF buttonbase THEN CloseLibrary(buttonbase)
+   IF listbrowserbase THEN CloseLibrary(listbrowserbase)
+   IF chooserbase THEN CloseLibrary(chooserbase)
+   IF windowbase THEN CloseLibrary(windowbase)
+   IF layoutbase THEN CloseLibrary(layoutbase)
+   IF labelbase THEN CloseLibrary(labelbase)
+   IF iconbase THEN CloseLibrary(iconbase)
+ENDPROC
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

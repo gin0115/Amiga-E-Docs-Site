@@ -1,0 +1,317 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>testchange_os12_2.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-easygui-os12.html">EasyGUI_OS12</a> &rsaquo; testchange_os12_2.e</div><h1>File: <code>testchange_os12_2.e</code></h1><p class="meta">291 lines · project <a href="../examples/pkg-easygui-os12.html"><code>EasyGUI_OS12</code></a></p><p class="pathctx">EasyGUI_OS12/easygui_os12/examples/easygui/testchange_os12_2.e</p><p class="prose">testchange2.e - shows use of some changeXXX() functions</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/easygui.html">tools/easygui</a></li><li><a href="../modules/easygui-os12.html">tools/easygui_os12</a></li><li><a href="../modules/exceptions.html">tools/exceptions</a></li></ul></div><h2>Source</h2><pre class="code">-&gt; testchange2.e - shows use of some changeXXX() functions
+
+OPT PREPROCESS
+
+-&gt; RST: Added conditional EASY_OS12 support
+#define EASY_OS12
+
+#ifdef EASY_OS12
+  MODULE &#x27;tools/easygui_os12&#x27;
+#endif
+#ifndef EASY_OS12
+  OPT OSVERSION=37
+  MODULE &#x27;tools/easygui&#x27;
+#endif
+
+MODULE &#x27;tools/exceptions&#x27;,
+       &#x27;exec/lists&#x27;, &#x27;exec/nodes&#x27;,
+       &#x27;graphics/text&#x27;, &#x27;graphics/view&#x27;,
+       &#x27;libraries/gadtools&#x27;,
+       &#x27;amigalib/lists&#x27;
+
+RAISE &quot;SCRN&quot; IF OpenS()=NIL
+
+-&gt; Index of the sub-GUI in the main GUI list.
+CONST SUB_POS=3
+
+-&gt; The custom screen.
+DEF scr=NIL
+
+-&gt; The main GUI, the list of sub-GUIs, the titles and the menus.
+DEF gui:PTR TO LONG, subguis:PTR TO LONG, titles:PTR TO LONG, menus
+
+-&gt; The connected window, the main window, a gh for multiforall() and a tmp.
+DEF ghconn=NIL, ghmain, forall, tmp
+
+-&gt; The slider in the connected and main windows, and the check in main.
+DEF connsl=NIL, mainsl=NIL:PTR TO LONG, mainchk=NIL
+
+PROC main() HANDLE
+  DEF mh=NIL
+  -&gt; The list of GUIs we&#x27;ll use (and change) as sub-GUIs in the main GUI.
+  subguis:=[
+             [COLS,
+               [TEXT,&#x27;Try the menus!&#x27;,NIL,TRUE,1],
+               [SLIDE,{ignore},&#x27;Colors:&#x27;,FALSE,1,8,3,5,&#x27;&#x27;]
+             ],
+             [COLS,
+               [SLIDE,{ignore},&#x27;Colors:&#x27;,FALSE,1,8,3,5,&#x27;&#x27;],
+               [CHECK,{ignore},&#x27;Ignore case&#x27;,TRUE,FALSE]
+             ],
+             [COLS,
+               [CHECK,{ignore},&#x27;Ignore case&#x27;,TRUE,TRUE],
+               [PALETTE,{ignore},&#x27;Palette:&#x27;,3,5,2,0]
+             ]
+           ]
+  -&gt; The main GUI.
+  gui:=[ROWS,
+         [COLS,
+           [SPACEH],
+            -&gt; Use generic action function, with BUTTON data 0, 1 or 2.
+           [BUTTON,{change_gui},&#x27;GUI _X&#x27;,0,&quot;x&quot;],
+           [SPACEH],
+           [BUTTON,{change_gui},&#x27;GUI _Y&#x27;,1,&quot;y&quot;],
+           [SPACEH],
+           [BUTTON,{change_gui},&#x27;GUI _Z&#x27;,2,&quot;z&quot;],
+           [SPACEH]
+         ],
+         [SPACE],
+         0, -&gt; The sub-GUI, initialise this below...
+         [SPACE],
+         [COLS,
+           [SBUTTON,{block_all},&#x27;_Block All&#x27;,0,&quot;b&quot;],
+           [SBUTTON,{close_all},&#x27;_Close All&#x27;,0,&quot;c&quot;]
+         ],
+         [BAR],
+         mainchk:=[CHECK,{connected_win},&#x27;Create/Destroy Connected Window&#x27;,
+                   FALSE,FALSE],
+         mainsl:=[SLIDE,{main_sl_fun},&#x27;Connected:    &#x27;,FALSE,1,20,3,5,&#x27;\d[2]&#x27;]
+       ]
+  -&gt; Initially, use the first sub-GUI.
+  gui[SUB_POS]:=subguis[]
+  titles:=[&#x27;GUI X&#x27;,&#x27;GUI Y&#x27;,&#x27;GUI Z&#x27;]
+  -&gt; We&#x27;re going to share the menus between our two windows.
+  menus:=[NM_TITLE,0,&#x27;Project&#x27;,      NIL,0,0,0,
+           NM_ITEM,0,&#x27;Quit&#x27;,         &#x27;Q&#x27;,0,0,0,
+          NM_TITLE,0,&#x27;Screen&#x27;,       NIL,0,0,0,
+           NM_ITEM,0,&#x27;Default&#x27;,      &#x27;D&#x27;,0,0,{default},
+           NM_ITEM,0,&#x27;Custom&#x27;,       &#x27;C&#x27;,0,0,{custom},
+          NM_TITLE,0,&#x27;Window Type&#x27;,  NIL,0,0,0,
+           NM_ITEM,0,&#x27;No Border&#x27;,    &#x27;N&#x27;,0,0,{noborder},
+           NM_ITEM,0,&#x27;Basic&#x27;,        &#x27;B&#x27;,0,0,{basic},
+           NM_ITEM,0,&#x27;No Size&#x27;,      &#x27;O&#x27;,0,0,{nosize},
+           NM_ITEM,0,&#x27;Size&#x27;,         &#x27;S&#x27;,0,0,{size},
+          NM_TITLE,0,&#x27;GUI&#x27;,          NIL,0,0,0,
+           NM_ITEM,0,&#x27;X&#x27;,            &#x27;X&#x27;,0,0,{x},
+           NM_ITEM,0,&#x27;Y&#x27;,            &#x27;Y&#x27;,0,0,{y},
+           NM_ITEM,0,&#x27;Z&#x27;,            &#x27;Z&#x27;,0,0,{z},
+          NM_TITLE,0,&#x27;Font&#x27;,         NIL,0,0,0,
+           NM_ITEM,0,&#x27;Screen&#x27;,       &#x27;F&#x27;,0,0,{font},
+           NM_ITEM,0,&#x27;Topaz&#x27;,        &#x27;T&#x27;,0,0,{topaz},
+          NM_END,  0,NIL,            NIL,0,0,0]:newmenu
+  -&gt; Start a multi-window group.
+  mh:=multiinit()
+  -&gt; Open the main GUI.
+  ghmain:=addmultiA(mh, &#x27;Check out the menus...&#x27;, gui,
+                   [EG_MENU,menus, EG_CLOSE,{closemain}, NIL])
+  -&gt; Process messages.
+  multiloop(mh)
+EXCEPT DO
+  cleanmulti(mh)
+  -&gt; If we opened the screen, close it.
+  IF scr THEN CloseS(scr)
+  report_exception()
+ENDPROC
+
+
+-&gt;&gt;&gt; Main GUI/shared action functions &lt;&lt;&lt;-
+
+-&gt; Close all windows, prompt then reopen.
+PROC close_all(gh) HANDLE
+  allclose(gh)
+  easyguiA(&#x27;New GUI&#x27;,
+          [ROWS,
+             [TEXT,&#x27;Old GUIs closed&#x27;,NIL,TRUE,15],
+             [TEXT,&#x27;Close me to reopen!&#x27;,NIL,TRUE,15]
+          ])
+EXCEPT DO
+  allopen(gh)
+  ReThrow()
+ENDPROC
+
+-&gt; Block all windows, prompt then unblock.
+PROC block_all(gh:PTR TO guihandle) HANDLE
+  multiforall({forall},gh.mh,`blockwin(forall))
+  easyguiA(&#x27;New GUI&#x27;,
+          [ROWS,
+             [TEXT,&#x27;Old GUIs blocked&#x27;,NIL,TRUE,15],
+             [TEXT,&#x27;Close me to unblock!&#x27;,NIL,TRUE,15]
+          ])
+EXCEPT DO
+  multiforall({forall},gh.mh,`unblockwin(forall))
+  ReThrow()
+ENDPROC
+
+-&gt; Change the font to default (screen) or Topaz.
+PROC font(info) IS change_font(info,NIL)
+PROC topaz(info) IS change_font(info,[&#x27;topaz.font&#x27;,8,0,0]:textattr)
+
+-&gt; Change to the default public screen.
+PROC default(gh:PTR TO guihandle) HANDLE
+  allclose(gh)
+  IF scr
+    CloseS(scr)
+    -&gt; The screen is now invalid.
+    scr:=NIL
+  ENDIF
+  multiforall({forall},gh.mh,`changescreen(forall,NIL))
+EXCEPT DO
+  allopen(gh)
+  ReThrow()
+ENDPROC
+
+-&gt; Change to a custom screen.
+PROC custom(gh:PTR TO guihandle) HANDLE
+  allclose(gh)
+  IF scr=NIL THEN scr:=OpenS(640,400,4,V_HIRES OR V_LACE,&#x27;Custom Screen&#x27;)
+  tmp:=scr
+  multiforall({forall},gh.mh,`changescreen(forall,tmp))
+EXCEPT DO
+  allopen(gh)
+  ReThrow()
+ENDPROC
+
+-&gt; Change the window type.
+PROC noborder(info) IS change_type(info,WTYPE_NOBORDER)
+PROC basic(info) IS change_type(info,WTYPE_BASIC)
+PROC nosize(info) IS change_type(info,WTYPE_NOSIZE)
+PROC size(info) IS change_type(info,WTYPE_SIZE)
+
+-&gt; Change the main GUI.
+PROC x(info) IS change_gui(0,ghmain)
+PROC y(info) IS change_gui(1,ghmain)
+PROC z(info) IS change_gui(2,ghmain)
+
+PROC change_gui(index,gh)
+  changetitle(gh,titles[index])
+  gui[SUB_POS]:=subguis[index]
+  changegui(gh,gui)
+ENDPROC
+
+PROC ignore(info,x) IS EMPTY
+
+
+-&gt;&gt;&gt; Connection code &lt;&lt;&lt;-
+
+-&gt; Connected slider on main GUI.
+PROC main_sl_fun(info,cur)
+  IF ghconn THEN setslide(ghconn,connsl,cur)
+ENDPROC
+
+-&gt; Connected slider on the other GUI.
+PROC conn_sl_fun(info,cur)
+  IF ghmain THEN setslide(ghmain,mainsl,cur)
+ENDPROC
+
+
+-&gt;&gt;&gt; Closing code &lt;&lt;&lt;-
+
+-&gt; Closing the main GUI quits.
+PROC closemain(mh,gh) IS quitgui(0)
+
+-&gt; Closing the other GUI destroys it.
+PROC closeconn(mh,info)
+  cleangui(ghconn)
+  -&gt; The guihandle is now invalid.
+  ghconn:=NIL
+  -&gt; Uncheck the check in the main GUI.
+  IF mainchk THEN setcheck(ghmain,mainchk,FALSE)
+ENDPROC
+
+
+-&gt;&gt;&gt; Other GUI functions &lt;&lt;&lt;-
+
+-&gt; React to check changes on main GUI.
+PROC connected_win(gh:PTR TO guihandle,bool)
+  IF bool
+    -&gt; If it&#x27;s been created reopen it, else create and add it to the group.
+    IF ghconn
+      openwin(ghconn)
+    ELSE
+      ghconn:=addmultiA(gh.mh, &#x27;Connected Window&#x27;,
+             [ROWS,
+               connsl:=[SLIDE,{conn_sl_fun},&#x27;Connected:    &#x27;,FALSE,1,20,
+                        IF mainsl THEN mainsl[SLI_CURR] ELSE 3,10,&#x27;\d[2]&#x27;],
+               [COLS,
+                 [SBUTTON,{block_all},&#x27;_Block All&#x27;,0,&quot;b&quot;],
+                 [SBUTTON,{close_all},&#x27;_Close All&#x27;,0,&quot;c&quot;]
+               ],
+               [SBUTTON,{clean_gui},&#x27;cl_eangui()&#x27;,0,&quot;e&quot;]
+             ],
+             [EG_TOP,0, EG_LEFT,0, EG_MENU,menus,
+              EG_SCRN,scr, EG_CLOSE,{closeconn}, NIL])
+    ENDIF
+  ELSEIF ghconn
+    -&gt; If it&#x27;s been created, destroy it.
+    cleangui(ghconn)
+    -&gt; The guihandle is now invalid.
+    ghconn:=NIL
+  ENDIF
+ENDPROC
+
+-&gt; Action function for cleangui() button (reuse closeconn()).
+PROC clean_gui(info) IS closeconn(0,0)
+
+
+-&gt;&gt;&gt; Auxiliary functions &lt;&lt;&lt;-
+
+-&gt; Close all GUIs (and update check on main GUI)
+PROC allclose(gh:PTR TO guihandle)
+  multiforall({forall},gh.mh,`closewin(forall))
+  -&gt; Make check false only if the other window exists
+  IF ghconn THEN setcheck(ghmain,mainchk,FALSE)
+ENDPROC
+
+-&gt; Open all GUIs (and update check on main GUI)
+PROC allopen(gh:PTR TO guihandle)
+  multiforall({forall},gh.mh,`openwin(forall))
+  -&gt; Make check true only if the other window exists
+  IF ghconn THEN setcheck(ghmain,mainchk,TRUE)
+ENDPROC
+
+-&gt; Change the window type.
+PROC change_type(gh:PTR TO guihandle,t) HANDLE
+  allclose(gh)
+  tmp:=t
+  multiforall({forall},gh.mh,`changewintype(forall,tmp))
+EXCEPT DO
+  allopen(gh)
+  ReThrow()
+ENDPROC
+
+-&gt; Change the window font.
+PROC change_font(gh:PTR TO guihandle,tattr) HANDLE
+  allclose(gh)
+  tmp:=tattr
+  multiforall({forall},gh.mh,`changefont(forall,tmp))
+EXCEPT DO
+  allopen(gh)
+  ReThrow()
+ENDPROC
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

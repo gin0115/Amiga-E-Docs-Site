@@ -1,0 +1,224 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>showObject.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-ooep.html">OOEP</a> &rsaquo; showObject.e</div><h1>File: <code>showObject.e</code></h1><p class="meta">198 lines · project <a href="../examples/pkg-ooep.html"><code>OOEP</code></a></p><p class="pathctx">OOEP/oomodules/resource/master/showObject.e</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/ports.html">exec/ports</a></li></ul></div><h2>Source</h2><pre class="code">OPT MODULE
+
+MODULE  &#x27;exec/ports&#x27;,
+        &#x27;exec/nodes&#x27;,
+        &#x27;exec/lists&#x27;,
+
+        &#x27;oomodules/file/textfile/programsource/eSource/eVar&#x27;,
+        &#x27;oomodules/file/textfile/programsource/esource&#x27;,
+        &#x27;oomodules/file/textfile/programsource/esource/eObject&#x27;,
+        &#x27;oomodules/resource&#x27;,
+        &#x27;oomodules/object&#x27;,
+        &#x27;oomodules/library/reqtools&#x27;,
+
+        &#x27;tools/easygui&#x27;,    
+        &#x27;tools/constructors&#x27;,
+
+        &#x27;*attribute&#x27;
+
+EXPORT DEF  requester:PTR TO reqtools,
+            tempList:PTR TO LONG,
+            currentObject:PTR TO eObject, -&gt; holds the object we display
+            stringChosen
+
+EXPORT PROC showObject(name:PTR TO CHAR)
+DEF file[255]:STRING,
+    eObject:PTR TO eObject,
+    eVar:PTR TO eVar,
+    varList,
+    tempList,
+    index,
+    objectName[255]:STRING,
+    parentObject:PTR TO eObject,
+    inFile:PTR TO eObject
+
+  IF name=NIL THEN RETURN
+  IF StrLen(name)=0 THEN RETURN
+
+  StrCopy(objectName,name)
+  LowerStr(objectName)
+
+  requester.file(&#x27;Where is the object defined?&#x27;)
+
+  StrCopy(file,requester.dirbuf)
+  AddPart(file,requester.filebuf,255)
+
+  IF file[0]=0 THEN RETURN
+
+
+  varList,eObject := getAttributeList(objectName,file)
+
+  currentObject := eObject -&gt; global var
+
+  IF varList = NIL THEN RETURN
+
+  showAttributeList(varList,objectName)
+
+
+  FOR index := 0 TO ListLen(varList)-1 DO DisposeLink(ListItem(varList, index))
+
+  DisposeLink(varList)
+
+ENDPROC
+
+EXPORT PROC showList(list, title) HANDLE
+DEF execlist:PTR TO lh,
+    execnode:PTR TO ln,
+    nextNode:PTR TO ln,
+    str,
+    item,
+    index
+
+  WriteF(&#x27;ShowList is here.\n&#x27;)
+
+  tempList := list
+
+  execlist := newlist()
+
+  FOR index := 0 TO ListLen(list)-1
+
+    execnode := NIL
+    execnode := newnode(NIL, ListItem(list,index))
+    AddTail(execlist,execnode)
+
+  ENDFOR
+
+  stringChosen := -1
+
+  easygui(title,
+            [EQROWS,
+              [LISTV,{actionShowList},NIL,30,10,execlist,0,0,0],
+              [BUTTON,NIL,&#x27;None&#x27;]
+            ])
+
+EXCEPT DO
+
+  execnode := execlist.head
+
+  FOR index:=1 TO ListLen(list)
+
+    nextNode := execnode.succ
+    Dispose(execnode)
+    execnode := nextNode
+
+  ENDFOR
+
+  IF stringChosen&lt;&gt;-1 THEN RETURN stringChosen ELSE RETURN NIL
+
+ENDPROC
+
+EXPORT PROC actionShowList(info,number)
+DEF resource:PTR TO resource,
+    object:PTR TO object
+
+  IF number&gt;=0
+    resource := ListItem(tempList,number)
+    object := resource.owner
+-&gt;    WriteF(&#x27;+\s+ -- &#x27;, object.name())
+    showObject(object.name())
+  ENDIF
+
+
+
+  Raise(&quot;quit&quot;)
+ENDPROC
+
+
+EXPORT PROC showAttributeList(list, title) HANDLE
+DEF execlist:PTR TO lh,
+    execnode:PTR TO ln,
+    nextNode:PTR TO ln,
+    str,
+    eVar:PTR TO eVar,
+    index
+
+ /*
+  * set module global variable to the eVar list
+  */
+
+  tempList := list
+
+  execlist := newlist()
+
+  FOR index := 0 TO ListLen(list)-1
+
+    execnode := NIL
+    eVar := ListItem(list,index)
+    execnode := newnode(NIL, eVar.identifier)
+    AddTail(execlist,execnode)
+
+  ENDFOR
+
+  stringChosen := -1
+
+  easygui(title,
+            [EQROWS,
+              [LISTV,{actionShowAttributeList},NIL,30,10,execlist,0,0,0],
+              [BUTTON,NIL,&#x27;None&#x27;]
+            ])
+
+EXCEPT DO
+
+ /*
+  * here only the exec nodes and the list are freed. The eVar list is
+  * still valid!
+  */
+
+  execnode := execlist.head
+
+  FOR index:=1 TO ListLen(list)
+
+    nextNode := execnode.succ
+    Dispose(execnode)
+    execnode := nextNode
+
+  ENDFOR
+
+  IF stringChosen&lt;&gt;-1 THEN RETURN stringChosen ELSE RETURN NIL
+
+ENDPROC
+
+
+EXPORT PROC actionShowAttributeList(info,number)
+
+  IF number&gt;=0
+
+    WriteF(&#x27;of object \s\n.&#x27;, currentObject.identifier)
+WriteF(&#x27;offsetlist:\d\n&#x27;,currentObject.offsetList)
+    WriteF(&#x27;attribute offset: \d\n&#x27;, ListItem(currentObject.offsetList,number))
+
+  ENDIF
+
+  Raise(&quot;quit&quot;)
+ENDPROC
+/*EE folds
+-1
+64 43 67 13 
+EE folds*/
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

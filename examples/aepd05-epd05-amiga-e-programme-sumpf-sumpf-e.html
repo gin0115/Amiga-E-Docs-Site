@@ -1,0 +1,209 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Sumpf.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-aepd05.html">AEPD05</a> &rsaquo; Sumpf.e</div><h1>File: <code>Sumpf.e</code></h1><p class="meta">183 lines · project <a href="../examples/pkg-aepd05.html"><code>AEPD05</code></a></p><p class="pathctx">AEPD05/EPD05/Amiga_E-Programme/Sumpf/Sumpf.e</p><p class="prose">** $Filename: Pascalinische Sümpfe ** $Version : 0.1 ** $Date : 30.11.1993 ** $Status : Public Domain !!! Unreleased Version !!! ** $Author : Daniel van Gerpen ** $Others : None ** ** Programmbeispiel in E, Gebrauch von GadToolsBox ** **</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/intuition.html">intuition/intuition</a></li></ul></div><h2>Source</h2><pre class="code">/*
+**      $Filename: Pascalinische Sümpfe
+**      $Version : 0.1
+**      $Date    : 30.11.1993
+**      $Status  : Public Domain !!! Unreleased Version !!!
+**      $Author  : Daniel van Gerpen
+**      $Others  : None
+**
+**      Programmbeispiel in E, Gebrauch von GadToolsBox
+**
+**
+*/
+
+
+ENUM NONE,ER_OPENLIB,ER_WB,ER_VISUAL,ER_CONTEXT,ER_GADGET,ER_WINDOW,ER_MENUS
+/* Fehler-Konstanten */
+
+
+MODULE &#x27;intuition/intuition&#x27;, &#x27;gadtools&#x27;, &#x27;libraries/gadtools&#x27;,
+       &#x27;intuition/gadgetclass&#x27;, &#x27;exec/nodes&#x27;, &#x27;intuition/screens&#x27;
+/* Benutzte Includes */
+
+
+DEF scr=NIL:PTR TO screen,  /* Zeiger auf Screen-Struktur */
+    wnd=NIL:PTR TO window,  /* Zeiger auf Window-Struktur */
+    visual=NIL,
+    glist=NIL, g, infos,    /* Gadget-Liste und IDCMP - Infos */
+    menu,                   /* Menu - Struktur */
+    offy,offx,              /* Abstand von Windowursprung */
+    tattr,                  /* Schriftattribute */
+    type=0,                 /* IDCMP - Art */
+    art,nopeln=0,manuseln=0,lopst=0,knelt=0,summe
+
+PROC main() HANDLE          /* HANDLE für Exeption-Handler */
+  openinterface()           /* Window mit  Gadgets öffnen */
+  Colour(1,0)               /* Farbe 1 auf Farbe 0 */
+  art:=2                    /* Am Anfang Cedi */
+  TextF(123+offx,46+offy,&#x27;\s  &#x27;,
+    ListItem([&#x27;Asi&#x27;,&#x27;Bela&#x27;,&#x27;Cedi&#x27;,&#x27;Drudi&#x27;],art))  /* Ausgabe */
+  REPEAT
+    wait4message()          /* Auf Mausklick warten */
+    IF (type=IDCMP_GADGETDOWN) OR (type=IDCMP_GADGETUP) THEN auswertung()
+    TextF(123+offx,46+offy,&#x27;\s  &#x27;,ListItem([&#x27;Asi&#x27;,&#x27;Bela&#x27;,&#x27;Cedi&#x27;,&#x27;Drudi&#x27;],art))
+  UNTIL type=IDCMP_CLOSEWINDOW
+  Raise(NONE)
+EXCEPT
+  closeinterface()
+  IF exception&gt;0 THEN WriteF(&#x27;Could not \s !\n&#x27;,
+    ListItem([&#x27;&#x27;,&#x27;open &quot;gadtools.library&quot; v37&#x27;,&#x27;lock workbench&#x27;,
+              &#x27;get visual infos&#x27;,&#x27;create context&#x27;,&#x27;create gadget&#x27;,
+              &#x27;open window&#x27;,&#x27;allocate menus&#x27;],exception))
+ENDPROC
+
+PROC openinterface()
+  IF (gadtoolsbase:=OpenLibrary(&#x27;gadtools.library&#x27;,37))=NIL THEN
+    Raise(ER_OPENLIB)
+  IF (scr:=LockPubScreen(&#x27;Workbench&#x27;))=NIL THEN Raise(ER_WB)
+  IF (visual:=GetVisualInfoA(scr,NIL))=NIL THEN Raise(ER_VISUAL)
+  offy:=scr.wbortop+Int(scr.rastport+58)-9
+  offx:=scr.wborleft
+  tattr:=[&#x27;topaz.font&#x27;,8,0,0]
+  IF (g:=CreateContext({glist}))=NIL THEN Raise(ER_CONTEXT)
+  IF (menu:=CreateMenusA([1,0,&#x27;Project&#x27;,0,0,0,0,
+    2,0,&#x27;Über...&#x27;,0,0,0,0,
+    2,0,&#x27;Ende&#x27;,&#x27;q&#x27;,0,0,0,
+    0,0,0,0,0,0,0]:newmenu,NIL))=NIL THEN Raise(ER_MENUS)
+  IF LayoutMenusA(menu,visual,NIL)=FALSE THEN Raise(ER_MENUS)
+  IF (g:=CreateGadgetA(CHECKBOX_KIND,g,
+    [offx+11,offy+16,26,11,&#x27;_Nopelt&#x27;,tattr,0,2,visual,0]:newgadget,
+    [GT_UNDERSCORE,&quot;_&quot;,
+     NIL]))=NIL THEN Raise(ER_GADGET)
+  IF (g:=CreateGadgetA(CHECKBOX_KIND,g,
+    [offx+11,offy+31,26,11,&#x27;Knelt&#x27;,tattr,1,2,visual,0]:newgadget,
+     NIL))=NIL THEN Raise(ER_GADGET)
+  IF (g:=CreateGadgetA(CHECKBOX_KIND,g,
+    [offx+11,offy+46,26,11,&#x27;Manuselt&#x27;,tattr,2,2,visual,0]:newgadget,
+     NIL))=NIL THEN Raise(ER_GADGET)
+  IF (g:=CreateGadgetA(CHECKBOX_KIND,g,
+    [offx+11,offy+62,26,11,&#x27;Löpst&#x27;,tattr,3,2,visual,0]:newgadget,
+     NIL))=NIL THEN Raise(ER_GADGET)
+  IF (g:=CreateGadgetA(TEXT_KIND,g,
+    [offx+117,offy+36,122,16,&#x27;Es ist ein...&#x27;,tattr,4,4,visual,0]:newgadget,
+    [GTTX_BORDER,1,
+     NIL]))=NIL THEN Raise(ER_GADGET)
+  IF (wnd:=OpenW(220,38,offx+249,offy+80,$24C077E,$102E,
+    &#x27;Pascalinische Sümpfe&#x27;,NIL,1,glist))=NIL THEN Raise(ER_WINDOW)
+  IF SetMenuStrip(wnd,menu)=FALSE THEN Raise(ER_MENUS)
+  Gt_RefreshWindow(wnd,NIL)
+ENDPROC
+
+PROC closeinterface()
+  IF wnd THEN ClearMenuStrip(wnd)
+  IF menu THEN FreeMenus(menu)
+  IF visual THEN FreeVisualInfo(visual)
+  IF wnd THEN CloseWindow(wnd)
+  IF glist THEN FreeGadgets(glist)
+  IF scr THEN UnlockPubScreen(NIL,scr)
+  IF gadtoolsbase THEN CloseLibrary(gadtoolsbase)
+ENDPROC
+
+PROC wait4message()
+  DEF mes:PTR TO intuimessage,g:PTR TO gadget
+  REPEAT
+    type:=0
+    IF mes:=Gt_GetIMsg(wnd.userport)
+      type:=mes.class
+      IF type=IDCMP_MENUPICK
+        infos:=mes.code
+      ELSEIF (type=IDCMP_GADGETDOWN) OR (type=IDCMP_GADGETUP)
+        g:=mes.iaddress
+        infos:=g.gadgetid
+      ELSEIF type=IDCMP_REFRESHWINDOW
+        Gt_BeginRefresh(wnd)
+        Gt_EndRefresh(wnd,TRUE)
+        type:=0
+      ELSEIF type&lt;&gt;IDCMP_CLOSEWINDOW
+        type:=0
+      ENDIF
+      Gt_ReplyIMsg(mes)
+    ELSE
+      Wait(-1)
+    ENDIF
+  UNTIL type
+ENDPROC
+
+PROC auswertung()
+     IF (infos+1=1) AND (nopeln=1) 
+         nopeln:=0
+      ELSEIF (infos+1=1) AND (nopeln=0)
+         nopeln:=1
+      ELSEIF (infos+1=2) AND (knelt=1)
+         knelt:=0
+      ELSEIF (infos+1=2) AND (knelt=0)
+         knelt:=1
+      ELSEIF (infos+1=3) AND (manuseln=1)
+         manuseln:=0
+      ELSEIF (infos+1=3) AND (manuseln=0)
+         manuseln:=1
+      ELSEIF (infos+1=4) AND (lopst=1)
+         lopst:=0
+      ELSEIF (infos+1=4) AND (lopst=0)
+         lopst:=1
+     ENDIF
+
+     summe:=(lopst*1)+(knelt*2)+(nopeln*4)+(manuseln*8)
+
+     SELECT summe
+         CASE 0
+          art:=2
+         CASE 1
+          art:=3
+         CASE 2
+          art:=3
+         CASE 3
+          art:=3
+         CASE 4
+          art:=1
+         CASE 5
+          art:=1
+         CASE 6
+          art:=2
+         CASE 7
+          art:=2
+         CASE 8
+          art:=3
+         CASE 9
+          art:=2
+         CASE 10
+          art:=0
+         CASE 11
+          art:=0
+         CASE 12
+          art:=1
+         CASE 13
+          art:=1
+         CASE 14
+          art:=0
+         CASE 15
+          art:=0
+     ENDSELECT
+ENDPROC
+
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

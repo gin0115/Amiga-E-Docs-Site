@@ -1,0 +1,130 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>simplegtgadget.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-jrh-rkrm-1.html">JRH-RKRM-1</a> &rsaquo; simplegtgadget.e</div><h1>File: <code>simplegtgadget.e</code></h1><p class="meta">104 lines · project <a href="../examples/pkg-jrh-rkrm-1.html"><code>JRH-RKRM-1</code></a></p><p class="pathctx">JRH-RKRM-1/JRH-RKRM-PartOne/GadTools/simplegtgadget.e</p><p class="prose">simplegtgadget.e - Simple example of a GadTools gadget.</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/gadtools.html">gadtools</a></li></ul></div><h2>Source</h2><pre class="code">-&gt; simplegtgadget.e - Simple example of a GadTools gadget.
+
+OPT OSVERSION=37
+
+MODULE &#x27;gadtools&#x27;,
+       &#x27;exec/ports&#x27;,
+       &#x27;graphics/text&#x27;,
+       &#x27;intuition/intuition&#x27;,
+       &#x27;intuition/screens&#x27;,
+       &#x27;libraries/gadtools&#x27;
+
+ENUM ERR_NONE, ERR_GAD, ERR_LIB, ERR_PUB, ERR_VIS, ERR_WIN
+
+RAISE ERR_GAD IF CreateGadgetA()=NIL,
+      ERR_LIB IF OpenLibrary()=NIL,
+      ERR_PUB IF LockPubScreen()=NIL,
+      ERR_VIS IF GetVisualInfoA()=NIL,
+      ERR_WIN IF OpenWindowTagList()=NIL
+
+CONST MYGAD_BUTTON=4
+
+-&gt; Open all libraries and run.  Clean up when finished or on error..
+PROC main() HANDLE
+  gadtoolsbase:=OpenLibrary(&#x27;gadtools.library&#x27;, 37)
+  gadtoolsWindow()
+EXCEPT DO
+  IF gadtoolsbase THEN CloseLibrary(gadtoolsbase)
+  SELECT exception
+  CASE ERR_GAD; WriteF(&#x27;Error: Could not create gadget\n&#x27;)
+  CASE ERR_LIB; WriteF(&#x27;Error: Could not open gadtools.library\n&#x27;)
+  CASE ERR_PUB; WriteF(&#x27;Error: Could not lock public screen\n&#x27;)
+  CASE ERR_VIS; WriteF(&#x27;Error: Could not get visual info\n&#x27;)
+  CASE ERR_WIN; WriteF(&#x27;Error: Could not open window\n&#x27;)
+  ENDSELECT
+ENDPROC
+
+-&gt; Prepare for using GadTools, set up gadgets and open window.
+-&gt; Clean up and when done or on error.
+PROC gadtoolsWindow() HANDLE
+  DEF mysc=NIL:PTR TO screen, mywin=NIL, glist=NIL, gad, vi=NIL
+  mysc:=LockPubScreen(NIL)
+  vi:=GetVisualInfoA(mysc, [NIL])
+  -&gt; GadTools gadgets require this step to be taken
+  gad:=CreateContext({glist})
+
+  -&gt; Create a button gadget centered below the window title
+  gad:=CreateGadgetA(BUTTON_KIND, gad,
+                    [150, (20+mysc.wbortop+mysc.font.ysize+1),
+                     100, 12,
+                     &#x27;Click Here&#x27;, [&#x27;topaz.font&#x27;, 8, 0, 0]:textattr,
+                     MYGAD_BUTTON, 0,
+                     vi, NIL]:newgadget,
+                    [NIL])
+  mywin:=OpenWindowTagList(NIL,
+                          [WA_TITLE,     &#x27;GadTools Gadget Demo&#x27;,
+                           WA_GADGETS,   glist, WA_AUTOADJUST,    TRUE,
+                           WA_WIDTH,     400,   WA_INNERHEIGHT,    100,
+                           WA_DRAGBAR,   TRUE,  WA_DEPTHGADGET,   TRUE,
+                           WA_ACTIVATE,  TRUE,  WA_CLOSEGADGET,   TRUE,
+                           WA_IDCMP, IDCMP_CLOSEWINDOW OR
+                                     IDCMP_REFRESHWINDOW OR BUTTONIDCMP,
+                           WA_PUBSCREEN, mysc,
+                           NIL])
+  Gt_RefreshWindow(mywin, NIL)
+  process_window_events(mywin)
+EXCEPT DO
+  IF mywin THEN CloseWindow(mywin)
+  -&gt; FreeGadgets() must be called after the context has been created.
+  -&gt; It does nothing if glist is NIL
+  FreeGadgets(glist)
+  IF vi THEN FreeVisualInfo(vi)
+  IF mysc THEN UnlockPubScreen(NIL, mysc)
+  ReThrow()  -&gt; E-Note: pass on exception if it is an error
+ENDPROC
+
+-&gt; Standard message handling loop with GadTools message handling functions
+-&gt; used (Gt_GetIMsg() and Gt_ReplyIMsg()).
+PROC process_window_events(mywin:PTR TO window)
+  DEF imsg:PTR TO intuimessage, gad:PTR TO gadget, terminated=FALSE, class
+  REPEAT
+    Wait(Shl(1, mywin.userport.sigbit))
+
+    -&gt; Use Gt_GetIMsg() and Gt_ReplyIMsg() for handling IntuiMessages
+    -&gt; with GadTools gadgets.
+    WHILE (terminated=FALSE) AND (imsg:=Gt_GetIMsg(mywin.userport))
+      -&gt; Gt_ReplyIMsg() at end of loop
+      class:=imsg.class
+      SELECT class
+      CASE IDCMP_GADGETUP  -&gt; Buttons only report GADGETUP
+        gad:=imsg.iaddress
+        IF gad.gadgetid=MYGAD_BUTTON THEN WriteF(&#x27;Button was pressed\n&#x27;)
+      CASE IDCMP_CLOSEWINDOW
+        terminated:=TRUE
+      CASE IDCMP_REFRESHWINDOW
+        -&gt; This handling is REQUIRED with GadTools.
+        Gt_BeginRefresh(mywin)
+        Gt_EndRefresh(mywin, TRUE)
+      ENDSELECT
+      -&gt; Use the toolkit message-replying function here...
+      Gt_ReplyIMsg(imsg)
+    ENDWHILE
+  UNTIL terminated
+ENDPROC
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

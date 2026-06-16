@@ -1,0 +1,239 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>dclistview.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-dclistview.html">dclistview</a> &rsaquo; dclistview.e</div><h1>File: <code>dclistview.e</code></h1><p class="meta">213 lines · project <a href="../examples/pkg-dclistview.html"><code>dclistview</code></a></p><p class="pathctx">dclistview/dclistview.e</p><p class="prose">Name: <a href="../modules/dclistview.html">dclistview</a>.e About: A <a href="../modules/listview.html">listview</a> Plugin that understands double-clicks Version: $VER: <a href="../modules/dclistview.html">dclistview</a>.e 1.6 (19.1.99) Author: Copyright © 1997, 1998, 1999 Victor Ducedre. All Rights Reserved. A brief note: This version has been updated with the use of <a href="../modules/etaglist.html">etaglist</a>.m from dev/e/SvensModules.lha. eGetTagDa</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/gadtools.html">gadtools</a></li></ul></div><h2>Source</h2><pre class="code">/*
+   Name:      dclistview.e
+   About:     A listview Plugin that understands double-clicks
+   Version:   $VER: dclistview.e 1.6 (19.1.99)
+   Author:    Copyright © 1997, 1998, 1999 Victor Ducedre.  All Rights Reserved.
+
+   A brief note:  This version has been updated with the use of etaglist.m
+   from dev/e/SvensModules.lha.  eGetTagData() is the same as GetTagData()
+   from utility.library, but does not require the library.
+
+*/
+OPT MODULE
+OPT PREPROCESS
+
+MODULE &#x27;gadtools&#x27;, &#x27;libraries/gadtools&#x27;, &#x27;devices/inputevent&#x27;,
+       &#x27;intuition/gadgetclass&#x27;, &#x27;intuition/intuition&#x27;, &#x27;utility/tagitem&#x27;,
+       &#x27;tools/EasyGUI&#x27;, &#x27;tools/textlen&#x27;, &#x27;tools/ctype&#x27;, &#x27;exec/nodes&#x27;,
+       &#x27;exec/lists&#x27;, &#x27;sven/support/etaglist&#x27;, &#x27;graphics/text&#x27;
+
+-&gt;define DCLIST to make EasyGUI&#x27;s gadget list more readable!
+EXPORT CONST DCLIST=PLUGIN
+
+EXPORT ENUM DCLV_LABEL=$FF000001,           -&gt; [I..]
+            DCLV_RELX,                      -&gt; [I..]
+            DCLV_RELY,                      -&gt; [I..]
+            DCLV_LIST,                      -&gt; [ISG]
+            DCLV_CURRENT,                   -&gt; [ISG]
+            DCLV_CLICK,                     -&gt; [..G]
+            DCLV_TOP,                       -&gt; [ISG]
+            DCLV_DISABLED,                  -&gt; [ISG]
+            DCLV_TEXTATTR,                  -&gt; [I..]
+            DCLV_USEARROWS                  -&gt; [I..]
+
+EXPORT OBJECT dclistview OF plugin PRIVATE
+  disabled
+  current
+  top
+  clicked
+  gadget:PTR TO gadget
+  label
+  labelhi
+  relx, rely
+  execlist
+  maxnode
+  key
+  second1, micros1
+  second2, micros2
+  textattr:PTR TO textattr
+  cursor
+ENDOBJECT
+
+PROC dclistview(tags:PTR TO tagitem) OF dclistview
+DEF key,label
+-&gt; eGetTagData() is from sven/support/etaglist.  See docs.
+  self.label:=      eGetTagData(DCLV_LABEL,     NIL, tags)
+  self.relx :=  Max(eGetTagData(DCLV_RELX,        5, tags), 5)
+  self.rely :=  Max(eGetTagData(DCLV_RELY,        5, tags), 2)
+  self.execlist:=   eGetTagData(DCLV_LIST,      NIL, tags)
+  self.maxnode:=    max_node(self.execlist)
+  self.current:=Max(eGetTagData(DCLV_CURRENT,   NIL, tags), -1)
+  self.top:=    Max(eGetTagData(DCLV_TOP,       NIL, tags),0)
+  self.disabled:=   eGetTagData(DCLV_DISABLED,FALSE, tags)
+  self.cursor:=     eGetTagData(DCLV_USEARROWS,FALSE, tags)
+  IF self.cursor
+    self.key:=NIL
+  ELSEIF label:=self.label
+    self.key:= IF (key:=InStr(label, &#x27;_&#x27;))&lt;&gt;-1 THEN tolower(label[key+1]) ELSE NIL
+    self.key:= IF isalpha(self.key) THEN self.key ELSE NIL
+  ENDIF
+  self.textattr:=   eGetTagData(DCLV_TEXTATTR,  NIL, tags)
+  self.second1:=NIL;  self.second2:=NIL
+  self.micros1:=NIL;  self.micros2:=NIL
+ENDPROC
+
+PROC end() OF dclistview IS EMPTY
+
+PROC min_size(ta,fh) OF dclistview
+  IF self.textattr THEN fh:=self.textattr.ysize
+  self.labelhi:=IF self.label THEN fh+5 ELSE 0
+ENDPROC Max(textlen_key(self.label,ta,self.key),self.relx*fh), self.rely*fh+self.labelhi+5
+
+PROC will_resize() OF dclistview IS (RESIZEX OR RESIZEY)
+
+PROC gtrender(gl,vis,ta,x,y,xs,ys,w) OF dclistview HANDLE
+
+  self.gadget:=CreateGadgetA(LISTVIEW_KIND,gl,
+                 [x,y+self.labelhi,xs,ys-self.labelhi,self.label,
+                  IF self.textattr THEN self.textattr ELSE ta,0,0,vis,NIL]:newgadget,
+                 [GTLV_LABELS, self.execlist,
+                  GA_DISABLED, self.disabled,
+                  IF self.key THEN GT_UNDERSCORE ELSE TAG_IGNORE, &quot;_&quot;,
+                  GTLV_SHOWSELECTED, NIL,
+                  GTLV_SELECTED, self.current,
+                  GTLV_TOP, self.top,
+                  TAG_DONE])
+  IF self.gadget=NIL THEN Raise(&quot;dclv&quot;)
+EXCEPT DO
+  ReThrow()
+ENDPROC self.gadget
+
+PROC message_test(imsg:PTR TO intuimessage,win:PTR TO window) OF dclistview
+DEF islist=FALSE
+IF Not(self.disabled)
+  IF (imsg.class=IDCMP_VANILLAKEY) THEN RETURN (self.key=tolower(imsg.code))
+  IF (imsg.class=IDCMP_RAWKEY) AND (self.cursor) THEN RETURN ((imsg.code=CURSORUP) OR (imsg.code=CURSORDOWN))
+ENDIF
+IF (imsg.class=IDCMP_GADGETUP)
+  IF islist:= (imsg.iaddress=self.gadget)
+    self.second2:=imsg.seconds
+    self.micros2:=imsg.micros
+  ENDIF
+ENDIF
+ENDPROC islist
+
+PROC message_action(class,qual,code,win:PTR TO window) OF dclistview
+DEF newcurrent, altused
+SELECT class
+  CASE IDCMP_RAWKEY
+    SELECT code
+      altused:=(qual AND (IEQUALIFIER_LALT OR IEQUALIFIER_RALT))
+      CASE CURSORUP
+        newcurrent:=IF altused THEN 0 ELSE Max(self.current-1, 0)
+      CASE CURSORDOWN
+        newcurrent:=IF altused THEN self.maxnode ELSE Min(self.current+1, self.maxnode)
+    ENDSELECT
+    IF newcurrent=self.current THEN RETURN FALSE ELSE self.current:=newcurrent
+    self.set(DCLV_CURRENT, self.current)
+  CASE IDCMP_VANILLAKEY
+    IF (qual AND (IEQUALIFIER_LSHIFT OR IEQUALIFIER_RSHIFT))
+      newcurrent:=Max(self.current-1, 0)
+    ELSE
+      newcurrent:=Min(self.current+1, self.maxnode)
+    ENDIF
+    IF newcurrent=self.current THEN RETURN FALSE ELSE self.current:=newcurrent
+    self.set(DCLV_CURRENT, self.current)
+  CASE IDCMP_GADGETUP
+    IF code=self.current
+      self.clicked:=(IF self.clicked THEN FALSE ELSE DoubleClick(self.second1,self.micros1,self.second2,self.micros2))
+    ELSE
+      self.current:=code
+      self.clicked:=FALSE
+    ENDIF
+ENDSELECT
+  self.second1:=self.second2;  self.second2:=NIL
+  self.micros1:=self.micros2;  self.micros2:=NIL
+ENDPROC TRUE
+
+PROC set(attr, val) OF dclistview IS self.setA([attr, val, TAG_DONE])
+
+PROC setA(tags:PTR TO LONG) OF dclistview
+DEF newattr=NIL, attr, val, vers, newtop
+
+  vers:=KickVersion(39)
+  WHILE (attr:=Long(tags++))
+    val:=Long(tags++)
+    SELECT attr
+      CASE DCLV_DISABLED
+        IF vers
+          IF self.disabled&lt;&gt;val
+            self.disabled:=val
+            newattr:=NEW [GA_DISABLED, self.disabled, TAG_DONE]
+            self.clicked:=FALSE
+          ENDIF
+        ENDIF
+      CASE DCLV_LIST
+        self.maxnode:=max_node(val)
+        newattr:=NEW [GTLV_LABELS, val, TAG_DONE]
+        self.execlist:=val
+        self.clicked:=FALSE
+      CASE DCLV_TOP
+        self.top:=Bounds(val,0,self.maxnode)
+        newattr:=NEW [GTLV_TOP, self.top, TAG_DONE]
+      CASE DCLV_CURRENT
+        self.current:= Bounds(val,-1,self.maxnode)
+        newattr:=NEW [GTLV_SELECTED, self.current,
+                      IF vers THEN GTLV_MAKEVISIBLE ELSE GTLV_TOP, Max(self.current,0),
+                      TAG_DONE]
+        IF vers
+          Gt_GetGadgetAttrsA(self.gadget, self.gh.wnd,NIL, [GTLV_TOP, {newtop}, TAG_DONE])
+        ELSE
+          newtop:=Max(self.current,0)
+        ENDIF
+        self.top:=newtop
+        self.clicked:=FALSE
+    ENDSELECT
+    IF newattr
+      IF visible(self) THEN Gt_SetGadgetAttrsA(self.gadget, self.gh.wnd, NIL, newattr)
+      FastDisposeList(newattr)
+    ENDIF
+  ENDWHILE
+ENDPROC
+
+PROC get(attr) OF dclistview
+  SELECT attr
+    CASE DCLV_LIST;     RETURN self.execlist, TRUE
+    CASE DCLV_CURRENT;  RETURN self.current,  TRUE
+    CASE DCLV_TOP;      RETURN self.top,      TRUE
+    CASE DCLV_CLICK;    RETURN self.clicked,  TRUE
+    CASE DCLV_DISABLED; RETURN self.disabled, TRUE
+  ENDSELECT
+ENDPROC -1, FALSE
+
+PROC visible(self:PTR TO dclistview) IS (self.gadget)AND(self.gh.wnd)
+
+PROC max_node(list:PTR TO lh)
+DEF node=NIL:PTR TO ln, i=-1
+  IF list&gt;0
+    node:=list.head
+    WHILE node:=node.succ DO INC i
+  ENDIF
+ENDPROC i
+
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

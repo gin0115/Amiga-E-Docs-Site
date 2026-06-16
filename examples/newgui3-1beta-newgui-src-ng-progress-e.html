@@ -1,0 +1,164 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ng_progress.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-newgui3-1beta.html">newgui3_1beta</a> &rsaquo; ng_progress.e</div><h1>File: <code>ng_progress.e</code></h1><p class="meta">138 lines · project <a href="../examples/pkg-newgui3-1beta.html"><code>newgui3_1beta</code></a></p><p class="pathctx">newgui3_1beta/NewGUI/Src/ng_progress.e</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/gfx.html">graphics/gfx</a></li><li><a href="../modules/gfxmacros.html">graphics/gfxmacros</a></li><li><a href="../modules/rastport.html">graphics/rastport</a></li><li><a href="../modules/text.html">graphics/text</a></li><li><a href="../modules/intuition.html">intuition/intuition</a></li><li><a href="../modules/screens.html">intuition/screens</a></li><li><a href="../modules/textlen.html">tools/textlen</a></li></ul></div><h2>Source</h2><pre class="code">OPT     OSVERSION = 37
+OPT     MODULE
+
+MODULE  &#x27;graphics/text&#x27;
+MODULE  &#x27;graphics/gfx&#x27;
+MODULE  &#x27;graphics/gfxmacros&#x27;
+MODULE  &#x27;graphics/rastport&#x27;
+MODULE  &#x27;intuition/screens&#x27;
+MODULE  &#x27;intuition/intuition&#x27;
+MODULE  &#x27;tools/textlen&#x27;
+
+EXPORT OBJECT  progresswin
+
+PRIVATE
+ scr    :PTR TO screen
+ wnd    :PTR TO window
+ tattr  :PTR TO textattr
+ title  :PTR TO CHAR
+ action :PTR TO CHAR
+ status :PTR TO CHAR
+ iswb   :INT
+ bpen   :INT
+ fpen   :INT
+ space  :INT
+ value  :INT
+ text   :INT
+ x      :INT
+ y      :INT
+ xs     :INT
+ ys     :INT
+ update :INT
+ENDOBJECT
+
+PROC progresswin(title,action,status,back,front,space,initvalue,screen=NIL,textattr=NIL) OF progresswin
+  self.title    :=title
+  self.bpen     :=back
+  self.fpen     :=front
+  self.space    :=space
+  self.value    :=initvalue
+  self.status   :=status
+  self.action   :=action
+    self.tattr  :=textattr
+     IF (screen&lt;&gt;NIL)
+      self.scr  :=screen
+     ELSE
+      self.scr  :=LockPubScreen(NIL)
+      self.iswb  :=1
+     ENDIF
+       IF (self.tattr=NIL) THEN self.tattr:=self.scr.font
+
+    self.xs:=(textlen(&#x27;100 %&#x27;,self.tattr)+10)*3
+    IF (self.action&lt;&gt;NIL) THEN self.xs:=textlen(self.action,self.tattr)+30
+   self.ys:=self.tattr.ysize+4
+    self.x:=15
+    self.y:=(40+self.tattr.ysize+3)-(self.ys/2)
+     self.wnd:=OpenWindowTagList(NIL,[
+        WA_LEFT,        (self.scr.width-(self.xs+30))/2,
+        WA_TOP,         (self.scr.height-(((self.y-self.tattr.ysize+3)*2)+self.ys))/2,
+        WA_WIDTH,       self.xs+30,
+        WA_HEIGHT,      ((self.y-self.tattr.ysize+3)*2)+self.ys,
+        WA_TITLE,       self.title,
+        WA_CUSTOMSCREEN,self.scr,
+        WA_AUTOADJUST,  TRUE,
+        WA_FLAGS,       IF title=NIL THEN WFLG_NOCAREREFRESH ELSE WFLG_NOCAREREFRESH OR WFLG_DRAGBAR OR WFLG_DEPTHGADGET OR WFLG_CLOSEGADGET OR WFLG_DRAGBAR ,
+        NIL,            NIL])
+
+     IF self.wnd=NIL THEN RETURN NIL
+      self.update:=1
+       self.render()
+ENDPROC TRUE
+
+PROC end()      OF progresswin
+  IF (self.wnd&lt;&gt;NIL)    THEN CloseWindow(self.wnd)
+ IF (self.iswb=1)       THEN UnlockPubScreen(NIL,self.scr)
+ENDPROC
+
+PROC set(val,status=NIL,action=NIL)     OF progresswin
+ IF (val&gt;=0) AND (val&lt;=100)
+  self.value:=val
+   IF (status&lt;&gt;NIL)
+    self.status:=status
+    self.update:=1
+   ENDIF
+   IF (action&lt;&gt;NIL)
+    self.action:=action
+    self.update:=1
+   ENDIF
+  RETURN self.render()
+ ENDIF
+ENDPROC NIL
+
+PROC get()      OF progresswin          IS self.value
+
+PROC render()   OF progresswin
+ DEF    rport=0,                                -&gt; RastPort-Adresse
+        width=0,                                -&gt; Länge des Gauge-Balkens (innen)
+        ox=0,oy=0                               -&gt; Offsetx, offsety
+  IF (self.wnd&lt;&gt;NIL)
+   rport:=self.wnd.rport
+    stdrast:=rport
+      SetAPen(rport,1)                          -&gt; schwarz
+       Move(rport,self.x,self.y+self.ys)                        -&gt; x----------x &lt;- Ende                 -.
+       Draw(rport,self.x,self.y)                                -&gt; |                                      \
+       Draw(rport,self.x+self.xs,self.y)                        -&gt; x &lt;- Start                             (
+      SetAPen(rport,2)                                          -&gt;     weiß                                &gt; Rahmen zeichnen
+       Move(rport,self.x+self.xs,self.y+1)                      -&gt; Ende       x &lt;- Start (+1 Pixel!)      (
+       Draw(rport,self.x+self.xs,self.y+self.ys)                -&gt; \/         |                           /
+       Draw(rport,self.x+1,self.y+self.ys)                      -&gt; x----------x                         -&#x27;
+      SetBPen(rport,self.bpen)
+      SetAPen(rport,self.bpen)
+        width:=((self.xs*self.value)/100)-self.space
+         RectFill(rport,self.x+1+self.space,self.y+1+self.space,self.x+width-1,self.y+self.ys-self.space-1)
+        SetAPen(rport,0)
+        SetBPen(rport,0)
+         RectFill(rport,self.x+width+1+self.space,self.y+1,self.x+self.xs-1,self.y+self.ys-1) -&gt; Sanftes Scrolling, weil nur der &quot;überflüssige&quot; Bereich gelöscht wird
+          ox:=self.x+((self.xs-(self.xs/3))/2)
+           oy:=self.y+self.ys-6
+        stdrast:=rport
+         SetABPenDrMd(rport,self.fpen,0,RP_JAM1)
+          TextF(ox,oy,&#x27;\d[3] %&#x27;,self.value)
+
+       IF self.update=1
+        SetAPen(rport,0)
+        RectFill(rport,9,(self.tattr.ysize*2)+(self.tattr.ysize/2),self.wnd.width-22,(self.tattr.ysize)+(self.tattr.ysize/2))
+        RectFill(rport,9,self.wnd.height-(self.tattr.ysize*2)+2,self.wnd.width-22,self.wnd.height-self.tattr.ysize+2)
+         SetAPen(rport,1)
+          TextF(10,(self.tattr.ysize*2)+(self.tattr.ysize/2),&#x27;\s&#x27;,self.action)
+          TextF(10,self.wnd.height-self.tattr.ysize,&#x27;\s&#x27;,self.status)
+         SetAPen(rport,2)
+          TextF( 9,(self.tattr.ysize*2)+(self.tattr.ysize/2)-1,&#x27;\s&#x27;,self.action)
+         SetDrMd(rport,RP_JAM2)
+       ENDIF
+      self.update:=0
+  ELSE
+   RETURN NIL
+  ENDIF
+ENDPROC TRUE
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

@@ -1,0 +1,239 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ecxelf.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-ecx-2-3-1-src.html">ECX_2.3.1-src</a> &rsaquo; ecxelf.e</div><h1>File: <code>ecxelf.e</code></h1><p class="meta">213 lines · project <a href="../examples/pkg-ecx-2-3-1-src.html"><code>ECX_2.3.1-src</code></a></p><p class="pathctx">ECX_2.3.1-src/ecx-2.3.1-src/ecxelf.e</p><p class="prose">************************************************************************ ** ECX/ecxelf.e. ** Copyright (c) Leif Salomonsson 2002-2007. ** Redistribution of this source is allowed as long as: ** 1. no copyright notice is removed or altered. ** 2. altered source must be clearly marked as such. *******</p><h2>Source</h2><pre class="code">/*************************************************************************
+** ECX/ecxelf.e.
+** Copyright (c) Leif Salomonsson 2002-2007.
+** Redistribution of this source is allowed as long as:
+** 1. no copyright notice is removed or altered.
+** 2. altered source must be clearly marked as such.
+**********************************************************************/
+
+OPT MODULE
+OPT EXPORT
+OPT PREPROCESS
+
+
+ENUM EI_MAG0,
+     EI_MAG1,
+     EI_MAG2,
+     EI_MAG3,
+     EI_CLASS,
+     EI_DATA,
+     EI_VERSION,
+     EI_PAD,
+     EI_NIDENT=16
+
+ENUM ELFCLASSNONE,
+     ELFCLASS32,
+     ELFCLASS64
+
+ENUM ELFDATANONE,
+     ELFDATA2LSB,
+     ELFDATA2MSB
+
+CONST ET_REL = 1,
+      ET_EXEC = 2,
+      ET_DYN = 3
+
+CONST EM_68K=4, EM_PPC = 20
+
+CONST EV_CURRENT = 1
+
+OBJECT ehdr
+   ident[EI_NIDENT]:ARRAY OF CHAR -&gt; [&quot;\$7F\~ELF&quot;, $01020100, NIL, NIL]:LONG
+   type:INT      -&gt; ET_REL
+   machine:INT   -&gt; EM_PPC
+   version:LONG  -&gt; 1
+   entry:LONG    -&gt; 0
+   phoff:LONG    -&gt; usually SIZEOF ehdr
+   shoff:LONG    -&gt;
+   flags:LONG    -&gt; NIL
+   ehsize:INT    -&gt; SIZEOF ehdr
+   phentsize:INT -&gt; SIZEOF phdr
+   phnum:INT     -&gt; number of phdr`s
+   shentsize:INT -&gt; SIZEOF shdr
+   shnum:INT     -&gt; number of shdr`s
+   shstrndx:INT  -&gt;
+ENDOBJECT
+
+ENUM PT_NULL,
+     PT_LOAD,
+     PT_DYNAMIC,
+     PT_INTERP,
+     PT_NOTE,
+     PT_SHLIB,
+     PT_PHDR
+
+SET PF_X, -&gt; executable
+    PF_W, -&gt; write
+    PF_R  -&gt; read
+
+OBJECT phdr
+   type:LONG     -&gt; PT_xxx, normally PT_LOAD
+   offset:LONG   -&gt; offset in file of code/data
+   vaddr:LONG    -&gt; 0 for current targets
+   paddr:LONG    -&gt; 0 for current targets
+   filesz:LONG   -&gt; size on disk
+   memsz:LONG    -&gt; same as filesz for code
+   flags:LONG    -&gt; PF_R OR PF_X for code
+   align:LONG    -&gt; 4 for code
+ENDOBJECT
+
+CONST SHN_ABS = $FFF1,
+      SHN_COMMON = $FFF2
+
+CONST SHT_NULL = 0,
+      SHT_PROGBITS = 1,
+      SHT_SYMTAB = 2,
+      SHT_STRTAB = 3,
+      SHT_RELA = 4,
+      SHT_HASH = 5,
+      SHT_DYNAMIC = 6,
+      SHT_NOBITS = 8,
+      SHT_REL = 9,
+      SHT_DYNSYM = 11
+
+SET SHF_WRITE,
+    SHF_ALLOC,
+    SHF_EXECINSTR
+
+OBJECT shdr
+   name:LONG
+   type:LONG
+   flags:LONG
+   addr:LONG
+   offset:LONG
+   size:LONG
+   link:LONG
+   info:LONG
+   addralign:LONG
+   entsize:LONG
+ENDOBJECT
+
+ENUM STB_LOCAL,
+     STB_GLOBAL,
+     STB_WEAK,
+     STB_NUM
+
+CONST STB_LOOS = 10
+CONST STB_HIOS = 12
+CONST STB_LOPROC = 13
+CONST STB_HIPROC = 15
+
+ENUM STT_NOTYPE,
+     STT_OBJECT,
+     STT_FUNC,
+     STT_SECTION,
+     STT_FILE, -&gt; 1.7.1: was missing
+     STT_COMMON, -&gt; 1.7.1: was missing
+     STT_TLS     -&gt; 1.7.1 was missing
+
+#define ST_BIND(val)        (Shr(val,4) AND $FFFFFFF)
+#define ST_TYPE(val)        ((val) AND $F)
+#define ST_INFO(bind,type) (Shl(bind, 4) + (type))
+
+OBJECT sym
+   name:LONG
+   value:LONG
+   size:LONG
+   info:CHAR  -&gt; ST_INFO
+   other:CHAR
+   shndx:INT
+ENDOBJECT
+
+ENUM  R_PPC_NONE,
+      R_PPC_ADDR32,
+      R_PPC_ADDR24,
+      R_PPC_ADDR16,
+      R_PPC_ADDR16_LO,
+      R_PPC_ADDR16_HI,
+      R_PPC_ADDR16_HA,
+      R_PPC_ADDR14,
+      R_PPC_ADDR14_BRTAKEN,
+      R_PPC_ADDR14_BRNTAKEN,
+      R_PPC_REL24,
+      R_PPC_REL14,
+      R_PPC_REL14_BRTAKEN,
+      R_PPC_REL14_BRNTAKEN,
+      R_PPC_GOT16,
+      R_PPC_GOT16_LO,
+      R_PPC_GOT16_HI,
+      R_PPC_GOT16_HA,
+      R_PPC_PLTREL24,
+      R_PPC_COPY,
+      R_PPC_GLOB_DAT,
+      R_PPC_JMP_SLOT,
+      R_PPC_RELATIVE,
+      R_PPC_LOCAL24PC,
+      R_PPC_UADDR32,
+      R_PPC_UADDR16,
+      R_PPC_REL32,
+      R_PPC_PLT32,
+      R_PPC_PLTREL32,
+      R_PPC_PLT16_LO,
+      R_PPC_PLT16_HI,
+      R_PPC_PLT16_HA,
+      R_PPC_SDAREL16,
+      R_PPC_SECTOFF,
+      R_PPC_SECTOFF_LO,
+      R_PPC_SECTOFF_HI,
+      R_PPC_SECTOFF_HA
+
+      /* MorphOS additions */
+CONST R_PPC_MORPHOS_DREL    =  200,
+      R_PPC_MORPHOS_DREL_LO =  201,
+      R_PPC_MORPHOS_DREL_HI =  202,
+      R_PPC_MORPHOS_DREL_HA =  203
+
+      /* AmigaOS4 additions */
+CONST R_PPC_AMIGAOS_BREL =    210,
+      R_PPC_AMIGAOS_BREL_LO = 211,
+      R_PPC_AMIGAOS_BREL_HI = 212,
+      R_PPC_AMIGAOS_BREL_HA = 213
+
+
+ENUM R_68K_NONE,
+     R_68K_32,
+     R_68K_16,
+     R_68K_8,
+     R_68K_PC32
+
+#define R_SYM(val)        Shr(val,8)
+#define R_TYPE(val)       ((val) AND $FF)
+#define R_INFO(sym,type)  (Shl(sym, 8) OR (type))
+
+OBJECT rel
+   offset:LONG
+   info:LONG
+ENDOBJECT
+
+OBJECT rela OF rel
+   addend:LONG
+ENDOBJECT
+
+
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

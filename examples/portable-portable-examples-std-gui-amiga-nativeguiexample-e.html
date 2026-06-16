@@ -1,0 +1,169 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>NativeGuiExample.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-portable.html">PortablE</a> &rsaquo; NativeGuiExample.e</div><h1>File: <code>NativeGuiExample.e</code></h1><p class="meta">143 lines · project <a href="../examples/pkg-portable.html"><code>PortablE</code></a></p><p class="pathctx">PortablE/PortablE/Examples/std/GUI/Amiga/NativeGuiExample.e</p><p class="prose">NativeGuiExample.e 14-11-2012 by Chris Handley This is an example for advanced users, showing how to embed native GUI (in this case MUI) elements inside a GUI created using &#x27;std/cGui&#x27;. Beware that doing this will prevent your program from being portable to other OSes (that use different GUI systems)</p><h2>Source</h2><pre class="code">/* NativeGuiExample.e 14-11-2012 by Chris Handley
+
+This is an example for advanced users, showing how to embed native GUI (in this
+case MUI) elements inside a GUI created using &#x27;std/cGui&#x27;.
+
+Beware that doing this will prevent your program from being portable to other
+OSes (that use different GUI systems), unless you take great care to separate
+your native GUI implementation from your program.
+*/
+OPT PREPROCESS, POINTER
+MODULE &#x27;std/cApp&#x27;, &#x27;std/cGui&#x27;
+MODULE &#x27;CSH/pAmigaMui&#x27;, &#x27;utility/hooks&#x27;
+
+STATIC title_string = &#x27;NativeGuiExample&#x27;
+
+PROC main()
+	DEF quit:BOOL, win:PTR TO cGuiWindow, item:PTR TO cGuiItem
+	DEF guiText:PTR TO cGuiNativeSimple, guiTick1:PTR TO cGuiNativeSimple, guiTick2:PTR TO cGuiNativeTick, guiTick3:PTR TO cGuiTick, guiQuit:PTR TO cGuiButton
+	DEF ticked:BOOL
+	
+	CreateApp(title_string).build()
+	
+	-&gt;create GUI to show list of tasks
+	win := CreateGuiWindow(title_string)
+	win.beginGroupVertical()
+		-&gt;how to add a simple output-only MUI object
+		guiText := AddNativeSimple(win, (TextObject, TextFrame, MUIA_Background,MUII_TextBack, MUIA_Text_Contents,&#x27;This is a native text object&#x27;, MUIA_Text_SetVMax,MUI_FALSE, End), MUIA_Text_Contents, MUIV_NotTriggerValue, /*label*/ NIL, /*isFixedWidth*/ TRUE, /*isFixedHeight*/ FALSE, /*useInCycleChain*/ FALSE)
+		
+		-&gt;how to add a simple input MUI object
+		guiTick1 := AddNativeSimple(win, CheckMark(MUI_TRUE), MUIA_Selected, MUIV_EveryTime, Label2(&#x27;Native tick object 1&#x27;), /*isFixedWidth*/ TRUE, /*isFixedHeight*/ TRUE)
+		
+		-&gt;how to add a native input MUI object (see how much simpler it is to use!)
+		guiTick2 := addNativeTick(win, &#x27;Native tick object 2&#x27;).setState(TRUE)
+		
+		-&gt;for comparison, this is how you&#x27;d add a portable GUI tick object. It doesn&#x27;t exactly align with the native tick objects, due to having some built-in padding (which would have made the native examples more complex).
+		guiTick3 := win.addTick(&#x27;Portable tick object 3&#x27;).setState(TRUE)
+		
+		guiQuit := win.addButton(&#x27;Quit&#x27;).initPic(&#x27;tbimages:/quit&#x27;)
+	win.endGroup()
+	win.build()
+	
+	-&gt;handle GUI events
+	quit := FALSE
+	REPEAT
+		item := WaitForChangedGuiItem()
+		IF item = NIL
+			IF win.getCloseRequest() THEN quit := TRUE
+			IF win.getQuitRequest()  THEN quit := TRUE
+			
+		ELSE IF item = guiQuit
+			quit := TRUE
+			
+		ELSE IF item = guiTick1
+			ticked := guiTick1.getState() &lt;&gt; MUI_FALSE
+			guiText.setState(IF ticked THEN &#x27;Object 1 was ticked&#x27; ELSE &#x27;Object 1 was UNticked&#x27;)
+			
+		ELSE IF item = guiTick2
+			ticked := guiTick2.getState()
+			guiText.setState(IF ticked THEN &#x27;Object 2 was ticked&#x27; ELSE &#x27;Object 2 was UNticked&#x27;)
+			
+		ELSE IF item = guiTick3
+			ticked := guiTick3.getState()
+			guiText.setState(IF ticked THEN &#x27;Object 3 was ticked&#x27; ELSE &#x27;Object 3 was UNticked&#x27;)
+		ENDIF
+	UNTIL quit
+FINALLY
+	PrintException()
+ENDPROC
+
+/*****************************/		-&gt;this is used for &quot;guiTick2&quot;, but it could be re-used for many tick objects
+/*
+This is how to declare a &quot;native GUI class&quot;, which can be used almost the same as a normal cGui class.
+If you expect to use a lot of a particular native GUI element (very likely!), then you should do it this way, as it will simplify your main program&#x27;s GUI code.
+It would also allow you to implement the same class for several different GUI systems, and not have to change your main program&#x27;s GUI code.
+
+OTOH, if you want to quickly try-out a native GUI element, then you may prefer to use AddNativeSimple() instead.
+*/
+
+PROC addNativeTick(win:PTR TO cGuiWindow, label:ARRAY OF CHAR) RETURNS item:PTR TO cGuiNativeTick
+	DEF newItem:OWNS PTR TO cGuiNativeTick
+	IF win.infoCurrentBuildGroup() = NIL THEN Throw(&quot;EPU&quot;, &#x27;addNativeTick(); must be done inside a group&#x27;)
+	
+	NEW newItem.new(label)
+	item := newItem
+	win.addNative(PASS newItem)
+ENDPROC
+
+
+CLASS cGuiNativeTick OF cGuiNativeHost
+	initialState:BOOL
+	label :OWNS STRING
+ENDCLASS
+
+PROC new(label:ARRAY OF CHAR) OF cGuiNativeTick
+	self.initialState := FALSE
+	self.label := StrJoin(label)
+	
+	self.initShared()	-&gt;this is required
+ENDPROC
+
+PROC end() OF cGuiNativeTick
+	END self.label
+	SUPER self.end()
+ENDPROC
+
+PROC build() OF cGuiNativeTick RETURNS muiItems:OWNS LIST, object:PTIO, label:PTIO
+	muiItems := NEW [Child, label := Label2(self.label), Child, object := CheckMark(IF self.initialState THEN MUI_TRUE ELSE MUI_FALSE)]
+ENDPROC
+
+PROC setupNotify(watchObject:PTIO, actionHook:PTR TO hook, param:ILIST) OF cGuiNativeTick
+	muim_Notify_action(watchObject, MUIA_Selected, MUIV_EveryTime, actionHook, param)
+ENDPROC
+
+PROC infoIsFixedWidth()  OF cGuiNativeTick RETURNS isFixedWidth :BOOL IS TRUE
+
+PROC infoIsFixedHeight() OF cGuiNativeTick RETURNS isFixedHeight:BOOL IS TRUE
+
+PROC infoUseInCycleChain() OF cGuiNativeTick RETURNS useInCycleChain:BOOL IS TRUE
+
+PROC getState() OF cGuiNativeTick RETURNS ticked:BOOL
+	DEF object:PTIO, muiBool
+	
+	object := self.infoObject()
+	IF object = NIL
+		ticked := self.initialState
+	ELSE
+		get(object, MUIA_Selected, ADDRESSOF muiBool)
+		ticked := (muiBool = MUI_TRUE)
+	ENDIF
+ENDPROC
+
+PROC setState(ticked:BOOL) OF cGuiNativeTick
+	DEF object:PTIO, muiBool
+	
+	object := self.infoObject()
+	IF object = NIL
+		self.initialState := ticked
+	ELSE
+		muiBool := IF ticked THEN MUI_TRUE ELSE MUI_FALSE
+		set(object, MUIA_Selected, muiBool)
+	ENDIF
+ENDPROC self
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

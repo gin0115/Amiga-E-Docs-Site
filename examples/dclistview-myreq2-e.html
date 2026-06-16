@@ -1,0 +1,372 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>myreq2.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-dclistview.html">dclistview</a> &rsaquo; myreq2.e</div><h1>File: <code>myreq2.e</code></h1><p class="meta">346 lines · project <a href="../examples/pkg-dclistview.html"><code>dclistview</code></a></p><p class="pathctx">dclistview/myreq2.e</p><p class="prose">Original version by Jason ** ** Some sections modified by Victor Ducedre, ** ** as indicated, for DCListview demo</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/easygui.html">tools/easygui</a></li></ul></div><h2>Source</h2><pre class="code">/* Original version by Jason                    **
+** Some sections modified by Victor Ducedre,    **
+** as indicated, for DCListview demo            */
+
+OPT OSVERSION=37, PREPROCESS
+
+-&gt; Comment out this #define if you don&#x27;t have/want to use sortlist.m
+#define SORTLIST
+
+MODULE &#x27;tools/EasyGUI&#x27;, &#x27;tools/exceptions&#x27;, &#x27;amigalib/lists&#x27;, &#x27;utility&#x27;,
+       &#x27;gadtools&#x27;, &#x27;libraries/gadtools&#x27;, &#x27;exec/lists&#x27;, &#x27;exec/nodes&#x27;,
+       &#x27;dos/dos&#x27;, &#x27;dos/exall&#x27;, &#x27;dos/dosextens&#x27;, &#x27;plugins/dclistview&#x27;, &#x27;utility/tagitem&#x27;
+
+#ifdef SORTLIST
+MODULE &#x27;*sortlist&#x27;
+#endif
+
+ENUM ERR_NONE, ERR_NEW, ERR_STR, ERR_LOCK, ERR_ADO, ERR_NODE, ERR_LIB, ERR_PATT,
+     ERR_OK, ERR_CANCEL
+
+RAISE ERR_NEW  IF New()=NIL,
+      ERR_STR  IF String()=NIL,
+      ERR_LOCK IF Lock()=NIL,
+      ERR_ADO  IF AllocDosObject()=NIL,
+      ERR_LIB  IF OpenLibrary()=NIL,
+      ERR_PATT IF ParsePatternNoCase()=-1
+
+#define DIRSTR &#x27;&lt;DIR&gt; &#x27;
+#define VOLSTR &#x27;&lt;VOL&gt; &#x27;
+#define ASNSTR &#x27;&lt;ASN&gt; &#x27;
+CONST DIRSTRLEN=6
+
+CONST BUF_SIZE=1024, FILENAME_SIZE=300
+CONST PATTERNBUFF_SIZE=FILENAME_SIZE*2+2
+ENUM DIR_NODE, POS_NODE, VOL_NODE, ASN_NODE, FILE_NODE, MAX_TYPE
+
+DEF pathStr[FILENAME_SIZE]:STRING, currPath[FILENAME_SIZE]:STRING,
+    fileStr[FILENAME_SIZE]:STRING, patternStr[FILENAME_SIZE]:STRING,
+    patternBuff[PATTERNBUFF_SIZE]:ARRAY,
+    pathGad, fileGad, patternGad,
+    nameList=NIL:PTR TO lh, posList=NIL:PTR TO lh
+
+DEF gh=NIL:PTR TO guihandle,
+    dclist=NIL:PTR TO dclistview
+
+-&gt; Store the contents of path directory in list
+PROC getDir() HANDLE
+  DEF success, eacontrol=NIL:PTR TO exallcontrol, lock=NIL,
+      dlock=NIL, dl:PTR TO doslist, buffer[BUF_SIZE]:ARRAY, items=0
+#ifndef SORTLIST
+  freeNodes(nameList)
+#endif
+#ifdef SORTLIST
+  emptySortedList(nameList)
+#endif
+  IF currPath[]  -&gt; Valid path
+    lock:=Lock(currPath, ACCESS_READ)
+    eacontrol:=AllocDosObject(DOS_EXALLCONTROL, NIL)
+    eacontrol.lastkey:=0
+    eacontrol.matchstring:=patternBuff
+    REPEAT
+      success:=ExAll(lock, buffer, BUF_SIZE, ED_TYPE, eacontrol)
+      IF eacontrol.entries&lt;&gt;0 THEN items:=items+addItems(buffer)
+    UNTIL success=FALSE
+  ELSE  -&gt; Do a volume and assign list
+    dl:=(dlock:=LockDosList(LDF_VOLUMES OR LDF_ASSIGNS OR LDF_READ))
+    WHILE dl:=NextDosEntry(dl, LDF_VOLUMES OR LDF_ASSIGNS)
+      addEntry(BADDR(dl.name),IF dl.type=DLT_VOLUME THEN VOL_NODE ELSE ASN_NODE)
+      INC items
+    ENDWHILE
+  ENDIF
+#ifdef SORTLIST
+  IF items THEN makeSortedList(nameList, items, SIZEOF ln)  -&gt; Sort it
+#endif
+EXCEPT DO
+  IF eacontrol THEN FreeDosObject(DOS_EXALLCONTROL, eacontrol)
+  IF lock THEN UnLock(lock)
+  IF dlock THEN UnLockDosList(LDF_VOLUMES OR LDF_ASSIGNS OR LDF_READ)
+  IF exception=ERR_LOCK
+    DisplayBeep(NIL)
+  ELSE
+    ReThrow()
+  ENDIF
+ENDPROC
+
+-&gt; Add a Dos List entry
+PROC addEntry(bname, type)
+  addNode(nameList, bname+1, type, 0, bname[])
+ENDPROC
+
+-&gt; Add the items from one call to ExAll
+PROC addItems(buffer)
+  DEF eabuf:PTR TO exalldata, items=0
+  eabuf:=buffer
+  WHILE eabuf
+    addNode(nameList, eabuf.name,
+            IF eabuf.type&gt;0 THEN DIR_NODE ELSE FILE_NODE, 0)
+    INC items
+    eabuf:=eabuf.next
+  ENDWHILE
+ENDPROC items
+
+-&gt; Free a normal list of nodes and empty it
+PROC freeNodes(list:PTR TO lh)
+  DEF worknode:PTR TO ln, nextnode
+  worknode:=list.head  -&gt; First node
+  WHILE nextnode:=worknode.succ
+    IF worknode.name THEN DisposeLink(worknode.name)
+    END worknode
+    worknode:=nextnode
+  ENDWHILE
+  newList(list)
+ENDPROC
+
+-&gt; Add a new node to the list
+PROC addNode(list, name, type, pri, len=0) HANDLE
+  DEF node=NIL:PTR TO ln, s=NIL
+  NEW node
+  IF name
+    SELECT MAX_TYPE OF type
+    CASE FILE_NODE
+      s:=StrCopy(String(StrLen(name)), name)
+    CASE DIR_NODE
+      s:=String(StrLen(name)+DIRSTRLEN)
+      StrCopy(s, DIRSTR)
+      StrAdd(s, name)
+    CASE VOL_NODE
+      s:=String(len+DIRSTRLEN+1)
+      StrCopy(s, VOLSTR)
+      StrAdd(s, name, len)
+      StrAdd(s, &#x27;:&#x27;)
+    CASE ASN_NODE
+      s:=String(len+DIRSTRLEN+1)
+      StrCopy(s, ASNSTR)
+      StrAdd(s, name, len)
+      StrAdd(s, &#x27;:&#x27;)
+    ENDSELECT
+  ENDIF
+  node.name:=s
+  node.type:=type
+  node.pri:=pri
+  AddTail(list, node)
+EXCEPT
+  IF node THEN END node
+  IF s THEN DisposeLink(s)
+  Throw(ERR_NODE, type)
+ENDPROC
+
+-&gt; Change the list to be a listing of volumes and assigns
+PROC volsList()
+  freeNodes(posList)
+  SetStr(currPath, 0)
+  changeList()
+ENDPROC
+
+-&gt; Add dir to path and change list
+PROC addDir(dir) HANDLE
+  addNode(posList, NIL, POS_NODE, EstrLen(currPath))
+  IF currPath[] AND (currPath[EstrLen(currPath)-1]&lt;&gt;&quot;:&quot;)
+    StrAdd(currPath, &#x27;/&#x27;)
+  ENDIF
+  StrAdd(currPath, dir)
+  changeList()
+EXCEPT
+  -&gt; Fix plist if exception not from first line (addNode to plist)
+  IF (exception&lt;&gt;ERR_NODE) OR (exceptioninfo&lt;&gt;POS_NODE) THEN parentPos()
+  ReThrow()
+ENDPROC
+
+-&gt; Set path to be its parent
+PROC parentPos()
+  DEF node:PTR TO ln
+  IF node:=RemTail(posList)
+    SetStr(currPath, node.pri)
+    END node
+    RETURN TRUE
+  ELSE
+    RETURN FALSE
+  ENDIF
+ENDPROC
+
+-&gt; Change the displayed list             -&gt;*** modified for DCListview demo
+PROC changeList() HANDLE
+  -&gt; Remove list
+  dclist.setA([DCLV_CURRENT,-1,
+               DCLV_LIST,-1,
+               TAG_DONE])
+  -&gt; Change list contents
+  getDir()
+EXCEPT DO
+  setstr(gh, pathGad, currPath)
+  -&gt; Reattach list
+  dclist.setA([DCLV_LIST,nameList,
+               DCLV_TOP,0,
+               TAG_DONE])
+  ReThrow()
+ENDPROC
+
+-&gt; Split path into directory positions
+PROC splitDir() HANDLE
+  DEF i
+  freeNodes(posList)
+  addNode(posList, NIL, POS_NODE, 0)
+  IF -1&lt;&gt;(i:=InStr(currPath, &#x27;:&#x27;))
+    IF currPath[i+1]
+      addNode(posList, NIL, POS_NODE, i+1)
+      WHILE -1&lt;&gt;(i:=InStr(currPath, &#x27;/&#x27;, i+1))
+        addNode(posList, NIL, POS_NODE, i)
+      ENDWHILE
+    ENDIF
+  ENDIF
+EXCEPT
+  SetStr(currPath, 0)
+ENDPROC
+
+-&gt; Parse the directory from a lock, set up plist
+PROC setDir(lock)
+  IF NameFromLock(lock, pathStr, FILENAME_SIZE)
+    SetStr(pathStr, StrLen(pathStr))
+    StrCopy(currPath, pathStr)
+    splitDir()
+  ENDIF
+ENDPROC
+
+-&gt; Check this string is a real directory and set it
+PROC checkDir(dir) HANDLE
+  DEF lock=NIL, fib=NIL:PTR TO fileinfoblock
+  lock:=Lock(dir, ACCESS_READ)
+  fib:=AllocDosObject(DOS_FIB, NIL)
+  IF Examine(lock, fib)
+    IF fib.direntrytype&gt;0
+      setDir(lock)
+      changeList()
+      Raise(ERR_NONE)  -&gt; Finished, clean up
+    ENDIF
+  ENDIF
+  DisplayBeep(NIL)  -&gt; Something minor went wrong...
+EXCEPT DO
+  IF fib THEN FreeDosObject(DOS_FIB, fib)
+  IF lock THEN UnLock(lock)
+  IF exception=ERR_LOCK
+    DisplayBeep(NIL)
+  ELSE
+    ReThrow()
+  ENDIF
+ENDPROC
+
+PROC setPattern(s)
+  ParsePatternNoCase(s, patternBuff, PATTERNBUFF_SIZE)
+  changeList()
+ENDPROC
+
+
+-&gt; GUI actions:
+
+PROC a_pattern(info, str) IS setPattern(IF str[] THEN str ELSE &#x27;#?&#x27;)
+
+PROC a_path(info, str) IS checkDir(str)
+
+PROC a_file(info, str) IS Raise(ERR_OK)
+
+PROC a_list(info, list:PTR TO dclistview)-&gt;*** modified for DCListview demo
+  DEF node:PTR TO ln, sel, i=0
+  sel:=list.get(DCLV_CURRENT)
+  node:=nameList.head  -&gt; First node
+  WHILE node.succ AND (i&lt;sel)
+    node:=node.succ
+    INC i
+  ENDWHILE
+  IF node.type&lt;&gt;FILE_NODE
+    addDir(node.name+DIRSTRLEN)
+  ELSE
+    IF node.type=FILE_NODE THEN setstr(gh, fileGad, node.name)
+    IF list.get(DCLV_CLICK) THEN Raise(ERR_OK)  -&gt; Double click on file
+  ENDIF
+ENDPROC
+
+PROC b_ok(info) IS Raise(ERR_OK)
+
+PROC b_cancel(info) IS Raise(ERR_CANCEL)
+
+PROC b_vols(info) IS volsList()
+
+PROC b_parent(info)
+  IF parentPos()
+    changeList()
+  ELSE
+    DisplayBeep(NIL)
+  ENDIF
+ENDPROC
+
+-&gt; GUI definition                        -&gt;*** modified for DCListview demo
+PROC fileRequester()
+  easyguiA(&#x27;Select a file:&#x27;,
+    [EQROWS,
+      [DCLIST, {a_list},dclist, TRUE],  -&gt;      NIL,13,10,nameList,0,NIL,0],
+      patternGad:=[STR,{a_pattern},&#x27;Pattern&#x27;,patternStr,FILENAME_SIZE,5],
+      pathGad:=[STR,{a_path},&#x27;Drawer&#x27;,pathStr,FILENAME_SIZE,5],
+      fileGad:=[STR,{a_file},&#x27;File&#x27;,fileStr,200,5],
+      [EQCOLS,
+        [SBUTTON,{b_ok},&#x27;Ok&#x27;],
+        [SBUTTON,{b_vols},&#x27;Disks&#x27;],
+        [SBUTTON,{b_parent},&#x27;Parent&#x27;],
+        [SBUTTON,{b_cancel},&#x27;Cancel&#x27;]
+      ]
+    ],[EG_GHVAR, {gh}, TAG_DONE]
+  )
+ENDPROC
+
+PROC main() HANDLE                       -&gt;*** modified for DCListview demo
+  DEF here=NIL
+  utilitybase:=OpenLibrary(&#x27;utility.library&#x27;, 37)
+  gadtoolsbase:=OpenLibrary(&#x27;gadtools.library&#x27;, 37)
+  NEW nameList, posList
+  newList(nameList)
+  newList(posList)
+  NEW dclist.dclistview([DCLV_RELX,13,
+                         DCLV_RELY,10,
+                         DCLV_LIST,nameList,
+                         DCLV_CURRENT,-1,
+                         TAG_DONE])
+  StrCopy(patternStr, &#x27;~(#?.info)&#x27;)
+  ParsePatternNoCase(patternStr, patternBuff, PATTERNBUFF_SIZE)
+  here:=CurrentDir(NIL)
+  setDir(here)
+  CurrentDir(here)
+  getDir()
+  fileRequester()
+EXCEPT DO
+  END nameList, posList
+  IF gadtoolsbase THEN CloseLibrary(gadtoolsbase)
+  IF utilitybase THEN CloseLibrary(utilitybase)
+  SELECT exception
+  CASE ERR_OK
+    WriteF(&#x27;User selected &quot;\s\s\s&quot;\n&#x27;, currPath,
+       IF currPath[] AND (currPath[EstrLen(currPath)-1]&lt;&gt;&quot;:&quot;) THEN &#x27;/&#x27; ELSE &#x27;&#x27;,
+       fileStr)
+  CASE ERR_CANCEL
+    WriteF(&#x27;User cancelled requester\n&#x27;)
+  DEFAULT
+    report_exception()
+  ENDSELECT
+ENDPROC
+
+vers: CHAR 0, &#x27;$VER: myreq2 1.5 (8.1.99)&#x27;, 0
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

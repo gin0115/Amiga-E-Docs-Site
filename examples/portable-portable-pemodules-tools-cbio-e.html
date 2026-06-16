@@ -1,0 +1,339 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>cbio.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-portable.html">PortablE</a> &rsaquo; cbio.e</div><h1>File: <code>cbio.e</code></h1><p class="meta">313 lines · project <a href="../examples/pkg-portable.html"><code>PortablE</code></a></p><p class="pathctx">PortablE/PortablE/PEmodules/tools/cbio.e</p><p class="prose">Cbio.e Provide <a href="../modules/standard.html">standard</a> <a href="../modules/clipboard.html">clipboard</a> <a href="../modules/device.html">device</a> <a href="../modules/interface.html">interface</a> routines, such as Open, <a href="../modules/dos.html#fn-close">Close</a>, Post, Read, <a href="../modules/dos.html#fn-write">Write</a>, etc. NOTES: These functions are useful for writing and reading simple FTXT. Writing and reading <a href="../modules/complex.html">complex</a> FTXT, ILBM, etc., requires more work. You should use the <a href="../modules/iffparse.html">iffparse</a>.<a href="../modules/library.html">library</a> to write and read FTX</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/clipboard.html">devices/clipboard</a></li><li><a href="../modules/exec.html">exec</a></li></ul></div><h2>Source</h2><pre class="code">/* Cbio.e
+
+Provide standard clipboard device interface routines,
+such as Open, Close, Post, Read, Write, etc.
+
+NOTES: These functions are useful for writing and reading simple FTXT. 
+Writing and reading complex FTXT, ILBM, etc., requires more work.  You
+should use the iffparse.library to write and read FTXT, ILBM and other IFF
+file types.
+*/
+
+OPT POINTER
+MODULE &#x27;exec&#x27;
+MODULE &#x27;devices/clipboard&#x27;, &#x27;exec/io&#x27;, &#x27;exec/memory&#x27;, &#x27;exec/ports&#x27;, &#x27;amigalib/ports&#x27;, &#x27;amigalib/io&#x27;
+
+OBJECT cbbuf
+	size
+	count	-&gt;Number of characters after stripping
+	mem:ARRAY
+ENDOBJECT
+
+CONST ID_FORM=&quot;FORM&quot;, ID_FTXT=&quot;FTXT&quot;, ID_CHRS=&quot;CHRS&quot;
+PRIVATE
+ENUM ERR_NONE=0, ERR_DERR, ERR_DEV, ERR_DLEN, ERR_DOIO, ERR_IO, ERR_PORT
+
+RAISE ERR_DEV  IF OpenDevice() &lt;&gt; 0,
+      ERR_DOIO IF DoIO() &lt;&gt; 0,
+      &quot;MEM&quot;    IF AllocMem() = NIL
+
+PROC ior2io(ior:PTR TO ioclipreq) IS ior !!PTR!!PTR TO io
+PROC io2ior(io:PTR TO io) IS io !!PTR!!PTR TO ioclipreq
+PUBLIC
+
+
+/*	FUNCTION
+	    Opens the clipboard.device.  A clipboard unit number must be passed in
+	    as an argument.  By default, the unit number should be 0 (currently
+	    valid unit numbers are 0-255).
+		
+	RESULTS
+	    A pointer to an initialised IOClipReq structure.  A &quot;CBOP&quot; exception is
+	    raised if the function fails
+*/
+PROC cbOpen(unit) RETURNS ior:PTR TO ioclipreq
+	DEF mp:PTR TO mp
+	
+	IF (mp := createPort(NILA,0))=NIL THEN Raise(ERR_PORT)
+	IF (ior := io2ior(createExtIO(mp, SIZEOF ioclipreq)))=NIL THEN Raise(ERR_IO)
+	OpenDevice(&#x27;clipboard.device&#x27;, unit, ior2io(ior), 0)
+FINALLY
+	IF exception
+		IF ior THEN deleteExtIO(ior2io(ior))
+		IF mp  THEN deletePort(mp)
+		Raise(&quot;CBOP&quot;)
+	ENDIF
+ENDPROC
+
+
+/*	FUNCTION
+	    Close the clipboard.device unit which was opened via cbOpen().
+*/
+PROC cbClose(ior:PTR TO ioclipreq)
+	DEF mp:PTR TO mp
+	
+	mp := ior.message.replyport
+	CloseDevice(ior2io(ior))
+	deleteExtIO(ior2io(ior))
+	deletePort(mp)
+ENDPROC
+
+
+/*	FUNCTION
+	    Write a null terminated string of text to the clipboard.  The string
+	    will be written in simple FTXT format.
+	
+	    Note that this function pads odd length strings automatically to
+	    conform to the IFF standard.
+	
+	RESULTS
+	    If the write did not succeed a &quot;CBWR&quot; exception is raised
+*/
+PROC cbWriteFTXT(ior:PTR TO ioclipreq, string:ARRAY OF CHAR)
+	DEF length, slen, odd
+	
+	slen := StrLen(string)
+	odd := Odd(slen)	-&gt;Pad byte flag
+	length := IF odd THEN slen+1 ELSE slen
+	
+	-&gt;Initial set-up for offset, error, and clipid
+	ior.offset := 0
+	ior.error  := 0
+	ior.clipid := 0
+	
+	-&gt;Create the IFF header information
+	writeLong(ior, &#x27;FORM&#x27;)				-&gt;&#x27;FORM&#x27;
+	length := length + 12				-&gt;+ length &#x27;[size]FTXTCHRS&#x27;
+	writeLong(ior, ADDRESSOF length)	-&gt;Total length
+	writeLong(ior, &#x27;FTXT&#x27;)				-&gt;&#x27;FTXT&#x27;
+	writeLong(ior, &#x27;CHRS&#x27;)				-&gt;&#x27;CHRS&#x27;
+	writeLong(ior, ADDRESSOF slen)		-&gt;String length
+	
+	-&gt;Write string
+	ior.data    := string
+	ior.length  := slen
+	ior.command := CMD_WRITE
+	DoIO(ior2io(ior))
+	
+	-&gt;Pad if needed
+	IF odd
+		ior.data   := &#x27;&#x27;
+		ior.length := 1
+		DoIO(ior2io(ior))
+	ENDIF
+	
+	-&gt;Tell the clipboard we are done writing
+	ior.command := CMD_UPDATE
+	DoIO(ior2io(ior))
+	-&gt;Check if error was set by any of the preceding IO requests
+	IF ior.error THEN Raise(ERR_DERR)
+FINALLY
+	IF exception THEN Raise(&quot;CBWR&quot;)
+ENDPROC
+
+
+PRIVATE
+
+PROC writeLong(ior:PTR TO ioclipreq, ldata)
+	ior.data    := ldata !!ARRAY OF CHAR
+	ior.length  := 4
+	ior.command := CMD_WRITE
+	DoIO(ior2io(ior))
+	IF ior.actual &lt;&gt; 4 THEN Raise(ERR_DLEN)
+ENDPROC
+
+PUBLIC
+
+
+/*	FUNCTION
+	    Check to see if the clipboard contains FTXT.  If so, call cbReadCHRS()
+	    one or more times until all CHRS chunks have been read.
+	
+	RESULTS
+	    TRUE if the clipboard contains an FTXT chunk, else FALSE.
+	
+	NOTES
+	    If this function returns TRUE, you must either call cbReadCHRS() until
+	    cbReadCHRS() returns FALSE, or call cbReadDone() to tell the
+	    clipboard.device that you are done reading.
+*/
+PROC cbQueryFTXT(ior:PTR TO ioclipreq) RETURNS doesContain:BOOL
+	DEF cbuff[4]:ARRAY OF LONG
+	
+	doesContain := FALSE
+	
+	-&gt;Initial set-up for offset, error, and clipid
+	ior.offset := 0
+	ior.error  := 0
+	ior.clipid := 0
+	
+	-&gt;Look for &#x27;FORM[size]FTXT&#x27;
+	ior.command := CMD_READ
+	ior.data    := cbuff !!ARRAY
+	ior.length  := 12
+	
+	DoIO(ior2io(ior))
+	
+	IF ior.actual &lt;&gt; 12    THEN Raise(ERR_DERR)	-&gt;Check to see if we have at least 12 bytes
+	IF cbuff[0] &lt;&gt; ID_FORM THEN Raise(ERR_DERR)	-&gt;Check to see if it starts with &#x27;FORM&#x27;
+	IF cbuff[2] &lt;&gt; ID_FTXT THEN Raise(ERR_DERR)	-&gt;Check to see if it is &#x27;FTXT&#x27;
+	-&gt;E-Note: all checks passed...
+	doesContain := TRUE
+FINALLY
+	IF exception
+		-&gt;It&#x27;s not &#x27;FORM[size]FTXT&#x27;, so tell clipboard we are done
+		cbReadDone(ior)
+		exception := 0
+	ENDIF
+ENDPROC
+
+
+/*	FUNCTION
+	    Reads and returns the text in the next CHRS chunk (if any) from the
+	    clipboard.
+	
+	    Allocates memory to hold data in next CHRS chunk.
+	
+	RESULTS
+	    Pointer to a cbbuf object, or NIL if no more CHRS chunks.  An
+	    exception (&quot;CBRD&quot;) is raised if failure (e.g., not enough memory).
+	
+	    ***Important***
+	
+	    The caller must free the returned buffer when done with the
+	    data by calling cbFreeBuf().
+	
+	NOTES
+	    This function strips null bytes, however, a full reader may wish to
+	    perform more complete checking to verify that the text conforms to the
+	    IFF standard (stripping data as required).
+*/
+PROC cbReadCHRS(ior:PTR TO ioclipreq) RETURNS buf:PTR TO cbbuf
+	DEF chunk, size, gotchunk
+	
+	-&gt;Find next CHRS chunk
+	-&gt;E-Note: loop until exception from reading or found non-empty CHRS chunk
+	LOOP
+		gotchunk := FALSE
+		readLong(ior, ADDRESSOF chunk)
+		gotchunk := TRUE
+		IF chunk = ID_CHRS		-&gt;Is CHRS chunk?
+			-&gt;Get size of chunk, and copy data
+			readLong(ior, ADDRESSOF size)
+			-&gt;E-Note: C version is wrong, should keep looping if empty CHRS chunk
+			IF size THEN RETURN fillCBData(ior, size)
+		ELSE
+			-&gt;(not CHRS chunk) so skip to next chunk
+			readLong(ior, ADDRESSOF size)
+			IF Odd(size) THEN size++	-&gt;If odd size, add pad byte
+			ior.offset := ior.offset + size
+		ENDIF
+	ENDLOOP
+FINALLY
+	IF exception
+		cbReadDone(ior)	-&gt;Tell clipboard we are done
+		-&gt;E-Note: pass on exception if there are chunks left
+		IF gotchunk THEN Raise(&quot;CBRD&quot;)
+		exception := 0
+	ENDIF
+ENDPROC
+
+
+PRIVATE
+
+PROC readLong(ior:PTR TO ioclipreq, ldata:ARRAY)
+	ior.command := CMD_READ
+	ior.data    := ldata
+	ior.length  := 4
+	DoIO(ior2io(ior))
+	IF ior.actual &lt;&gt; 4 THEN Raise(ERR_DLEN)
+	IF ior.error THEN Raise(ERR_DERR)
+ENDPROC
+
+
+PROC fillCBData(ior:PTR TO ioclipreq, size) RETURNS buf:PTR TO cbbuf
+	DEF to:ARRAY OF BYTE, from:ARRAY OF BYTE, x, y, count, length
+	
+	-&gt;E-Note: clear mem to make sure buf.mem is NIL if allocation succeeds
+	buf := AllocMem(SIZEOF cbbuf, MEMF_PUBLIC OR MEMF_CLEAR)
+	length := size
+	IF Odd(size) THEN length++	-&gt;If odd size, read 1 more
+	buf.mem  := AllocMem(length+1, MEMF_PUBLIC)
+	buf.size := length+1
+	
+	ior.command := CMD_READ
+	ior.data    := buf.mem
+	ior.length  := length
+	
+	to := buf.mem
+	count := 0
+	
+	DoIO(ior2io(ior))
+	IF ior.actual &lt;&gt; length THEN Raise(ERR_DLEN)
+	
+	-&gt;Strip null bytes
+	from := buf.mem
+	y := 0
+	FOR x := 0 TO size-1
+		IF from[x]
+			to[y++] := from[x]
+			count++
+		ENDIF
+	ENDFOR
+	to[y] := 0	-&gt;terminate buffer
+	buf.count := count	-&gt;Cache count of chars in buf
+FINALLY
+	IF exception
+		IF buf
+			IF buf.mem THEN FreeMem(buf.mem, buf.size)
+			FreeMem(buf, SIZEOF cbbuf)
+		ENDIF
+		ReThrow()
+	ENDIF
+ENDPROC
+
+PUBLIC
+
+
+/*	FUNCTION
+	    Reads past end of clipboard file until actual is equal to 0.
+	    This is tells the clipboard that we are done reading.
+*/
+PROC cbReadDone(ior:PTR TO ioclipreq)
+	DEF buffer[256]:ARRAY OF CHAR
+	
+	ior.command := CMD_READ
+	ior.data    := buffer
+	ior.length  := 254
+	-&gt;Falls through immediately if actual=0
+	WHILE ior.actual DO DoIO(ior2io(ior))
+FINALLY
+	-&gt;E-Note: ignore exceptions from DoIO()
+	exception := 0
+ENDPROC
+
+
+/*	FUNCTION
+	    Frees a buffer allocated by cbReadCHRS().
+*/
+PROC cbFreeBuf(buf:PTR TO cbbuf)
+	FreeMem(buf.mem, buf.size)
+	FreeMem(buf, SIZEOF cbbuf)
+ENDPROC
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

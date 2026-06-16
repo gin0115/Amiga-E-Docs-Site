@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>primeStream.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-aepd40.html">AEPD40</a> &rsaquo; primeStream.e</div><h1>File: <code>primeStream.e</code></h1><p class="meta">68 lines · project <a href="../examples/pkg-aepd40.html"><code>AEPD40</code></a></p><p class="pathctx">AEPD40/EPD40/Programme/oo-framework/fw/primeStream.e</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/easygui.html">tools/easygui</a></li></ul></div><h2>Source</h2><pre class="code">
+OPT OSVERSION=39
+OPT PREPROCESS
+
+MODULE &#x27;tools/easygui&#x27;,&#x27;intuition/screens&#x27;,&#x27;tools/exceptions&#x27;,
+       &#x27;intuition/intuition&#x27;,&#x27;protracker&#x27;,&#x27;graphics/rastport&#x27;,
+       &#x27;graphics/text&#x27;,&#x27;asl&#x27;,&#x27;libraries/asl&#x27;,&#x27;utility/tagitem&#x27;,
+       &#x27;dos/dos&#x27;,&#x27;exec/memory&#x27;,&#x27;xpkmaster&#x27;,&#x27;libraries/xpk&#x27;,
+       &#x27;libraries/gadtools&#x27;,&#x27;commodities&#x27;,&#x27;icon&#x27;,&#x27;amigalib/argarray&#x27;,
+       &#x27;exec/ports&#x27;,&#x27;libraries/commodities&#x27;,&#x27;tools/ports&#x27;,&#x27;utility&#x27;,
+       &#x27;med/mmd&#x27;,&#x27;medplayer&#x27;,&#x27;med/reloc&#x27;,&#x27;octaplayer&#x27;,&#x27;playsid&#x27;,
+       &#x27;libraries/playsidbase&#x27;,&#x27;exec/execbase&#x27;,&#x27;replay/jamcracker&#x27;
+
+
+RAISE &quot;LIB&quot;  IF OpenLibrary()=0,
+      &quot;FONT&quot; IF OpenFont()=0,
+      &quot;DRI&quot;  IF GetScreenDrawInfo()=0,
+      &quot;ASL&quot;  IF AllocAslRequest()=0,
+      &quot;SCR&quot;  IF LockPubScreen()=0,
+      &quot;PORT&quot; IF CreateMsgPort()=0,
+      &quot;cxOB&quot; IF CreateCxObj()=0,
+           1 IF CxBroker()=0
+
+
+OBJECT modinfo OF plugin
+    window:PTR TO window
+PRIVATE
+    rawkey:LONG
+    visible:INT
+    size:LONG
+    name[128]:ARRAY OF CHAR
+    type[128]:ARRAY OF CHAR
+    author[128]:ARRAY OF CHAR
+    comment[128]:ARRAY OF CHAR
+ENDOBJECT
+
+
+DEF mi:PTR TO modinfo,mp=0:PTR TO mmd0,ml=0,freq=0:PTR TO filerequester,
+    sreq=0:PTR TO filerequester,pl=0,mfl=0,gh=0:PTR TO guihandle,
+    defldir[256]:STRING,defsdir[256]:STRING,sc:PTR TO screen,
+    brokerPort=0:PTR TO mp,broker=0,filter=0,type=0,sg,song,minsong,maxsong
+
+-&gt;fs &quot;modinfo class code&quot;
+PROC modinfo(name=NIL,size=0,t=0,au=0,com=0) OF modinfo
+    IF name THEN AstrCopy(self.name,name,128) ELSE AstrCopy(self.name,&#x27;No module loaded&#x27;,128)
+    self.size:=size
+    IF t THEN AstrCopy(self.type,t,128) ELSE AstrCopy(self.type,&#x27;None&#x27;,128)
+    IF au THEN AstrCopy(self.author,au,128) ELSE AstrCopy(self.author,&#x27;Unknown&#x27;,128)
+    IF com THEN AstrCopy(self.comment,com,128) ELSE AstrCopy(self.comment,&#x27;None&#x27;,128)
+ENDPROC
+
+PROC will_resize() OF modinfo IS RESIZEX
+
+PROC min_size(fh) OF modinfo IS fh*10,fh*5
+
+PROC render(x,y,xs,ys,wd:PTR TO window) OF modinfo
+    DEF rp:PTR TO rastport,w,tw,s[32]:STRING,c,dri:PTR TO drawinfo,
+        font:PTR TO textfont
+    self.visible:=TRUE
+    self.window:=wd
+    font:=OpenFont(wd.wscreen.font)
+    dri:=GetScreenDrawInfo(wd.wscreen)
+    rp:=wd.rport
+    SetAPen(rp,dri.pens[BACKGROUNDPEN])
+    RectFill(rp,x,y,x+xs-1,y+ys-1)
+    SetAPen(rp,dri.pens[TEXTPEN])
+    SetFont(rp,font)
+    tw:=Max(TextLength(rp,&#x27;Comment: &#x27;,9),Max(TextLength(rp,&#x27;A</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

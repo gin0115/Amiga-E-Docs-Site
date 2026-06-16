@@ -1,0 +1,377 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>EShell.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-capus2.html">capus2</a> &rsaquo; EShell.e</div><h1>File: <code>EShell.e</code></h1><p class="meta">351 lines · project <a href="../examples/pkg-capus2.html"><code>capus2</code></a></p><p class="pathctx">capus2/capus2/Eshell/Sources/EShell.e</p><p class="prose">======&lt;&lt;&lt; <a href="../modules/peps.html">Peps</a> Header &gt;&gt;&gt;====== PRGVERSION &#x27;0&#x27; ================================ PRGREVISION &#x27;1&#x27; ================================ AUTHOR &#x27;NasGûl (ß version)&#x27; ===============================</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/commodities.html">commodities</a></li><li><a href="../modules/dos.html">dos/dos</a></li><li><a href="../modules/dosasl.html">dos/dosasl</a></li><li><a href="../modules/dosextens.html">dos/dosextens</a></li><li><a href="../modules/rdargs.html">dos/rdargs</a></li><li><a href="../modules/eropenlib.html">eropenlib</a></li><li><a href="../modules/nodes.html">exec/nodes</a></li><li><a href="../modules/intuition.html">intuition/intuition</a></li><li><a href="../modules/intuitionbase.html">intuition/intuitionbase</a></li><li><a href="../modules/screens.html">intuition/screens</a></li><li><a href="../modules/mheader.html">mheader</a></li></ul></div><h2>Source</h2><pre class="code">/*======&lt;&lt;&lt; Peps Header &gt;&gt;&gt;======
+ PRGVERSION &#x27;0&#x27;
+ ================================
+ PRGREVISION &#x27;1&#x27;
+ ================================
+ AUTHOR      &#x27;NasGûl (ß version)&#x27;
+ ===============================*/
+/*======&lt;&lt;&lt;   History   &gt;&gt;&gt;======
+
+ - 0.1 commands:
+        cd/pslist/reset/pcdir/d/changedsp
+        mdir/delay/setcom/del/ass en cours/fullsize
+        syslist.
+
+ ===============================*/
+
+OPT OSVERSION=37
+CONST DEBUG=FALSE
+/*&quot;MODULES LIST&quot;*/
+MODULE &#x27;dos/dos&#x27;
+MODULE &#x27;dos/rdargs&#x27;
+MODULE &#x27;dos/dosextens&#x27;
+MODULE &#x27;dos/dosasl&#x27;,&#x27;utility&#x27;,&#x27;dos/dostags&#x27;
+MODULE &#x27;eropenlib&#x27;
+MODULE &#x27;intuition/intuition&#x27;
+MODULE &#x27;intuition/screens&#x27;
+MODULE &#x27;intuition/intuitionbase&#x27;
+MODULE &#x27;exec/nodes&#x27;,&#x27;exec/lists&#x27;,&#x27;exec/ports&#x27;,&#x27;exec/memory&#x27;,&#x27;exec/execbase&#x27;,&#x27;exec/tasks&#x27;,&#x27;exec/libraries&#x27;
+MODULE &#x27;mheader&#x27;
+/*=== Commande ListCom ===*/
+MODULE &#x27;commodities&#x27;
+
+/**/
+/*&quot;PMODULES LIST&quot;*/
+PMODULE &#x27;EshellList&#x27;
+PMODULE &#x27;EShellCom1&#x27;
+PMODULE &#x27;lc&#x27;
+PMODULE &#x27;PModules:dWriteF&#x27;
+PMODULE &#x27;PModules:PMHeader&#x27;
+/**/
+/*&quot;CONST/ENUM/OBJECTS/RAISE&quot;*/
+
+CONST MAXPATH=250
+
+ENUM ER_NONE,ER_MEM
+
+OBJECT filenode
+    node:ln             /* ln.name=filename */
+    direntrytype:LONG   /* like fileinfoblock */
+    curdirname:LONG
+    protection:LONG
+    size:LONG
+    numblocks:LONG
+    comment:LONG
+ENDOBJECT
+
+RAISE ER_MEM IF New()=NIL,        /* set common exceptions:                */
+      ER_MEM IF String()=NIL      /* every call to these functions will be */
+      /*
+      ERROR_BREAK IF CtrlC()=TRUE /* automatically checked against NIL,    */
+                                  /* and the exception ER_MEM is raised    */
+                                  */
+
+/* Commande SysList */
+
+SET  LIST_TASK,LIST_LIBRARY,LIST_DEVICE,LIST_PORT,LIST_WINDOW,
+     LIST_MEMORY
+
+/**/
+/*&quot;APPLICATION DEF&quot;*/
+DEF prompt[256]:STRING
+DEF cdn[256]:STRING
+DEF bdn[256]:STRING
+DEF pro:PTR TO process
+DEF cl:PTR TO commandlineinterface
+DEF con
+DEF filelist:PTR TO lh,freenode
+/**/
+/*&quot;COMMANDS LIST&quot;*/
+/*&quot;ASS COMMAND&quot;*/
+/*&quot;ass(s)&quot;*/
+PROC ass(s)
+    DEF m:PTR TO LONG
+    DEF argstr[256]:STRING
+    DEF l,ll
+    DEF logicname[256]:STRING
+    DEF physicname[256]:STRING
+    DEF r
+    DEF dl:PTR TO doslist,mask
+    /* DosList */
+    m:=[0,0,0,0,0,0,0,0]
+    MidStr(argstr,s,3,ALL)
+    IF getArg(argstr,&#x27;Nom,Dossier,Add/S,Late/S,Remove/S,V=VolList/S,D=DevicesList/S,A=AssignList/S&#x27;,m)
+        IF m[0] THEN StrCopy(logicname,m[0],ALL)
+        IF m[1] THEN StrCopy(physicname,m[1],ALL)
+        IF Not(m[4])
+            r:=InStr(logicname,&#x27;:&#x27;,0)
+            IF r&lt;&gt;-1
+                MidStr(argstr,logicname,0,EstrLen(logicname)-1)
+                StrCopy(logicname,argstr,ALL)
+            ENDIF
+        ENDIF
+        IF m[2]
+            IF m[0] AND m[1]
+                IF l:=Lock(physicname,-2)
+                    ll:=DupLock(l)
+                    IF l THEN UnLock(l)
+                    r:=AssignAdd(logicname,ll)
+                ENDIF
+            ENDIF
+            JUMP assend
+        ENDIF
+        IF m[3]
+            IF m[0] AND m[1]
+                r:=AssignLate(logicname,physicname)
+            ENDIF
+            JUMP assend
+        ENDIF
+        IF m[4]
+            IF m[0]
+                IF l:=Lock(logicname,-2)
+                    ll:=DupLock(l)
+                    IF l THEN UnLock(l)
+                    r:=AssignLock(logicname,NIL)
+                ENDIF
+            ENDIF
+            JUMP assend
+        ENDIF
+        IF m[0] AND m[1]
+            IF l:=Lock(physicname,-2)
+                ll:=DupLock(l)
+                UnLock(l)
+                r:=AssignLock(logicname,ll)
+                WriteF(&#x27;\d\n&#x27;,r)
+                JUMP assend
+            ENDIF
+        ENDIF
+        IF m[5]
+            mask:=LDF_VOLUMES+LDF_READ
+            dl:=LockDosList(mask)
+            WHILE (dl:=NextDosEntry(dl,mask))
+                WriteF(&#x27;\s:\n&#x27;,TrimStr(Shl(dl.name,2)))
+            ENDWHILE
+            UnLockDosList(mask)
+        ENDIF
+        IF m[6]
+            mask:=LDF_DEVICES+LDF_READ
+            dl:=LockDosList(mask)
+            WHILE (dl:=NextDosEntry(dl,mask))
+                WriteF(&#x27;\s:\n&#x27;,TrimStr(Shl(dl.name,2)))
+            ENDWHILE
+            UnLockDosList(mask)
+        ENDIF
+        IF m[7]
+            mask:=LDF_ASSIGNS+LDF_READ
+            dl:=LockDosList(mask)
+            WHILE (dl:=NextDosEntry(dl,mask))
+                WriteF(&#x27;\s:\n&#x27;,TrimStr(Shl(dl.name,2)))
+            ENDWHILE
+            UnLockDosList(mask)
+        ENDIF
+    ELSE
+        WriteF(&#x27;Bad Args!!.\n&#x27;)
+    ENDIF
+    assend:
+    m[0]:=0;m[1]:=0;m[2]:=0;m[3]:=0;m[4]:=0;m[5]:=0;m[6]:=0;m[7]:=0
+ENDPROC
+/**/
+/**/
+/*&quot;LISTCOM COMMAND&quot;*/
+/*&quot;listcom()&quot;*/
+PROC listcom()
+    DEF l:PTR TO lh,r
+    DEF n:PTR TO ln
+    IF cxbase:=OpenLibrary(&#x27;commodities.library&#x27;,0)
+        r:=p_InitList()
+        CopyBrokerList(r)
+        l:=r
+        n:=l.head
+        WHILE n
+            IF n.succ&lt;&gt;0
+                WriteF(&#x27;Nom:\l\s[20] Pri:\d\n&#x27;,n.name,n.pri)
+            ENDIF
+            n:=n.succ
+        ENDWHILE
+        p_CleanList(l,FALSE,0,LIST_REMOVE)
+        IF cxbase THEN CloseLibrary(cxbase)
+    ELSE
+        WriteF(&#x27;Commodities.library ??\n&#x27;)
+    ENDIF
+ENDPROC
+/**/
+/**/
+/**/
+/*&quot;APPLICATION PROCEDURES&quot;*/
+/*&quot;updateprompt(rc)&quot;*/
+PROC updateprompt(rc)
+    StringF(prompt,&#x27;\e[32m\d.\e[31m\s[\e[33m\d\e[31m]&gt;&#x27;,pro.tasknum,cdn,rc)
+ENDPROC
+/**/
+/*&quot;makefilelist(a,dirsf,filesf,recf)&quot;*/
+PROC makefilelist(a,dirsf,filesf,recf) HANDLE
+    DEF er
+    DEF i:PTR TO fileinfoblock,size=0
+    DEF anchor=NIL:PTR TO anchorpath,fullpath
+    DEF ascii[256]:STRING,x,work[256]:STRING,curdir[256]:STRING
+    DEF fn:PTR TO filenode,l
+    dWriteF([&#x27;makefilelist(\s,&#x27;,&#x27;\d,&#x27;,&#x27;\d,&#x27;,&#x27;\d)\n&#x27;],[a,dirsf,filesf,recf])
+    anchor:=New(SIZEOF anchorpath+MAXPATH)
+    anchor.breakbits:=4096
+    anchor.strlen:=MAXPATH-1
+    er:=MatchFirst(a,anchor)                   /* collect all strings */
+    WHILE er=0
+        fullpath:=anchor+SIZEOF anchorpath
+        i:=anchor.info
+        StringF(work,&#x27;\s&#x27;,i.filename)
+        IF IF i.direntrytype&gt;0 THEN dirsf ELSE filesf
+            fn:=New(SIZEOF filenode)
+            fn.direntrytype:=i.direntrytype
+            IF l:=Lock(fullpath,-2)
+                NameFromLock(l,curdir,256)
+                StrCopy(ascii,curdir,ALL)
+                MidStr(curdir,fullpath,0,StrLen(fullpath)-StrLen(i.filename))
+                fn.curdirname:=String(StrLen(curdir))
+                StrCopy(fn.curdirname,curdir,ALL)
+                IF l THEN UnLock(l)
+            ENDIF
+            fn.protection:=i.protection
+            IF i.direntrytype&gt;0 THEN fn.size:=0 ELSE fn.size:=i.size
+            fn.numblocks:=i.numblocks
+            fn.comment:=String(StrLen(i.comment))
+            StrCopy(fn.comment,i.comment,ALL)
+            p_AjouteNode(filelist,work,fn)
+        ENDIF
+        IF i.direntrytype&lt;0 THEN size:=size+i.size
+        IF recf AND (i.direntrytype&gt;0)              /* do recursion(=tail) */
+            x:=StrLen(fullpath)
+            IF x+5&lt;MAXPATH THEN CopyMem(&#x27;/#?&#x27;,fullpath+x,4)
+            size:=size+makefilelist(fullpath,dirsf,filesf,recf)
+            fullpath[x]:=0
+        ENDIF
+        er:=MatchNext(anchor)
+    ENDWHILE
+    IF er&lt;&gt;ERROR_NO_MORE_ENTRIES THEN Raise(er)
+    MatchEnd(anchor)
+    Dispose(anchor)
+    anchor:=NIL
+EXCEPT                                  /* nested exception handlers! */
+    IF anchor THEN MatchEnd(anchor)
+    Raise(exception)  /* this way, we call _all_ handlers in the recursion  */
+ENDPROC size        /* and thus calling MatchEnd() on all hanging anchors */
+/**/
+/*&quot;p_InitData()&quot;*/
+PROC p_InitData()
+    DEF str[256]:STRING
+    DEF cstr[256]:STRING
+    pro:=FindTask(NIL)
+    cl:=Shl(pro.cli,2)
+    GetCurrentDirName(str,256)
+    StringF(cstr,&#x27;CD \s&#x27;,str)
+    StringF(bdn,&#x27;CD \s&#x27;,str)
+    cd(cstr)
+    freenode:=[18,DISL,34,DISL,DISE]
+    filelist:=p_InitList()
+    p_InitCommandList()
+ENDPROC TRUE
+/**/
+/*&quot;p_RemData()&quot;*/
+PROC p_RemData()
+    p_CleanList(filelist,TRUE,freenode,LIST_REMOVE)
+ENDPROC
+/**/
+/*&quot;getArg(argu,temp,a:PTR TO LONG)&quot;*/
+PROC getArg(argu,temp,a)
+    DEF myc:PTR TO csource
+    DEF ma=NIL:PTR TO rdargs
+    DEF rdargs=NIL
+    DEF argstr[256]:STRING
+    DEF ret=NIL
+    StrCopy(argstr,argu,ALL)
+    /*
+    WriteF(&#x27;\s\n&#x27;,argstr)
+    IF StrCmp(&#x27;?&#x27;,TrimStr(argstr),1) THEN RETURN NIL
+    /*IF argu[0]=&quot;?&quot; THEN RETURN NIL*/
+    */
+    StrAdd(argstr,&#x27;\n&#x27;,1)
+    IF ma:=AllocDosObject(DOS_RDARGS,NIL)
+        myc:=New(SIZEOF csource)
+        myc.buffer:=argstr
+        myc.length:=EstrLen(argstr)
+        ma.flags:=1
+        CopyMem(myc,ma.source,SIZEOF csource)
+        IF rdargs:=ReadArgs(temp,a,ma)
+            /*
+            StrCopy(argstr,a[0],ALL)
+            WriteF(&#x27;\s\n&#x27;,argstr)
+            */
+            ret:=a
+            IF rdargs THEN FreeArgs(rdargs)
+        ENDIF
+        IF myc THEN Dispose(myc)
+        IF ma THEN FreeDosObject(DOS_RDARGS,ma)
+    ELSE
+        WriteF(&#x27;AllocDosObject failed !!\n&#x27;)
+    ENDIF
+ENDPROC ret
+/**/
+/*&quot;main()&quot;*/
+PROC main()
+    DEF inputstring[80]:STRING
+    DEF comparestring[80]:STRING
+    DEF ret
+    DEF m:PTR TO LONG
+    DEF rdargs=NIL
+    m:=[0]
+    IF rdargs:=ReadArgs(&#x27;Interatif/F&#x27;,m,NIL)
+        IF con:=Open(&#x27;CONSOLE:&#x27;,NEWFILE)
+            IF p_InitData()
+                p_DoReadHeader({banner})
+                IF m[0]
+                    StrCopy(inputstring,m[0],ALL)
+                    StrCopy(comparestring,inputstring,ALL)
+                    UpperStr(comparestring)
+                    lookinternalcommand(comparestring,inputstring)
+                    JUMP mainend
+                ENDIF
+                qhelp()
+                WHILE StrCmp(comparestring,&#x27;BYE&#x27;,ALL)=FALSE
+                    IF lookinternalcommand(comparestring,inputstring)=FALSE
+                        ret:=execute(inputstring,&#x27;&#x27;,4000,0,FALSE)
+                        updateprompt(ret)
+                    ENDIF
+                    Write(con,prompt,EstrLen(prompt))
+                    ReadStr(con,inputstring)
+                    StrCopy(comparestring,inputstring,ALL)
+                    UpperStr(comparestring)
+                ENDWHILE
+                mainend:
+                p_RemData()
+            ENDIF
+            cd(bdn)
+            Close(con)
+        ENDIF
+        IF rdargs THEN FreeArgs(rdargs)
+    ELSE
+        WriteF(&#x27;Bad Arg!!\n&#x27;)
+    ENDIF
+ENDPROC
+/**/
+/**/
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

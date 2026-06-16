@@ -1,0 +1,1605 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>3DView.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-capus3.html">capus3</a> &rsaquo; 3DView.e</div><h1>File: <code>3DView.e</code></h1><p class="meta">1579 lines · project <a href="../examples/pkg-capus3.html"><code>capus3</code></a></p><p class="pathctx">capus3/AmigaE/Sources/3DView/3DView.e</p><p class="prose">&gt; EDEVHEADER</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/ddd.html">ddd</a></li><li><a href="../modules/ports.html">exec/ports</a></li><li><a href="../modules/view.html">graphics/view</a></li><li><a href="../modules/intuition.html">intuition/intuition</a></li><li><a href="../modules/mathffp.html">mathffp</a></li><li><a href="../modules/mathieeesingbas.html">mathieeesingbas</a></li><li><a href="../modules/muimaster.html">muimaster</a></li><li><a href="../modules/reqtools.html">reqtools</a></li><li><a href="../modules/rexxsyslib.html">rexxsyslib</a></li><li><a href="../modules/boopsi.html">tools/boopsi</a></li><li><a href="../modules/workbench.html">workbench/workbench</a></li></ul></div><h2>Source</h2><pre class="code">-&gt;&gt; EDEVHEADER
+/*= © NasGûl ==========================
+ ESOURCE 3DView.e
+ EDIR    Workbench:AmigaE/Sources/3DView/3DLib
+ ECOPT   ERRLINE
+ EXENAME 3DView
+ MAKE    BUILD
+ AUTHOR  NasGûl
+ TYPE    EXEDOS
+=====================================*/
+-&gt;&lt;
+-&gt;&gt; HISTORY
+/*= History ===========================
+ - v0.1 Imagine/Cyber v2.0/Sculpt (rotation/zoom). (04/02/94)
+ - v0.2 Vertex v1.62a et v1.73.1f/start_cli et start_wb. (07/02/94)
+ - v0.3 3Dpro v1.10 Final. (12/02/94)
+ - v0.4 Cyber v1.0. (modification de 3Dview.m &lt;ID_3D3D&gt; &lt;TYPE_OLDCYBER&gt; &lt;TYPE_NEWCYBER&gt;)
+    Ajout palette (Fond gris/trait noir ou Fond noir/trait blanc (15/02/94).
+ - v0.5 Ajout des commandes L (load) A (ajouter objet) M (multi-load) (16/02/94).
+ - v0.6 Ajout de la fonction F10 (informations sur les objets).
+    l&#x27;interface a été faite avec GadToolBox et convertit avec Gui2E.
+    (modification de 3Dview.m Ajout de object3d.bounded (true ou false))
+    La routine readimaginefile() ne charge plus que les objets ayant des points (17/02/94).
+ - v0.7 Les commandes sont en menus.
+    l&#x27;écran est du type SUPER_HIRESLACE (non paramètrable).
+    Récritures des routines p_StartWB() et p_StartCLI() (multi-arguments possible).
+    Les couleurs (font gris/trait noir ou fond noir trait blianc) ont disparus,
+    a la place on peut choisir la couleurs des points,faces,des objects selectionnés et
+    de la boite d&#x27;encadrement (bounding).
+ - v0.8 Sauve en binaire (pour l&#x27;utilisation de la vector.library).
+    Charge les objets au format Vertex 2.0 (nouveau format) (07-10-94).
+    Ajout d&#x27;un Port Arexx.
+ - v0.81 Localisation.
+ - v0.91 Perte de la localisation essentiellement par flème que autre chose, mais...
+        - Interface MUI (multi-fenêtrage).
+        - Les coordonnées des objets sont flottants.
+        - Sauvegarde au format POV 1.0 et POV 2.0
+        - Beaucoup de routines Externes (la plupart des fonctions de gestion et de
+          dessin sont des modules E).
+        - Création de primitives calculées (Ruban de Moebius,Sphère..)
+        - Utilisation directe de la vector.library ou du module FilledVector.m.
+ - v0.92    - Les routines externes sont dans une librarie (ddd.library).
+
+=====================================*/
+-&gt;&lt;
+-&gt;&gt; ©/DISTRIBUTION/UTILISATION
+/*=====================================
+
+ - TOUTE UTILISATION COMMERCIALE DES CES SOURCES EST
+   INTERDITE SANS MON AUTORISATION.
+
+ - TOUTE DISTRIBUTION DOIT ETRE FAITES EN TOTALITE (EXECUTABLES/MODULES E/SOURCES E).
+
+ !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+ !! TOUTE INCLUSION SUR UN CD-ROM EST INTERDITE SANS MON AUTORISATION.!!
+ !! SEULES LES DISTRIBUTIONS DE FRED FISH ET AMINET CDROM SONT AUTO-  !!
+ !! RISES A DISTRIBUER CES PROGRAMMES/SOURCES.                        !!
+ !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+=====================================*/
+-&gt;&lt;
+OPT LARGE
+OPT PREPROCESS
+-&gt;&gt; MODULES
+
+MODULE &#x27;muimaster&#x27;,&#x27;libraries/mui&#x27;
+MODULE &#x27;tools/boopsi&#x27;,&#x27;utility/tagitem&#x27;,&#x27;utility/hooks&#x27;
+MODULE &#x27;exec/ports&#x27;,&#x27;exec/nodes&#x27;,&#x27;exec/lists&#x27;,&#x27;other/plist&#x27;
+MODULE &#x27;intuition/intuition&#x27;,&#x27;intuition/screens&#x27;
+MODULE &#x27;graphics/view&#x27;,&#x27;graphics/modeid&#x27;
+MODULE &#x27;reqtools&#x27;,&#x27;libraries/reqtools&#x27;
+MODULE &#x27;mathffp&#x27;,&#x27;mathtrans&#x27;,&#x27;tools/installhook&#x27;
+MODULE &#x27;mathieeesingbas&#x27;,&#x27;mathieeesingtrans&#x27;
+MODULE &#x27;rexxsyslib&#x27;,&#x27;rexx/storage&#x27;
+MODULE &#x27;workbench/workbench&#x27;,&#x27;workbench/startup&#x27;
+
+MODULE &#x27;ddd&#x27;,&#x27;libraries/dddobject&#x27;
+MODULE &#x27;*3DViewMUI&#x27;
+-&gt;&lt;
+-&gt;&gt; DEFINITIONS GLOBALES
+
+ENUM ER_NONE,ER_LIBMUIMASTER,ER_LIBREQTOOLS,ER_LIBDDD,ER_LIBICON,ER_LIBUTILITY,ER_LIBMATH,ER_NOSCREEN,ER_NOWINDOW,ER_NOBASE3D,
+     ER_MUIOPENMAIN,ER_OPENDRAWINGWINDOW,ER_3DVIEWRUN,ER_BADARGS
+
+CONST FILLEDVECTOR_SIZE_FACE=16
+
+DEF myapp=NIL:PTR TO app_obj
+DEF mywindow=NIL:PTR TO window
+DEF mybase=NIL:PTR TO base3d
+DEF dx,dy,dw,dh,autoactive=FALSE
+DEF myarexx:PTR TO app_arexx
+DEF arexxhook:hook
+DEF curdir[256]:STRING
+
+-&gt;&lt;
+-&gt;&gt; initArexxCommand()
+
+PROC initArexxCommand()
+    DEF arexxcom:PTR TO mui_command,n
+    installhook(arexxhook,{lookArexxMessage})
+    installhook(myarexx.error,{lookArexxError})
+    myarexx.commands := NEW arexxcom[ 24 ]
+    n:=0;myarexx.commands[n].mc_name:=&#x27;LOADNEWOBJECT&#x27;;myarexx.commands[n].mc_template:=MC_TEMPLATE_ID
+            myarexx.commands[n].mc_parameters := ID_LOADNEWOBJ;myarexx.commands[n].mc_hook:=NIL
+    n:=1;myarexx.commands[n].mc_name:=&#x27;ADDNEWOBJECT&#x27; ;myarexx.commands[n].mc_template:=MC_TEMPLATE_ID
+            myarexx.commands[n].mc_parameters := ID_ADDNEWOBJ ;myarexx.commands[n].mc_hook:=NIL
+    n:=2;myarexx.commands[n].mc_name:=&#x27;SAVEWHAT&#x27;     ;myarexx.commands[n].mc_template:=&#x27;WHAT/N,GET/S&#x27;
+            myarexx.commands[n].mc_parameters := 2        ;myarexx.commands[n].mc_hook:=arexxhook
+    n:=3;myarexx.commands[n].mc_name:=&#x27;SAVEFORMAT&#x27;   ;myarexx.commands[n].mc_template:=&#x27;FORMAT/N,GET/S&#x27;
+            myarexx.commands[n].mc_parameters := 2        ;myarexx.commands[n].mc_hook:=arexxhook
+    n:=4;myarexx.commands[n].mc_name:=&#x27;SAVE&#x27;         ;myarexx.commands[n].mc_template:=MC_TEMPLATE_ID
+            myarexx.commands[n].mc_parameters := ID_SAVE      ;myarexx.commands[n].mc_hook:=NIL
+    n:=5;myarexx.commands[n].mc_name:=&#x27;SAVEBASE&#x27;     ;myarexx.commands[n].mc_template:=&#x27;DIR&#x27;
+            myarexx.commands[n].mc_parameters := 1        ;myarexx.commands[n].mc_hook:=arexxhook
+    n:=6;myarexx.commands[n].mc_name:=&#x27;FCTIMAGINE&#x27;   ;myarexx.commands[n].mc_template:=&#x27;SET/K,GET/S&#x27;
+            myarexx.commands[n].mc_parameters := 2        ;myarexx.commands[n].mc_hook:=arexxhook
+    n:=7;myarexx.commands[n].mc_name:=&#x27;FCTSCULPT&#x27;    ;myarexx.commands[n].mc_template:=&#x27;SET/K,GET/S&#x27;
+            myarexx.commands[n].mc_parameters := 2        ;myarexx.commands[n].mc_hook:=arexxhook
+    n:=8;myarexx.commands[n].mc_name:=&#x27;FCT3DPRO&#x27;     ;myarexx.commands[n].mc_template:=&#x27;SET/K,GET/S&#x27;
+            myarexx.commands[n].mc_parameters := 2        ;myarexx.commands[n].mc_hook:=arexxhook
+    n:=9;myarexx.commands[n].mc_name:=&#x27;FCTVERTEX&#x27;     ;myarexx.commands[n].mc_template:=&#x27;SET/K,GET/S&#x27;
+            myarexx.commands[n].mc_parameters := 2        ;myarexx.commands[n].mc_hook:=arexxhook
+    n:=10;myarexx.commands[n].mc_name:=&#x27;BASE3DINFO&#x27;   ;myarexx.commands[n].mc_template:=NIL
+            myarexx.commands[n].mc_parameters := 0        ;myarexx.commands[n].mc_hook:=arexxhook
+    n:=11;myarexx.commands[n].mc_name:=&#x27;OBJECT3DINFO&#x27; ;myarexx.commands[n].mc_template:=&#x27;NUM/N&#x27;
+            myarexx.commands[n].mc_parameters := 1        ;myarexx.commands[n].mc_hook:=arexxhook
+    n:=12;myarexx.commands[n].mc_name:=&#x27;WINFILE&#x27;      ;myarexx.commands[n].mc_template:=NIL
+            myarexx.commands[n].mc_parameters := 0        ;myarexx.commands[n].mc_hook:=arexxhook
+    n:=13;myarexx.commands[n].mc_name:=&#x27;WINVUE&#x27;       ;myarexx.commands[n].mc_template:=NIL
+            myarexx.commands[n].mc_parameters := 0        ;myarexx.commands[n].mc_hook:=arexxhook
+    n:=14;myarexx.commands[n].mc_name:=&#x27;WINOBJ&#x27;       ;myarexx.commands[n].mc_template:=NIL
+            myarexx.commands[n].mc_parameters := 0        ;myarexx.commands[n].mc_hook:=arexxhook
+    n:=15;myarexx.commands[n].mc_name:=&#x27;WINROT&#x27;       ;myarexx.commands[n].mc_template:=NIL
+            myarexx.commands[n].mc_parameters := 0        ;myarexx.commands[n].mc_hook:=arexxhook
+    n:=16;myarexx.commands[n].mc_name:=&#x27;WINPREFS&#x27;     ;myarexx.commands[n].mc_template:=NIL
+            myarexx.commands[n].mc_parameters := 0        ;myarexx.commands[n].mc_hook:=arexxhook
+    n:=17;myarexx.commands[n].mc_name:=&#x27;OBJPTSDATA&#x27;   ;myarexx.commands[n].mc_template:=&#x27;NUMOBJ/A/N,NUMPTS/A/N&#x27;
+            myarexx.commands[n].mc_parameters := 2        ;myarexx.commands[n].mc_hook:=arexxhook
+    n:=18;myarexx.commands[n].mc_name:=&#x27;OBJFCSDATA&#x27;   ;myarexx.commands[n].mc_template:=&#x27;NUMOBJ/A/N,NUMFCS/A/N&#x27;
+            myarexx.commands[n].mc_parameters := 2        ;myarexx.commands[n].mc_hook:=arexxhook
+    n:=19;myarexx.commands[n].mc_name:=&#x27;LOCKGUI&#x27;      ;myarexx.commands[n].mc_template:=NIL
+            myarexx.commands[n].mc_parameters := 0        ;myarexx.commands[n].mc_hook:=arexxhook
+    n:=20;myarexx.commands[n].mc_name:=&#x27;UNLOCKGUI&#x27;    ;myarexx.commands[n].mc_template:=NIL
+            myarexx.commands[n].mc_parameters := 0        ;myarexx.commands[n].mc_hook:=arexxhook
+    n:=21;myarexx.commands[n].mc_name:=&#x27;TOTALMEM&#x27;     ;myarexx.commands[n].mc_template:=NIL
+            myarexx.commands[n].mc_parameters := 0        ;myarexx.commands[n].mc_hook:=arexxhook
+    n:=22;myarexx.commands[n].mc_name:=&#x27;LOADBASE&#x27;     ;myarexx.commands[n].mc_template:=&#x27;FICHIER/A&#x27;
+            myarexx.commands[n].mc_parameters := 1        ;myarexx.commands[n].mc_hook:=arexxhook
+    n:=23;myarexx.commands[n].mc_name:=NIL        ;myarexx.commands[n].mc_template:=NIL
+            myarexx.commands[n].mc_parameters := 0        ;myarexx.commands[n].mc_hook:=NIL
+ENDPROC
+
+-&gt;&lt;
+-&gt;&gt; main() HANDLE
+
+PROC main() HANDLE
+    DEF t
+    GetCurrentDirName(curdir,256)
+    IF FindPort(&#x27;3DVIEW&#x27;) THEN Raise(ER_3DVIEWRUN)
+    IF (t:=openLibraries())&lt;&gt;ER_NONE THEN Raise(t)
+    IF (t:=initAPP())&lt;&gt;ER_NONE THEN Raise(t)
+    IF wbmessage
+    startWB()
+    ELSE
+    startCLI()
+    ENDIF
+    initArexxCommand()
+    IF NEW myapp.create(NIL,myarexx,NIL)
+    myapp.init_notifications()
+    t:=lookMUIMessage()
+    SELECT t
+        CASE ER_NONE; NOP
+        CASE ER_MUIOPENMAIN; WriteF(&#x27;Mui ne peut pas ouvrir sa fenêtre.\n&#x27;)
+        CASE ER_OPENDRAWINGWINDOW; WriteF(&#x27;Impossible d&#x27;&#x27;ouvrir la fenêtre de dessin.\n&#x27;)
+    ENDSELECT
+    myapp.dispose()
+    ELSE
+    Raise(ER_MUIOPENMAIN)
+    ENDIF
+    Raise(ER_NONE)
+EXCEPT
+    SELECT exception
+    CASE ER_3DVIEWRUN
+        WriteF(&#x27;3DView est déjà lancé\n&#x27;)
+        CleanUp(20)
+    CASE ER_LIBDDD
+        WriteF(&#x27;ddd.library ?\n&#x27;)
+    CASE ER_LIBMUIMASTER
+        WriteF(&#x27;muimaster.library ?\n&#x27;)
+    CASE ER_LIBREQTOOLS
+        WriteF(&#x27;reqtools.librrary ?\n&#x27;)
+    CASE ER_LIBICON
+        WriteF(&#x27;icn.library ?\n&#x27;)
+    CASE ER_LIBUTILITY
+        WriteF(&#x27;utility.library ?\n&#x27;)
+    CASE ER_LIBMATH
+        WriteF(&#x27;mathlib ?\n&#x27;)
+    CASE ER_NOSCREEN
+        WriteF(&#x27;Pas d&#x27;&#x27;écran !\n&#x27;)
+    CASE ER_NOWINDOW
+        WriteF(&#x27;Pas de fenêtre !\n&#x27;)
+    CASE ER_NOBASE3D
+        WriteF(&#x27;Init base3D impossible !\n&#x27;)
+    CASE ER_BADARGS
+        WriteF(&#x27;mauvais argumets !\n&#x27;)
+    ENDSELECT
+    remAPP()
+    closeLibraries()
+ENDPROC
+
+-&gt;&lt;
+-&gt;&gt; genCodeE(b:PTR TO base3d,vo,vsup,vsens,vtime,vrx,vry,vrz,center)
+
+PROC genCodeE(b:PTR TO base3d,vo,vsup,vsens,vtime,vrx,vry,vrz,center)
+    DEF convok,adrpts,adrfcs,longdatapts,longdatafcs
+    DEF h,oldstdout,pivstr[256]:STRING,bo:PTR TO object3d,basename[256]:STRING,npts,nfcs
+    SELECT vsup
+    CASE VECTOR_LIB
+        adrpts,adrfcs:=Conv3DObj2VectLib(b,vo,vsens,16,center)
+        IF adrpts&lt;&gt;NIL
+        bo:=getInfoNode(b.objlist,vo,GETWITH_NUM,RETURN_ADR)
+        longdatapts:=(bo.nbrspts*8)+2
+        IF vsens=FV_DOUBLE THEN longdatafcs:=(bo.nbrsfcs*44)+2 ELSE longdatafcs:=(bo.nbrsfcs*22)+2
+        basename:=getInfoNode(b.objlist,vo,GETWITH_NUM,RETURN_NAME)
+        StringF(pivstr,&#x27;Ram:\s.e&#x27;,basename)
+        IF h:=Open(pivstr,1006)
+            oldstdout:=stdout
+            stdout:=h
+            WriteF(&#x27;-&gt;&lt;&lt;&lt;&lt;&lt;&lt;&lt;&lt;&lt;&lt;&lt;&lt;&lt;&lt;&lt;&lt;&lt;&lt;&lt;&lt;&lt;&lt;&lt;&lt;&lt;&lt;&lt;&lt;&lt;&lt;&lt;&lt;&lt;&lt;&lt;&lt;&lt;&lt;&lt;\n&#x27;)
+            WriteF(&#x27;-&gt; Source Code generate by 3View © NasGûl\n&#x27;)
+            WriteF(&#x27;-&gt;&lt;&lt;&lt;&lt;&lt;&lt;&lt;&lt;&lt;&lt;&lt;&lt;&lt;&lt;&lt;&lt;&lt;&lt;&lt;&lt;&lt;&lt;&lt;&lt;&lt;&lt;&lt;&lt;&lt;&lt;&lt;&lt;&lt;&lt;&lt;&lt;&lt;&lt;&lt;\n&#x27;)
+            WriteF(&#x27;\n&#x27;)
+            WriteF(&#x27;MODULE \avector\a,\alibraries/vector\a\n&#x27;)
+            WriteF(&#x27;MODULE \agraphics/modeid\a\n&#x27;)
+            WriteF(&#x27;\n&#x27;)
+            WriteF(&#x27;DEF myvscreen:PTR TO newvscreen\n&#x27;)
+            WriteF(&#x27;DEF mycolor:PTR TO INT\n&#x27;)
+            WriteF(&#x27;DEF myview,vobj:PTR TO object\n&#x27;)
+            WriteF(&#x27;DEF myworld:PTR TO world\n&#x27;)
+            WriteF(&#x27;PROC main()\n&#x27;)
+            WriteF(&#x27;    myvscreen:=[0,0,640,512,4,0,0,HIRESLACE_KEY,NIL,\avector.library  ©1991 by A.Lippert\a,0,0,0,640,512,4]:newvscreen\n&#x27;)
+            WriteF(&#x27;    mycolor:=[0,0,0,0,1,1,1,1,2,2,2,2,3,3,3,3,4,4,4,4,5,5,5,5,6,6,6,6,7,7,7,7,8,8,8,8,9,9,9,9,10,10,10,10,11,11,11,11,12,12,12,12,13,13,13,13,14,14,14,14,15,15,15,15,-1]:INT\n&#x27;)
+            WriteF(&#x27;    vobj:=[{binpts},{binfcs},\n&#x27;)
+            WriteF(&#x27;           [\d,0,0,0,\d,\d,\d,END_1]:INT,\n&#x27;,vtime,vrx,vry,vrz)
+            WriteF(&#x27;           0,0,0,-1000,0,0,0]:object\n&#x27;)
+            WriteF(&#x27;    myworld:=[0,1,vobj]:world\n&#x27;)
+            WriteF(&#x27;    IF vecbase:=OpenLibrary(\avector.library\a,1)\n&#x27;)
+            WriteF(&#x27;        IF myview:=OpenVScreen(myvscreen)\n&#x27;)
+            WriteF(&#x27;            SetColors(myview,mycolor)\n&#x27;)
+            WriteF(&#x27;            AutoScaleOn(myvscreen.viewmodes)\n&#x27;)
+            WriteF(&#x27;            DoAnim(myworld)\n&#x27;)
+            WriteF(&#x27;            IF myview THEN CloseVScreen()\n&#x27;)
+            WriteF(&#x27;        ENDIF\n&#x27;)
+            WriteF(&#x27;        CloseLibrary(vecbase)\n&#x27;)
+            WriteF(&#x27;    ENDIF\n&#x27;)
+            WriteF(&#x27;ENDPROC\n&#x27;)
+            WriteF(&#x27;\n\n&#x27;)
+            WriteF(&#x27;binpts: INCBIN \a\sPts.bin\a\n&#x27;,basename)
+            WriteF(&#x27;binfcs: INCBIN \a\sFcs.bin\a\n&#x27;,basename)
+            Close(h)
+            stdout:=oldstdout
+        ENDIF
+        StringF(pivstr,&#x27;Ram:\sPts.bin&#x27;,basename)
+        IF h:=Open(pivstr,1006)
+            Write(h,adrpts,longdatapts)
+            Close(h)
+        ENDIF
+        StringF(pivstr,&#x27;Ram:\sFcs.bin&#x27;,basename)
+        IF h:=Open(pivstr,1006)
+            Write(h,adrfcs,longdatafcs)
+            Close(h)
+        ENDIF
+        IF adrpts&lt;&gt;NIL THEN Dispose(adrpts)
+        IF adrfcs&lt;&gt;NIL THEN Dispose(adrfcs)
+        ELSE
+        IF adrpts&lt;&gt;NIL THEN Dispose(adrpts)
+        IF adrfcs&lt;&gt;NIL THEN Dispose(adrfcs)
+        ENDIF
+    ENDSELECT
+ENDPROC
+
+-&gt;&lt;
+-&gt;&gt; lookMUIMessage()
+
+PROC lookMUIMessage()
+    DEF running = TRUE,result,signal,active,t,tempo,sel
+    DEF viewport:PTR TO mp,ret
+    /*=== primitives data ====*/
+    DEF primname[80]:STRING,primx,primy,primfct,primfcs=0
+    DEF buffer[256]:STRING,delbase=FALSE
+    DEF pivobj:PTR TO object3d
+    DEF resizemsg:PTR TO intuimessage
+    DEF class,noprefs=TRUE
+
+    DEF vect_sens=0,vect_support=0,vect_time=500,vect_rx=1,vect_ry=1,vect_rz=1,vect_numobj,curnbrsfcs,doit
+    DEF curobjvinfo[256]:STRING
+
+    /*== on regarde si la fenêtre est la===*/
+    get(myapp.wi_3dmain,MUIA_Window_Window,{tempo})
+    IF tempo=NIL THEN RETURN ER_MUIOPENMAIN
+
+    /*== on transfert la base 3D dans les gadgets mui ===*/
+    noprefs:=readPrefsFile()
+    base3DinMui(mybase)
+
+    IF Not(emptyList(mybase.objlist)) THEN updateMuiList(mybase.objlist,myapp.lv_objlist)
+
+    get(myapp.wi_3dmain,MUIA_Window_Screen,{tempo})
+    mywindow:=openDrawingWindow(tempo)
+    IF mywindow=NIL THEN RETURN ER_OPENDRAWINGWINDOW
+
+    FormatBase3DWithWindow(mybase,mywindow)
+    viewport:=mywindow.userport
+    IF noprefs THEN infoTextThanks(mywindow)
+
+    WHILE running
+    result:=domethod(myapp.app,[MUIM_Application_Input,{signal}])
+-&gt;    WriteF(&#x27;result \d\n&#x27;,result)
+    SELECT result
+        CASE MUIV_Application_ReturnID_Quit
+        running := FALSE
+        CASE ID_VECTOPENWIN
+        get(myapp.lv_objlist,MUIA_List_Active,{active})
+        IF active&lt;&gt;-1
+            pivobj:=getInfoNode(mybase.objlist,active,GETWITH_NUM,RETURN_ADR)
+            IF pivobj&lt;&gt;-1
+                vect_numobj:=active
+                IF (pivobj.nbrsfcs&gt;=4096) THEN request(&#x27;L\aobjet a plus de 4096 faces\n(risques de guru avec la vector.library)&#x27;,&#x27;Ok&#x27;,0,myapp.wi_objets)
+                curnbrsfcs:=pivobj.nbrsfcs
+                StringF(curobjvinfo,&#x27;\s \d \d&#x27;,pivobj.obj_node.name,pivobj.nbrspts,pivobj.nbrsfcs)
+                set(myapp.tx_vobjinfo,MUIA_Text_Contents,curobjvinfo)
+                set(myapp.wi_vector,MUIA_Window_Open,MUI_TRUE)
+            ENDIF
+        ENDIF
+        CASE ID_VECTSENS
+        get(myapp.cy_vsens,MUIA_Cycle_Active,{active})
+        SELECT active
+            CASE 0; vect_sens:=FV_INDIRECT
+            CASE 1; vect_sens:=FV_DIRECT
+            CASE 2; vect_sens:=FV_DOUBLE
+        ENDSELECT
+        CASE ID_VECTSUPPORT
+        get(myapp.cy_vsupport,MUIA_Cycle_Active,{active})
+        vect_support:=active
+        SELECT vect_support
+            CASE VECTOR_LIB
+            set(myapp.st_vduree,MUIA_Disabled,FALSE)
+            set(myapp.bt_genecode,MUIA_Disabled,FALSE)
+            CASE VECTOR_MOD
+            set(myapp.st_vduree,MUIA_Disabled,MUI_TRUE)
+            set(myapp.bt_genecode,MUIA_Disabled,MUI_TRUE)
+            ENDSELECT
+        CASE ID_VECTFACTOR
+        get(myapp.st_vfactor,MUIA_String_Contents,{buffer})
+        mybase.vectorfactor:=string2Float(buffer)
+        CASE ID_VECTTIME
+        get(myapp.st_vduree,MUIA_String_Contents,{buffer})
+        vect_time:=Val(buffer,NIL)
+        CASE ID_VECTROTX
+        get(myapp.st_vrotx,MUIA_String_Contents,{buffer})
+        vect_rx:=Val(buffer,NIL)
+        CASE ID_VECTROTY
+        get(myapp.st_vroty,MUIA_String_Contents,{buffer})
+        vect_ry:=Val(buffer,NIL)
+        CASE ID_VECTROTZ
+        get(myapp.st_vrotz,MUIA_String_Contents,{buffer})
+        vect_rz:=Val(buffer,NIL)
+        CASE ID_VECTRENDER
+        IF ((curnbrsfcs&gt;=2048) AND (vect_sens=FV_DOUBLE) AND (vect_support=VECTOR_LIB))
+            doit:=request(&#x27;L\aobjet a plus de 2048 faces et elles sont doublées\n(risques de guru avec la vector.library)&#x27;,&#x27;On Essaye|Pas question&#x27;,0,myapp.wi_vector)
+        ELSE
+            doit:=TRUE
+        ENDIF
+        IF doit
+            sleepAll(myapp,MUI_TRUE)
+            RenderVectorObject(mybase,vect_numobj,vect_support,vect_sens,vect_time,vect_rx,vect_ry,vect_rz,TRUE)
+            sleepAll(myapp,FALSE)
+        ENDIF
+        CASE ID_VECTGENCODEE
+        sleepAll(myapp,MUI_TRUE)
+        genCodeE(mybase,vect_numobj,vect_support,vect_sens,vect_time,vect_rx,vect_ry,vect_rz,TRUE)
+        sleepAll(myapp,FALSE)
+        CASE ID_AUTOACTIVE
+        IF autoactive
+            tempo:=0
+        ELSE
+            tempo:=MUI_TRUE
+        ENDIF
+        autoactive:=tempo
+        CASE ID_NEWANGLE
+        get(myapp.sl_angle,MUIA_Slider_Level,{tempo})
+        mybase.anglerotation:=tempo!
+        CASE ID_MAINWINCLOSE
+        IF mywindow&lt;&gt;NIL THEN mywindow:=closeDrawingWindow(mywindow)
+        viewport:=NIL
+        CASE ID_MAINWINOPEN
+        IF mywindow=NIL
+            get(myapp.wi_3dmain,MUIA_Window_Screen,{tempo})
+            mywindow:=openDrawingWindow(tempo)
+            viewport:=mywindow.userport
+            IF autoactive THEN ActivateWindow(mywindow)
+            sleepAll(myapp,MUI_TRUE)
+            t:=DrawBase3D(mybase,mywindow)
+            sleepAll(myapp,FALSE)
+        ENDIF
+        CASE ID_SAVEPREFS
+        savePrefsFile()
+        CASE ID_COLOROBJ
+        get(myapp.cy_colorobjs,MUIA_Cycle_Active,{active})
+        SELECT active
+            CASE 0
+            IF Not(tempo:=paletteRequest(&#x27;Couleur des points&#x27;,mybase.rgbpts))
+                mybase.rgbpts:=tempo
+            ENDIF
+            CASE 1
+            IF Not(tempo:=paletteRequest(&#x27;Couleur des faces&#x27;,mybase.rgbnormal))
+                mybase.rgbnormal:=tempo
+            ENDIF
+            CASE 2
+            IF Not(tempo:=paletteRequest(&#x27;Couleur des objets séléctionnés&#x27;,mybase.rgbselect))
+                mybase.rgbselect:=tempo
+            ENDIF
+            CASE 3
+            IF Not(tempo:=paletteRequest(&#x27;Couleur de l&#x27;&#x27;encadrement&#x27;,mybase.rgbbounding))
+                mybase.rgbbounding:=tempo
+            ENDIF
+        ENDSELECT
+        CASE ID_CENTERBASE
+        IF autoactive THEN ActivateWindow(mywindow)
+        sleepAll(myapp,MUI_TRUE)
+        CentreBase3D(mybase)
+        t:=DrawBase3D(mybase,mywindow)
+        sleepAll(myapp,FALSE)
+        CASE ID_LOADNEWOBJ
+        sleepAll(myapp,MUI_TRUE)
+        IF request(&#x27;Les objets présent seront effacer&#x27;,&#x27;Ok|Cancel&#x27;,0,myapp.wi_3dfichier)
+            mybase.objlist:=cleanList(mybase.objlist,TRUE,mybase.freedata,LIST_CLEAN)
+            mybase.totalpts:=0;mybase.totalfcs:=0
+            IF fileRequester(&#x27;Charger objet(s)&#x27;,myapp.wi_3dfichier)
+            updateMuiList(mybase.objlist,myapp.lv_objlist)
+            updateObjInfo()
+            IF autoactive THEN ActivateWindow(mywindow)
+            t:=DrawBase3D(mybase,mywindow)
+            ENDIF
+        ENDIF
+        sleepAll(myapp,FALSE)
+        CASE ID_ADDNEWOBJ
+        sleepAll(myapp,MUI_TRUE)
+        IF fileRequester(&#x27;Charger objet(s)&#x27;,myapp.wi_3dfichier)
+            updateMuiList(mybase.objlist,myapp.lv_objlist)
+            updateObjInfo()
+            IF autoactive THEN ActivateWindow(mywindow)
+            t:=DrawBase3D(mybase,mywindow)
+        ENDIF
+        sleepAll(myapp,FALSE)
+        CASE ID_LOADNEWPRIM
+        delbase:=TRUE
+        CASE ID_ADDNEWPRIM
+        delbase:=FALSE
+        CASE ID_SAVEWHAT
+        get(myapp.cy_savewhat,MUIA_Cycle_Active,{active})
+        SELECT active
+            CASE 0; mybase.savewhat:=SAVEOBJ_ALL
+            CASE 1; mybase.savewhat:=SAVEOBJ_SEL
+            CASE 2; mybase.savewhat:=SAVEOBJ_DES
+        ENDSELECT
+        CASE ID_SAVEFORMAT
+        get(myapp.cy_saveformat,MUIA_Cycle_Active,{active})
+        SELECT active
+            CASE 0; mybase.saveformat:=SAVE_DXF
+            CASE 1; mybase.saveformat:=SAVE_GEO
+            CASE 2; mybase.saveformat:=SAVE_RAY
+            CASE 3; mybase.saveformat:=SAVE_BIN
+            CASE 4; mybase.saveformat:=SAVE_POV1
+            CASE 5; mybase.saveformat:=SAVE_POV2
+        ENDSELECT
+        CASE ID_SAVE
+        sleepAll(myapp,MUI_TRUE)
+        IF fileSaveRequester(&#x27;Sauver les objet(s)&#x27;,myapp.wi_3dfichier)
+        ENDIF
+        sleepAll(myapp,FALSE)
+        CASE ID_FCTIMAGINE
+        get(myapp.st_fimagine,MUIA_String_Contents,{buffer})
+        mybase.fctimagine:=string2Float(buffer)
+        CASE ID_FCTSCULPT
+        get(myapp.st_fsculpt,MUIA_String_Contents,{buffer})
+        mybase.fctsculpt:=string2Float(buffer)
+        CASE ID_FCT3DPRO
+        get(myapp.st_f3dpro,MUIA_String_Contents,{buffer})
+        mybase.fct3dpro:=string2Float(buffer)
+        CASE ID_FCTVERTEX
+        get(myapp.st_fvertex,MUIA_String_Contents,{buffer})
+        mybase.fctvertex:=string2Float(buffer)
+        CASE ID_MODEVUE
+        get(myapp.cy_modevue,MUIA_Cycle_Active,{active})
+        SELECT active
+            CASE 0; mybase.drawmode:=DRAW_PTS
+            CASE 1; mybase.drawmode:=DRAW_FCS
+            CASE 2; mybase.drawmode:=DRAW_PTSFCS
+        ENDSELECT
+        IF autoactive THEN ActivateWindow(mywindow)
+        sleepAll(myapp,MUI_TRUE)
+        t:=DrawBase3D(mybase,mywindow)
+        sleepAll(myapp,FALSE)
+        CASE ID_PLANVUE
+        get(myapp.cy_planvue,MUIA_Cycle_Active,{active})
+        SELECT active
+            CASE 0; mybase.plan:=PLAN_XOY
+            CASE 1; mybase.plan:=PLAN_XOZ
+            CASE 2; mybase.plan:=PLAN_YOZ
+        ENDSELECT
+        IF autoactive THEN ActivateWindow(mywindow)
+        sleepAll(myapp,MUI_TRUE)
+        t:=DrawBase3D(mybase,mywindow)
+        sleepAll(myapp,FALSE)
+        CASE ID_INVCOORD
+        get(myapp.cy_invcoord,MUIA_Cycle_Active,{active})
+        SELECT active
+            CASE 1
+            tempo:=mybase.signex
+            mybase.signex:=IeeeSPNeg(tempo)
+            CASE 2
+            tempo:=mybase.signey
+            mybase.signey:=IeeeSPNeg(tempo)
+            CASE 3
+            tempo:=mybase.signez
+            mybase.signez:=IeeeSPNeg(tempo)
+        ENDSELECT
+        set(myapp.cy_invcoord,MUIA_Cycle_Active,0)
+        IF active&lt;&gt;0
+            IF autoactive THEN ActivateWindow(mywindow)
+            sleepAll(myapp,MUI_TRUE)
+            t:=DrawBase3D(mybase,mywindow)
+            sleepAll(myapp,FALSE)
+        ENDIF
+        CASE ID_GLOUPEMOINS
+            mybase.echelle:=IeeeSPMul(mybase.echelle,0.5)
+            IF autoactive THEN ActivateWindow(mywindow)
+            sleepAll(myapp,MUI_TRUE)
+            t:=DrawBase3D(mybase,mywindow)
+            sleepAll(myapp,FALSE)
+        CASE ID_GLOUPEPLUS
+            mybase.echelle:=IeeeSPMul(mybase.echelle,2.0)
+            IF autoactive THEN ActivateWindow(mywindow)
+            sleepAll(myapp,MUI_TRUE)
+            t:=DrawBase3D(mybase,mywindow)
+            sleepAll(myapp,FALSE)
+        CASE ID_PLOUPEMOINS
+            mybase.echelle:=IeeeSPMul(mybase.echelle,0.800)
+            IF autoactive THEN ActivateWindow(mywindow)
+            sleepAll(myapp,MUI_TRUE)
+            t:=DrawBase3D(mybase,mywindow)
+            sleepAll(myapp,FALSE)
+        CASE ID_PLOUPEPLUS
+            mybase.echelle:=IeeeSPMul(mybase.echelle,1.250)
+            IF autoactive THEN ActivateWindow(mywindow)
+            sleepAll(myapp,MUI_TRUE)
+            t:=DrawBase3D(mybase,mywindow)
+            sleepAll(myapp,FALSE)
+        CASE ID_ROTUP
+        RotateBase3D(mybase,CURSORUP)
+        IF autoactive THEN ActivateWindow(mywindow)
+        sleepAll(myapp,MUI_TRUE)
+        t:=DrawBase3D(mybase,mywindow)
+        sleepAll(myapp,FALSE)
+        CASE ID_ROTLEFT
+        RotateBase3D(mybase,CURSORLEFT)
+        IF autoactive THEN ActivateWindow(mywindow)
+        sleepAll(myapp,MUI_TRUE)
+        t:=DrawBase3D(mybase,mywindow)
+        sleepAll(myapp,FALSE)
+        CASE ID_ROTRIGHT
+        RotateBase3D(mybase,CURSORRIGHT)
+        IF autoactive THEN ActivateWindow(mywindow)
+        sleepAll(myapp,MUI_TRUE)
+        t:=DrawBase3D(mybase,mywindow)
+        sleepAll(myapp,FALSE)
+        CASE ID_ROTDOWN
+        RotateBase3D(mybase,CURSORDOWN)
+        IF autoactive THEN ActivateWindow(mywindow)
+        sleepAll(myapp,MUI_TRUE)
+        t:=DrawBase3D(mybase,mywindow)
+        sleepAll(myapp,FALSE)
+        CASE ID_DRAWING
+        FormatBase3DWithWindow(mybase,mywindow)
+        IF autoactive THEN ActivateWindow(mywindow)
+        sleepAll(myapp,MUI_TRUE)
+        t:=DrawBase3D(mybase,mywindow)
+        sleepAll(myapp,FALSE)
+        CASE ID_OBJLISTACTIVE
+        CASE ID_LISTOBJDBC
+        updateObjInfo()
+        CASE ID_DELOBJ
+        get(myapp.lv_objlist,MUIA_List_Active,{active})
+        IF active&lt;&gt;-1
+            pivobj:=getInfoNode(mybase.objlist,active,GETWITH_NUM,RETURN_ADR)
+            IF pivobj&lt;&gt;-1
+            remNode(mybase.objlist,active,TRUE,mybase.freedata)
+            mybase.nbrsobjs:=mybase.nbrsobjs-1
+            mybase.totalpts:=mybase.totalpts-pivobj.nbrspts
+            mybase.totalfcs:=mybase.totalfcs-pivobj.nbrsfcs
+            updateMuiList(mybase.objlist,myapp.lv_objlist)
+            get(myapp.wi_vector,MUIA_Window_Open,{tempo})
+            IF tempo&lt;&gt;NIL THEN set(myapp.wi_vector,MUIA_Window_Open,FALSE)
+            IF autoactive THEN ActivateWindow(mywindow)
+            sleepAll(myapp,MUI_TRUE)
+            t:=DrawBase3D(mybase,mywindow)
+            sleepAll(myapp,FALSE)
+            ENDIF
+        ENDIF
+        CASE ID_OBJACTMODIF
+        get(myapp.lv_objlist,MUIA_List_Entries,{tempo})
+        get(myapp.ra_objetact,MUIA_Radio_Active,{active})
+        FOR ret:=0 TO tempo-1
+            domethod(myapp.lv_objlist,[MUIM_List_Select,ret,MUIV_List_Select_Ask,{sel}])
+            get(myapp.lv_objlist,MUIA_List_Active,{t})
+            IF ((sel=1) OR (t=ret))
+            get(myapp.ra_objetact,MUIA_Radio_Active,{active})
+            pivobj:=getInfoNode(mybase.objlist,ret,GETWITH_NUM,RETURN_ADR)
+            SELECT active
+                CASE 0
+                pivobj.bounded:=FALSE
+                pivobj.selected:=FALSE
+                CASE 1
+                pivobj.bounded:=FALSE
+                pivobj.selected:=TRUE
+                CASE 2
+                pivobj.bounded:=TRUE
+                pivobj.selected:=FALSE
+            ENDSELECT
+            sleepAll(myapp,MUI_TRUE)
+            t:=DrawObject3D(mybase,pivobj,mywindow)
+            sleepAll(myapp,FALSE)
+            ENDIF
+        ENDFOR
+        CASE ID_PRIMX
+        CASE ID_PRIMY
+        CASE ID_PRIMOK
+        IF delbase=TRUE
+            IF request(&#x27;Les objets présent seront effacer&#x27;,&#x27;Ok|Cancel&#x27;,0,myapp.wi_3dfichier)
+            mybase.objlist:=cleanList(mybase.objlist,TRUE,mybase.freedata,LIST_CLEAN)
+            mybase.totalpts:=0;mybase.totalfcs:=0
+            ENDIF
+        ENDIF
+        /*=== get the active prim ===*/
+        get(myapp.lv_primitives,MUIA_List_Active,{active})
+        /*=== get séparation en x ===*/
+        get(myapp.st_primx,MUIA_String_Contents,{buffer})
+        primx:=Val(buffer,NIL)
+        /*=== séparation en y ===*/
+        get(myapp.st_primy,MUIA_String_Contents,{buffer})
+        primy:=Val(buffer,NIL)
+        /*=== facteur 3d ===*/
+        get(myapp.st_fct3d,MUIA_String_Contents,{buffer})
+        primfct:=string2Float(buffer)
+        /*=== nom de l&#x27;objet ===*/
+        get(myapp.st_nomobj,MUIA_String_Contents,{buffer})
+        StrCopy(primname,buffer,ALL)
+        IF active&lt;&gt;-1
+            SELECT active
+            CASE 0 /*=== torus ===*/
+                 MakeObject(mybase,PRIM_TORUS,primname,primx,primy,primfct,primfcs)
+                 IF autoactive THEN ActivateWindow(mywindow)
+                 sleepAll(myapp,MUI_TRUE)
+                 t:=DrawBase3D(mybase,mywindow)
+                 sleepAll(myapp,FALSE)
+            CASE 1 /*=== Moebius ===*/
+                 MakeObject(mybase,PRIM_MOEBIUS,primname,primx,primy,primfct,primfcs)
+                 IF autoactive THEN ActivateWindow(mywindow)
+                 sleepAll(myapp,MUI_TRUE)
+                 t:=DrawBase3D(mybase,mywindow)
+                 sleepAll(myapp,FALSE)
+            CASE 2 /*=== Plan ===*/
+                 MakeObject(mybase,PRIM_PLAN,primname,primx,primy,primfct,primfcs)
+                 IF autoactive THEN ActivateWindow(mywindow)
+                 sleepAll(myapp,MUI_TRUE)
+                 t:=DrawBase3D(mybase,mywindow)
+                 sleepAll(myapp,FALSE)
+            CASE 3 /*=== Trbl ===*/
+                 MakeObject(mybase,PRIM_TRBL,primname,primx,primy,primfct,primfcs)
+                 IF autoactive THEN ActivateWindow(mywindow)
+                 sleepAll(myapp,MUI_TRUE)
+                 t:=DrawBase3D(mybase,mywindow)
+                 sleepAll(myapp,FALSE)
+            CASE 4 /*=== Sphere ===*/
+                 MakeObject(mybase,PRIM_SPHERE,primname,primx,primy,primfct,primfcs)
+                 IF autoactive THEN ActivateWindow(mywindow)
+                 sleepAll(myapp,MUI_TRUE)
+                 t:=DrawBase3D(mybase,mywindow)
+                 sleepAll(myapp,FALSE)
+            CASE 5 /*=== Spirale ===*/
+                 MakeObject(mybase,PRIM_SPIRALE,primname,primx,primy,primfct,primfcs)
+                 IF autoactive THEN ActivateWindow(mywindow)
+                 sleepAll(myapp,MUI_TRUE)
+                 t:=DrawBase3D(mybase,mywindow)
+                 sleepAll(myapp,FALSE)
+            CASE 6 /*=== Vagues ===*/
+                 MakeObject(mybase,PRIM_VAGUES,primname,primx,primy,primfct,primfcs)
+                 IF autoactive THEN ActivateWindow(mywindow)
+                 sleepAll(myapp,MUI_TRUE)
+                 t:=DrawBase3D(mybase,mywindow)
+                 sleepAll(myapp,FALSE)
+            CASE 7 /*=== Cylindre ===*/
+                 MakeObject(mybase,PRIM_CYLINDRE,primname,primx,primy,primfct,primfcs)
+                 IF autoactive THEN ActivateWindow(mywindow)
+                 sleepAll(myapp,MUI_TRUE)
+                 t:=DrawBase3D(mybase,mywindow)
+                 sleepAll(myapp,FALSE)
+            CASE 8 /*=== ConeD ===*/
+                 MakeObject(mybase,PRIM_CONED,primname,primx,primy,primfct,primfcs)
+                 IF autoactive THEN ActivateWindow(mywindow)
+                 sleepAll(myapp,MUI_TRUE)
+                 t:=DrawBase3D(mybase,mywindow)
+                 sleepAll(myapp,FALSE)
+            CASE 9 /*=== Dome ===*/
+                 MakeObject(mybase,PRIM_DOME,primname,primx,primy,primfct,primfcs)
+                 IF autoactive THEN ActivateWindow(mywindow)
+                 sleepAll(myapp,MUI_TRUE)
+                 t:=DrawBase3D(mybase,mywindow)
+                 sleepAll(myapp,FALSE)
+            CASE 10 /*=== cube ===*/
+                 PrimCube(mybase,primname,PRIMD_CUBE)
+                 IF autoactive THEN ActivateWindow(mywindow)
+                 sleepAll(myapp,MUI_TRUE)
+                 t:=DrawBase3D(mybase,mywindow)
+                 sleepAll(myapp,FALSE)
+            CASE 11 /*=== tetra ===*/
+                 PrimCube(mybase,primname,PRIMD_TETRA)
+                 IF autoactive THEN ActivateWindow(mywindow)
+                 sleepAll(myapp,MUI_TRUE)
+                 t:=DrawBase3D(mybase,mywindow)
+                 sleepAll(myapp,FALSE)
+            CASE 12 /*=== octa ===*/
+                 PrimCube(mybase,primname,PRIMD_OCTA)
+                 IF autoactive THEN ActivateWindow(mywindow)
+                 sleepAll(myapp,MUI_TRUE)
+                 t:=DrawBase3D(mybase,mywindow)
+                 sleepAll(myapp,FALSE)
+            CASE 13 /*=== Dodeca ===*/
+                 PrimCube(mybase,primname,PRIMD_DODECA)
+                 IF autoactive THEN ActivateWindow(mywindow)
+                 sleepAll(myapp,MUI_TRUE)
+                 t:=DrawBase3D(mybase,mywindow)
+                 sleepAll(myapp,FALSE)
+            CASE 14 /*=== Icosa ===*/
+                 PrimCube(mybase,primname,PRIMD_ICOSA)
+                 IF autoactive THEN ActivateWindow(mywindow)
+                 sleepAll(myapp,MUI_TRUE)
+                 t:=DrawBase3D(mybase,mywindow)
+                 sleepAll(myapp,FALSE)
+            CASE 15 /*=== Octatronqué ===*/
+                 PrimCube(mybase,primname,PRIMD_OCTATRONQUE)
+                 IF autoactive THEN ActivateWindow(mywindow)
+                 sleepAll(myapp,MUI_TRUE)
+                 t:=DrawBase3D(mybase,mywindow)
+                 sleepAll(myapp,FALSE)
+            CASE 16 /*=== Cuboctaère ===*/
+                 PrimCube(mybase,primname,PRIMD_CUBO)
+                 IF autoactive THEN ActivateWindow(mywindow)
+                 sleepAll(myapp,MUI_TRUE)
+                 t:=DrawBase3D(mybase,mywindow)
+                 sleepAll(myapp,FALSE)
+            ENDSELECT
+            updateMuiList(mybase.objlist,myapp.lv_objlist)
+            updateObjInfo()
+        ELSE
+            request(&#x27;Vous devez séléctionné une primitive&#x27;,&#x27;Ok&#x27;,0,myapp.wi_3dfichier)
+        ENDIF
+        CASE ID_PRIMCANCEL
+        CASE ID_PRIMNAME
+        CASE ID_PRIMFACES
+        get(myapp.cy_primfaces,MUIA_Cycle_Active,{active})
+        primfcs:=active
+        CASE ID_PRIMFCT3D
+    ENDSELECT
+    IF (signal AND running) THEN ret:=Wait(signal OR Shl(1,viewport.sigbit) OR $F000)
+    IF ret=$1000
+-&gt;        WriteF(&#x27;break C \h\n&#x27;,ret)
+        running:=FALSE
+    ENDIF
+    IF (ret AND Shl(1,viewport.sigbit))
+        WHILE resizemsg:=GetMsg(mywindow.userport)
+        class:=resizemsg.class
+        dx:=mywindow.leftedge
+        dy:=mywindow.topedge
+        dw:=mywindow.width
+        dh:=mywindow.height
+        IF class=IDCMP_NEWSIZE
+            updateDrawingInfo()
+            FormatBase3DWithWindow(mybase,mywindow)
+            ClearDrawingArea(mywindow,0)
+            t:=DrawBase3D(mybase,mywindow)
+        ENDIF
+        ReplyMsg(resizemsg)
+        ENDWHILE
+    ENDIF
+    ENDWHILE
+ENDPROC ER_NONE
+
+-&gt;&lt;&gt;
+-&gt;&gt; lookArexxMessage(hk,obj,muimsg)
+
+PROC lookArexxMessage(hk,obj,muimsg)
+    DEF commande:PTR TO LONG
+    DEF rexxmsg:PTR TO rexxmsg
+    DEF arg1=0,arg2=0,o:PTR TO object3d,t,buffer[256]:STRING,fbuf[256]:STRING,ret=0
+    DEF x1,y1,z1
+    get(obj,MUIA_Application_RexxMsg,{rexxmsg})
+    commande:=rexxmsg.args
+    IF StrCmp(commande[0],&#x27;SAVEWHAT&#x27;,8)
+    arg1:=Long(Long(muimsg))
+    arg2:=Long(muimsg+4)
+    IF arg2
+        StringF(buffer,&#x27;\d&#x27;,mybase.savewhat)
+    ELSE
+        IF (arg1&gt;=0) AND (arg1&lt;=2)
+        StringF(buffer,&#x27;\d&#x27;,mybase.savewhat)
+        mybase.savewhat:=arg1
+        base3DinMui(mybase)
+        ELSE
+        StrCopy(buffer,&#x27;&#x27;,ALL)
+        ret:=20
+        ENDIF
+    ENDIF
+    ELSEIF StrCmp(commande[0],&#x27;SAVEFORMAT&#x27;,10)
+    arg1:=Long(Long(muimsg))
+    arg2:=Long(muimsg+4)
+    IF arg2
+        StringF(buffer,&#x27;\d&#x27;,mybase.saveformat)
+    ELSE
+        IF (arg1&gt;=0) AND (arg1&lt;=5)
+        StringF(buffer,&#x27;\d&#x27;,mybase.saveformat)
+        mybase.saveformat:=arg1
+        base3DinMui(mybase)
+        ELSE
+        StrCopy(buffer,&#x27;&#x27;,ALL)
+        ret:=20
+        ENDIF
+    ENDIF
+    ELSEIF StrCmp(commande[0],&#x27;SAVEBASE&#x27;,8)
+    arg1:=Long(muimsg)
+    arg2:=mybase.saveformat
+    SELECT arg2
+        CASE SAVE_DXF
+        t:=SaveDxfFile(mybase,arg1)
+        CASE SAVE_GEO
+        t:=SaveGeoFile(mybase,arg1)
+        CASE SAVE_RAY
+        t:=SaveRayFile(mybase,arg1)
+        CASE SAVE_BIN
+        t:=SaveBinFile(mybase,arg1,mybase.vectorfactor)
+        CASE SAVE_POV1
+        t:=SavePovFile(mybase,arg1)
+        CASE SAVE_POV2
+        t:=SavePovFile(mybase,arg1)
+    ENDSELECT
+    IF t=FALSE THEN ret:=20
+    ELSEIF StrCmp(commande[0],&#x27;FCTIMAGINE&#x27;,10)
+    arg1:=Long(muimsg)
+    arg2:=Long(muimsg+4)
+    StrCopy(buffer,float2String(mybase.fctimagine),ALL)
+    IF arg1
+        StrCopy(fbuf,arg1,ALL);t:=string2Float(fbuf);mybase.fctimagine:=t
+        set(myapp.st_fimagine,MUIA_String_Contents,arg1)
+    ENDIF
+    ELSEIF StrCmp(commande[0],&#x27;FCTSCULPT&#x27;,7)
+    arg1:=Long(muimsg)
+    arg2:=Long(muimsg+4)
+    StrCopy(buffer,float2String(mybase.fctsculpt),ALL)
+    IF arg1
+        StrCopy(fbuf,arg1,ALL);t:=string2Float(fbuf);mybase.fctsculpt:=t
+        set(myapp.st_fsculpt,MUIA_String_Contents,arg1)
+    ENDIF
+    ELSEIF StrCmp(commande[0],&#x27;FCT3DPRO&#x27;,7)
+    arg1:=Long(muimsg)
+    arg2:=Long(muimsg+4)
+    StrCopy(buffer,float2String(mybase.fct3dpro),ALL)
+    IF arg1
+        StrCopy(fbuf,arg1,ALL);t:=string2Float(fbuf);mybase.fct3dpro:=t
+        set(myapp.st_f3dpro,MUIA_String_Contents,arg1)
+    ENDIF
+    ELSEIF StrCmp(commande[0],&#x27;FCTVERTEX&#x27;,7)
+    arg1:=Long(muimsg)
+    arg2:=Long(muimsg+4)
+    StrCopy(buffer,float2String(mybase.fctvertex),ALL)
+    IF arg1
+        StrCopy(fbuf,arg1,ALL);t:=string2Float(fbuf);mybase.fctvertex:=t
+        set(myapp.st_fvertex,MUIA_String_Contents,arg1)
+    ENDIF
+    ELSEIF StrCmp(commande[0],&#x27;BASE3DINFO&#x27;,10)
+    StringF(buffer,&#x27;\d \d \d&#x27;,mybase.nbrsobjs,mybase.totalpts,mybase.totalfcs)
+    ELSEIF StrCmp(commande[0],&#x27;OBJECT3DINFO&#x27;,12)
+    arg1:=Long(Long(muimsg))
+    o:=getInfoNode(mybase.objlist,arg1,GETWITH_NUM,RETURN_ADR)
+    IF o&lt;&gt;-1
+        arg2:=mybase.formatname
+        StringF(buffer,&#x27;\d \d \d \d \d \d \d \d \d \d \d \d \d \s \s&#x27;,o.nbrspts,o.nbrsfcs,o.datapts,o.datafcs,o.objminx,o.objmaxx,o.objminy,o.objmaxy,o.objminz,o.objmaxz,o.objcx,o.objcy,o.objcz,o.obj_node.name,mybase.formatname[o.typeobj])
+    ELSE
+        StringF(buffer,&#x27;&#x27;,&#x27;&#x27;)
+        ret:=20
+    ENDIF
+    ELSEIF StrCmp(commande[0],&#x27;WINFILE&#x27;,7)
+    set(myapp.wi_3dfichier,MUIA_Window_Open,MUI_TRUE)
+    ELSEIF StrCmp(commande[0],&#x27;WINVUE&#x27;,6)
+    set(myapp.wi_vues,MUIA_Window_Open,MUI_TRUE)
+    ELSEIF StrCmp(commande[0],&#x27;WINOBJ&#x27;,6)
+    set(myapp.wi_objets,MUIA_Window_Open,MUI_TRUE)
+    ELSEIF StrCmp(commande[0],&#x27;WINROT&#x27;,6)
+    set(myapp.wi_rotation,MUIA_Window_Open,MUI_TRUE)
+    ELSEIF StrCmp(commande[0],&#x27;WINPREFS&#x27;,6)
+    set(myapp.wi_prefs,MUIA_Window_Open,MUI_TRUE)
+    ELSEIF StrCmp(commande[0],&#x27;OBJPTSDATA&#x27;,10)
+    arg1:=Long(Long(muimsg))
+    arg2:=Long(Long(muimsg+4))
+    o:=getInfoNode(mybase.objlist,arg1,GETWITH_NUM,RETURN_ADR)
+    IF o&lt;&gt;-1
+        IF (arg2&lt;=(o.nbrspts-1))
+        x1:=Long(o.datapts+(arg2*12))
+        y1:=Long(o.datapts+(arg2*12)+4)
+        z1:=Long(o.datapts+(arg2*12)+8)
+        StrCopy(fbuf,float2String(x1),ALL)
+        StrAdd(buffer,fbuf,ALL);StrAdd(buffer,&#x27; &#x27;,1)
+        StrCopy(fbuf,float2String(y1),ALL)
+        StrAdd(buffer,fbuf,ALL);StrAdd(buffer,&#x27; &#x27;,1)
+        StrCopy(fbuf,float2String(z1),ALL)
+        StrAdd(buffer,fbuf,ALL);StrAdd(buffer,&#x27; &#x27;,1)
+        ELSE
+        StrCopy(buffer,&#x27;&#x27;,ALL)
+        ret:=20
+        ENDIF
+    ELSE
+        StrCopy(buffer,&#x27;&#x27;,ALL)
+        ret:=20
+    ENDIF
+    ELSEIF StrCmp(commande[0],&#x27;OBJFCSDATA&#x27;,10)
+    arg1:=Long(Long(muimsg))
+    arg2:=Long(Long(muimsg+4))
+    o:=getInfoNode(mybase.objlist,arg1,GETWITH_NUM,RETURN_ADR)
+    IF o&lt;&gt;-1
+        IF (arg2&lt;=(o.nbrsfcs-1))
+        x1:=Long(o.datafcs+(arg2*12))
+        y1:=Long(o.datafcs+(arg2*12)+4)
+        z1:=Long(o.datafcs+(arg2*12)+8)
+        StringF(fbuf,&#x27;\d \d \d&#x27;,x1,y1,z1)
+        StrCopy(buffer,fbuf,ALL)
+        ELSE
+        StrCopy(buffer,&#x27;&#x27;,ALL)
+        ret:=20
+        ENDIF
+    ELSE
+        StrCopy(buffer,&#x27;&#x27;,ALL)
+        ret:=20
+    ENDIF
+    ELSEIF StrCmp(commande[0],&#x27;LOCKGUI&#x27;,7)
+    sleepAll(myapp,MUI_TRUE)
+    ELSEIF StrCmp(commande[0],&#x27;UNLOCKGUI&#x27;,9)
+    sleepAll(myapp,FALSE)
+    ELSEIF StrCmp(commande[0],&#x27;TOTALMEM&#x27;,8)
+    arg1:=totalMemBase3D(mybase)
+    StringF(buffer,&#x27;\d&#x27;,arg1)
+    ELSEIF StrCmp(commande[0],&#x27;LOADBASE&#x27;,7)
+    arg1:=Long(muimsg)
+    x1,y1:=ReadFile3D(mybase,arg1)
+    SELECT x1
+        CASE ERR3D_UNKNOWNFILE
+        StringF(buffer,&#x27;\s non valide&#x27;,arg1)
+        ret:=20
+        CASE ERR3D_NOFILE
+        StringF(buffer,&#x27;\s inexistant&#x27;,arg1)
+        ret:=20
+        DEFAULT
+        updateMuiList(mybase.objlist,myapp.lv_objlist)
+    ENDSELECT
+    ELSEIF StrCmp(commande[0],&#x27;DELBASE&#x27;,7)
+    mybase.objlist:=cleanList(mybase.objlist,TRUE,mybase.freedata,LIST_CLEAN)
+    mybase.totalpts:=0;mybase.totalfcs:=0
+    updateMuiList(mybase.objlist,myapp.lv_objlist)
+    ENDIF
+    set(myapp.app,MUIA_Application_RexxString,buffer)
+ENDPROC ret
+
+-&gt;&lt;&gt;
+-&gt;&gt; totalMemBase3D(base:PTR TO base3d)
+
+PROC totalMemBase3D(base:PTR TO base3d)
+    DEF tm=0
+    DEF o:PTR TO object3d,list:PTR TO lh
+    tm:=SIZEOF base3d
+    list:=base.objlist
+    o:=list.head
+    WHILE o
+    IF o.obj_node.succ&lt;&gt;0
+        tm:=tm+(SIZEOF object3d)+(o.nbrspts*12)+(o.nbrsfcs*12)
+    ENDIF
+    o:=o.obj_node.succ
+    ENDWHILE
+ENDPROC tm
+
+-&gt;&lt;&gt;
+-&gt;&gt; lookArexxError(hk=NIL,obj=NIL,rexxmsg=NIL:PTR TO rexxmsg)
+
+PROC lookArexxError(hk=NIL,obj=NIL,rexxmsg=NIL:PTR TO rexxmsg)
+    DEF commande:PTR TO LONG
+    commande:=rexxmsg.args
+    request(&#x27;Commande \s Inconnu&#x27;,&#x27;Ok&#x27;,[commande[0]],NIL)
+-&gt;    set(myapp.app,MUIA_Application_RexxString,&#x27;qwerty&#x27;)
+ENDPROC
+
+-&gt;&lt;
+-&gt;&gt; infoTextThanks(w:PTR TO window)
+
+PROC infoTextThanks(w:PTR TO window)
+    DEF oldrast
+    SetTopaz(9)
+    ClearDrawingArea(mywindow,1)
+    SetAPen(w.rport,2)
+    SetBPen(w.rport,1)
+    oldrast:=SetStdRast(w.rport)
+  ‹76 bytes of embedded binary/non-text data elided›
+    tapText(w.rport,20,30, &#x27;» MUIMaster.library © Stefan Stuntz          »&#x27;)
+    tapText(w.rport,20,40, &#x27;» MUIBuilder        © Eric Totel             »&#x27;)
+    tapText(w.rport,20,50, &#x27;» GenCodeE          © Lionel Vintenat        »&#x27;)
+    tapText(w.rport,20,60, &#x27;» AmigaE            © Wouter van Oortmerssen »&#x27;)
+    tapText(w.rport,20,70, &#x27;» vector.library    © A. Lippert             »&#x27;)
+    tapText(w.rport,20,80, &#x27;» FilledVector.m    © Frank Zucchi           »&#x27;)
+  ‹76 bytes of embedded binary/non-text data elided›
+    tapText(w.rport,20,100,&#x27;» 3DView            © NasGûl                 »&#x27;)
+  ‹76 bytes of embedded binary/non-text data elided›
+    tapText(w.rport,20,130,&#x27;(Ce message disparaitra lors de la copie des prefs)&#x27;)
+    Delay(50)
+    SetStdRast(oldrast)
+    Execute(&#x27;3DView.message&#x27;,0,stdout)
+ENDPROC
+
+-&gt;&lt;
+-&gt;&gt; tapText(rast,x,y,text)
+
+PROC tapText(rast,x,y,text)
+    DEF len,b,pas=0,str[10]:STRING
+    len:=StrLen(text)
+    FOR b:=0 TO len-1
+    StringF(str,&#x27;\c&#x27;,text[b])
+    Move(rast,x+pas,y)
+    Text(rast,str,1)
+    pas:=pas+9
+    Delay(2)
+    ENDFOR
+ENDPROC
+
+-&gt;&lt;
+-&gt;&gt; base3DinMui(b:PTR TO base3d)
+
+PROC base3DinMui(b:PTR TO base3d)
+    DEF buffer[80]:STRING
+
+    StrCopy(buffer,float2String(b.vectorfactor),ALL)
+    set(myapp.st_vfactor,MUIA_String_Contents,buffer)
+
+    set(myapp.cy_planvue,MUIA_Cycle_Active,b.plan)
+    set(myapp.cy_modevue,MUIA_Cycle_Active,b.drawmode)
+    set(myapp.cy_savewhat,MUIA_Cycle_Active,b.savewhat)
+    set(myapp.cy_saveformat,MUIA_Cycle_Active,b.saveformat)
+
+    IF autoactive
+    SetAttrsA(myapp.ch_autoactive,[MUIA_NoNotify,TRUE,MUIA_Selected,autoactive,TAG_DONE])
+    SetAttrsA(myapp.ch_autoactive,[MUIA_NoNotify,FALSE,TAG_DONE])
+    ENDIF
+-&gt;  set(myapp.ch_autoactive,MUIA_Selected,autoactive)
+ENDPROC
+
+-&gt;&lt;
+-&gt;&gt; updateDrawingInfo()
+
+PROC updateDrawingInfo()
+    DEF buffer[80]:STRING
+    StringF(buffer,&#x27;\d&#x27;,dx)
+    set(myapp.st_drawingwinx,MUIA_String_Contents,buffer)
+    StringF(buffer,&#x27;\d&#x27;,dy)
+    set(myapp.st_drawingwiny,MUIA_String_Contents,buffer)
+    StringF(buffer,&#x27;\d&#x27;,dw)
+    set(myapp.st_drawingwinw,MUIA_String_Contents,buffer)
+    StringF(buffer,&#x27;\d&#x27;,dh)
+    set(myapp.st_drawingwinh,MUIA_String_Contents,buffer)
+ENDPROC
+
+-&gt;&lt;
+-&gt;&gt; updateObjInfo()
+
+PROC updateObjInfo()
+    DEF active
+    DEF buffer[256]:STRING
+    DEF obj:PTR TO object3d,name:PTR TO LONG
+    get(myapp.lv_objlist,MUIA_List_Active,{active})
+    name:=mybase.formatname
+    IF active&lt;&gt;-1
+    obj:=getInfoNode(mybase.objlist,active,GETWITH_NUM,RETURN_ADR)
+    IF obj&lt;&gt;-1
+        /*=== type ob obj ===*/
+        StringF(buffer,&#x27;\s&#x27;,name[obj.typeobj])
+        set(myapp.tx_typeobj,MUIA_Text_Contents,buffer)
+        /*=== nbrs de pts ===*/
+        StringF(buffer,&#x27;\d&#x27;,obj.nbrspts)
+        set(myapp.tx_nbrspts,MUIA_Text_Contents,buffer)
+        /*=== nbrs fcs===*/
+        StringF(buffer,&#x27;\d&#x27;,obj.nbrsfcs)
+        set(myapp.tx_nbrsfcs,MUIA_Text_Contents,buffer)
+        /*=== obj minx ===*/
+        StrCopy(buffer,float2String(obj.objminx),ALL)
+        set(myapp.tx_minx,MUIA_Text_Contents,buffer)
+        /*=== obj maxx ===*/
+        StrCopy(buffer,float2String(obj.objmaxx),ALL)
+        set(myapp.tx_maxx,MUIA_Text_Contents,buffer)
+        /*=== obj miny ===*/
+        StrCopy(buffer,float2String(obj.objminy),ALL)
+        set(myapp.tx_miny,MUIA_Text_Contents,buffer)
+        /*=== obj maxy ===*/
+        StrCopy(buffer,float2String(obj.objmaxy),ALL)
+        set(myapp.tx_maxy,MUIA_Text_Contents,buffer)
+        /*=== obj minz ===*/
+        StrCopy(buffer,float2String(obj.objminz),ALL)
+        set(myapp.tx_minz,MUIA_Text_Contents,buffer)
+        /*=== obj maxz ===*/
+        StrCopy(buffer,float2String(obj.objmaxz),ALL)
+        set(myapp.tx_maxz,MUIA_Text_Contents,buffer)
+        /*===obj centre x ===*/
+        StrCopy(buffer,float2String(obj.objcx),ALL)
+        set(myapp.tx_centrex,MUIA_Text_Contents,buffer)
+        /*=== obj centre y ===*/
+        StrCopy(buffer,float2String(obj.objcy),ALL)
+        set(myapp.tx_centrey,MUIA_Text_Contents,buffer)
+        /*=== obj centre z ===*/
+        StrCopy(buffer,float2String(obj.objcz),ALL)
+        set(myapp.tx_centrez,MUIA_Text_Contents,buffer)
+        IF obj.selected=TRUE THEN set(myapp.ra_objetact,MUIA_Radio_Active,1)
+        IF obj.bounded=TRUE THEN set(myapp.ra_objetact,MUIA_Radio_Active,2)
+        IF (obj.selected=FALSE) AND (obj.bounded=FALSE) THEN set(myapp.ra_objetact,MUIA_Radio_Active,0)
+    ENDIF
+    ELSE
+    /*=== type ob obj ===*/
+    set(myapp.tx_typeobj,MUIA_Text_Contents,&#x27;Aucun&#x27;)
+    /*=== nbrs de pts ===*/
+    set(myapp.tx_nbrspts,MUIA_Text_Contents,&#x27;0000&#x27;)
+    /*=== nbrs fcs===*/
+    set(myapp.tx_nbrsfcs,MUIA_Text_Contents,&#x27;0000&#x27;)
+    /*=== obj minx ===*/
+    set(myapp.tx_minx,MUIA_Text_Contents,&#x27;0000.0000&#x27;)
+    /*=== obj maxx ===*/
+    set(myapp.tx_maxx,MUIA_Text_Contents,&#x27;0000.0000&#x27;)
+    /*=== obj miny ===*/
+    set(myapp.tx_miny,MUIA_Text_Contents,&#x27;0000.0000&#x27;)
+    /*=== obj maxy ===*/
+    set(myapp.tx_maxy,MUIA_Text_Contents,&#x27;0000.0000&#x27;)
+    /*=== obj minz ===*/
+    set(myapp.tx_minz,MUIA_Text_Contents,&#x27;0000.0000&#x27;)
+    /*=== obj maxz ===*/
+    set(myapp.tx_maxz,MUIA_Text_Contents,&#x27;0000.0000&#x27;)
+    /*===obj centre x ===*/
+    set(myapp.tx_centrex,MUIA_Text_Contents,&#x27;0000.0000&#x27;)
+    /*=== obj centre y ===*/
+    set(myapp.tx_centrey,MUIA_Text_Contents,&#x27;0000.0000&#x27;)
+    /*=== obj centre z ===*/
+    set(myapp.tx_centrez,MUIA_Text_Contents,&#x27;0000.0000&#x27;)
+    ENDIF
+    StringF(buffer,&#x27;\d&#x27;,mybase.totalpts)
+    set(myapp.tx_totalpts,MUIA_Text_Contents,buffer)
+    StringF(buffer,&#x27;\d&#x27;,mybase.totalfcs)
+    set(myapp.tx_totalfcs,MUIA_Text_Contents,buffer)
+    StringF(buffer,&#x27;\d&#x27;,mybase.nbrsobjs)
+    set(myapp.tx_totalobj,MUIA_Text_Contents,buffer)
+ENDPROC
+
+-&gt;&lt;
+-&gt;&gt; updateMuiList(execlist:PTR TO lh,muilist)
+
+PROC updateMuiList(execlist:PTR TO lh,muilist)
+    DEF n:PTR TO ln,nom
+    n:=execlist.head
+    domethod(muilist,[MUIM_List_Clear])
+    set(muilist,MUIA_List_Quiet,MUI_TRUE)
+    WHILE n
+    IF n.succ&lt;&gt;0
+        nom:=n.name
+        domethod(muilist,[MUIM_List_Insert,{nom},1,MUIV_List_Insert_Bottom])
+    ENDIF
+    n:=n.succ
+    ENDWHILE
+    set(muilist,MUIA_List_Quiet,FALSE)
+ENDPROC
+
+-&gt;&lt;
+-&gt;&gt; openLibraries() HANDLE
+
+PROC openLibraries() HANDLE
+    IF (muimasterbase:=OpenLibrary(&#x27;muimaster.library&#x27;,9))=NIL THEN Raise(ER_LIBMUIMASTER)
+-&gt;    IF xpkbase:=OpenLibrary(&#x27;xpkmaster.library&#x27;,1) ELSE xpkbase:=NIL
+-&gt;    IF (workbenchbase:=OpenLibrary(&#x27;workbench.library&#x27;,0))=NIL THEN Raise(ER_LIBWORKBENCH)
+-&gt;    IF (iffbase:=OpenLibrary(&#x27;iff.library&#x27;,0))=NIL THEN Raise(ER_LIBIFF)
+    IF (reqtoolsbase:=OpenLibrary(&#x27;reqtools.library&#x27;,0))=NIL THEN Raise(ER_LIBREQTOOLS)
+-&gt;    IF (rexxsysbase:=OpenLibrary(&#x27;rexxsyslib.library&#x27;,0))=NIL THEN Raise(ER_LIBREXXSYSLIB)
+    IF (mathbase:=OpenLibrary(&#x27;mathffp.library&#x27;,34))=NIL THEN Raise(ER_LIBMATH)
+    IF (mathtransbase:=OpenLibrary(&#x27;mathtrans.library&#x27;,34))=NIL THEN Raise(ER_LIBMATH)
+    IF (mathieeesingbasbase:=OpenLibrary(&#x27;mathieeesingbas.library&#x27;,34))=NIL THEN Raise(ER_LIBMATH)
+    IF (mathieeesingtransbase:=OpenLibrary(&#x27;mathieeesingtrans.library&#x27;,34))=NIL THEN Raise(ER_LIBMATH)
+    IF (utilitybase:=OpenLibrary(&#x27;utility.library&#x27;,37))=NIL THEN Raise(ER_LIBUTILITY)
+    IF (dddbase:=OpenLibrary(&#x27;ddd.library&#x27;,0))=NIL THEN Raise(ER_LIBDDD)
+    Raise(ER_NONE)
+EXCEPT
+    RETURN exception
+ENDPROC
+
+-&gt;&lt;
+-&gt;&gt; closeLibraries()
+
+PROC closeLibraries()
+    IF dddbase THEN CloseLibrary(dddbase)
+    IF utilitybase THEN CloseLibrary(utilitybase)
+    IF mathieeesingtransbase THEN CloseLibrary(mathieeesingtransbase)
+    IF mathieeesingbasbase THEN CloseLibrary(mathieeesingbasbase)
+    IF mathtransbase THEN CloseLibrary(mathtransbase)
+    IF mathbase THEN CloseLibrary(mathbase)
+-&gt;    IF rexxsysbase THEN CloseLibrary(rexxsysbase)
+    IF reqtoolsbase THEN CloseLibrary(reqtoolsbase)
+-&gt;    IF iffbase THEN CloseLibrary(iffbase)
+-&gt;    IF workbenchbase THEN CloseLibrary(workbenchbase)
+-&gt;    IF iconbase THEN CloseLibrary(iconbase)
+-&gt;    IF xpkbase THEN CloseLibrary(xpkbase)
+    IF muimasterbase THEN CloseLibrary(muimasterbase)
+ENDPROC
+
+-&gt;&lt;
+-&gt;&gt; initAPP() HANDLE
+
+PROC initAPP() HANDLE
+    DEF n:PTR TO ln
+    mybase:=Init3DBase()
+    IF mybase=NIL THEN Raise(ER_NOBASE3D)
+    Raise(ER_NONE)
+EXCEPT
+    RETURN exception
+ENDPROC
+
+-&gt;&lt;
+-&gt;&gt; openDrawingWindow(screen)
+
+PROC openDrawingWindow(screen)
+    DEF w:PTR TO window
+   w:=OpenWindowTagList(NIL,[ WA_TOP,       dy,
+                    WA_LEFT,        dx,
+                    WA_INNERWIDTH,  dw,
+                    WA_INNERHEIGHT, dh,
+                    WA_CLOSEGADGET, TRUE,
+                    WA_DRAGBAR,     TRUE,
+                    WA_DEPTHGADGET, TRUE,
+                    WA_SIZEBBOTTOM, TRUE, /* toggle this */
+                    WA_SIZEGADGET,  TRUE,
+                    WA_MINHEIGHT,   100,
+                    WA_MINWIDTH,    50,
+                    WA_MAXHEIGHT,   -1,
+                    WA_MAXWIDTH,    -1,
+                    WA_CUSTOMSCREEN,screen,
+                    WA_IDCMP,       IDCMP_CLOSEWINDOW OR
+                            IDCMP_CHANGEWINDOW OR IDCMP_RAWKEY OR
+                            IDCMP_NEWSIZE,
+                    WA_TITLE,       &#x27;3DView (Représentation)&#x27;,
+                    0,0]) /* NB: no checking here either :&lt;*/
+ENDPROC w
+
+-&gt;&lt;
+-&gt;&gt; closeDrawingWindow(win)
+
+PROC closeDrawingWindow(win)
+    IF win&lt;&gt;NIL THEN CloseWindow(win)
+    win:=NIL
+ENDPROC win
+
+-&gt;&lt;
+-&gt;&gt; remAPP()
+
+PROC remAPP()
+    IF mywindow&lt;&gt;NIL THEN closeDrawingWindow(mywindow)
+    IF mybase&lt;&gt;NIL THEN Rem3DBase(mybase)
+ENDPROC
+
+-&gt;&lt;
+-&gt;&gt; fileRequester(titre:PTR TO CHAR,muiwindow)
+
+PROC fileRequester(titre:PTR TO CHAR,muiwindow)
+/*===============================================================================
+ = Para     : NONE
+ = Return   : False if cancel selected.
+ = Description  : PopUp a MultiFileRequester,build the whatview arguments.
+ ==============================================================================*/
+    DEF reqfile:PTR TO rtfilerequester
+    DEF liste:PTR TO rtfilelist
+    DEF buffer[120]:STRING,w:PTR TO window
+    DEF add_liste=0
+    DEF ret=FALSE
+    DEF the_reelname[256]:STRING
+    DEF defaultdir[256]:STRING
+    DEF valide,format
+    get(muiwindow,MUIA_Window_Window,{w})
+    reqfile:=NIL
+    IF reqfile:=RtAllocRequestA(RT_FILEREQ,NIL)
+    buffer[0]:=0
+    add_liste:=RtFileRequestA(reqfile,buffer,titre,
+                  [RT_WINDOW,w,RTFI_FLAGS,FREQF_MULTISELECT+FREQF_PATGAD,RTFI_HEIGHT,200,
+                   RT_UNDERSCORE,&quot;_&quot;,TAG_DONE])
+    StrCopy(defaultdir,reqfile.dir,ALL)
+    AddPart(defaultdir,&#x27;&#x27;,256)
+    IF reqfile THEN RtFreeRequest(reqfile)
+    IF add_liste THEN ret:=TRUE
+    ELSE
+    ret:=FALSE
+    ENDIF
+    IF ret=TRUE
+    liste:=add_liste
+    IF add_liste
+        WHILE liste
+        StringF(the_reelname,&#x27;\s\s&#x27;,defaultdir,liste.name)
+        valide,format:=ReadFile3D(mybase,the_reelname)
+        IF valide=ERR3D_UNKNOWNFILE
+            request(&#x27;Fichier \s inconnu&#x27;,&#x27;Ok&#x27;,[the_reelname],muiwindow)
+        ENDIF
+        liste:=liste.next
+        ENDWHILE
+        IF add_liste THEN RtFreeFileList(add_liste)
+    ENDIF
+    ELSE
+    ret:=FALSE
+    ENDIF
+    RETURN ret
+ENDPROC
+
+-&gt;&lt;
+-&gt;&gt; fileSaveRequester(titre:PTR TO CHAR,muiwindow)
+
+PROC fileSaveRequester(titre:PTR TO CHAR,muiwindow)
+/*===============================================================================
+ = Para     : NONE
+ = Return   : False if cancel selected.
+ = Description  : PopUp a MultiFileRequester,build the whatview arguments.
+ ==============================================================================*/
+    DEF reqfile:PTR TO rtfilerequester
+    DEF buffer[120]:STRING,w:PTR TO window
+    DEF add_liste=0
+    DEF ret=FALSE
+    DEF defaultdir[256]:STRING
+    DEF format
+    get(muiwindow,MUIA_Window_Window,{w})
+    reqfile:=NIL
+    IF reqfile:=RtAllocRequestA(RT_FILEREQ,NIL)
+    buffer[0]:=0
+    add_liste:=RtFileRequestA(reqfile,buffer,titre,
+                  [RT_WINDOW,w,RTFI_FLAGS,FREQF_NOFILES+FREQF_SAVE,RTFI_HEIGHT,200,
+                   RT_UNDERSCORE,&quot;_&quot;,TAG_DONE])
+    StrCopy(defaultdir,reqfile.dir,ALL)
+    AddPart(defaultdir,&#x27;&#x27;,256)
+    IF reqfile THEN RtFreeRequest(reqfile)
+    IF add_liste THEN ret:=TRUE
+    ELSE
+    ret:=FALSE
+    ENDIF
+    IF ret=TRUE
+    format:=mybase.saveformat
+    SELECT format
+        CASE SAVE_DXF;  SaveDxfFile(mybase,defaultdir)
+        CASE SAVE_GEO;  SaveGeoFile(mybase,defaultdir)
+        CASE SAVE_RAY;  SaveRayFile(mybase,defaultdir)
+        CASE SAVE_BIN;  SaveBinFile(mybase,defaultdir,mybase.vectorfactor)
+        CASE SAVE_POV1; SavePovFile(mybase,defaultdir)
+        CASE SAVE_POV2; SavePovFile(mybase,defaultdir)
+    ENDSELECT
+    ELSE
+    ret:=FALSE
+    ENDIF
+    RETURN ret
+ENDPROC
+
+-&gt;&lt;
+-&gt;&gt; request(bodytext,gadgettext,the_arg,muiwindow)
+
+PROC request(bodytext,gadgettext,the_arg,muiwindow)
+    DEF ret
+    DEF w:PTR TO window
+    get(muiwindow,MUIA_Window_Window,{w})
+    IF muiwindow&lt;&gt;NIL
+    IF w
+        ret:=RtEZRequestA(bodytext,gadgettext,0,the_arg,[RT_WINDOW,w,TAG_DONE])
+    ENDIF
+    ELSE
+    ret:=RtEZRequestA(bodytext,gadgettext,0,the_arg,[TAG_DONE])
+    ENDIF
+    RETURN ret
+ENDPROC
+
+-&gt;&lt;
+-&gt;&gt; float2String(float)
+
+PROC float2String(float)
+    DEF r[80]:STRING
+    StringF(r,&#x27;\d.\z\d[4] &#x27;,IeeeSPFix(float),IeeeSPFix(IeeeSPAbs(IeeeSPMul(IeeeSPSub(IeeeSPFlt(IeeeSPFix(float)),float ),10000.0))))
+    RETURN r
+ENDPROC
+
+-&gt;&lt;
+-&gt;&gt; string2Float(string)
+
+PROC string2Float(string)
+    DEF entier[256]:STRING
+    DEF decimal[256]:STRING
+    DEF pos
+    DEF ei,di,ef,df,vir,p,res=0,ret
+    #ifdef DBP
+    WriteF(&#x27;stringToFloat()\n&#x27;)
+    #endif
+    pos:=InStr(string,&#x27;.&#x27;,0)
+    IF pos&lt;&gt;-1
+    MidStr(entier,string,0,pos)
+    MidStr(decimal,string,pos+1,ALL)
+    vir:=SpFlt(EstrLen(decimal))
+    ei:=Val(entier,NIL)
+    di:=Val(decimal,NIL)
+    ef:=SpFlt(ei)
+    p:=10
+    FOR pos:=1 TO SpFix(vir)-1
+        p:=Mul(p,10)
+    ENDFOR
+    df:=SpDiv(SpFlt(p),SpFlt(di))
+    res:=SpAdd(ef,df)
+    ret:=SpTieee(res)
+    RETURN ret
+    ENDIF
+ENDPROC
+
+-&gt;&lt;
+-&gt;&gt; readPrefsFile()
+
+PROC readPrefsFile()
+    DEF h,buffer,t,ret=FALSE
+    IF h:=Open(&#x27;Env:3DView.Prefs&#x27;,1005)
+    IF buffer:=New(36)
+        t:=Read(h,buffer,36)
+        dx:=Long(buffer)
+        dy:=Long(buffer+4)
+        dw:=Long(buffer+8)
+        dh:=Long(buffer+12)
+        mybase.rgbpts:=Int(buffer+18)
+        mybase.rgbnormal:=Int(buffer+22)
+        mybase.rgbselect:=Int(buffer+26)
+        mybase.rgbbounding:=Int(buffer+30)
+        autoactive:=Long(buffer+32)
+        updateDrawingInfo()
+        Dispose(buffer)
+    ENDIF
+    Close(h)
+    ELSE
+    dx:=0
+    dy:=0
+    dw:=640
+    dh:=128
+    ret:=TRUE
+    ENDIF
+ENDPROC ret
+
+-&gt;&lt;
+-&gt;&gt; savePrefsFile()
+
+PROC savePrefsFile()
+    DEF h,t
+    IF h:=Open(&#x27;Env:3DView.Prefs&#x27;,1006)
+    t:=Write(h,[dx,dy,dw,dh,mybase.rgbpts,mybase.rgbnormal,mybase.rgbselect,mybase.rgbbounding,autoactive]:LONG,36)
+    IF t&lt;&gt;36
+        WriteF(&#x27;Erreur\n&#x27;)
+    ENDIF
+    Close(h)
+    ENDIF
+ENDPROC
+
+-&gt;&lt;
+-&gt;&gt; paletteRequest(titre,couleur)
+
+PROC paletteRequest(titre,couleur)
+    DEF win:PTR TO window,ret
+    get(myapp.wi_prefs,MUIA_Window_Window,{win})
+    sleepAll(myapp,MUI_TRUE)
+    ret:=RtPaletteRequestA(titre,NIL,[RT_WINDOW,win,RT_LOCKWINDOW,TRUE,RTPA_COLOR,couleur,0])
+    sleepAll(myapp,FALSE)
+    RETURN ret
+ENDPROC
+
+-&gt;&lt;
+-&gt;&gt; sleepAll(theapp:PTR TO app_obj,v)
+
+PROC sleepAll(theapp:PTR TO app_obj,v)
+    set(theapp.wi_3dmain,MUIA_Window_Sleep,v)
+    set(theapp.wi_3dfichier,MUIA_Window_Sleep,v)
+    set(theapp.wi_config,MUIA_Window_Sleep,v)
+    set(theapp.wi_vues,MUIA_Window_Sleep,v)
+    set(theapp.wi_rotation,MUIA_Window_Sleep,v)
+    set(theapp.wi_objets,MUIA_Window_Sleep,v)
+    set(theapp.wi_primcal,MUIA_Window_Sleep,v)
+    set(theapp.wi_prefs,MUIA_Window_Sleep,v)
+    set(theapp.wi_vector,MUIA_Window_Sleep,v)
+ENDPROC
+
+-&gt;&lt;
+-&gt;&gt; wF(float)
+PROC wF(float)
+    WriteF(&#x27;\d.\z\d[4] &#x27;,IeeeSPFix(float),IeeeSPFix(IeeeSPAbs(IeeeSPMul(IeeeSPSub(IeeeSPFlt(IeeeSPFix(float)),float ),10000.0))))
+ENDPROC
+
+-&gt;&lt;
+-&gt;&gt; startWB() HANDLE
+
+PROC startWB() HANDLE
+    DEF wb:PTR TO wbstartup
+    DEF args:PTR TO wbarg
+    DEF b
+    DEF mes:PTR TO mn,n:PTR TO ln
+    DEF source[256]:STRING
+    DEF fichier[256]:STRING
+    DEF valide,format
+    wb:=wbmessage
+    mes:=wb.message
+    n:=mes.ln
+    args:=wb.arglist
+    CurrentDir(args[0].lock)
+    WHILE n
+    IF n.succ&lt;&gt;0
+        wb:=n
+        FOR b:=1 TO wb.numargs-1
+        NameFromLock(args[b].lock,source,256)
+        AddPart(source,&#x27;&#x27;,256)
+        StringF(fichier,&#x27;\s\s&#x27;,source,args[b].name)
+        valide,format:=ReadFile3D(mybase,fichier)
+        IF Not(valide)
+            request(&#x27;Fichier \s inconnu&#x27;,&#x27;Ok&#x27;,[fichier],NIL)
+        ENDIF
+        ENDFOR
+    ENDIF
+    n:=n.succ
+    ENDWHILE
+    Raise(ER_NONE)
+EXCEPT
+    RETURN exception
+ENDPROC
+
+-&gt;&lt;
+-&gt;&gt; startCLI() HANDLE
+
+PROC startCLI() HANDLE
+    DEF myargs:PTR TO LONG,rdargs=NIL
+    DEF marg:PTR TO LONG,b=20
+    DEF n[256]:STRING,valide,format
+    myargs:=[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]
+    IF rdargs:=ReadArgs(&#x27;FILES/M&#x27;,myargs,NIL)
+    marg:=myargs[]
+    IF myargs[0]
+        FOR b:=0 TO 19
+        IF marg[b]&lt;&gt;0
+            IF b=0 THEN StrCopy(n,Long(myargs[0]),ALL) ELSE StrCopy(n,marg[b],ALL)
+             IF ((FileLength(n)&lt;&gt;-1) AND (EstrLen(n)&lt;&gt;0))
+            valide,format:=ReadFile3D(mybase,n)
+            IF Not(valide) THEN WriteF(&#x27;Fichier \s inconnu\n&#x27;,n)
+            ENDIF
+        ENDIF
+        ENDFOR
+    ENDIF
+    ELSE
+    Raise(ER_BADARGS)
+    ENDIF
+    Raise(ER_NONE)
+EXCEPT
+    IF rdargs THEN FreeArgs(rdargs)
+    RETURN exception
+ENDPROC
+
+-&gt;&lt;
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

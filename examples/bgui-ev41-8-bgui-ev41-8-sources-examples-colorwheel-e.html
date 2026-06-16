@@ -1,0 +1,311 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ColorWheel.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-bgui-ev41-8.html">BGUI_Ev41_8</a> &rsaquo; ColorWheel.e</div><h1>File: <code>ColorWheel.e</code></h1><p class="meta">285 lines · project <a href="../examples/pkg-bgui-ev41-8.html"><code>BGUI_Ev41_8</code></a></p><p class="pathctx">BGUI_Ev41_8/bgui_ev41_8/sources/examples/ColorWheel.e</p><p class="prose">** ColorWheel.e ** ** Copyright © 1995 Jaba Development. ** Copyright © 1995 Jan van den Baard. ** All rights Reserved. ** ** E version by Dominique Dutoit - ddutoit@arcadis.be ** Updated on 10-Aug-96 *</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/types.html">exec/types</a></li></ul></div><h2>Source</h2><pre class="code">/*
+** ColorWheel.e
+**
+** Copyright © 1995 Jaba Development.
+** Copyright © 1995 Jan van den Baard.
+** All rights Reserved.
+**
+** E version by Dominique Dutoit - ddutoit@arcadis.be
+** Updated on 10-Aug-96
+**/
+OPT PREPROCESS
+
+MODULE &#x27;exec/types&#x27;,
+       &#x27;exec/libraries&#x27;,
+       &#x27;exec/memory&#x27;,
+       &#x27;dos/dos&#x27;,
+       &#x27;libraries/bgui&#x27;,
+       &#x27;libraries/bguim&#x27;,
+       &#x27;libraries/gadtools&#x27;,
+       &#x27;bgui&#x27;,
+       &#x27;tools/boopsi&#x27;,
+       &#x27;utility/tagitem&#x27;,
+       &#x27;intuition/classes&#x27;,
+       &#x27;intuition/classusr&#x27;,
+       &#x27;intuition/gadgetclass&#x27;,
+       &#x27;intuition/intuition&#x27;,
+       &#x27;intuition/sghooks&#x27;,
+       &#x27;intuition/screens&#x27;,
+       &#x27;graphics/displayinfo&#x27;,
+       &#x27;graphics/modeid&#x27;,
+       &#x27;graphics/view&#x27;,
+       &#x27;colorwheel&#x27;,
+       &#x27;gadgets/colorwheel&#x27;,
+       &#x27;gadgets/gradientslider&#x27;,
+       &#x27;workbench/workbench&#x27;,
+       &#x27;workbench/startup&#x27;
+
+/* Library base pointers */
+DEF gradientsliderbase=NIL
+
+/* Object ID&#x27;s */
+CONST ID_QUIT = 1, ID_WHEEL = 2
+
+/* Structure for LoadRGB32() */
+OBJECT load32
+    len:INT
+    pen:INT
+    red:LONG
+    grn:LONG
+    blu:LONG
+ENDOBJECT
+
+/* Ensure correct operation on ECS */
+CONST GRADCOLORS=4
+
+/*
+**      And were off.
+**/
+PROC main()
+    DEF     wd_obj, running = TRUE, rc = 0, signal
+    DEF     ga_wheel, ga_grslider, ga_master, ga_quit, realslider:PTR TO object
+    DEF     win:PTR TO window
+    DEF     scr:PTR TO screen
+    DEF     colortable[ 96 ]:ARRAY OF LONG
+    DEF     color_list[ 17 ]:ARRAY OF load32
+    DEF     penns[ 17 ]:ARRAY OF INT
+    DEF     rgb:colorwheelrgb
+    DEF     hsb:colorwheelhsb
+    DEF     modeid = HIRES_KEY
+    DEF     numpens, i
+    DEF     displayhandle
+    DEF     scrdimensioninfo:dimensioninfo
+
+    IF KickVersion(39) = NIL
+        WriteF(&#x27;\nYou need OS3.x to run this program\n&#x27;)
+    ELSE
+        IF bguibase := OpenLibrary( &#x27;bgui.library&#x27;, BGUIVERSION )
+            IF colorwheelbase := OpenLibrary( &#x27;gadgets/colorwheel.gadget&#x27;, 39 )
+                IF gradientsliderbase := OpenLibrary( &#x27;gadgets/gradientslider.gadget&#x27;, 39 )
+                    IF displayhandle := FindDisplayInfo( modeid )
+                        NEW scrdimensioninfo
+                        IF GetDisplayInfoData( displayhandle, scrdimensioninfo, SIZEOF dimensioninfo, DTAG_DIMS, NIL )
+                            IF  scr := OpenScreenTagList( NIL,
+                                                           [SA_DEPTH,           scrdimensioninfo.maxdepth,
+                                                            SA_SHAREPENS,       TRUE,
+                                                            SA_LIKEWORKBENCH,   TRUE,
+                                                            SA_INTERLEAVED,     TRUE,
+                                                            SA_TITLE,           &#x27;Color Wheel Screen&#x27;,
+                                                            TAG_END] )
+                                GetRGB32( scr.viewport.colormap, 0, 32, colortable )
+
+                                rgb.red   := colortable[ 0 ]
+                                rgb.green := colortable[ 1 ]
+                                rgb.blue  := colortable[ 2 ]
+                                
+                                ConvertRGBToHSB( rgb, hsb )
+
+                                numpens := 0
+
+                                WHILE ( numpens &lt; GRADCOLORS )
+                                    hsb.brightness := Shl(Shl($FFFF - (Mul((Div($FFFF,GRADCOLORS)), numpens)),8),8)
+                                    /* Convert this dim level to RGB value */
+                                    ConvertHSBToRGB( hsb, rgb )
+                                    /* Allocate a pen */
+                                    penns[ numpens ] := ObtainPen( scr.viewport.colormap, -1, rgb.red, rgb.green, rgb.blue, PEN_EXCLUSIVE )
+                                    IF penns[ numpens ] = -1 THEN JUMP endme
+                                    /* stuff it in the color list */
+                                    color_list[ numpens ].len := 1
+                                    color_list[ numpens ].pen := penns[ numpens ]
+                                    /* next */
+                                    INC numpens
+                                ENDWHILE
+                            endme:
+                                penns[ numpens ] := -1
+                                color_list[ numpens ].len := 0
+
+                                ga_grslider := ExternalObject,
+                                            EXT_MinWidth,       10,
+                                            EXT_MinHeight,      10,
+                                            EXT_ClassID,        &#x27;gradientslider.gadget&#x27;,
+                                            EXT_NoRebuild,      TRUE,
+                                            GRAD_PENARRAY,      penns,
+                                            PGA_FREEDOM,        LORIENT_VERT,
+                                            TAG_END,
+                                            EndObject
+
+                                IF ( ga_grslider )
+                                    GetAttr( EXT_Object, ga_grslider, {realslider} )
+                                ENDIF
+
+                                wd_obj := WindowObject,
+                                    WINDOW_Title,           &#x27;Color Wheel&#x27;,
+                                    WINDOW_Screen,          scr,
+                                    WINDOW_AutoAspect,      TRUE,
+                                    WINDOW_ScaleWidth,      20,
+                                    WINDOW_ScaleHeight,     20,
+                                    WINDOW_NoBufferRP,      TRUE,
+                                    WINDOW_RMBTrap,         TRUE,
+                                    WINDOW_AutoKeyLabel,    TRUE,
+                                    WINDOW_MasterGroup,
+                                        ga_master := VGroupObject, NormalSpacing, NormalOffset,
+                                            StartMember, TitleSeparator( &#x27;Wheel &amp; Slider&#x27; ), EndMember,
+                                            StartMember,
+                                                HGroupObject, NormalSpacing,
+                                                     StartMember,
+                                                         /*
+                                                         **      The EXT_NOREBUILD tag may _not_ be set to
+                                                         **      TRUE for a colorwheel object. This is due
+                                                         **      to the fact that colorwheels cannot change
+                                                         **      size. This is also the reason why we need
+                                                         **      to track the attributes of the colorwheel.
+                                                         **/
+                                                         ga_wheel := ExternalObject,
+                                                             EXT_MinWidth,           80,
+                                                             EXT_MinHeight,          80,
+                                                             EXT_ClassID,            &#x27;colorwheel.gadget&#x27;,
+                                                             WHEEL_SCREEN,           scr,
+                                                             /*
+                                                             **      Pass a pointer to the &quot;real&quot; gradient slider
+                                                             **      here.
+                                                             **/
+                                                             WHEEL_GRADIENTSLIDER,   realslider,
+                                                             WHEEL_RED,              colortable[ 0 ],
+                                                             WHEEL_GREEN,            colortable[ 1 ],
+                                                             WHEEL_BLUE,             colortable[ 2 ],
+                                                             GA_FOLLOWMOUSE,         TRUE,
+                                                             GA_ID,                  ID_WHEEL,
+                                                             /*
+                                                             **      These attributes of the colorwheel are
+                                                             **      tracked and reset to the object after
+                                                             **      it has been rebuild. This way the current
+                                                             **      colorwheel internals will not be lost
+                                                             **      after the object is re-build.
+                                                             **/
+                                                             EXT_TrackAttr,          WHEEL_RED,
+                                                             EXT_TrackAttr,          WHEEL_GREEN,
+                                                             EXT_TrackAttr,          WHEEL_BLUE,
+                                                             EXT_TrackAttr,          WHEEL_HUE,
+                                                             EXT_TrackAttr,          WHEEL_SATURATION,
+                                                             EXT_TrackAttr,          WHEEL_BRIGHTNESS,
+                                                         EndObject,
+                                                     EndMember,
+                                                     /*
+                                                     **      Add the externalclass object of the
+                                                     **      gradient slider here. Right next to
+                                                     **      the colorwheel :)
+                                                     **/
+                                                     StartMember,
+                                                         ga_grslider, FixWidth( 20 ),
+                                                     EndMember,
+                                                EndObject,
+                                            EndMember,
+                                            StartMember, HorizSeparator, EndMember,
+                                            StartMember,
+                                                HGroupObject,
+                                                    VarSpace( DEFAULT_WEIGHT ),
+                                                    StartMember, ga_quit := KeyButton( &#x27;_Quit&#x27;, ID_QUIT ), EndMember,
+                                                    VarSpace( DEFAULT_WEIGHT ),
+                                                EndObject, FixMinHeight,
+                                            EndMember,
+                                        EndObject,
+                                EndObject
+
+                                IF wd_obj
+                                    IF win := WindowOpen( wd_obj )
+                                            /*
+                                            **      Obtain signal mask.
+                                            **/
+                                            GetAttr( WINDOW_SigMask, wd_obj, {signal} )
+                                            /*
+                                            **      Poll messages.
+                                            **/
+                                            WHILE running = TRUE
+                                                    /*
+                                                    **      Wait for the signal.
+                                                    **/
+                                                    Wait( signal )
+                                                    /*
+                                                    **      Call uppon the event handler.
+                                                    **/
+                                                    WHILE ( rc := HandleEvent( wd_obj )) &lt;&gt; WMHI_NOMORE
+                                                            SELECT rc
+                                                                    CASE    WMHI_CLOSEWINDOW
+                                                                            running := FALSE
+
+                                                                    CASE    ID_QUIT
+                                                                            running := FALSE
+
+                                                                    CASE    ID_WHEEL
+                                                                            GetAttr( WHEEL_HSB, ga_wheel, hsb )
+
+                                                                            i := 0
+
+                                                                            WHILE ( i &lt; numpens )
+                                                                                hsb.brightness := Shl(Shl($FFFF - (Mul((Div($FFFF,numpens)), i)),8),8)
+
+                                                                                ConvertHSBToRGB( hsb, rgb )
+
+                                                                                color_list[ i ].red := rgb.red
+                                                                                color_list[ i ].grn := rgb.green
+                                                                                color_list[ i ].blu := rgb.blue
+
+                                                                                INC i
+                                                                            ENDWHILE
+
+                                                                            LoadRGB32( scr.viewport, color_list )
+                                                            ENDSELECT
+                                                    ENDWHILE
+                                            ENDWHILE
+                                    ENDIF
+                                    /*
+                                    **      Disposing of the object
+                                    **      will automatically close the window
+                                    **      and dispose of all objects that
+                                    **      are attached to the window.
+                                    **/
+                                    DisposeObject( wd_obj )
+
+                                    /*
+                                    **      Release the allocated pens.
+                                    **/
+                                    WHILE ( numpens &gt; 0 )
+                                        DEC numpens
+                                        ReleasePen( scr.viewport.colormap, penns[ numpens ] )
+                                    ENDWHILE
+                                ELSE
+                                    WriteF( &#x27;Unable to create a window object\n&#x27; )
+                                ENDIF
+                                CloseScreen( scr )
+                            ELSE
+                                WriteF( &#x27;Unable to open your screen\n&#x27; )
+                            ENDIF
+                        ENDIF
+                    ENDIF
+                    CloseLibrary( gradientsliderbase )
+                ENDIF
+                CloseLibrary( colorwheelbase )
+            ENDIF
+            CloseLibrary( bguibase )
+        ELSE
+            WriteF( &#x27;Unable to open the bgui.library\n&#x27; )
+        ENDIF
+    ENDIF
+ENDPROC NIL
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

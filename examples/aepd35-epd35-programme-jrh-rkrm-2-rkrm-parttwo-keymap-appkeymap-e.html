@@ -1,0 +1,182 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>appkeymap.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-aepd35.html">AEPD35</a> &rsaquo; appkeymap.e</div><h1>File: <code>appkeymap.e</code></h1><p class="meta">156 lines · project <a href="../examples/pkg-aepd35.html"><code>AEPD35</code></a></p><p class="pathctx">AEPD35/EPD35/Programme/JRH-RKRM-2/RKRM_PartTwo/Keymap/appkeymap.e</p><p class="prose"><a href="../modules/appkeymap.html">appkeymap</a>.e - Subroutines to copy the default <a href="../modules/keymap.html">keymap</a>, modify the copy  Usage: (PTR TO <a href="../modules/keymap.html">keymap</a>) <a href="../modules/appkeymap.html">appkeymap</a>:=createAppKeyMap() PROC deleteAppKeyMap(<a href="../modules/appkeymap.html">appkeymap</a>:PTR TO <a href="../modules/keymap.html">keymap</a>)  This example modifies the copied <a href="../modules/keymap.html">keymap</a> by unmapping all of the numeric keypad keys.  This creates a good <a href="../modules/keymap.html">keymap</a> for use with eith</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/keymap.html">keymap</a></li></ul></div><h2>Source</h2><pre class="code">-&gt; appkeymap.e - Subroutines to copy the default keymap, modify the copy
+-&gt;
+-&gt; Usage: (PTR TO keymap) appkeymap:=createAppKeyMap()
+-&gt;        PROC deleteAppKeyMap(appkeymap:PTR TO keymap)
+-&gt;
+-&gt; This example modifies the copied keymap by unmapping all of the numeric
+-&gt; keypad keys.  This creates a good keymap for use with either keymap.library
+-&gt; MapANSI() or commodities InvertString().  If you used a default keymap with
+-&gt; the above functions, numeric keypad raw key values would be returned for
+-&gt; keys which are available with fewer keypresses on numeric pad than on the
+-&gt; normal keyboard.  It is generally preferable to have the normal keyboard
+-&gt; raw values since many applications attach special meanings to numeric pad
+-&gt; keys.  The AlterAppKeyMap() routine in this module could easilty be
+-&gt; modified to instead set new values for numeric pad or function keys.
+-&gt;
+-&gt; IMPORTANT: Do Not Use SetKeyMapDefault() unless you are a system
+-&gt; preferences editor OR an application that takes over the machine.  If you
+-&gt; want to use a customized keymap such as this in your application, open your
+-&gt; own Intuition window, attach a console device to it, and then use the
+-&gt; console device SETKEYMAP command to set your console device unit to your
+-&gt; custom keymap.
+
+-&gt;&gt;&gt; Header (globals)
+OPT MODULE
+
+MODULE &#x27;keymap&#x27;,
+       &#x27;devices/keymap&#x27;
+
+ENUM ERR_NONE, ERR_ASK, ERR_LIB
+
+RAISE ERR_ASK IF AskKeyMapDefault()=NIL,
+      ERR_LIB IF OpenLibrary()=NIL
+
+-&gt; Raw keys we might want to remap which are the same on all keyboards
+EXPORT ENUM UP_KEY=$4C, DOWN_KEY, RIGHT_KEY, LEFT_KEY, F1_KEY, F2_KEY, F3_KEY,
+       F4_KEY, F5_KEY, F6_KEY, F7_KEY, F8_KEY, F9_KEY, F10_KEY
+
+EXPORT CONST N0_KEY=$0F, N1_KEY=$1D, N2_KEY=$1E, N3_KEY=$1F, N4_KEY=$2D,
+             N5_KEY=$2E, N6_KEY=$2F, N7_KEY=$3D, N8_KEY=$3E, N9_KEY=$3F
+
+EXPORT CONST NPERIOD_KEY=$3C, NOPAREN_KEY=$5A, NCPAREN_KEY=$5B, NSLASH_KEY=$5C,
+             NASTER_KEY=$5D,  NMINUS_KEY=$4A,  NPLUS_KEY=$5E,   NENTER_KEY=$43
+
+EXPORT CONST RETURN_KEY=$44, HELP_KEY=$5F
+
+-&gt; Count of elements in keymap arrays
+EXPORT CONST MAP_SIZE=64, TYPE_SIZE=64, CAPS_SIZE=8, REPS_SIZE=8
+EXPORT CONST MAP_SIZE_P=MAP_SIZE*2, TYPE_SIZE_P=TYPE_SIZE*2,
+             CAPS_SIZE_P=CAPS_SIZE*2, REPS_SIZE_P=REPS_SIZE*2
+
+-&gt; We allocate our Lo and Hi array pairs each as a single array
+EXPORT OBJECT keyMapArrays
+   lhKeyMap[MAP_SIZE_P]:ARRAY OF LONG
+   lhKeyMapTypes[TYPE_SIZE_P]:ARRAY
+   lhCapsable[CAPS_SIZE_P]:ARRAY
+   lhRepeatable[REPS_SIZE_P]:ARRAY
+ENDOBJECT
+
+DEF karrays:PTR TO keyMapArrays, defkeymap:PTR TO keymap,
+    appkeymap:PTR TO keymap, mapsize
+-&gt;&gt;&gt;
+
+-&gt;&gt;&gt; EXPORT PROC createAppKeyMap()
+EXPORT PROC createAppKeyMap() HANDLE
+  keymapbase:=OpenLibrary(&#x27;keymap.library&#x27;, 37)
+  defkeymap:=NIL  -&gt; E-Note: help with error trapping
+  -&gt; Get a pointer to the keymap which is set as the system default
+  defkeymap:=AskKeyMapDefault()
+  -&gt; Allocate our KeyMap structures and arrays
+  mapsize:=SIZEOF keymap+SIZEOF keyMapArrays
+  appkeymap:=NIL
+  appkeymap:=NewR(mapsize)
+  -&gt; Init our appkeymap fields to point to our allocated arrays.
+  -&gt; Each LH array contains a Lo and a Hi array.
+  -&gt; E-Note: the +1 in the C version means +SIZEOF keymap
+  karrays:=appkeymap+SIZEOF keymap
+  appkeymap.lokeymap:=karrays.lhKeyMap
+  appkeymap.hikeymap:=karrays.lhKeyMap+(MAP_SIZE*(SIZEOF LONG))
+  appkeymap.lokeymaptypes:=karrays.lhKeyMapTypes
+  appkeymap.hikeymaptypes:=karrays.lhKeyMapTypes+TYPE_SIZE
+  appkeymap.locapsable:=karrays.lhCapsable
+  appkeymap.hicapsable:=karrays.lhCapsable+CAPS_SIZE
+  appkeymap.lorepeatable:=karrays.lhRepeatable
+  appkeymap.hirepeatable:=karrays.lhRepeatable+REPS_SIZE
+
+  -&gt; Copy the user&#x27;s default system keymap arrays to our appkeymap arrays to
+  -&gt; get the proper keymappings for the user&#x27;s keyboard.
+  copyKeyMap(defkeymap, appkeymap)
+
+  -&gt; Now make our changes to our appkeymap
+  alterAppKeyMap(appkeymap)
+EXCEPT DO
+  IF keymapbase THEN CloseLibrary(keymapbase)
+ENDPROC appkeymap
+-&gt;&gt;&gt;
+
+-&gt;&gt;&gt; EXPORT PROC deleteAppKeyMap(appkeymap:PTR TO keymap)
+EXPORT PROC deleteAppKeyMap(appkeymap:PTR TO keymap)
+  IF appkeymap THEN Dispose(appkeymap)
+ENDPROC
+-&gt;&gt;&gt;
+
+-&gt;&gt;&gt; PROC alterAppKeyMap(appkeymap:PTR TO keymap)
+PROC alterAppKeyMap(appkeymap:PTR TO keymap)
+  DEF nullkeys, keymappings:PTR TO LONG, keymaptypes, rawkeynum, i
+  -&gt; NIL terminated ARRAY of keys our application wants to remap or disable
+  nullkeys:=[N0_KEY,      N1_KEY,      N2_KEY,      N3_KEY,      N4_KEY,
+             N5_KEY,      N6_KEY,      N7_KEY,      N8_KEY,      N9_KEY,
+             NPERIOD_KEY, NOPAREN_KEY, NCPAREN_KEY, NSLASH_KEY,
+             NASTER_KEY,  NMINUS_KEY,  NPLUS_KEY,   NENTER_KEY,
+             NIL]:CHAR
+  -&gt; Our application wants numeric pad keys remapped to nothing so that we can
+  -&gt; use this keymap with MapANSI and NOT get back raw codes for numeric
+  -&gt; keypad.  Alternatively (for example) you could set the types to
+  -&gt; KCF_STRING and set the mappings to point to NIL terminated strings.
+  keymappings:=appkeymap.lokeymap
+  keymaptypes:=appkeymap.lokeymaptypes
+
+  i:=0
+  WHILE rawkeynum:=nullkeys[i]
+    -&gt; Because we allocated each of our Lo and Hi ARRAY pairs as sequential
+    -&gt; memory, we can use the RAWKEY values directly to index into our
+    -&gt; sequential Lo/Hi ARRAY
+    keymaptypes[rawkeynum]:=KCF_NOP
+    INC i
+  ENDWHILE
+ENDPROC
+-&gt;&gt;&gt;
+
+-&gt;&gt;&gt; PROC copyKeyMap(s:PTR TO keymap, d:PTR TO keymap)
+PROC copyKeyMap(s:PTR TO keymap, d:PTR TO keymap)
+  DEF bb, ll:PTR TO LONG, i
+  -&gt; Copy keymap s (source) to keymap d (dest)
+  ll:=s.lokeymap
+  FOR i:=0 TO MAP_SIZE-1 DO d.lokeymap[i]:=ll[]++
+  ll:=s.hikeymap
+  FOR i:=0 TO MAP_SIZE-1 DO d.hikeymap[i]:=ll[]++
+
+  bb:=s.lokeymaptypes
+  FOR i:=0 TO TYPE_SIZE-1 DO d.lokeymaptypes[i]:=bb[]++
+  bb:=s.hikeymaptypes
+  FOR i:=0 TO TYPE_SIZE-1 DO d.hikeymaptypes[i]:=bb[]++
+
+  bb:=s.locapsable
+  FOR i:=0 TO CAPS_SIZE-1 DO d.locapsable[i]:=bb[]++
+  bb:=s.hicapsable
+  FOR i:=0 TO CAPS_SIZE-1 DO d.hicapsable[i]:=bb[]++
+
+  bb:=s.lorepeatable
+  FOR i:=0 TO REPS_SIZE-1 DO d.lorepeatable[i]:=bb[]++
+  bb:=s.hirepeatable
+  FOR i:=0 TO REPS_SIZE-1 DO d.hirepeatable[i]:=bb[]++
+ENDPROC
+-&gt;&gt;&gt;
+
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

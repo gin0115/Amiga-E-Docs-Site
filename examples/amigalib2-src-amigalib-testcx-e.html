@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>testcx.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-amigalib2.html">AmigaLib2</a> &rsaquo; testcx.e</div><h1>File: <code>testcx.e</code></h1><p class="meta">95 lines · project <a href="../examples/pkg-amigalib2.html"><code>AmigaLib2</code></a></p><p class="pathctx">AmigaLib2/Src/AmigaLib/testcx.e</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/commodities.html">commodities</a></li></ul></div><h2>Source</h2><pre class="code">OPT PREPROCESS
+
+MODULE &#x27;commodities&#x27;,
+       &#x27;amigalib/cx&#x27;,
+       &#x27;devices/timer&#x27;,
+       &#x27;devices/inputevent&#x27;,
+       &#x27;dos/dos&#x27;,
+       &#x27;exec/ports&#x27;,
+       &#x27;libraries/commodities&#x27;
+
+ENUM ERR_NONE, ERR_BRKR, ERR_CRCX, ERR_CXERR, ERR_HOT, ERR_LIB, ERR_PORT
+
+RAISE ERR_BRKR IF CxBroker()=NIL,
+      ERR_CRCX IF CreateCxObj()=NIL,
+      ERR_LIB  IF OpenLibrary()=NIL,
+      ERR_PORT IF CreateMsgPort()=NIL
+
+CONST EVT_HOTKEY=1
+
+DEF broker_mp=NIL:PTR TO mp, broker=NIL, cxsigflag, ie:PTR TO inputevent
+
+PROC main() HANDLE
+  DEF hotkey, msg, newshell
+  newshell:=&#x27;newshell\b&#x27;
+  cxbase:=OpenLibrary(&#x27;commodities.library&#x27;, 37)
+  broker_mp:=CreateMsgPort()
+  cxsigflag:=Shl(1, broker_mp.sigbit)
+
+  broker:=CxBroker([NB_VERSION, 0,
+                   &#x27;HotKey&#x27;, &#x27;Little Hotkey&#x27;, &#x27;A little hot key commodity&#x27;,
+                    NBU_UNIQUE OR NBU_NOTIFY,
+                    0, 0, 0, broker_mp, 0]:newbroker, NIL)
+
+  IF hotkey:=hotKey(&#x27;rawkey control f1&#x27;, broker_mp, EVT_HOTKEY)
+    AttachCxObj(broker, hotkey)
+    IF CxObjError(hotkey)&lt;&gt;FALSE
+      Raise(ERR_CXERR)
+    ELSE
+      IF ie:=invertStringRev(newshell, NIL)
+        ActivateCxObj(broker, TRUE)
+        processMsg()
+        freeIEvents(ie)
+      ENDIF
+    ENDIF
+  ELSE
+    Raise(ERR_HOT)
+  ENDIF
+EXCEPT DO
+  IF broker THEN DeleteCxObjAll(broker)
+  IF broker_mp
+    WHILE msg:=GetMsg(broker_mp) DO ReplyMsg(msg)
+    DeleteMsgPort(broker_mp)
+  ENDIF
+  IF cxbase THEN CloseLibrary(cxbase)
+  SELECT exception
+  CASE ERR_BRKR;   WriteF(&#x27;Error: Could not create broker\n&#x27;)
+  CASE ERR_CRCX;   WriteF(&#x27;Error: Could not create CX object\n&#x27;)
+  CASE ERR_CXERR;  WriteF(&#x27;Error: Could not activate broker\n&#x27;)
+  CASE ERR_HOT;    WriteF(&#x27;Error: Could not create hot key\n&#x27;)
+  CASE ERR_LIB;    WriteF(&#x27;Error: Could not open required library\n&#x27;)
+  CASE ERR_PORT;   WriteF(&#x27;Error: Could not create message port\n&#x27;)
+  ENDSELECT
+ENDPROC
+
+PROC processMsg()
+  DEF msg, sigrcvd, msgid, msgtype, going=TRUE
+  WHILE going
+    sigrcvd:=Wait(SIGBREAKF_CTRL_C OR cxsigflag)
+    WHILE msg:=GetMsg(broker_mp)
+      msgid:=CxMsgID(msg)
+      msgtype:=CxMsgType(msg)
+      ReplyMsg(msg)
+      SELECT msgtype
+      CASE CXM_IEVENT
+        IF msgid=EVT_HOTKEY
+          WriteF(&#x27;You hit the HotKey -- adding input events\n&#x27;)
+          AddIEvents(ie)
+        ENDIF
+      CASE CXM_COMMAND
+        SELECT msgid
+        CASE CXCMD_DISABLE
+          ActivateCxObj(broker, FALSE)
+        CASE CXCMD_ENABLE
+          ActivateCxObj(broker, TRUE)
+        CASE CXCMD_KILL
+          going:=FALSE
+        CASE CXCMD_UNIQUE
+          going:=FALSE
+        ENDSELECT
+      ENDSELECT
+    ENDWHILE
+    IF sigrcvd AND SIGBREAKF_CTRL_C THEN going:=FALSE
+  ENDWHILE
+ENDPROC
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

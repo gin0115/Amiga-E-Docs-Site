@@ -1,0 +1,151 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>EasyExample.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-energy.html">energy</a> &rsaquo; EasyExample.e</div><h1>File: <code>EasyExample.e</code></h1><p class="meta">125 lines · project <a href="../examples/pkg-energy.html"><code>energy</code></a></p><p class="pathctx">energy/Energy/C2E/EasyExample.e</p><p class="prose">** ** Id: EasyExample.e ** Author: Marco Talamelli ** Date: 20/02/96 21:30 $ ** ** A simple ILBM file viewer. To compile with Amiga E v3.2e ** ** THIS IS PD. NO WARRANTY. USE AT YOUR OWN RISK. **</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/iff.html">libraries/iff</a></li></ul></div><h2>Source</h2><pre class="code">/*
+**
+**	Id: EasyExample.e
+**	Author: Marco Talamelli
+**	Date: 20/02/96 21:30 $
+**
+**	A simple ILBM file viewer. To compile with Amiga E v3.2e
+**
+**	THIS IS PD. NO WARRANTY. USE AT YOUR OWN RISK.
+**
+*/
+
+MODULE	&#x27;libraries/iff&#x27;,&#x27;iff&#x27;,&#x27;dos/dos&#x27;,&#x27;intuition/screens&#x27;,&#x27;reqtools&#x27;,
+	&#x27;libraries/reqtools&#x27;,&#x27;graphics/view&#x27;,&#x27;graphics/gfxbase&#x27;
+
+PROC main()
+
+DEF	filereq:PTR TO rtfilerequester,filename[80]:STRING,name[80]:STRING,codice,
+	iff,bmhd:bmhd,myscreen:PTR TO screen,ns:ns,count,colortable[256]:ARRAY OF INT
+
+IF iffbase := OpenLibrary(&#x27;iff.library&#x27;,23)
+IF reqtoolsbase:=OpenLibrary(&#x27;reqtools.library&#x27;,37)
+
+  IF filereq := RtAllocRequestA(RT_FILEREQ, NIL)
+    filename[0] := 0
+
+     WHILE RtFileRequestA(filereq, filename, &#x27;Load Picture...&#x27;,0)
+       IF StrLen(filereq.dir) THEN StringF(name,&#x27;\s/\s&#x27;,filereq.dir,filename) ELSE StringF(name,&#x27;\s&#x27;,filename)
+		
+	IF iff := IfFL_OpenIFF(name, IFFL_MODE_READ)
+
+		IF bmhd := IfFL_GetBMHD(iff)
+
+			ns.type			:= CUSTOMSCREEN OR SCREENQUIET OR SCREENBEHIND
+			ns.width		:= bmhd.w
+			ns.height		:= bmhd.h
+			ns.depth		:= bmhd.nplanes
+			ns.viewmodes	:= IfFL_GetViewModes(iff)
+
+			IF myscreen := OpenScreen(ns)
+				setoverscan(myscreen)
+
+				count := IfFL_GetColorTab(iff, colortable)
+
+				/* Fix for old broken HAM pictures */
+				IF (count&gt;32) THEN count := 32
+
+				LoadRGB4(myscreen.viewport, colortable, count)
+
+				IF IfFL_DecodePic(iff, myscreen.bitmap)
+
+					ScreenToFront(myscreen)
+					REPEAT
+					codice:=Mouse()
+					UNTIL codice=1
+				ELSE
+					
+					RtEZRequestA(&#x27;Can\at decode picture.\n&#x27;, &#x27;Aargh!&#x27;, NIL, NIL, NIL)
+				ENDIF
+				CloseScreen(myscreen)
+			ELSE
+				RtEZRequestA(&#x27;Can\at open screen.\n&#x27;, &#x27;Aargh!&#x27;, NIL, NIL, NIL)
+			ENDIF
+		ELSE
+			RtEZRequestA(&#x27;This file has no bitmap header.\n&#x27;, &#x27;Aargh!&#x27;, NIL, NIL, NIL)
+		ENDIF
+
+		IfFL_CloseIFF(iff)
+	ELSE
+	RtEZRequestA(&#x27;Can\at open file \a\s\a\n&#x27;, &#x27;Aargh!&#x27;, NIL, [name], NIL)
+	ENDIF
+	ENDWHILE
+		RtFreeRequest(filereq)
+	ELSE
+		RtEZRequestA(&#x27;No Memory!!&#x27;, &#x27;Aargh!&#x27;, NIL, NIL, NIL)
+	ENDIF
+	RtEZRequestA(&#x27;IfFL_IFFError value is \d\n&#x27;,&#x27;Ok&#x27;, NIL, [IfFL_IFFError()], NIL)
+
+	 CloseLibrary(reqtoolsbase)
+ELSE
+	RtEZRequestA(&#x27;Can\at open ReqTools.library V\d+\n&#x27;, &#x27;Aargh!&#x27;, NIL, [37], NIL)
+ENDIF
+	CloseLibrary(iffbase)		/* THIS IS VERY IMPORTANT! */
+ELSE
+	RtEZRequestA(&#x27;Can\at open iff.library V\d+\n&#x27;, &#x27;Aargh!&#x27;, NIL, [23], NIL)
+ENDIF
+ENDPROC
+
+PROC setoverscan(screen:PTR TO screen)
+
+DEF	cols, rows, x,y,vp:PTR TO viewport,gfxbase:gfxbase
+
+x:=screen.width
+y:=screen.height
+vp:= screen.viewport
+
+	cols := Shr(gfxbase.normaldisplaycolumns,1)
+
+	rows := gfxbase.normaldisplayrows
+	IF (rows&gt;300) THEN rows:=Shr(rows,1)
+	x :=x-cols
+	IF (vp.modes AND V_HIRES) THEN x :=x-cols
+	y :=y-rows
+	IF (vp.modes AND V_LACE) THEN y :=y-rows
+	x :=Shr(x,1)
+	IF (x&lt;0) THEN x:=0
+	y :=Shr(y,1)
+	IF (y&lt;0) THEN y:=0
+	IF (y&gt;32) THEN y:=32
+
+	/*
+	**	To avoid color distortions in HAM mode, we must limit the
+	**	left edge of the screen to the leftmost value the hardware
+	**	can display.
+	*/
+	IF (vp.modes AND V_HAM)
+
+		IF (gfxbase.actiview.dxoffset-x &lt; 96) THEN x := gfxbase.actiview.dxoffset-96
+	ENDIF
+	vp.dxoffset := 0
+	vp.dyoffset := 0
+	MakeScreen(screen)
+	RethinkDisplay()
+ENDPROC
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

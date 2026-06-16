@@ -1,0 +1,294 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>om.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-gec-extra.html">GEC-extra</a> &rsaquo; om.e</div><h1>File: <code>om.e</code></h1><p class="meta">268 lines · project <a href="../examples/pkg-gec-extra.html"><code>GEC-extra</code></a></p><p class="pathctx">GEC-extra/GEC/source/Grio/End/om.e</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/dos.html">dos/dos</a></li></ul></div><h2>Source</h2><pre class="code">
+MODULE &#x27;dos/dos&#x27;,&#x27;exec/memory&#x27;,&#x27;grio/skiparg&#x27;,
+       &#x27;grio/str/decstr2num&#x27;,&#x27;grio/char&#x27;
+
+
+CONST START_HEADER_SIZE=30
+
+
+DEF fh
+
+
+PROC main()
+
+DEF num , fill ,buf=NIL , nr=0, val=6 , x 
+DEF p:PTR TO LONG , name[110]:STRING ,p2 , p3
+DEF n2=$2000000,filter=$FFFF,cpu
+IF arg[]
+   cpu:=getCPU()
+   skiparg(arg)
+   x:=StrLen(arg)
+   IF arg[x-1]=&quot;O&quot; THEN arg[x-1]:=&quot;o&quot;
+   IF StrCmp(arg+x-2,&#x27;.o&#x27;,ALL)
+      StrCopy(name,arg,ALL)
+      arg[x-2]:=0
+   ELSE
+      StringF(name,&#x27;\s.o&#x27;,arg)
+   ENDIF
+   IF (fh:=Open(name,OLDFILE))
+      num:=FileLength(name)
+      IF (buf:=AllocMem(num+4,MEMF_ANY))
+         ^buf:=num+4
+         buf:=buf+4
+         Read(fh,buf,num)
+         WriteF(&#x27;reading file &quot;\s&quot; , size = \d\n&#x27;,name,num)
+      ENDIF
+      Close(fh)
+   ELSE
+      WriteF(&#x27;can\at open file &quot;\s&quot;\n&#x27;,name)
+      RETURN
+   ENDIF
+
+   IF buf
+      StringF(name,&#x27;\s.m&#x27;,arg)
+      IF (fh:=Open(name,NEWFILE))
+         p:=buf
+         REPEAT
+            fill:=^p++
+            num:=num-4
+         UNTIL (fill=$3E9) OR (num=0)
+         IF num &gt; 0
+            PutInt({startHeader}+16,cpu)
+            write({startHeader},START_HEADER_SIZE)
+            fill:=(^p*4)+4
+            write(p,fill)
+            p:=p+fill
+            IF p[]=$3EC
+               p++
+               fill:=(p[])*4
+               write([7]:INT,2)
+               write(p,4)
+               p:=p+8
+               write(p,fill)
+               p:=p+fill+4
+            ENDIF
+            IF p[]&lt;&gt;$3EF
+               Close(fh)
+               JUMP deletefile
+            ENDIF
+            write([4]:INT,2)
+            p2:=p:=p+4
+            num:=0
+            WHILE (fill:=p[]++)
+               x:=(fill AND filter)*4
+               IF (fill&gt;=n2)
+                  INC nr
+                  val:=val+x+6
+               ELSE
+                  INC num
+               ENDIF
+               p:=p+x+4
+            ENDWHILE
+            p3:=p:=p2
+            WHILE num
+                fill:=p[]++
+                x:=(fill AND filter)*4
+                p:=p+x
+                IF (fill&lt;n2) AND (fill&gt;=$1000000)
+                   symbols(p-x,p)
+                   DEC num
+                ENDIF
+                p++
+            ENDWHILE
+            write([-1,IF nr THEN 1 ELSE 0]:INT,4)
+            IF nr
+               p:=p3
+               write([val]:LONG,4)
+               WHILE nr
+                    fill:=p[]++
+                    num:=(fill AND filter)*4
+                    IF (fill&gt;=n2)
+                       p2:=(-2 AND (num+3))
+                       write([p2]:INT,2)
+                       p3:=p
+                       p:=p+num
+                       write(p,4)
+                       p[]++:=0
+                       UpperStr(p3)
+                       write(p3,num)
+                       FOR x:=num TO p2-1 DO Out(fh,0)
+                       DEC nr
+                    ELSE
+                       p:=p+num+4
+                    ENDIF
+               ENDWHILE
+               write([0]:INT,2)
+            ENDIF
+         ENDIF
+         Close(fh)
+         num:=FileLength(name)
+         IF num&gt;0
+            WriteF(&#x27;writing &quot;\s&quot; , size = \d\n&#x27;,name,num)
+         ELSE
+            deletefile:
+            DeleteFile(name)
+         ENDIF
+      ENDIF
+      buf:=buf-4
+      FreeMem(buf,^buf)
+   ENDIF
+ELSE
+   WriteF(&#x27;USAGE: &lt;object name&gt;\n&#x27;)
+ENDIF
+
+ENDPROC
+
+
+startHeader:
+
+CHAR &#x27;EMOD&#x27;
+INT  5,0,0,33,2,$9800
+INT  0,0,0,$A,0,0,3
+
+
+
+PROC symbols(ptr,start)
+DEF  align , len , pos , s[10]:STRING , dp ,name ,
+     def , ls[20]:LIST , lens
+
+name:=ptr
+IF (pos:=InStr(name,&#x27;_&#x27;,1)) &gt; 0
+   IF name[pos+1]=&quot;_&quot;
+      AstrCopy(name+pos+1,name+pos+2,ALL)
+      pos:=InStr(name,&#x27;_&#x27;,pos+1)
+   ENDIF
+   IF pos&gt;0
+      name[pos]:=0
+      ListAdd(ls,[name+pos+1],1)
+   ENDIF
+ENDIF
+len:=StrLen(name)
+align:=(-2 AND (len+1))
+IF align=len THEN align:=align+2
+write([align]:INT,2)
+name[]:=lowerChar(name[])
+write(name,len)
+REPEAT
+   Out(fh,0)
+   DEC align
+UNTIL align=len
+ptr:=ptr+len
+lens:=StrLen(ptr+1)
+IF ListLen(ls)
+   pos:=0
+   REPEAT
+      IF (pos:=InStr(ptr,&#x27;_&#x27;,pos+1)) &gt; 0
+         IF ptr[pos+1]=&quot;_&quot;
+            AstrCopy(ptr+pos+1,ptr+pos+2,ALL)
+            pos:=InStr(ptr,&#x27;_&#x27;,pos+1)
+            DEC lens
+         ENDIF
+         IF pos &gt;0
+            ptr[pos]:=0
+            ListAdd(ls,[ptr+pos+1],1)
+         ENDIF
+      ENDIF
+   UNTIL pos=-1
+ENDIF
+write(start,4)
+write([1,ListLen(ls)]:INT,4)
+len:=ListLen(ls)
+WriteF(&#x27;PROC \s(\s&#x27;,name,IF len=0 THEN &#x27;)\n&#x27; ELSE &#x27;&#x27;)
+IF len
+   FOR dp:=0 TO len-1
+       WriteF(&#x27;\s&#x27;,ls[dp])
+       WriteF(IF (dp+1)=ListLen(ls) THEN &#x27;)\n&#x27; ELSE &#x27;,&#x27;)
+   ENDFOR
+ENDIF
+dp:=0
+IF len
+   FOR len:=len-1 TO 0 STEP -1
+       WriteF(&#x27;value for &quot;\s&quot; parameter (y/n) : &#x27;,ls[len])
+       ReadStr(stdin,s)
+       EXIT ($20 OR s[])&lt;&gt;&quot;y&quot;
+       INC dp
+   ENDFOR
+ENDIF
+write([dp]:LONG,4)
+len:=ListLen(ls)
+WHILE dp
+     WriteF(&#x27;enter value for &quot;\s&quot; parameter : &#x27;,ls[len-dp])
+     ReadStr(stdin,s)
+     def:=decStr2Num(IF (s[]=&quot;-&quot;) OR (s[]=&quot;+&quot;) THEN s+1 ELSE s)
+     IF def=-1
+        WriteF(&#x27;bad value , try again\n&#x27;)
+     ELSE
+        write([IF s[]=&quot;-&quot; THEN -def ELSE def]:LONG,4)
+        DEC dp
+     ENDIF
+ENDWHILE
+IF len
+   align:=(-2 AND (lens+1))
+   IF align=lens THEN align:=align+2
+   write([align]:INT,2)
+   FOR dp:=0 TO len-1
+       write(ls[dp],StrLen(ls[dp]))
+       IF (dp+1)&lt;len THEN Out(fh,&quot;,&quot;)
+   ENDFOR
+   INC len
+   REPEAT
+      Out(fh,0)
+      DEC align
+   UNTIL align=lens
+ELSE
+   write([0]:INT,2)
+ENDIF
+
+ENDPROC
+
+
+
+PROC write(buf,len) IS Write(fh,buf,len)
+
+
+
+PROC getCPU()
+DEF cpu[5]:STRING,x,y=-1
+WriteF(&#x27;Enter CPU type for this module: &#x27;)
+x:=ReadStr(stdin,cpu)
+IF x=5
+   Exists({x},[&#x27;68000&#x27;,&#x27;68010&#x27;,&#x27;68020&#x27;,&#x27;68030&#x27;,&#x27;68040&#x27;,&#x27;68060&#x27;,&#x27;&#x27;],`(y:=y+1) BUT StrCmp(cpu,x))
+   IF y=6
+      badcpu()
+   ENDIF
+   y:=Shr(y,1)
+ELSEIF x=0
+   y:=0
+ELSE
+   badcpu()
+ENDIF
+ENDPROC y
+
+PROC badcpu()
+WriteF(&#x27;You typed bad name of CPU\n&#x27;)
+CleanUp()
+ENDPROC
+
+
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

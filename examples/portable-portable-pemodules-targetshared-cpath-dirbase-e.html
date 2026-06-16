@@ -1,0 +1,343 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>cPath_DirBase.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-portable.html">PortablE</a> &rsaquo; cPath_DirBase.e</div><h1>File: <code>cPath_DirBase.e</code></h1><p class="meta">317 lines · project <a href="../examples/pkg-portable.html"><code>PortablE</code></a></p><p class="pathctx">PortablE/PortablE/PEmodules/targetShared/cPath_DirBase.e</p><p class="prose">cPath_DirBase.e 24-02-2017 Abstract <a href="../modules/classes.html">classes</a> &amp; host-independant procedures/methods for portable dir access. Copyright (c) 2007,2008,2009,2012,2016,2017 Christopher Steven Handley ( http://cshandley.co.uk/email ) All rights reserved. Redistribution and use in source and binary <a href="../modules/forms.html">forms</a>, with or without m</p><h2>Source</h2><pre class="code">/* cPath_DirBase.e 24-02-2017
+	Abstract classes &amp; host-independant procedures/methods for portable dir access.
+
+
+Copyright (c) 2007,2008,2009,2012,2016,2017 Christopher Steven Handley ( http://cshandley.co.uk/email )
+All rights reserved.
+
+Redistribution and use in source and binary forms, with or without modification,
+are permitted provided that the following conditions are met:
+
+* The source code must not be modified after it has been translated or converted
+away from the PortablE programming language.  For clarification, the intention
+is that all development of the source code must be done using the PortablE
+programming language (as defined by Christopher Steven Handley).
+
+* Redistributions of source code must retain the above copyright notice, this
+list of conditions and the following disclaimer.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS &quot;AS IS&quot; AND
+ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+DISCLAIMED.  IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR
+TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
+THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+*/
+
+-&gt;Basically completed 03-01-09, restarted 15-11-08, stopped 10-11-07, started 07-11-07.
+
+OPT POINTER, INLINE
+MODULE &#x27;targetShared/cPath_sharedBase&#x27;
+MODULE &#x27;target/std/pTime&#x27;
+MODULE &#x27;CSH/pString&#x27;
+
+/*
+OPT PREPROCESS, NATIVE	-&gt;#work-around#
+
+-&gt;#work-around# for 64-bit values not handled correctly by AmiDevCpp GCC for some PPC processors
+TYPE BIGVALUE2 IS NATIVE {long} BIGVALUE
+#private
+#define BIGVALUE BIGVALUE2
+#public
+*/
+
+PROC new()
+	-&gt;for makeUniqueName() &amp; makeUniquePath()
+	cPath_randomSeed := CurrentTime(/*zone0local1utc2quick*/ 2)!!VALUE
+ENDPROC
+
+/*****************************/ -&gt;cBaseDir class is the directory abstract interface
+CLASS cBaseDir ABSTRACT OF cPath
+ENDCLASS
+PROC new() OF cBaseDir IS EMPTY
+
+-&gt;closes the current dir &amp; opens the parent dir
+PROC openParent(forceOpen=FALSE:BOOL) OF cBaseDir RETURNS success:BOOL
+	DEF currentPath:OWNS STRING, parentPath:OWNS STRING
+	
+	currentPath := ExpandPath(self.getPath())
+	parentPath  := ExtractSubPath(currentPath)
+	
+	self.close()
+	success := self.open(parentPath, self.readOnly, forceOpen)
+	IF success = FALSE
+		IF self.open(currentPath, self.readOnly, TRUE) = FALSE	-&gt;forceOpen=TRUE
+			Throw(&quot;BUG&quot;, &#x27;cBaseDir.openParent(); failed to reopen current dir, after failed to open parent&#x27;)
+		ENDIF
+	ENDIF
+FINALLY
+	END currentPath, parentPath
+ENDPROC
+
+PROC openChild(relativePath:ARRAY OF CHAR, forceOpen=FALSE:BOOL) OF cBaseDir RETURNS success:BOOL IS EMPTY
+
+PROC makeEntryList() OF cBaseDir RETURNS list:OWNS PTR TO cDirEntryList IS EMPTY
+
+
+/*****************************/ -&gt;cDirEntryList class
+CLASS cDirEntryList PRIVATE
+	head:OWNS STRING
+	prev   :STRING
+	current:STRING
+ENDCLASS
+
+-&gt;PRIVATE, do not use!
+PROC new() OF cDirEntryList
+	self.head := NILS
+	self.prev    := NILS
+	self.current := NILS
+ENDPROC
+
+PROC end() OF cDirEntryList
+	END self.head
+	-&gt;  self.prev
+	-&gt;  self.current
+ENDPROC
+
+PROC make() OF cDirEntryList RETURNS object:OWNS PTR TO cDirEntryList
+	NEW object
+ENDPROC
+
+PROC clone() OF cDirEntryList RETURNS clone:OWNS PTR TO cDirEntryList
+	clone := self.make()
+	clone.new()
+	clone.addList(self)
+ENDPROC
+
+-&gt;go to first name in list, returning if it exists
+-&gt;NOTE: For any0file1dir2, supply 1 for the first file name, or 2 for the first dir name.
+PROC gotoFirst(any0file1dir2=0) OF cDirEntryList RETURNS exists:BOOL
+	DEF match:BOOL
+	
+	-&gt;use check
+	IF (any0file1dir2 &lt; 0) OR (any0file1dir2 &gt; 2) THEN Throw(&quot;EMU&quot;, &#x27;cDirEntryList.gotoFirst(); any0file1dir2 &lt;&gt; 0 or 1 or 2&#x27;)
+	
+	self.prev    := NILS
+	self.current := self.head
+	WHILE exists := (self.current &lt;&gt; NILS)
+		SELECT 3 OF any0file1dir2
+		CASE 0 ; match := TRUE
+		CASE 1 ; match := IsFile(self.current)
+		CASE 2 ; match :=  IsDir(self.current)
+		ENDSELECT
+		IF match = FALSE THEN self.current := Next(self.prev := self.current)
+	ENDWHILE IF match
+ENDPROC
+
+-&gt;go to next name in list, returning if it exists
+-&gt;NOTE: For any0file1dir2, supply 1 for the next file name, or 2 for the next dir name.
+PROC gotoNext(any0file1dir2=0) OF cDirEntryList RETURNS exists:BOOL
+	DEF match:BOOL
+	
+	-&gt;use check
+	IF (any0file1dir2 &lt; 0) OR (any0file1dir2 &gt; 2) THEN Throw(&quot;EMU&quot;, &#x27;cDirEntryList.gotoNext(); any0file1dir2 &lt;&gt; 0 or 1 or 2&#x27;)
+	
+	self.current := Next(self.prev := self.current)
+	WHILE exists := (self.current &lt;&gt; NILS)
+		SELECT 3 OF any0file1dir2
+		CASE 0 ; match := TRUE
+		CASE 1 ; match := IsFile(self.current)
+		CASE 2 ; match :=  IsDir(self.current)
+		ENDSELECT
+		IF match = FALSE THEN self.current := Next(self.prev := self.current)
+	ENDWHILE IF match
+ENDPROC
+
+-&gt;return the current name, or &#x27;&#x27; if there are no more names
+-&gt;NOTE: The returned string is valid for the life of the list, unless it is removed.
+PROC infoName() OF cDirEntryList RETURNS path:ARRAY OF CHAR IS IF self.current THEN self.current ELSE &#x27;&#x27;
+
+-&gt;find name in list, stopping at it&#x27;s location, or otherwise returning FALSE
+PROC findName(name:ARRAY OF CHAR, fileOrDir=FALSE:BOOL) OF cDirEntryList RETURNS success:BOOL
+	DEF nameLen
+	
+	IF success := (self.head &lt;&gt; NIL)
+		IF fileOrDir
+			nameLen := StrLen(name) - IF IsDir(name) THEN 1 ELSE 0
+		ELSE
+			nameLen := ALL
+		ENDIF
+		
+		self.prev    := NILS
+		self.current := self.head
+		WHILE (success := StrCmpPath(name, self.current, nameLen)) = FALSE
+			self.current := Next(self.prev := self.current)
+		ENDWHILE IF self.current = NILS
+		
+		IF fileOrDir AND success
+			-&gt;verify that match is correct
+			IF StrCmpPath(name, self.current) = FALSE
+				IF StrLen(self.current) = (nameLen + 1)
+					success := self.current[nameLen] = &quot;/&quot;
+				ELSE
+					success := FALSE
+				ENDIF
+			ENDIF
+		ENDIF
+	ENDIF
+ENDPROC
+
+-&gt;remove the current path, and move to the next one
+PROC remove() OF cDirEntryList RETURNS nextExists:BOOL
+	DEF remove:OWNS STRING
+	
+	IF self.current = NILS THEN Throw(&quot;EMU&quot;, &#x27;cDirEntryList.remove(); not on a list item&#x27;)
+	
+	remove := self.current /*!!OWNS*/
+	self.current := Next(self.current)
+	
+	IF self.prev THEN Link(self.prev, self.current)
+	IF self.head = remove THEN self.head := self.current
+	
+	Link(remove, NILS)
+	END remove
+	
+	nextExists := (self.current &lt;&gt; NILS)
+ENDPROC
+
+-&gt;add a name to the list, keeping it sorted
+-&gt;NOTE: If the path already existed, then it is not added, and FALSE is returned.
+PROC add(name:ARRAY OF CHAR, toStartOfList=FALSE:BOOL) OF cDirEntryList RETURNS success:BOOL
+	DEF copy:OWNS STRING
+	
+	NEW copy[StrLen(name)]
+	StrCopy(copy, name)
+	
+	success := self.addString(PASS copy, toStartOfList)
+FINALLY
+	END copy
+ENDPROC
+
+-&gt;same as add(), but the name is an e-string, which the list will deallocate itself
+-&gt;NOTE: If toStartOfList=TRUE, then the list is NOT SORTED, which is an illegal state state (except temporarily), and so you MUST call the sort() method when you are finished.
+PROC addString(name:OWNS STRING, toStartOfList=FALSE:BOOL) OF cDirEntryList RETURNS success:BOOL
+	DEF before:STRING, after:STRING, order
+	
+	-&gt;find sorted insertion point
+	before := NILS
+	after  := self.head
+	IF (after = NIL) OR toStartOfList
+		order := 1
+	ELSE
+		WHILE (order := OstrCmpPath(name, after)) &lt; 0
+			before := after
+			after  := Next(after)
+		ENDWHILE IF after = NILS
+		IF after = NILS THEN order := 1
+	ENDIF
+	
+	-&gt;perform insertion
+	IF success := (order &gt; 0)
+		Link(name, after /*!!OWNS*/)
+		IF (after = self.current) AND (self.current &lt;&gt; NILS) THEN self.prev := name
+		IF before = NILS
+			self.head := PASS name
+		ELSE
+			Link(before, PASS name)
+		ENDIF
+	ENDIF
+FINALLY
+	END name
+ENDPROC
+
+-&gt;add all names in a list, keeping it sorted
+-&gt;NOTE: Returns the number of duplicate entries which were not added.
+PROC addList(list:PTR TO cDirEntryList) OF cDirEntryList RETURNS numOfSameEntries
+	DEF name:STRING
+	
+	numOfSameEntries := 0
+	name := list.head
+	WHILE name
+		IF self.add(name) = FALSE THEN numOfSameEntries++
+		name := Next(name)
+	ENDWHILE
+ENDPROC
+
+-&gt;sorts the list, which is only necessary if you have added entries using toStartOfList=TRUE.
+-&gt;NOTE: The current position in the list will be lost, as if you have gone past the end of the list.
+-&gt;NOTE: Normally it will return numOfSameEntries, the number of removed duplicates, but you can prevent it doing this using doNotCheckForDuplicates=TRUE.
+PROC sort(doNotCheckForDuplicates=FALSE:BOOL) OF cDirEntryList RETURNS numOfSameEntries
+	DEF current:STRING, prev:STRING
+	
+	self.head := mergeSort(PASS self.head, fMergeSort_NoCase)	-&gt;case-insensitive sort
+	self.prev    := NILS
+	self.current := NILS
+	
+	numOfSameEntries := 0
+	IF doNotCheckForDuplicates = FALSE
+		prev    := self.head
+		current := Next(prev)
+		WHILE current
+			IF StrCmpPath(self.current, self.prev)
+				self.prev    := prev
+				self.current := current
+				self.remove()
+				current := self.current
+				numOfSameEntries++
+			ELSE
+				prev    := current
+				current := Next(current)
+			ENDIF
+		ENDWHILE
+		
+		self.prev    := NILS
+		self.current := NILS
+	ENDIF
+ENDPROC
+
+
+PRIVATE
+DEF cPath_randomSeed=123
+PUBLIC
+
+-&gt;creates a file/dir name which does not exist in the list
+-&gt;NOTE: For file1dir2, supply 1 for a file name, or 2 for a dir name.
+-&gt;NOTE: If base is not specified then it will default to &#x27;TMP&#x27;.
+PROC makeUniqueName(file1dir2, base=NILA:ARRAY OF CHAR) OF cDirEntryList RETURNS name:OWNS STRING
+	DEF format:ARRAY OF CHAR
+	
+	-&gt;use check
+	IF (file1dir2 &lt; 1) OR (file1dir2 &gt; 2) THEN Throw(&quot;EMU&quot;, &#x27;cDirEntryList.makeUniqueName(); file1dir2 &lt;&gt; 1 or 2&#x27;)
+	
+	IF base = NILS THEN base := &#x27;TMP&#x27;
+	format := IF file1dir2 = 1 THEN &#x27;\s\h&#x27; ELSE &#x27;\s\h/&#x27;
+	NEW name[StrLen(base) + 8 + 1]
+	
+	REPEAT
+		cPath_randomSeed := RndQ(cPath_randomSeed)
+		StringF(name, format, base, cPath_randomSeed)
+	UNTIL self.findName(name, TRUE) = FALSE
+FINALLY
+	IF exception THEN END name
+ENDPROC
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

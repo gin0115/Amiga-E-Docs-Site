@@ -1,0 +1,967 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ClickCx.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-capus2.html">capus2</a> &rsaquo; ClickCx.e</div><h1>File: <code>ClickCx.e</code></h1><p class="meta">941 lines · project <a href="../examples/pkg-capus2.html"><code>capus2</code></a></p><p class="pathctx">capus2/capus2/ClickCx/Sources/ClickCx.e</p><p class="prose">=========================================================================================</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/commodities.html">commodities</a></li><li><a href="../modules/dos.html">dos/dos</a></li><li><a href="../modules/dostags.html">dos/dostags</a></li><li><a href="../modules/notify.html">dos/notify</a></li><li><a href="../modules/rdargs.html">dos/rdargs</a></li><li><a href="../modules/icon.html">icon</a></li><li><a href="../modules/intuition.html">intuition/intuition</a></li><li><a href="../modules/intuitionbase.html">intuition/intuitionbase</a></li><li><a href="../modules/commodities.html">libraries/commodities</a></li><li><a href="../modules/reqtools.html">reqtools</a></li><li><a href="../modules/wb.html">wb</a></li></ul></div><h2>Source</h2><pre class="code">/*=========================================================================================*/
+/* Source code generate by Gui2E v0.1 © 1994 NasGûl                                        */
+/*=========================================================================================*/
+/*======&lt;&lt;&lt; Peps Header &gt;&gt;&gt;======
+ PRGVERSION &#x27;0&#x27;
+ ================================
+ PRGREVISION &#x27;4&#x27;
+ ================================
+ AUTHOR      &#x27;NasGûl&#x27;
+ ===============================*/
+/*======&lt;&lt;&lt;   History   &gt;&gt;&gt;======
+ ===============================*/
+OPT OSVERSION=37
+
+
+MODULE &#x27;intuition/intuition&#x27;,&#x27;gadtools&#x27;,&#x27;libraries/gadtools&#x27;,&#x27;intuition/gadgetclass&#x27;,&#x27;intuition/screens&#x27;,
+       &#x27;graphics/text&#x27;,&#x27;exec/lists&#x27;,&#x27;exec/nodes&#x27;,&#x27;exec/ports&#x27;,&#x27;eropenlib&#x27;,&#x27;utility/tagitem&#x27;
+MODULE &#x27;reqtools&#x27;,&#x27;libraries/reqtools&#x27;
+MODULE &#x27;dos/dostags&#x27;,&#x27;wbmessage&#x27;,&#x27;dos/dosextens&#x27;
+MODULE &#x27;wb&#x27;,&#x27;workbench/workbench&#x27;,&#x27;workbench/startup&#x27;
+MODULE &#x27;dos/notify&#x27;
+MODULE &#x27;commodities&#x27;
+MODULE &#x27;libraries/commodities&#x27;
+MODULE &#x27;intuition/intuitionbase&#x27;
+MODULE &#x27;icon&#x27;,&#x27;mheader&#x27;,&#x27;utility&#x27;
+MODULE &#x27;dos/dos&#x27;
+MODULE &#x27;dos/rdargs&#x27;
+
+
+CONST EVT_HOTKEY=1
+
+CONST DEBUG=FALSE
+
+CONST FMODE_WB=1,
+      FMODE_CLI=2
+
+
+ENUM ER_NONE,ER_LOCKSCREEN,ER_VISUAL,ER_CONTEXT,ER_MENUS,ER_GADGET,ER_WINDOW,ER_MEM,
+     ER_CX,ER_PORT,ER_NOPREFS,ER_BADARGS,ER_NOICONS,ER_APPWIN
+/*&quot;Window Defs&quot;*/
+DEF screen:PTR TO screen,
+    visual=NIL,
+    tattr:PTR TO textattr,
+    reelquit=FALSE,
+    offy,offx
+/*=======================================
+ = cr Definitions
+ =======================================*/
+DEF cr_window=NIL:PTR TO window
+DEF cr_glist=NIL
+/*==================*/
+/*     Gadgets      */
+/*==================*/
+CONST GA_GLIST=0
+CONST GA_GEDIT=1
+CONST GA_G4=2
+CONST GA_G_WB=3
+CONST GA_G_CLI=4
+CONST GA_G_INFO=5
+/*=============================
+ = Gadgets labels of cr
+ =============================*/
+DEF glist
+DEF gedit
+DEF g4
+DEF g_wb
+DEF g_cli
+DEF g_info
+/**/
+/*&quot;App Defs&quot;*/
+
+OBJECT apparg
+    numargs:LONG
+    arglist:LONG
+ENDOBJECT
+
+OBJECT xarg
+  node:ln
+  predlist:LONG   /* 14 */
+  curdir:LONG     /* 18 */
+  mode:LONG       /* 22 */
+  args:LONG       /* 26 */
+  stack:LONG
+  pri:LONG
+  noclosew:LONG
+ENDOBJECT
+
+OBJECT xblock
+  node:ln
+  predlist:LONG
+  numlist:LONG
+  list:LONG
+ENDOBJECT
+
+OBJECT xdatabase
+  listxblock:LONG         /* exec list */
+  nreq:LONG               /* PTR TO notifyrequest */
+  nreqsigflag:LONG        /* For Wait() */
+  prgport:LONG            /* PTR TO mp */
+  appwindow:LONG          /**/
+  prgsigflag:LONG         /* For Wait() */
+  broker:LONG             /**/
+  cxport:LONG             /* PTR TO mp */
+  cxsigflag:LONG          /* For Wait() */
+  cxhotkey:LONG           /* STRING */
+  cxpri:LONG
+  wbhandle:LONG
+  allscreen:LONG
+  defdir:LONG
+  zoomed:LONG
+  editcmd:LONG
+ENDOBJECT
+
+DEF mb:PTR TO xdatabase
+DEF baselock
+DEF currentnode=-1,currentlist:PTR TO lh
+DEF popup=FALSE
+DEF autocmd[256]:STRING
+/**/
+PMODULE &#x27;PModules:PlistNoSort&#x27;
+PMODULE &#x27;PModules:dWriteF&#x27;
+PMODULE &#x27;PModules:PMHeader&#x27;
+PMODULE &#x27;PModules:pListView&#x27;
+PMODULE &#x27;ClickCxWindows&#x27;
+/*&quot;Message Proc&quot;*/
+/*&quot;p_LookAllMessage()&quot;*/
+PROC p_LookAllMessage() 
+    DEF sigreturn=NIL
+    DEF crport:PTR TO mp
+    IF cr_window THEN crport:=cr_window.userport ELSE crport:=NIL
+    sigreturn:=Wait(Shl(1,crport.sigbit) OR
+                        mb.nreqsigflag OR
+                    mb.prgsigflag OR
+                    mb.cxsigflag OR
+                    $F000)
+    IF (sigreturn AND Shl(1,crport.sigbit))
+        IF (p_LookcrMessage())=TRUE THEN p_CloseWindow()
+    ENDIF
+    IF (sigreturn AND mb.nreqsigflag)
+        IF cr_window&lt;&gt;NIL THEN p_LockListView(glist,cr_window)
+        p_CleanPrgList(mb.listxblock)
+        p_ReadFile(&#x27;Env:ClickCx.Prefs&#x27;)
+        currentlist:=mb.listxblock
+        currentnode:=0
+        IF cr_window&lt;&gt;NIL THEN p_UnLockListView(glist,cr_window,mb.listxblock)
+        IF cr_window&lt;&gt;NIL THEN p_RendercrWindow()
+    ENDIF
+    IF (sigreturn AND mb.prgsigflag)
+        IF (p_LookAppMessage())=TRUE THEN p_CloseWindow()
+    ENDIF
+    IF (sigreturn AND mb.cxsigflag)
+        p_LookCxMessage()
+    ENDIF
+    IF (sigreturn AND $F000)
+        reelquit:=TRUE
+    ENDIF
+ENDPROC
+/**/
+/*&quot;p_LookAppMessage()&quot;*/
+PROC p_LookAppMessage() 
+    DEF appmsg:PTR TO appmessage
+    DEF n:PTR TO ln
+    DEF na=NIL:PTR TO xarg
+    DEF ret=TRUE
+    dWriteF([&#x27;p_LookAppMessage()\n&#x27;],0)
+    p_LockListView(glist,cr_window)
+    WHILE appmsg:=GetMsg(mb.prgport)
+        n:=p_GetAdrNode(currentlist,currentnode)
+        IF n&lt;&gt;-1
+            IF StrCmp(n.name,&#x27;»» &#x27;,3)
+                NOP
+                ret:=FALSE
+            ELSE
+                p_StartProgram(currentlist,currentnode,0,appmsg)
+                na:=n
+            ENDIF
+        ENDIF
+        ReplyMsg(appmsg)
+    ENDWHILE
+    p_UnLockListView(glist,cr_window,currentlist)
+    IF na&lt;&gt;NIL
+        IF na.noclosew THEN ret:=FALSE
+    ENDIF
+    RETURN ret
+ENDPROC
+/**/
+/*&quot;p_LookCxMessage()&quot;*/
+PROC p_LookCxMessage() 
+    DEF msgid=NIL,msgtype=NIL
+    DEF returnvalue=TRUE,msg
+    dWriteF([&#x27;p_LookCxMessage()\n&#x27;],0)
+    WHILE msg:=GetMsg(mb.cxport)
+        msgid:=CxMsgID(msg)
+        msgtype:=CxMsgType(msg) 
+        SELECT msgtype 
+            CASE CXM_IEVENT 
+                SELECT msgid 
+                    CASE EVT_HOTKEY 
+                        IF cr_window=NIL 
+                            p_OpenWindow() 
+                        ELSE
+                            p_CloseWindow() 
+                        ENDIF 
+                ENDSELECT 
+            CASE CXM_COMMAND 
+                SELECT msgid
+                    CASE CXCMD_KILL 
+                        reelquit:=TRUE 
+                        returnvalue:=FALSE 
+                    CASE  CXCMD_DISABLE 
+                        ActivateCxObj(mb.broker,0)
+                    CASE CXCMD_ENABLE
+                        ActivateCxObj(mb.broker,1)
+                    CASE CXCMD_APPEAR 
+                        IF cr_window=NIL
+                            p_OpenWindow() 
+                        ELSE 
+                            WindowToFront(cr_window) 
+                        ENDIF 
+                    CASE CXCMD_DISAPPEAR 
+                        IF cr_window&lt;&gt;NIL 
+                            p_CloseWindow() 
+                        ENDIF 
+                ENDSELECT
+        ENDSELECT
+        ReplyMsg(msg)
+    ENDWHILE
+ENDPROC
+/**/
+/*&quot;p_LookcrMessage()&quot;*/
+PROC p_LookcrMessage() 
+   DEF mes:PTR TO intuimessage
+   DEF g:PTR TO gadget
+   DEF pvn,cnn
+   DEF type=0,infos=NIL,ret=FALSE,pivz
+   DEF curnode:PTR TO ln,ca:PTR TO xarg
+   DEF curx:PTR TO xblock
+   dWriteF([&#x27;p_LookcrMessage()\n&#x27;],0)
+   WHILE mes:=Gt_GetIMsg(cr_window.userport)
+       type:=mes.class
+       SELECT type
+            CASE IDCMP_CLOSEWINDOW; ret:=TRUE
+            CASE IDCMP_MOUSEBUTTONS
+                IF Mouse()=2
+                    curnode:=p_GetAdrNode(currentlist,currentnode)
+                    curx:=curnode
+                    currentlist:=curx.predlist
+                    currentnode:=0
+                    p_RendercrWindow()
+                ENDIF
+            CASE IDCMP_GADGETDOWN
+                type:=IDCMP_GADGETUP
+            CASE IDCMP_REFRESHWINDOW
+                IF mb.zoomed=FALSE THEN pivz:=TRUE ELSE pivz:=FALSE
+                mb.zoomed:=pivz
+                p_RendercrWindow()
+            CASE IDCMP_GADGETUP
+                g:=mes.iaddress
+                infos:=g.gadgetid
+                SELECT infos
+                    CASE GA_GLIST
+                        currentnode:=mes.code
+                        donewlist:
+                        IF p_EmptyList(currentlist)&lt;&gt;-1
+                            curnode:=p_GetAdrNode(currentlist,currentnode)
+                            IF StrCmp(curnode.name,&#x27;»» &#x27;,3)
+                                curx:=curnode
+                                currentlist:=curx.list
+                                currentnode:=0
+                                p_RendercrWindow()
+                            ENDIF
+                        ENDIF
+                    CASE GA_GEDIT
+                        doedit:
+                        p_CLIRun(mb.editcmd,&#x27;ENV:&#x27;,4000,0)
+                    CASE GA_G4
+                        reelquit:=TRUE
+                    CASE GA_G_WB
+                        dowbrun:
+                        curnode:=p_GetAdrNode(currentlist,currentnode)
+                        curx:=curnode
+                        IF StrCmp(curnode.name,&#x27;»» &#x27;,3) 
+                            NOP
+                        ELSE
+                            p_StartProgram(currentlist,currentnode,FMODE_WB,0)
+                            ca:=curnode
+                            IF ca.noclosew THEN ret:=FALSE ELSE ret:=TRUE
+                        ENDIF
+                    CASE GA_G_CLI
+                        doclirun:
+                        curnode:=p_GetAdrNode(currentlist,currentnode)
+                        curx:=curnode
+                        IF StrCmp(curnode.name,&#x27;»» &#x27;,3) 
+                            NOP
+                        ELSE
+                            p_StartProgram(currentlist,currentnode,FMODE_CLI,0)
+                            ca:=curnode
+                            IF ca.noclosew THEN ret:=FALSE ELSE ret:=TRUE
+                        ENDIF
+                    CASE GA_G_INFO
+                ENDSELECT
+            CASE IDCMP_RAWKEY
+                infos:=mes.code
+                SELECT infos
+                    CASE 18 /* Edit */
+                        JUMP doedit
+                    CASE 69 /* Esc */
+                        curnode:=p_GetAdrNode(currentlist,currentnode)
+                        curx:=curnode
+                        currentlist:=curx.predlist
+                        currentnode:=0
+                        p_RendercrWindow()
+                    CASE 49 /* W */
+                        curnode:=p_GetAdrNode(currentlist,currentnode)
+                        curx:=curnode
+                        IF StrCmp(curnode.name,&#x27;»» &#x27;,3) 
+                            NOP
+                        ELSE
+                            JUMP dowbrun
+                        ENDIF
+                    CASE 51 /* C */
+                        curnode:=p_GetAdrNode(currentlist,currentnode)
+                        curx:=curnode
+                        IF StrCmp(curnode.name,&#x27;»» &#x27;,3) 
+                            NOP
+                        ELSE
+                            JUMP doclirun
+                        ENDIF
+                    CASE 32; reelquit:=TRUE
+                    CASE 68 /* RETURN */
+                        curnode:=p_GetAdrNode(currentlist,currentnode)
+                        curx:=curnode
+                        IF StrCmp(curnode.name,&#x27;»» &#x27;,3) 
+                            JUMP donewlist
+                        ELSE
+                            p_StartProgram(currentlist,currentnode,0,0)
+                            ca:=curnode
+                            IF ca.noclosew THEN ret:=FALSE ELSE ret:=TRUE
+                        ENDIF
+                    CASE 76 /* UP */
+                        pvn:=currentnode-1
+                        IF pvn=-1 THEN currentnode:=0 ELSE currentnode:=pvn
+                        p_RendercrWindow()
+                    CASE 77 /* DOWN */
+                        pvn:=currentnode+1
+                        cnn:=p_CountNodes(currentlist)
+                        cnn:=cnn-1
+                        IF pvn&gt;=cnn THEN currentnode:=cnn ELSE currentnode:=pvn
+                        p_RendercrWindow()
+                ENDSELECT
+        ENDSELECT
+        Gt_ReplyIMsg(mes)
+    ENDWHILE
+    /*WHILE mes:=Gt_GetIMsg(cr_window.userport) DO Gt_ReplyIMsg(mes)*/
+    RETURN ret
+ENDPROC
+/**/
+/*&quot;p_WriteFWBMessage(numa,lisa:PTR TO LONG)&quot;*/
+PROC p_WriteFWBMessage(numa,lisa:PTR TO LONG) 
+   DEF b
+   DEF fullname[256]:STRING
+   DEF tw:PTR TO wbarg,ml=NIL
+   WriteF(&#x27;NumArgs:\d\n&#x27;,numa)
+   FOR b:=0 TO numa-1
+      tw:=lisa[b*2]
+      ml:=DupLock(lisa[b*2])
+      NameFromLock(ml,fullname,256)
+      WriteF(&#x27;Name :\s Lock:\h FullName:\s\n&#x27;,lisa[(b*2)+1],ml,fullname)
+      IF ml THEN UnLock(ml)
+   ENDFOR
+ENDPROC
+/**/
+/**/
+/*&quot;APP Proc&quot;*/
+/*&quot;p_InitWBHandler()&quot;*/
+PROC p_InitWBHandler() HANDLE 
+    DEF ifh
+    DEF ofh
+    DEF wbh
+    dWriteF([&#x27;p_InitWBHandler()\n&#x27;],0)
+    IF (ifh:=Open(&#x27;NIL:&#x27;,1006))=NIL THEN Raise(NIL)
+    IF (ofh:=Open(&#x27;NIL:&#x27;,1005))=NIL THEN Raise(NIL)
+    SystemTagList(&#x27;L:WBStart-Handler&#x27;,[SYS_INPUT,ifh,
+                                      SYS_OUTPUT,ofh,
+                                      SYS_ASYNCH,TRUE,
+                                      SYS_USERSHELL,TRUE,
+                                      NP_CONSOLETASK,NIL,
+                                      NP_WINDOWPTR,NIL])
+    Delay(25)
+    wbh:=FindPort(&#x27;WBStart-Handler Port&#x27;)
+    Raise(wbh)
+EXCEPT
+    IF Not(wbh)
+        IF ifh THEN Close(ifh)
+        IF ofh THEN Close(ofh)
+    ENDIF
+    RETURN wbh
+ENDPROC
+/**/
+/*&quot;p_StartProgram(list:PTR TO lh,numnode,numa,lisa:PTR TO LONG)&quot;*/
+PROC p_StartProgram(list:PTR TO lh,numnode,forcemode,apm:PTR TO appmessage)
+    DEF rnode:PTR TO xarg,n:PTR TO ln
+    DEF str[256]:STRING,pv[256]:STRING
+    DEF cs[256]:STRING,r,cmd[512]:STRING,cps[50]:STRING
+    DEF preds[256]:STRING,succs[256]:STRING,pos
+    DEF mwbarg:PTR TO wbarg
+    dWriteF([&#x27;p_StartProgram()\n&#x27;],0)
+    rnode:=p_GetAdrNode(list,numnode)
+    n:=rnode
+    IF forcemode=0 THEN StrCopy(cps,rnode.mode,ALL)
+    IF forcemode=FMODE_WB THEN StrCopy(cps,&#x27;WB&#x27;,2)
+    IF forcemode=FMODE_CLI THEN StrCopy(cps,&#x27;CLI&#x27;,3)
+    IF StrCmp(cps,&#x27;WB&#x27;,2)
+        p_WBRun(n.name,rnode.curdir,rnode.stack,rnode.pri,apm)
+    ELSEIF StrCmp(cps,&#x27;CLI&#x27;,3)
+        StringF(str,&#x27;\s&#x27;,rnode.curdir)
+        AddPart(str,&#x27;&#x27;,512)
+        StringF(cmd,&#x27;\s\s &#x27;,str,n.name)
+        IF EstrLen(rnode.args)&lt;&gt;0
+            pos:=InStr(rnode.args,&#x27;[]&#x27;,0)
+            IF pos&lt;&gt;-1
+                IF pos&lt;&gt;0
+                    MidStr(preds,rnode.args,0,pos-2)
+                ELSE
+                    StrCopy(preds,&#x27;&#x27;,1)
+                ENDIF
+                MidStr(succs,rnode.args,pos+3,ALL)
+                StrAdd(cmd,preds,ALL)
+            ENDIF
+        ENDIF
+        IF apm&lt;&gt;0
+            mwbarg:=apm.arglist
+            FOR r:=0 TO apm.numargs-1
+                NameFromLock(mwbarg[r].lock,pv,256)
+                AddPart(pv,&#x27;&#x27;,256)
+                StringF(cs,&#x27; &quot;\s\s&quot; &#x27;,pv,mwbarg[r].name)
+                StrAdd(cmd,cs,ALL)
+            ENDFOR
+            IF EstrLen(rnode.args)&lt;&gt;0 THEN StrAdd(cmd,succs,ALL)
+            p_CLIRun(cmd,rnode.curdir,rnode.stack,rnode.pri)
+        ELSE
+            IF EstrLen(rnode.args)&lt;&gt;0 THEN StrAdd(cmd,succs,ALL)
+            p_CLIRun(cmd,rnode.curdir,rnode.stack,rnode.pri)
+        ENDIF
+    ENDIF
+    RETURN r
+ENDPROC
+/**/
+/*&quot;p_WBRun(com,di,st,pr,num_arg,arg_list)&quot;*/
+PROC p_WBRun(com,dir,st,pr,apmh:PTR TO appmessage) HANDLE
+    DEF execmsg:PTR TO mn
+    DEF wbsm:wbstartmsg
+    DEF rc=FALSE
+    DEF node:PTR TO ln
+    dWriteF([&#x27;wb_WBRun()\n&#x27;],0)
+    /*=== Init Handler ===*/
+    Forbid()
+    mb.wbhandle:=FindPort(&#x27;WBStart-Handler Port&#x27;)
+    Permit()
+    IF mb.wbhandle=0 THEN mb.wbhandle:=p_InitWBHandler()
+    wbsm:=New(SIZEOF wbstartmsg)
+    execmsg:=wbsm
+    node:=execmsg
+    node.type:=NT_MESSAGE
+    node.pri:=0
+    execmsg.replyport:=mb.prgport
+    wbsm.name:=com
+    wbsm.dirlock:=Lock(dir,-2)
+    wbsm.stack:=st
+    wbsm.prio:=pr
+    wbsm.numargs:=IF apmh&lt;&gt;0 THEN apmh.numargs ELSE 0
+    wbsm.arglist:=IF apmh&lt;&gt;0 THEN apmh.arglist ELSE 0
+    Forbid()
+    IF mb.wbhandle
+        PutMsg(mb.wbhandle,wbsm)
+    ENDIF
+    Permit()
+    IF mb.wbhandle
+        WaitPort(mb.prgport)
+        GetMsg(mb.prgport)
+        rc:=wbsm.stack
+    ENDIF
+    IF rc=0 
+        p_Alert(&#x27;WBRun Failed.&#x27;)
+        p_CLIRun(com,dir,st,pr)
+        p_Alert(&#x27;CLIRun.&#x27;)
+    ENDIF
+    Raise(ER_NONE)
+EXCEPT
+    IF wbsm.dirlock THEN UnLock(wbsm.dirlock)
+    IF wbsm THEN Dispose(wbsm)
+    RETURN exception
+ENDPROC
+/**/
+/*&quot;p_CLIRun(cmd,dir,sta,pp)&quot;*/
+PROC p_CLIRun(cmd,dir,sta,pp) HANDLE
+    DEF ofh:PTR TO filehandle
+    DEF ifh:PTR TO filehandle
+    DEF newct=NIL:PTR TO mp
+    DEF oldct:PTR TO mp
+    DEF oldcd=NIL
+    DEF newcd=NIL
+    DEF test
+    dWriteF([&#x27;wb_CLIRun() \s\n&#x27;],[cmd])
+    IF ofh:=Open(&#x27;NIL:&#x27;,1006)
+        IF IsInteractive(ofh)
+            newct:=ofh.type
+            oldct:=SetConsoleTask(newct)
+            ifh:=Open(&#x27;CONSOLE:&#x27;,1005)
+            SetConsoleTask(oldct)
+        ELSE
+            ifh:=Open(&#x27;NIL:&#x27;,1005)
+        ENDIF
+    ENDIF
+    newcd:=Lock(dir,-2)
+    oldcd:=CurrentDir(newcd)
+    IF test:=SystemTagList(cmd,[SYS_OUTPUT,NIL,
+                         SYS_INPUT,NIL,
+                         SYS_ASYNCH,TRUE,
+                         SYS_USERSHELL,FALSE,
+                         NP_STACKSIZE,sta,
+                         NP_PRIORITY,pp,
+                         NP_PATH,NIL,
+                         NP_CONSOLETASK,newct,
+                         0])
+    ENDIF
+    CurrentDir(oldcd)
+    IF newcd THEN UnLock(newcd)
+    IF ofh THEN Close(ofh)
+    IF ifh THEN Close(ifh)
+    Raise(ER_NONE)
+EXCEPT
+    RETURN exception
+ENDPROC
+/**/
+/*&quot;p_Alert(texte)&quot;*/
+PROC p_Alert(texte) 
+        Gt_SetGadgetAttrsA(g_info,cr_window,NIL,[GTTX_BORDER,TRUE,GTTX_TEXT,texte,TAG_DONE,0])
+ENDPROC
+/**/
+/*&quot;p_InitAPP()&quot;*/
+PROC p_InitAPP() HANDLE
+    DEF r:PTR TO notifyrequest
+    DEF p:PTR TO mp
+    DEF myb:PTR TO newbroker,errorcx,filter,sender,translate,pv
+    DEF txt[256]:STRING
+    mb.listxblock:=p_InitList()
+    mb.zoomed:=FALSE
+    StringF(txt,&#x27;HotKey=\s.&#x27;,mb.cxhotkey)
+    IF mb.listxblock&lt;&gt;NIL
+        IF r:=New(SIZEOF notifyrequest)
+            IF FileLength(&#x27;Env:ClickCx.Prefs&#x27;)=-1 THEN Raise(ER_NOPREFS)
+            mb.nreq:=r
+            r.name:=&#x27;Env:ClickCx.Prefs&#x27;
+            r.flags:=NRF_SEND_SIGNAL
+            r.port:=FindTask(0)
+            r.signalnum:=AllocSignal(-1)
+            mb.nreqsigflag:=Shl(1,r.signalnum)
+            StartNotify(mb.nreq)
+            IF p:=CreateMsgPort()
+                mb.prgport:=p
+                mb.prgsigflag:=Shl(1,p.sigbit)
+                myb:=[NB_VERSION,0,
+                      &#x27;ClickCx&#x27;,
+                      txt,
+                      &#x27;Application Window © 1995 NasGûl&#x27;,
+                      NBU_UNIQUE,
+                      COF_SHOW_HIDE,
+                      0,0,NIL,0]:newbroker
+                IF p:=CreateMsgPort()
+                    mb.cxport:=p
+                    mb.cxsigflag:=Shl(1,p.sigbit)
+                    myb.port:=mb.cxport
+                    myb.pri:=0
+                    IF pv:=CxBroker(myb,NIL)
+                        mb.broker:=pv
+                        filter:=CreateCxObj(CX_FILTER,mb.cxhotkey,NIL)
+                        errorcx:=CxObjError(filter)
+                        IF errorcx=0
+                            AttachCxObj(mb.broker,filter)
+                            sender:=CreateCxObj(CX_SEND,mb.cxport,EVT_HOTKEY)
+                            AttachCxObj(filter,sender)
+                            translate:=CreateCxObj(CX_TRANSLATE,NIL,NIL)
+                            AttachCxObj(filter,translate)
+                            IF (errorcx:=CxObjError(filter))=0
+                                ActivateCxObj(mb.broker,1)
+                            ELSE
+                                Raise(ER_CX)
+                            ENDIF
+                        ELSE
+                            Raise(ER_CX)
+                        ENDIF
+                    ELSE
+                        Raise(ER_CX)
+                    ENDIF
+                ELSE
+                    Raise(ER_PORT)
+                ENDIF
+            ELSE
+                Raise(ER_PORT)
+            ENDIF
+        ELSE
+            Raise(ER_MEM)
+        ENDIF
+    ELSE
+        Raise(ER_MEM)
+    ENDIF
+    Forbid()
+    p_ReadFile(&#x27;Env:ClickCx.Prefs&#x27;)
+    Permit()
+    currentnode:=0
+    currentlist:=mb.listxblock
+    Raise(ER_NONE)
+EXCEPT
+    RETURN exception
+ENDPROC
+/**/
+/*&quot;p_RemAPP()&quot;*/
+PROC p_RemAPP()
+    DEF r:PTR TO notifyrequest
+    dWriteF([&#x27;p_RemAPP()\n&#x27;],0)
+    r:=mb.nreq
+    IF r
+        IF r.signalnum THEN FreeSignal(r.signalnum)
+        IF r THEN EndNotify(r)
+    ENDIF
+    IF EstrLen(mb.cxhotkey)&lt;&gt;0 THEN DisposeLink(mb.cxhotkey)
+    IF mb.prgport THEN DeleteMsgPort(mb.prgport)
+    IF mb.broker THEN DeleteCxObjAll(mb.broker)
+    IF mb.cxport THEN DeleteMsgPort(mb.cxport)
+ENDPROC
+/**/
+/*&quot;p_CleanPrgList(list:PTR TO lh)&quot;*/
+PROC p_CleanPrgList(list:PTR TO lh)
+    DEF n:PTR TO ln
+    DEF nx:PTR TO xblock
+    dWriteF([&#x27;p_CleanPrgList() \h\n&#x27;],[list])
+    n:=list.head
+    WHILE n
+        IF n.succ&lt;&gt;0
+            IF StrCmp(n.name,&#x27;»» &#x27;,3)
+                nx:=n
+                p_EnleveNode(list,p_GetNumNode(list,n),FALSE,0)
+                p_CleanPrgList(nx.list)
+            ELSE
+                p_EnleveNode(list,p_GetNumNode(list,n),TRUE,[18,DISL,22,DISL,26,DISL,DISE])
+            ENDIF
+        ENDIF
+        n:=n.succ
+    ENDWHILE
+ENDPROC
+/**/
+/*&quot;p_ReadFile(str)&quot;*/
+PROC p_ReadFile(str)
+    DEF fh,buf[1000]:ARRAY,numline=1
+    DEF nom[256]:STRING,rn[256]:STRING
+    DEF m:PTR TO LONG
+    DEF test
+    DEF end
+    DEF str_type[80]:STRING
+    DEF str_name[80]:STRING
+    DEF str_dir[256]:STRING
+    DEF str_mode[10]:STRING,st,pri
+    DEF str_args[80]:STRING
+    DEF mx:PTR TO xblock
+    DEF ma:PTR TO xarg,ncw
+    DEF lt[100]:ARRAY OF LONG,numlist=0,rnumlist=0
+    dWriteF([&#x27;p_ReadFile() \s\n&#x27;],[str])
+    lt[numlist]:=mb.listxblock
+    IF fh:=Open(str,OLDFILE)
+        m:=[0,0,0,0,0,0,0,0,0]
+        WHILE test:=Fgets(fh,buf,1000)
+                StringF(nom,&#x27;\s&#x27;,test)
+                StrCopy(rn,test,(StrLen(test)-1))
+                IF Not(StrCmp(rn,&#x27;#&#x27;,1))
+                    IF EstrLen(rn)=0 THEN JUMP sk
+                    IF StrLen(test)=1 THEN JUMP sk
+                    IF getArg(rn,&#x27;StartBlock/K,Name/K,Dir/K,Mode/K,Stack/K/N,Pri/K/N,Args/K,EndBlock/S,NoCloseWindow/S&#x27;,m)
+                        /*
+                        StringF(str_type,&#x27;»» \s&#x27;,m[0])
+                        StringF(str_name,&#x27;\s&#x27;,m[1])
+                        StringF(str_dir,&#x27;\s&#x27;,m[2])
+                        */
+                        StringF(str_type,&#x27;»» \s&#x27;,m[0])
+                        StrCopy(str_name,m[1],ALL)
+                        StrCopy(str_dir,m[2],ALL)
+
+                        StringF(str_mode,&#x27;\s&#x27;,m[3]);UpperStr(str_mode)
+                        StringF(str_args,&#x27;\s&#x27;,m[6])
+                        IF m[4] THEN st:=Long(m[4]) ELSE st:=4000
+                        IF m[5] THEN pri:=Long(m[5]) ELSE pri:=0
+                        end:=m[7]
+                        ncw:=m[8]
+                        IF end
+                            numlist:=numlist-1
+                            JUMP sk
+                        ENDIF
+                        IF EstrLen(str_type)&lt;&gt;3 /* StartBlock */
+                            IF mx:=New(SIZEOF xblock)
+                                mx.list:=p_InitList()
+                                IF mx.list&lt;&gt;NIL
+                                    IF numlist=0 THEN mx.predlist:=mb.listxblock ELSE mx.predlist:=lt[numlist-1]
+                                    Forbid()
+                                    p_AjouteNode(lt[numlist],str_type,mx)
+                                    Permit()
+                                    /*WriteF(&#x27;Block -&gt; p_AjouteNode() \s CurList : \h IntiList:\h NumList:\d PredList:\h\n&#x27;,str_type,lt[numlist],mx.list,numlist,mx.predlist)*/
+                                    numlist:=numlist+1
+                                    mx.numlist:=rnumlist
+                                    lt[numlist]:=mx.list
+                                    JUMP sk
+                                ENDIF
+                            ENDIF
+                        ELSEIF str_name
+                            IF ma:=New(SIZEOF xarg)
+                                IF numlist=0 THEN ma.predlist:=mb.listxblock ELSE ma.predlist:=lt[numlist-1]
+                                ma.curdir:=String(EstrLen(str_dir))
+                                StrCopy(ma.curdir,str_dir,EstrLen(str_dir))
+                                ma.mode:=String(EstrLen(str_mode))
+                                StrCopy(ma.mode,str_mode,EstrLen(str_mode))
+                                ma.args:=String(EstrLen(str_args))
+                                StrCopy(ma.args,str_args,EstrLen(str_args))
+                                ma.stack:=st
+                                ma.pri:=pri
+                                ma.noclosew:=IF ncw THEN TRUE ELSE FALSE
+                                Forbid()
+                                p_AjouteNode(lt[numlist],str_name,ma)
+                                Permit()
+                                /*WriteF(&#x27;Command -&gt; p_AjouteNode() \s CurList : \h PredList:\h\n&#x27;,str_name,mx.list,ma.predlist)*/
+                                JUMP sk
+                            ENDIF
+                        ENDIF
+                    ELSE
+                        EasyRequestArgs(0,[20,0,0,&#x27;Error in Line \d\n\s[40]&#x27;,&#x27;Merci&#x27;],0,[numline,rn])
+                        JUMP fin
+                    ENDIF
+                    sk:
+                    m[0]:=0;m[1]:=0;m[2]:=0;m[3]:=0;m[4]:=0;m[5]:=0;m[6]:=0;m[7]:=0;m[8]:=0
+                ENDIF
+                numline:=numline+1
+        ENDWHILE
+        fin:
+        Close(fh)
+        IF numlist&lt;&gt;0 THEN EasyRequestArgs(0,[20,0,0,&#x27;(Start+End)*Block Error (list look strange..) [\d]&#x27;,&#x27;Merci&#x27;],0,[numlist])
+    ENDIF
+ENDPROC
+/**/
+/*&quot;getArg(argu,temp,a:PTR TO LONG)&quot;*/
+PROC getArg(argu,temp,a:PTR TO LONG)
+    DEF myc:PTR TO csource
+    DEF ma:PTR TO rdargs
+    DEF rdarg=NIL
+    DEF argstr[256]:STRING
+    DEF ret=NIL
+    StrCopy(argstr,argu,ALL)
+    StrAdd(argstr,&#x27;\n&#x27;,1)
+    IF ma:=AllocDosObject(DOS_RDARGS,NIL)
+        myc:=New(SIZEOF csource)
+        myc.buffer:=argstr
+        myc.length:=EstrLen(argstr)
+        ma.flags:=4
+        CopyMem(myc,ma.source,SIZEOF csource)
+        IF rdarg:=ReadArgs(temp,a,ma)
+            ret:=a
+            IF rdarg THEN FreeArgs(rdarg)
+        ELSE
+        ENDIF
+        FreeDosObject(DOS_RDARGS,ma)
+    ELSE
+        WriteF(&#x27;AllocDosObject failed !!\n&#x27;)
+    ENDIF
+    RETURN ret
+ENDPROC
+/**/
+/*&quot;p_WriteFReelList(list:PTR TO lh)&quot;*/
+PROC p_WriteFReelList(list:PTR TO lh)
+    DEF n:PTR TO ln
+    DEF x:PTR TO xblock
+    DEF a:PTR TO xarg,test,str[80]:STRING
+    n:=list.head
+    WHILE n
+        IF n.succ&lt;&gt;0
+            StrCopy(str,n.name,ALL)
+            IF test:=StrCmp(str,&#x27;»» &#x27;,3)
+                x:=n
+                WriteF(&#x27;XBlock : \h Name : \s Adr List: \h Adr PredList :\h\n&#x27;,x,n.name,x.list,x.predlist)
+                /*p_WriteFList(x.list)*/
+                p_WriteFReelList(x.list)
+            ELSE
+                a:=n
+                WriteF(&#x27;Xarg : \h Name : \s Dir : \s Mode : \s Stack : \d Pri : \d Args: \s\n&#x27;,
+                a,n.name,a.curdir,a.mode,a.stack,a.pri,a.args)
+            ENDIF
+        ENDIF
+        n:=n.succ
+        IF CtrlC() THEN JUMP fini
+    ENDWHILE
+    fini:
+ENDPROC
+/**/
+/*&quot;p_StartCli()&quot;*/
+PROC p_StartCli() HANDLE 
+/*===============================================================================
+ = Para         : NONE.
+ = Return       : ER_NONE if ok,else the error.
+ = Description  : Get .info and lock current dir.
+ ==============================================================================*/
+    DEF myargs:PTR TO LONG,rdargs=NIL
+    DEF editcmd[256]:STRING
+    dWriteF([&#x27;p_StartCli()\n&#x27;],0)
+    myargs:=[0,0,0,0,0]
+    IF rdargs:=ReadArgs(&#x27;HotKey/K,Priority/N,EditorName/K,AllScreen/S&#x27;,myargs,NIL)
+        IF myargs[0] 
+            mb.cxhotkey:=String(EstrLen(myargs[0]))
+            StrCopy(mb.cxhotkey,myargs[0],ALL) 
+        ELSE
+            mb.cxhotkey:=String(EstrLen(&#x27;shift ctrl esc&#x27;))
+            StrCopy(mb.cxhotkey,&#x27;shift ctrl esc&#x27;,ALL)
+        ENDIF
+        IF myargs[1] THEN mb.cxpri:=Long(myargs[1]) ELSE mb.cxpri:=0
+        IF myargs[2]
+            StringF(editcmd,&#x27;\s &quot;\s&quot;&#x27;,myargs[2],&#x27;ClickCx.Prefs&#x27;)
+        ELSE
+            StrCopy(editcmd,&#x27;C:ed &quot;ClickCx.Prefs&quot;&#x27;,ALL)
+        ENDIF
+        mb.editcmd:=String(EstrLen(editcmd))
+        StrCopy(mb.editcmd,editcmd,ALL)
+        IF myargs[3]
+            StrCopy(autocmd,myargs[3],ALL)
+        ELSE
+            StrCopy(autocmd,&#x27;&#x27;,ALL)
+        ENDIF
+        IF myargs[4] THEN mb.allscreen:=TRUE ELSE mb.allscreen:=FALSE
+    ELSE
+        Raise(ER_BADARGS)
+    ENDIF
+    Raise(ER_NONE)
+EXCEPT
+    IF rdargs THEN FreeArgs(rdargs)
+    RETURN exception
+ENDPROC
+/**/
+/*&quot;p_StartWb()&quot;*/
+PROC p_StartWb() HANDLE
+/*===============================================================================
+ = Para         : NONE
+ = Return       : ER_NONE if ok,else the error.
+ = Description  : Get .info and lock current dir.
+ ==============================================================================*/
+    DEF wb:PTR TO wbstartup
+    DEF args:PTR TO wbarg
+    DEF prgname[256]:STRING
+    DEF disk=NIL:PTR TO diskobject
+    DEF str[256]:STRING,hk[80]:STRING,en[80]:STRING
+    dWriteF([&#x27;p_StartWb()\n&#x27;],0)
+    wb:=wbmessage
+    args:=wb.arglist
+    /*FindTask(0)*/
+    StrCopy(prgname,args[0].name,ALL)
+    baselock:=CurrentDir(args[0].lock)
+    IF (disk:=GetDiskObject(prgname))=NIL THEN Raise(ER_NOICONS)
+    IF str:=FindToolType(disk.tooltypes,&#x27;CX_POPKEY&#x27;)
+        StrCopy(hk,str,ALL)
+    ELSE
+        StrCopy(hk,&#x27;shift ctrl esc&#x27;,ALL)
+    ENDIF
+    mb.cxhotkey:=String(EstrLen(hk))
+    StrCopy(mb.cxhotkey,hk,ALL)
+    IF str:=FindToolType(disk.tooltypes,&#x27;EDITORNAME&#x27;)
+        StringF(en,&#x27;\s &quot;ClickCx.Prefs&quot;&#x27;,str)
+    ELSE
+        StrCopy(en,&#x27;C:ed &quot;ClickCx.Prefs&quot;&#x27;,ALL)
+    ENDIF
+    mb.editcmd:=String(EstrLen(en))
+    StrCopy(mb.editcmd,en,ALL)
+    IF str:=FindToolType(disk.tooltypes,&#x27;CX_PRIORITY&#x27;)
+        mb.cxpri:=Val(str,NIL)
+    ELSE
+        mb.cxpri:=0
+    ENDIF
+    IF str:=FindToolType(disk.tooltypes,&#x27;ALLSCREEN&#x27;) THEN mb.allscreen:=TRUE ELSE mb.allscreen:=FALSE
+    IF str:=FindToolType(disk.tooltypes,&#x27;CX_POPUP&#x27;)
+        StrCopy(hk,str,ALL)
+        UpperStr(hk)
+        IF StrCmp(hk,&#x27;NO&#x27;,2) THEN popup:=FALSE ELSE popup:=TRUE
+    ENDIF
+    IF str:=FindToolType(disk.tooltypes,&#x27;COMMAND&#x27;)
+        StrCopy(autocmd,str,ALL)
+    ELSE
+        StrCopy(autocmd,&#x27;&#x27;,ALL)
+    ENDIF
+    IF disk THEN FreeDiskObject(disk)
+    Raise(ER_NONE)
+EXCEPT
+    RETURN exception
+ENDPROC
+/**/
+/**/
+/*&quot;main()&quot;*/
+PROC main() HANDLE 
+    DEF testmain
+    tattr:=[&#x27;topaz.font&#x27;,8,0,0]:textattr
+    p_DoReadHeader({banner})
+    IF (testmain:=p_OpenLibraries())&lt;&gt;ER_NONE THEN Raise(testmain)
+    IF (mb:=New(SIZEOF xdatabase))=NIL THEN Raise(ER_MEM)
+    IF wbmessage&lt;&gt;NIL
+        IF (testmain:=p_StartWb())&lt;&gt;ER_NONE THEN Raise(testmain)
+    ELSE
+        IF (testmain:=p_StartCli())&lt;&gt;ER_NONE THEN Raise(testmain)
+    ENDIF
+    IF (testmain:=p_InitAPP())&lt;&gt;ER_NONE THEN Raise(testmain)
+    IF popup
+        IF (testmain:=p_OpenWindow())&lt;&gt;ER_NONE THEN Raise(testmain)
+    ENDIF
+    IF EstrLen(autocmd)&lt;&gt;0 THEN p_CLIRun(autocmd,&#x27;Sys:&#x27;,4000,0)
+    REPEAT
+        p_LookAllMessage()
+    UNTIL reelquit=TRUE
+    Raise(ER_NONE)
+EXCEPT
+    IF cr_window THEN p_CloseWindow()
+    IF mb THEN p_RemAPP()
+    IF baselock&lt;&gt;NIL THEN UnLock(baselock)
+    p_CloseLibraries()
+    SELECT exception
+        CASE ER_LOCKSCREEN; WriteF(&#x27;Lock Screen Failed.\n&#x27;)
+        CASE ER_VISUAL;     WriteF(&#x27;Error Visual.\n&#x27;)
+        CASE ER_CONTEXT;    WriteF(&#x27;Error Context.\n&#x27;)
+        CASE ER_MENUS;      WriteF(&#x27;Error Menus.\n&#x27;)
+        CASE ER_GADGET;     WriteF(&#x27;Error Gadget.\n&#x27;)
+        CASE ER_WINDOW;     WriteF(&#x27;Error Window.\n&#x27;)
+        CASE ER_MEM;        WriteF(&#x27;Error Mem.\n&#x27;)
+        CASE ER_PORT;       WriteF(&#x27;Error Port.\n&#x27;)
+        CASE ER_NOPREFS;    WriteF(&#x27;Error NoPrefs.\n&#x27;)
+        CASE ER_CX;         WriteF(&#x27;Error Commodities.\n&#x27;)
+        CASE ER_BADARGS;    WriteF(&#x27;Error Bad Args.\n&#x27;)
+        CASE ER_NOICONS;    WriteF(&#x27;Error No Icon.\n&#x27;)
+        CASE ER_APPWIN;     WriteF(&#x27;Error AppWindow.\n&#x27;)
+    ENDSELECT
+ENDPROC
+/**/
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

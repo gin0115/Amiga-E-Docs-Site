@@ -1,0 +1,168 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>editorobj.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-frontier-src.html">FRONTIER-Src</a> &rsaquo; editorobj.e</div><h1>File: <code>editorobj.e</code></h1><p class="meta">142 lines · project <a href="../examples/pkg-frontier-src.html"><code>FRONTIER-Src</code></a></p><p class="pathctx">FRONTIER-Src/FRONTIER-Src/editorobj.e</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/lists.html">amigalib/lists</a></li><li><a href="../modules/lists.html">exec/lists</a></li><li><a href="../modules/nodes.html">exec/nodes</a></li></ul></div><h2>Source</h2><pre class="code">OPT MODULE
+
+MODULE  &#x27;amigalib/lists&#x27;
+MODULE  &#x27;exec/lists&#x27;
+MODULE  &#x27;exec/nodes&#x27;
+
+CONST   ED_MAXLEN = 255         /* Maximal 256 byte (Zeichen) in eine Zeile!            */
+
+OBJECT line
+ ln:ln                          /* Exec-Listen-Node                                     */
+ num                            /* Zeilennummer...                                      */
+ buf[ED_MAXLEN]:ARRAY OF CHAR   /* Zeilenbuffer...                                      */
+ size                           /* so viele bytes sind in &gt;buf&lt; genutzt!                */
+ENDOBJECT
+
+EXPORT OBJECT editor            /* Klasse des Editor-Objekts...                         */
+ num                            /* Zeilennummer                                         */
+PRIVATE                         /* Geht keinen was an!                                  */
+ linelist:PTR TO lh             /* Hier die liste der lines... (PTR)                    */
+ maxlines                       /* Soviele Lines sind es!                               */
+ENDOBJECT
+
+PROC init()     OF editor       /* Klasse initialisieren!                               */
+ NEW self.linelist              /* Speicher für die Liste holen...                      */
+  IF self.linelist=NIL THEN RETURN FALSE
+   newList(self.linelist)       /* Liste initialisieren                                 */
+    self.num:=0
+ENDPROC TRUE
+
+PROC exit()     OF editor       /* Alles wieder freigeben!                              */
+ DEF    line:PTR TO line,
+        nextline
+  line:=self.linelist.head
+   WHILE nextline:=line.ln.succ
+    END line
+     line:=nextline
+   ENDWHILE
+ENDPROC
+
+PROC newline(buf,size) OF editor
+ DEF    line:PTR TO line,
+        num
+  NEW line
+   IF line=NIL THEN RETURN FALSE
+    num:=self.num
+     num++
+      self.num:=num
+       line.num:=num
+        AstrCopy(line.buf,buf,size)
+         line.size:=size
+          line.ln.pri:=num
+           line.ln.name:=line.buf
+            AddTail(self.linelist,line)
+ENDPROC TRUE
+
+PROC getline(num,buf) OF editor
+ DEF    line:PTR TO line
+  line:=jumpline(self.linelist,line,num)
+   AstrCopy(buf,line.buf,line.size)
+ENDPROC line.size
+
+PROC remline(num) OF editor
+ DEF    line:PTR TO line,
+        nextline:PTR TO line,
+        predline:PTR TO line
+  line:=jumpline(self.linelist,line,num)
+   predline:=line.ln.pred
+    nextline:=line.ln.succ
+     predline.ln.succ:=nextline
+      nextline.ln.pred:=predline
+       END line
+ENDPROC
+
+PROC setline(num,buf,size) OF editor
+ DEF    line:PTR TO line
+  line:=jumpline(self.linelist,line,num)
+   AstrCopy(line.buf,buf,size)
+ENDPROC
+
+PROC insline(num,buf,size) OF editor
+ DEF    line:PTR TO line,
+        predline:PTR TO line,
+        succline:PTR TO line,
+        nextline,
+        linenum
+ num:=num-2
+  predline:=jumpline(self.linelist,predline,num)
+   succline:=predline.ln.succ
+    NEW line
+     IF line=NIL THEN RETURN FALSE
+      AstrCopy(line.buf,buf,size)
+       line.size:=size
+        linenum:=self.num
+         linenum++
+          self.num:=linenum
+           linenum:=succline.num
+            line.ln.pri:=linenum
+             line.num:=linenum
+              line.ln.name:=line.buf
+               WHILE (nextline:=succline.ln.succ)
+                succline:=nextline
+                 succline.num:=succline.num+1
+                  succline.ln.pri:=succline.num+1
+               ENDWHILE
+                Insert(self.linelist,line,predline)
+ENDPROC TRUE
+
+PROC inschars(num,buf,size,pos) OF editor
+ DEF    line:PTR TO line,
+        newbuf[ED_MAXLEN]:STRING,
+        rightstr[ED_MAXLEN]:STRING
+  line:=jumpline(self.linelist,line,num)
+   MidStr(newbuf,line.buf,1,pos)
+    AstrCopy(newbuf,buf,size)
+     MidStr(rightstr,line.buf,pos+1,line.size)
+      StrAdd(newbuf,rightstr,line.size-(pos+1))
+       line.size:=StrLen(newbuf)
+        AstrCopy(line.buf,newbuf,line.size)
+ENDPROC
+
+PROC remchars(num,size,pos) OF editor
+ DEF    line:PTR TO line,
+        newbuf[ED_MAXLEN]:STRING,
+        rightstr[ED_MAXLEN]:STRING
+  line:=jumpline(self.linelist,line,num)
+   MidStr(newbuf,line.buf,1,pos)
+    MidStr(rightstr,line.buf,pos+size+1,line.size)
+     StrAdd(newbuf,rightstr,line.size-(pos+1))
+      line.size:=StrLen(newbuf)
+       AstrCopy(line.buf,newbuf,line.size)
+ENDPROC
+
+PROC jumpline(linelist:PTR TO lh,line:PTR TO line,num)
+ DEF a
+  line:=linelist.head
+   FOR a:=1 TO num
+    line:=line.ln.succ
+   ENDFOR
+ENDPROC line
+
+PROC getlist() OF editor        IS self.linelist
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

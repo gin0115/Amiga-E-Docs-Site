@@ -1,0 +1,180 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>PopShell.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-jrh-rkrm-1.html">JRH-RKRM-1</a> &rsaquo; PopShell.e</div><h1>File: <code>PopShell.e</code></h1><p class="meta">154 lines · project <a href="../examples/pkg-jrh-rkrm-1.html"><code>JRH-RKRM-1</code></a></p><p class="pathctx">JRH-RKRM-1/JRH-RKRM-PartOne/Commodities/PopShell.e</p><p class="prose">PopShell.e - Simple hot key <a href="../modules/commodity.html">commodity</a></p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/commodities.html">commodities</a></li></ul></div><h2>Source</h2><pre class="code">-&gt; PopShell.e - Simple hot key commodity
+
+OPT PREPROCESS  -&gt; E-Note: we are using the CxXXX creation macros
+
+MODULE &#x27;commodities&#x27;,
+       &#x27;icon&#x27;,
+       &#x27;amigalib/argarray&#x27;,
+       &#x27;amigalib/cx&#x27;,
+       &#x27;devices/timer&#x27;,
+       &#x27;devices/inputevent&#x27;,
+       &#x27;dos/dos&#x27;,
+       &#x27;exec/ports&#x27;,
+       &#x27;libraries/commodities&#x27;
+
+ENUM ERR_NONE, ERR_ARGS, ERR_BRKR, ERR_CRCX, ERR_CXERR, ERR_HOT, ERR_IE,
+     ERR_LIB,  ERR_PORT
+
+RAISE ERR_BRKR IF CxBroker()=NIL,
+      ERR_CRCX IF CreateCxObj()=NIL,  -&gt; E-Note: the CxXXX macros use this
+      ERR_LIB  IF OpenLibrary()=NIL,
+      ERR_PORT IF CreateMsgPort()=NIL
+
+CONST EVT_HOTKEY=1
+
+DEF broker_mp=NIL:PTR TO mp, broker=NIL, filter=NIL,
+    cxsigflag, ie=NIL:PTR TO inputevent
+
+PROC main() HANDLE
+  DEF hotkey, ttypes=NIL, msg, newshell
+  -&gt; E-Note: we can use invertStringRev(), so we don&#x27;t need to spell backwards!
+  newshell:=&#x27;newshell\b&#x27;
+  cxbase:=OpenLibrary(&#x27;commodities.library&#x27;, 37)
+  iconbase:=OpenLibrary(&#x27;icon.library&#x27;, 36)
+  broker_mp:=CreateMsgPort()
+  cxsigflag:=Shl(1, broker_mp.sigbit)
+  -&gt; E-Note: argArrayInit() uses global &quot;wbmessage&quot; and &quot;arg&quot; by default
+  -&gt; E-Note: C version fails to check return value
+  IF NIL=(ttypes:=argArrayInit()) THEN Raise(ERR_ARGS)
+  hotkey:=argString(ttypes, &#x27;HOTKEY&#x27;, &#x27;rawkey control esc&#x27;)
+
+  broker:=CxBroker([NB_VERSION, 0,  -&gt; E-Note: pad byte!
+                    &#x27;RKM PopShell&#x27;,  -&gt; String to identify this broker
+                    &#x27;A Simple PopShell&#x27;,
+                    &#x27;A simple PopShell commodity&#x27;,
+                    -&gt; Don&#x27;t want any new commodities starting with this name.
+                    -&gt; If someone tries it, let me know
+                    NBU_UNIQUE OR NBU_NOTIFY,
+                    0, argInt(ttypes, &#x27;CX_PRIORITY&#x27;, 0),
+                    0, broker_mp, 0]:newbroker, NIL)
+
+  -&gt; hotKey() is an amigalib function that creates a filter, sender and
+  -&gt; translate CxObject and connects them to report a hot key press and
+  -&gt; delete its input event.
+  IF NIL=(filter:=hotKey(hotkey, broker_mp, EVT_HOTKEY)) THEN Raise(ERR_HOT)
+
+  -&gt; Add a CxObject to another&#x27;s personal list
+  AttachCxObj(broker, filter)
+  IF CxObjError(filter)&lt;&gt;FALSE THEN Raise(ERR_CXERR)
+
+  -&gt; invertString() is an amigalib function that creates a linked list of input
+  -&gt; events which would translate into the string passed to it.  Note that it
+  -&gt; puts the input events in the opposite order in which the corresponding
+  -&gt; letters appear in the string.  A translate CxObject expects them backwards.
+  -&gt; E-Note: ...so use invertStringRev() and stay sane...
+  IF NIL=(ie:=invertStringRev(newshell, NIL)) THEN Raise(ERR_IE)
+
+  ActivateCxObj(broker, TRUE)
+  processMsg()
+
+EXCEPT DO
+  -&gt; We have to release the memory allocated by invertStringRev.
+  -&gt; E-Note: ...well, this isn&#x27;t really necessary since it uses NEW
+  IF ie THEN freeIEvents(ie)
+  -&gt; DeleteCxObjAll() is a commodities.library function that not only deletes
+  -&gt; the CxObject pointed to in its argument, but deletes all of the CxObjects
+  -&gt; attached to it.
+  IF broker THEN DeleteCxObjAll(broker)
+  -&gt; This amigalib function cleans up after argArrayInit()
+  IF ttypes THEN argArrayDone()
+  IF broker_mp  -&gt; Empty the port of all CxMsgs
+    WHILE msg:=GetMsg(broker_mp) DO ReplyMsg(msg)
+    DeleteMsgPort(broker_mp)
+  ENDIF
+  IF iconbase THEN CloseLibrary(iconbase)
+  IF cxbase THEN CloseLibrary(cxbase)
+  SELECT exception
+  CASE ERR_ARGS;   WriteF(&#x27;Error: Could not parse tooltypes/arguments\n&#x27;)
+  CASE ERR_BRKR;   WriteF(&#x27;Error: Could not create broker\n&#x27;)
+  CASE ERR_CRCX;   WriteF(&#x27;Error: Could not create CX object\n&#x27;)
+  CASE ERR_CXERR;  WriteF(&#x27;Error: Could not activate broker\n&#x27;)
+  CASE ERR_HOT;    WriteF(&#x27;Error: Could not create hot key\n&#x27;)
+  CASE ERR_LIB;    WriteF(&#x27;Error: Could not open required library\n&#x27;)
+  CASE ERR_PORT;   WriteF(&#x27;Error: Could not create message port\n&#x27;)
+  ENDSELECT
+ENDPROC
+
+PROC processMsg()
+  DEF msg, sigrcvd, msgid, msgtype, done=FALSE
+  REPEAT
+    sigrcvd:=Wait(SIGBREAKF_CTRL_C OR cxsigflag)
+
+    WHILE msg:=GetMsg(broker_mp)
+      msgid:=CxMsgID(msg)
+      msgtype:=CxMsgType(msg)
+      ReplyMsg(msg)
+
+      SELECT msgtype
+      CASE CXM_IEVENT
+        WriteF(&#x27;A CXM_EVENT, &#x27;)
+        SELECT msgid
+        CASE EVT_HOTKEY
+          -&gt; We got the message from the sender CxObject
+          WriteF(&#x27;You hit the HotKey.\n&#x27;)
+          -&gt; Add the string &quot;newshell&quot; to input * stream.  If a shell gets it,
+          -&gt; it&#x27;ll open a new shell.
+          AddIEvents(ie)
+        DEFAULT
+          WriteF(&#x27;unknown.\n&#x27;)
+        ENDSELECT
+      CASE CXM_COMMAND
+        WriteF(&#x27;A command: &#x27;)
+        SELECT msgid
+        CASE CXCMD_DISABLE
+          WriteF(&#x27;CXCMD_DISABLE\n&#x27;)
+          ActivateCxObj(broker, FALSE)
+        CASE CXCMD_ENABLE
+          WriteF(&#x27;CXCMD_ENABLE\n&#x27;)
+          ActivateCxObj(broker, TRUE)
+        CASE CXCMD_KILL
+          WriteF(&#x27;CXCMD_KILL\n&#x27;)
+          done:=TRUE
+        CASE CXCMD_UNIQUE
+          -&gt; Commodities Exchange can be told not only to refuse to launch a
+          -&gt; commodity with a name already in use but also can notify the
+          -&gt; already running commodity that it happened.  It does this by
+          -&gt; sending a CXM_COMMAND with the ID set to CXMCMD_UNIQUE.  If the
+          -&gt; user tries to run a windowless commodity that is already running,
+          -&gt; the user wants the commodity to shut down.
+          WriteF(&#x27;CXCMD_UNIQUE\n&#x27;)
+          done:=TRUE
+        DEFAULT
+          WriteF(&#x27;Unknown msgid\n&#x27;)
+        ENDSELECT
+      DEFAULT
+        WriteF(&#x27;Unknown msgtype\n&#x27;)
+      ENDSELECT
+    ENDWHILE
+    IF sigrcvd AND SIGBREAKF_CTRL_C
+      done:=TRUE
+      WriteF(&#x27;CTRL C signal break\n&#x27;)
+    ENDIF
+  UNTIL done
+ENDPROC
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>keytest.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-kyz.html">kyz</a> &rsaquo; keytest.e</div><h1>File: <code>keytest.e</code></h1><p class="meta">60 lines · project <a href="../examples/pkg-kyz.html"><code>kyz</code></a></p><p class="pathctx">kyz/test/keytest.e</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/keymap.html">keymap</a></li></ul></div><h2>Source</h2><pre class="code">OPT OSVERSION=37,PREPROCESS
+
+MODULE &#x27;keymap&#x27;, &#x27;devices/inputevent&#x27;, &#x27;*keypress&#x27;
+
+CONST MAX_KEYS=512
+
+PROC main()
+  DEF keys[MAX_KEYS]:ARRAY OF keypress, len
+
+  IF arg[]=&quot;\0&quot;
+    PutStr(&#x27;Usage: keytest &lt;a message&gt;\n&#x27;)
+    RETURN 0
+  ENDIF
+
+  IF keymapbase := OpenLibrary(&#x27;keymap.library&#x27;, 36)
+    IF (len := MapANSI(arg, StrLen(arg), keys, MAX_KEYS, NIL)) &gt; 0 THEN
+      presskeys(keys, len)
+    CloseLibrary(keymapbase)
+  ENDIF
+ENDPROC
+
+/****
+
+PROC describe_keys(keys:PTR TO keypress, len)
+  DEF c, q, x
+  FOR x := 0 TO len-1 DO Vprintf(
+    &#x27;\z\d[3]: code=\z\h[2] qual=\z\h[2]   \s\s\s\s\s\s\s\s\s\n&#x27;, [
+      x,
+      c := keys[x].code,
+      q := keys[x].qual,
+      IF q AND IEQUALIFIER_LSHIFT   THEN &#x27;LShift &#x27; ELSE &#x27;&#x27;,
+      IF q AND IEQUALIFIER_RSHIFT   THEN &#x27;RShift &#x27; ELSE &#x27;&#x27;,
+      IF q AND IEQUALIFIER_CAPSLOCK THEN &#x27;Caps &#x27;   ELSE &#x27;&#x27;,
+      IF q AND IEQUALIFIER_CONTROL  THEN &#x27;Ctrl &#x27;   ELSE &#x27;&#x27;,
+      IF q AND IEQUALIFIER_LALT     THEN &#x27;LAlt &#x27;   ELSE &#x27;&#x27;,
+      IF q AND IEQUALIFIER_RALT     THEN &#x27;RAlt &#x27;   ELSE &#x27;&#x27;,
+      IF q AND IEQUALIFIER_LCOMMAND THEN &#x27;LAmiga &#x27; ELSE &#x27;&#x27;,
+      IF q AND IEQUALIFIER_RCOMMAND THEN &#x27;RAmiga &#x27; ELSE &#x27;&#x27;,
+      describe_key(c)
+    ])
+  PutStr(&#x27;\n&#x27;)
+ENDPROC
+
+PROC describe_key(key) IS
+  IF (key &lt; 0) OR (key &gt; $67) THEN &#x27;???&#x27; ELSE ListItem([
+    &#x27;`&#x27;, &#x27;1&#x27;, &#x27;2&#x27;, &#x27;3&#x27;, &#x27;4&#x27;, &#x27;5&#x27;, &#x27;6&#x27;, &#x27;7&#x27;, &#x27;8&#x27;, &#x27;9&#x27;, &#x27;0&#x27;, &#x27;-&#x27;, &#x27;=&#x27;, &#x27;\\&#x27;,
+    &#x27;key $0e&#x27;, &#x27;Keypad 0&#x27;, &#x27;Q&#x27;, &#x27;W&#x27;, &#x27;E&#x27;, &#x27;R&#x27;, &#x27;T&#x27;, &#x27;Y&#x27;, &#x27;U&#x27;, &#x27;I&#x27;, &#x27;O&#x27;, &#x27;P&#x27;,
+    &#x27;[&#x27;, &#x27;]&#x27;, &#x27;key $1c&#x27;, &#x27;Keypad 1&#x27;, &#x27;Keypad 2&#x27;, &#x27;Keypad 3&#x27;, &#x27;A&#x27;, &#x27;S&#x27;, &#x27;D&#x27;,
+    &#x27;F&#x27;, &#x27;G&#x27;, &#x27;H&#x27;, &#x27;J&#x27;, &#x27;K&#x27;, &#x27;L&#x27;, &#x27;;&#x27;, &#x27;\a&#x27;, &#x27;key beside return&#x27;, &#x27;key $2c&#x27;,
+    &#x27;Keypad 4&#x27;, &#x27;Keypad 5&#x27;, &#x27;Keypad 6&#x27;, &#x27;key beside left shift&#x27;, &#x27;Z&#x27;, &#x27;X&#x27;,
+    &#x27;C&#x27;, &#x27;V&#x27;, &#x27;B&#x27;, &#x27;N&#x27;, &#x27;M&#x27;, &#x27;,&#x27;, &#x27;.&#x27;, &#x27;/&#x27;, &#x27;key $3b&#x27;, &#x27;Keypad .&#x27;, &#x27;Keypad 7&#x27;,
+    &#x27;Keypad 8&#x27;, &#x27;Keypad 9&#x27;, &#x27;Space&#x27;, &#x27;Backspace&#x27;, &#x27;Tab&#x27;, &#x27;Keypad Enter&#x27;,
+    &#x27;Return&#x27;, &#x27;Esc&#x27;, &#x27;Del&#x27;, &#x27;key $47&#x27;, &#x27;key $48&#x27;, &#x27;key $49&#x27;, &#x27;Keypad -&#x27;,
+    &#x27;key $4b&#x27;, &#x27;Up&#x27;, &#x27;Down&#x27;, &#x27;Right&#x27;, &#x27;Left&#x27;, &#x27;F1&#x27;, &#x27;F2&#x27;, &#x27;F3&#x27;, &#x27;F4&#x27;, &#x27;F5&#x27;,
+    &#x27;F6&#x27;, &#x27;F7&#x27;, &#x27;F8&#x27;, &#x27;F9&#x27;, &#x27;F10&#x27;, &#x27;Keypad (&#x27;, &#x27;Keypad )&#x27;, &#x27;Keypad /&#x27;,
+    &#x27;Keypad *&#x27;, &#x27;Keypad +&#x27;, &#x27;Help&#x27;
+  ], key)
+
+***/
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

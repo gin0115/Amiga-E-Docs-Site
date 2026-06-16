@@ -1,0 +1,493 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>all.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-newgui.html">newgui</a> &rsaquo; all.e</div><h1>File: <code>all.e</code></h1><p class="meta">467 lines · project <a href="../examples/pkg-newgui.html"><code>newgui</code></a></p><p class="pathctx">newgui/NewGUI/Src/Examples/all.e</p><p class="prose">* All.e - Demonstration (fast) ALLER NewGUI - Features * -=====- * * Anwendung von: * -------------- * - Multi-Window-Handling (+ Anwendung von setnewarrtsA()) * - ARexx-Port * - Window-Backfill * - Designspezifischen Elemente (Buttons, Stringgadgets... ) * - GadTools-Menüs * - Window-Blocking * - W</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/gadtools.html">libraries/gadtools</a></li><li><a href="../modules/newgui.html">newgui/newgui</a></li><li><a href="../modules/ng-progress.html">newgui/ng_progress</a></li><li><a href="../modules/ng-showerror.html">newgui/ng_showerror</a></li><li><a href="../modules/tagitem.html">utility/tagitem</a></li></ul></div><h2>Source</h2><pre class="code">/* 
+ *  All.e - Demonstration (fast) ALLER NewGUI - Features
+ * -=====-
+ * 
+ * Anwendung von:
+ * --------------
+ *      - Multi-Window-Handling (+ Anwendung von setnewarrtsA())
+ *      - ARexx-Port
+ *      - Window-Backfill
+ *      - Designspezifischen Elemente (Buttons, Stringgadgets... )
+ *      - GadTools-Menüs
+ *      - Window-Blocking
+ *      - Window-Hiding
+ *      - Verändern der Oberfläche (Gui-Changing)
+ *      - Verwendung der Unterprozeduren ONTICK und ONCLOSE
+ *      - Screen-Cloning/Benutzen eines PubScreens...
+ *      - Error-handling mit ng_showerror()
+ */
+
+OPT     LARGE
+OPT     OSVERSION = 37
+
+MODULE  &#x27;libraries/gadtools&#x27;
+MODULE  &#x27;newgui/ng_showerror&#x27;
+MODULE  &#x27;newgui/ng_progress&#x27;
+MODULE  &#x27;newgui/newgui&#x27;
+MODULE  &#x27;utility/tagitem&#x27;
+
+ENUM    GUI_MAIN,
+        GUI_ABOUT,
+        GUI_FONT,
+        GUI_SCREENMODE,
+        GUI_GAUGE,
+        GUI_LAST
+
+DEF     gui:PTR TO guihandle,                   -&gt; guihandle
+        screen=NIL,                             -&gt; Screen-PTR (für PubScreen-handling...)
+        menu=0,                                 -&gt; GadTools-Menü
+        tickon=FALSE,                           -&gt; Intuiticks an das Unterprogramm weiterleiten?
+        pubscreen=TRUE,                         -&gt; Ist der Pubscreen schon offen? (dann müssen wir auch wieder den Lock entfernen!)
+        id=0,
+        pw:PTR TO progresswin                   -&gt; NewGUI-Progress-Window...
+
+PROC main()     HANDLE
+ makemenus()
+  opengui()
+
+   handlegui()
+
+EXCEPT DO
+ closegui()
+ IF pubscreen=TRUE THEN UnlockPubScreen(&#x27;NEWGUI_2&#x27;,screen)
+  IF exception THEN ng_showerror(exception)     -&gt; Fehlerbehandlung mittels einer Zusatz-Routine (in newgui/ng_showerror.m)
+ CleanUp(exception)                             -&gt; Mit exception als RETURN-Code (normalfall = 0) aufhören
+ENDPROC
+
+PROC makemenus()
+ menu:=[
+        NM_TITLE,       0,      &#x27;Projekt&#x27;,      0,      0,0,0,
+        NM_ITEM,        0,      &#x27;Neu ...&#x27;,     &#x27;n&#x27;,     0,0,{new},
+        NM_ITEM,        0,      &#x27;Laden ...&#x27;,   &#x27;l&#x27;,     NM_ITEMDISABLED,0,{test1},
+        NM_ITEM,        0,      &#x27;Sichern ...&#x27;, &#x27;s&#x27;,     NM_ITEMDISABLED,0,{test1},
+        NM_BARLABEL,    0,      0,              0,      0,0,0,
+        NM_ITEM,        0,      &#x27;Über ...&#x27;,    &#x27;a&#x27;,     0,0,{about},
+        NM_ITEM,        0,      &#x27;Beenden ...&#x27;, &#x27;q&#x27;,     0,0,0,
+        NM_TITLE,       0,      &#x27;Hilfsmittel&#x27;,  0,      0,0,0,
+        NM_ITEM,        0,      &#x27;Main - blockieren&#x27;,&#x27;b&#x27;,0,0,{block},
+        NM_ITEM,        0,      &#x27;Main - verstecken&#x27;,&#x27;v&#x27;,0,0,{hide},
+        0,              0,      0,              0,      0,0,0]:newmenu
+ENDPROC
+
+PROC opengui()
+ IF (screen:=LockPubScreen(&#x27;NEWGUI_2&#x27;))=NIL THEN pubscreen:=FALSE
+  gui:=guiinitA([
+        NG_WINDOWTITLE, &#x27;NewGUI - Demo&#x27;,        -&gt; Titel des Fensters
+        IF (screen=NIL)  THEN NG_CLONESCREEN ELSE TAG_IGNORE,   TRUE,                   -&gt; WB clonen (wenn weitere Angaben (z.B. NG_SCR_xxx) gemacht werden, werden diese bevorzugt behandelt!)
+        IF (screen=NIL)  THEN NG_SCR_TITLE   ELSE TAG_IGNORE,   &#x27;NewGUI - ALL&#x27;,
+        IF (screen&lt;&gt;NIL) THEN NG_SCREEN      ELSE TAG_IGNORE,   screen,
+        NG_SCR_PUBNAME, &#x27;NEWGUI_2&#x27;,
+        NG_REXXNAME,    &#x27;NEWGUI&#x27;,               -&gt; Name für einen ARexx-Port
+        NG_REXXPROC,    {rexxmsg},              -&gt; PTR der Prozedur die ARexx-Messages verarbeitet
+        NG_BFPATTERN,   [$AAAA,$5555]:INT,      -&gt; Backfillpattern (Muster)
+        NG_BFEXP,       1,                      -&gt; Exponent für den Pattern (siehe graphics/gfxmacros/SetAfPt)
+        NG_BFBACKPEN,   3,                      -&gt; Hintergrundstift (nummer) für den Pattern
+        NG_BFFRONTPEN,  0,                      -&gt; Zeichenstift (Nummer) für den Pattern
+        NG_PATTERNEXP,  1,                      -&gt; Exponent für den Pattern
+        NG_PATTERN1,    [$AAAA,$5555]:INT,      -&gt; Muster (Pattern) für FILLPATTERN1
+        NG_P1BACKPEN,   0,                      -&gt; Hintergrundstift für das Patternfilling (Muster)
+        NG_P1FRONTPEN,  0,                      -&gt; Zeichenstift für das Muster (Patternfilling)
+        NG_MENU,        menu,                   -&gt; Menü-Beschreibung
+        NG_GUIID,       GUI_MAIN,               -&gt; Gui-ID
+        NG_GUI,                                 -&gt; Oberflächenbeschreibung
+                [ROWS,                          -&gt; Alles Untereinander
+                [BEVEL,                         -&gt; Einen Bevel um die folgenden Elemente
+                [FILLPATTERN1,                  -&gt; Alles im Bevel mit dem Pattern 1 füllen
+                [ROWS,                          -&gt; Im Bevel (und Fillpattern) alles untereinander
+                        [TEXT,&#x27;Haupt-Fenster&#x27;,&#x27;NewGUI-Beispiel:&#x27;,TRUE,3]        -&gt; Text ausgeben
+                ]]],                            -&gt; Rows, Fillpattern1 und Bevelr - Schließen!
+                [BEVELR,                        -&gt; Einen Recessed Bevel um die Elemente
+                [FILLPATTERN1,                  -&gt; Außerdem mit dem FILLPATTERN1 hinterlegen!
+                [ROWS,                          -&gt; Alles untereinander
+                        [SBUTTON,{font},&#x27;Font ...&#x27;],
+                        [SBUTTON,{screenmode},&#x27;Screenmode ...&#x27;],
+                        [SBUTTON,{ticker},&#x27;Ticker on/off&#x27;],
+                        [SBUTTON,{gauge},&#x27;Gauge...&#x27;],
+                        [SBUTTON,{about},&#x27;Über ...&#x27;]
+                ]]],                            -&gt; Rows, Fillpattern1 und Bevelr schließen
+                [BAR],                          -&gt; Einen Trennstrich erzeugen
+                [BEVELR,                        -&gt; Einen Recessed Bevel um die Elemente
+                [FILLPATTERN1,                  -&gt; Außerdem mit dem FILLPATTERN1 hinterlegen!
+                [EQCOLS,                        -&gt; Und alle Elemente im Bevel nebeneinander, und ALLE gleich Breit (EQCOLS)
+                        [SBUTTON,{closechilds},&#x27;Fenster schließen&#x27;],    -&gt; Ein Button (SBUTTON = Variable Breite!)
+                        [SBUTTON,{new},&#x27;Neues Fenster&#x27;],                -&gt; Neues GUI öffnen!
+                        [SBUTTON,{block},&#x27;Blockieren&#x27;],                 -&gt; Ein Button (SBUTTON = Variable Breite!) -&gt; Fenster blockieren!
+                        [SBUTTON,{hide},&#x27;Verstecken&#x27;]]]]],-&gt; Ein Button mit variabler Breite, außerdem ALLE verbleibenden Attribute schließen
+        NIL,NIL])                               -&gt; TagListe abschließen (normalerweise mit TAG_END)
+  screen:=ng_setattrsA([NG_GUI,  gui,
+        NG_GETSCREEN,   TRUE,
+        NIL,            NIL])
+   id:=GUI_LAST                                 -&gt; ID für die neuen Windows auf den größten Wert setzen
+ENDPROC
+
+PROC font()
+ DEF    guihandle
+  guihandle:=guiinitA([
+        NG_WINDOWTITLE, &#x27;Font-Demo&#x27;,            -&gt; Titel des Fensters
+        NG_SCREEN,      screen,
+        NG_BFPATTERN,   [$AAAA,$5555]:INT,      -&gt; Backfillpattern (Muster)
+        NG_BFEXP,       0,                      -&gt; Exponent für den Pattern (siehe graphics/gfxmacros/SetAfPt)
+        NG_BFBACKPEN,   0,                      -&gt; Hintergrundstift (nummer) für den Pattern
+        NG_BFFRONTPEN,  0,                      -&gt; Zeichenstift (Nummer) für den Pattern
+        NG_MENU,        menu,                   -&gt; Menü-Beschreibung
+        NG_GUIID,       GUI_FONT,               -&gt; Gui-ID
+        NG_GUI,                                 -&gt; Oberflächenbeschreibung
+                [EQROWS,
+                        [TEXT,&#x27;Selected Fonts&#x27;,NIL,FALSE,3],
+                [BEVELR,
+                [EQROWS,
+                        [TEXT,&#x27;xentiny 8&#x27;,&#x27;Workbench Icon Text:&#x27;,FALSE,3],
+                        [TEXT,&#x27;end 10&#x27;,&#x27;System Default Text:&#x27;,FALSE,3],
+                        [TEXT,&#x27;except 12&#x27;,&#x27;Screen text:&#x27;,FALSE,3]
+                ]],
+                        [SBUTTON,0,&#x27;Select Workbench Icon Text...&#x27;],
+                        [SBUTTON,0,&#x27;Select System Default Text...&#x27;],
+                        [SBUTTON,0,&#x27;Select Screen text...&#x27;],
+                [BAR],
+                [COLS,
+                        [BUTTON,0,&#x27;Save&#x27;],
+                [SPACEH],
+                        [BUTTON,0,&#x27;Use&#x27;],
+                [SPACEH],
+                        [BUTTON,0,&#x27;Cancel&#x27;]
+                ]],
+        NIL,NIL])                               -&gt; TagListe abschließen (normalerweise mit TAG_END)
+
+   ng_setattrsA([NG_GUI,gui,                    -&gt; GUI anhängen!
+        NG_APPENDGUI,guihandle,NIL,NIL])
+ENDPROC
+
+PROC screenmode()
+ DEF    guihandle
+  guihandle:=guiinitA([
+        NG_WINDOWTITLE, &#x27;Screenmode-Demo&#x27;,            -&gt; Titel des Fensters
+        NG_SCREEN,      screen,
+        NG_BFPATTERN,   [$AAAA,$5555]:INT,      -&gt; Backfillpattern (Muster)
+        NG_BFEXP,       0,                      -&gt; Exponent für den Pattern (siehe graphics/gfxmacros/SetAfPt)
+        NG_BFBACKPEN,   0,                      -&gt; Hintergrundstift (nummer) für den Pattern
+        NG_BFFRONTPEN,  0,                      -&gt; Zeichenstift (Nummer) für den Pattern
+        NG_MENU,        menu,                   -&gt; Menü-Beschreibung
+        NG_GUIID,       GUI_SCREENMODE,         -&gt; Gui-ID
+        NG_GUI,                                 -&gt; Oberflächenbeschreibung
+                [EQROWS,
+                [COLS,
+                [EQROWS,
+                        [LISTV,0,&#x27;Display Mode&#x27;,10,4,NIL,TRUE,0,0],
+                [COLS,
+                [EQROWS,
+                        [INTEGER,0,&#x27;Width:&#x27;,640,5],
+                        [INTEGER,0,&#x27;Height:&#x27;,512,5]
+                ],
+                [ROWS,
+                        [CHECK,0,&#x27;Default&#x27;,TRUE,FALSE],
+                        [CHECK,0,&#x27;Default&#x27;,TRUE,FALSE]
+                ]],
+                        [SLIDE,0,&#x27;Colors:&#x27;,FALSE,1,8,3,5,&#x27;&#x27;],
+                        [CHECK,0,&#x27;AutoScroll:&#x27;,TRUE,TRUE]
+                ],
+                [BEVELR,
+                [EQROWS,
+                        [TEXT,&#x27;688x539&#x27;,&#x27;Visible Size:&#x27;,FALSE,3],
+                        [TEXT,&#x27;640x200&#x27;,&#x27;Minimum Size:&#x27;,FALSE,3],
+                        [TEXT,&#x27;16368x16384&#x27;,&#x27;Maximum Size:&#x27;,FALSE,3],
+                        [TEXT,&#x27;256&#x27;,&#x27;Maximum Colors:&#x27;,FALSE,3],
+                [SPACE]
+                ]]],
+                [BAR],
+                [COLS,
+                        [BUTTON,0,&#x27;Save&#x27;],
+                [SPACEH],
+                        [BUTTON,0,&#x27;Use&#x27;],
+                [SPACEH],
+                        [BUTTON,0,&#x27;Cancel&#x27;]
+                ]],
+        NIL,NIL])                               -&gt; TagListe abschließen (normalerweise mit TAG_END)
+
+   ng_setattrsA([NG_GUI,gui,                    -&gt; GUI anhängen!
+        NG_APPENDGUI,guihandle,NIL,NIL])
+ENDPROC
+
+PROC handlegui()
+ DEF    res=-1
+  WHILE (res&lt;0)
+   Wait(gui.sig)
+    res:=guimessage(gui)
+  ENDWHILE
+ENDPROC
+
+PROC closegui()
+  IF (pw&lt;&gt;NIL)  THEN END pw
+ IF gui         THEN cleangui(gui,TRUE)         -&gt; (TRUE bedeutet, daß ALLE Unterguis mit geschlossen werden!)
+ENDPROC
+
+PROC closechilds()
+   ng_setattrsA([NG_GUI,gui,                    -&gt; Child-Windows entfernen!
+        NG_REMOVECHILDS,TRUE,NIL,NIL])
+  id:=GUI_LAST
+ENDPROC
+
+PROC new()
+ DEF    guihandle
+  guihandle:=guiinitA([
+        NG_WINDOWTITLE, &#x27;NewGUI - Demo&#x27;,        -&gt; Titel des Fensters
+        NG_SCREEN,      screen,
+        NG_ONCLOSE,     {onchildclose},         -&gt; Prozedur die beim Schließen des Fensters aufgerufen wird
+        NG_BFPATTERN,   [$AAAA,$5555]:INT,      -&gt; Backfillpattern (Muster)
+        NG_BFEXP,       1,                      -&gt; Exponent für den Pattern (siehe graphics/gfxmacros/SetAfPt)
+        NG_BFBACKPEN,   3,                      -&gt; Hintergrundstift (nummer) für den Pattern
+        NG_BFFRONTPEN,  0,                      -&gt; Zeichenstift (Nummer) für den Pattern
+        NG_PATTERNEXP,  1,                      -&gt; Exponent für den Pattern
+        NG_PATTERN1,    [$AAAA,$5555]:INT,      -&gt; Muster (Pattern) für FILLPATTERN1
+        NG_P1BACKPEN,   0,                      -&gt; Hintergrundstift für das Patternfilling (Muster)
+        NG_P1FRONTPEN,  0,                      -&gt; Zeichenstift für das Muster (Patternfilling)
+        NG_MENU,        menu,                   -&gt; Menü-Beschreibung
+        NG_GUIID,       id,                     -&gt; Gui-ID
+        NG_DATA,        id,                     -&gt; ID ist auch DATA!
+        NG_GUI,                                 -&gt; Oberflächenbeschreibung
+                [ROWS,                          -&gt; Alles Untereinander
+                [DBEVELR,                       -&gt; Einen Doppelten Recessed (Eingedrückten) Bevel um die folgenden Elemente
+                [FILLPATTERN1,                  -&gt; Alles im Bevel mit dem Pattern 1 füllen
+                [ROWS,                          -&gt; Im Bevel (und Fillpattern) alles untereinander
+                        [TEXT,&#x27;Unter-Fenster&#x27;,&#x27;NewGUI-Beispiel:&#x27;,TRUE,3]        -&gt; Text ausgeben
+                ]]],                            -&gt; Rows, Fillpattern1 und Bevelr - Schließen!
+                [BAR],                          -&gt; Einen Trennstrich erzeugen
+                [BEVELR,                        -&gt; Einen Recessed Bevel um die Elemente
+                [FILLPATTERN1,                  -&gt; Außerdem mit dem FILLPATTERN1 hinterlegen!
+                [EQCOLS,                        -&gt; Und alle Elemente im Bevel nebeneinander, und ALLE gleich Breit (EQCOLS)
+                        [SBUTTON,{change},&#x27;Wechseln&#x27;],          -&gt; Ein Button (SBUTTON = Variable Breite!)
+                        [SBUTTON,{block},&#x27;Main - Blockieren&#x27;],  -&gt; Ein Button (SBUTTON = Variable Breite!) -&gt; Fenster blockieren!
+                        [SBUTTON,{hide},&#x27;Main - Verstecken&#x27;]]]]],-&gt; Ein Button mit variabler Breite, außerdem ALLE verbleibenden Attribute schließen
+
+        NIL,NIL])                               -&gt; TagListe abschließen (normalerweise mit TAG_END)
+
+   ng_setattrsA([NG_GUI,gui,                    -&gt; GUI anhängen!
+        NG_APPENDGUI,guihandle,NIL,NIL])
+
+    id++                                        -&gt; ID um 1 erhöhen
+ENDPROC
+
+PROC closepw()  
+ END pw
+ENDPROC -2
+
+PROC gauge()
+ DEF    guihandle
+  IF (guihandle:=ng_setattrsA([
+        NG_GUI,         gui,
+        NG_GETGUI,      TRUE,
+        NG_GUIID,       GUI_GAUGE,
+        NIL,            NIL]))
+    ng_setattrsA([
+        NG_GUI,         gui,
+        NG_REMOVEGUI,   GUI_GAUGE,
+        NIL,            NIL])
+   END pw
+  ELSE
+   NEW pw.progresswin(&#x27;NewGUI - ProgressWindow&#x27;,&#x27;Füllanzeige-Fenster&#x27;,&#x27;Anfangswert&#x27;,3,2,1,50,screen,NIL)
+    guihandle:=guiinitA([
+        NG_WINDOWTITLE, &#x27;NewGUI - Demo&#x27;,        -&gt; Titel des Fensters
+        NG_SCREEN,      screen,
+        NG_ONCLOSE,     {closepw},
+        NG_BFPATTERN,   [$AAAA,$5555]:INT,      -&gt; Backfillpattern (Muster)
+        NG_BFEXP,       1,                      -&gt; Exponent für den Pattern (siehe graphics/gfxmacros/SetAfPt)
+        NG_BFBACKPEN,   3,                      -&gt; Hintergrundstift (nummer) für den Pattern
+        NG_BFFRONTPEN,  0,                      -&gt; Zeichenstift (Nummer) für den Pattern
+        NG_PATTERNEXP,  1,                      -&gt; Exponent für den Pattern
+        NG_PATTERN1,    [$AAAA,$5555]:INT,      -&gt; Muster (Pattern) für FILLPATTERN1
+        NG_P1BACKPEN,   0,                      -&gt; Hintergrundstift für das Patternfilling (Muster)
+        NG_P1FRONTPEN,  0,                      -&gt; Zeichenstift für das Muster (Patternfilling)
+        NG_MENU,        menu,                   -&gt; Menü-Beschreibung
+        NG_GUIID,       GUI_GAUGE,              -&gt; Gui-ID
+        NG_GUI,                                 -&gt; Oberflächenbeschreibung
+                [ROWS,
+                [BEVELR,
+                [FILLPATTERN1,
+                [EQROWS,
+                        [TEXT,&#x27;Slider!&#x27;,&#x27;Move the&#x27;,FALSE,3],
+                        [SLIDE,{setgauge},&#x27;     &#x27;,FALSE,0,100,50,2,&#x27;%3ld&#x27;]
+                ]]],
+                [BEVELR,
+                [FILLPATTERN1,
+                [EQCOLS,
+                        [SBUTTON,0,&#x27;Fenster schließen&#x27;],
+                [SPACEH],
+                        [SBUTTON,{hide},&#x27;Main verstecken&#x27;]
+                ]]]
+                ],
+        NIL,NIL])                               -&gt; TagListe abschließen (normalerweise mit TAG_END)
+   ng_setattrsA([NG_GUI,gui,                    -&gt; GUI anhängen!
+        NG_APPENDGUI,guihandle,NIL,NIL])
+  ENDIF
+ENDPROC
+
+PROC setgauge(x,y)
+ DEF    oldval=0,
+        status[20]:STRING
+  oldval:=pw.get()
+   IF (oldval&lt;y) AND (y&lt;&gt;50)
+    StrCopy(status,&#x27;Zunahme&#x27;)
+   ELSEIF (oldval&gt;y) AND (y&lt;&gt;50)
+    StrCopy(status,&#x27;Abnahme&#x27;)
+   ELSEIF y=50
+    StrCopy(status,&#x27;Anfangswert&#x27;)
+   ENDIF
+  pw.set(y,status,NIL)
+ENDPROC
+
+PROC change(id)
+ DEF    guihandle
+   IF (guihandle:=ng_setattrsA([NG_GUI,gui,
+        NG_GETGUI,      TRUE,
+        NG_GUIID,       id,NIL,NIL]))
+    ng_setattrsA([NG_GUI,gui,
+        NG_CHANGEGUI,   NG_NEWGUI,
+        NG_GUIVAR,      guihandle,
+        NG_NEWDATA,
+                [ROWS,                          -&gt; Alles Untereinander
+                [BEVELR,                        -&gt; Einen Recessed Bevel um die Elemente
+                [FILLPATTERN1,                  -&gt; Außerdem mit dem FILLPATTERN1 hinterlegen!
+                [EQCOLS,                        -&gt; Und alle Elemente im Bevel nebeneinander, und ALLE gleich Breit (EQCOLS)
+                        [SBUTTON,{change},&#x27;Wechseln&#x27;],       -&gt; Ein Button (SBUTTON = Variable Breite!)
+                        [SBUTTON,{block},&#x27;Main - Blockieren&#x27;],  -&gt; Ein Button (SBUTTON = Variable Breite!) -&gt; Fenster blockieren!
+                        [SBUTTON,{hide},&#x27;Main - Verstecken&#x27;]]]],
+                [DBEVELR,                       -&gt; Einen Doppelten Recessed (Eingedrückten) Bevel um die folgenden Elemente
+                [FILLPATTERN1,                  -&gt; Alles im Bevel mit dem Pattern 1 füllen
+                [ROWS,                          -&gt; Im Bevel (und Fillpattern) alles untereinander
+                        [TEXT,&#x27;Unter-Fenster (gewechselt)&#x27;,&#x27;NewGUI-Beispiel:&#x27;,TRUE,3]        -&gt; Text ausgeben
+                ]]],                            -&gt; Rows, Fillpattern1 und Bevelr - Schließen!
+                [BAR]                           -&gt; Einen Trennstrich erzeugen
+                ]                               -&gt; Ein Button mit variabler Breite, außerdem ALLE verbleibenden Attribute schließen
+         ,NIL,NIL])
+   ENDIF
+ENDPROC
+
+PROC about()
+ DEF    guihandle
+  guihandle:=guiinitA([
+        NG_WINDOWTITLE, &#x27;Über NewGUI&#x27;,        -&gt; Titel des Fensters
+        NG_SCREEN,      screen,
+        NG_BFPATTERN,   [$AAAA,$5555]:INT,      -&gt; Backfillpattern (Muster)
+        NG_BFEXP,       1,                      -&gt; Exponent für den Pattern (siehe graphics/gfxmacros/SetAfPt)
+        NG_BFBACKPEN,   3,                      -&gt; Hintergrundstift (nummer) für den Pattern
+        NG_BFFRONTPEN,  0,                      -&gt; Zeichenstift (Nummer) für den Pattern
+        NG_PATTERNEXP,  1,                      -&gt; Exponent für den Pattern
+        NG_PATTERN1,    [$AAAA,$5555]:INT,      -&gt; Muster (Pattern) für FILLPATTERN1
+        NG_P1BACKPEN,   0,                      -&gt; Hintergrundstift für das Patternfilling (Muster)
+        NG_P1FRONTPEN,  0,                      -&gt; Zeichenstift für das Muster (Patternfilling)
+        NG_PATTERN2,    [$AAAA,$5555]:INT,      -&gt; Muster (Pattern) für FILLPATTERN2
+        NG_P2BACKPEN,   3,                      -&gt; Hintergrundstift für das Patternfilling (Muster)
+        NG_P2FRONTPEN,  2,                      -&gt; Zeichenstift für das Muster (Patternfilling)
+        NG_MENU,        menu,                   -&gt; Menü-Beschreibung
+        NG_GUIID,       GUI_ABOUT,              -&gt; Gui-ID
+        NG_GUI,                                 -&gt; Oberflächenbeschreibung
+                [ROWS,                          -&gt; Alles Untereinander
+                [DBEVELR,                       -&gt; Einen Doppelten Recessed (Eingedrückten) Bevel um die folgenden Elemente
+                [FILLPATTERN2,                  -&gt; Alles im Bevel mit dem Pattern 1 füllen
+                [EQROWS,                        -&gt; Im Bevel (und Fillpattern) alles untereinander
+                        [TEXT,&#x27;NewGUI&#x27;,&#x27;Über&#x27;,FALSE,3],  -&gt; Text ausgeben
+                        [TEXT,&#x27; &#x27;,&#x27; &#x27;,FALSE,3]
+                ]]],                            -&gt; Rows, Fillpattern1 und Bevelr - Schließen!
+                [BEVELR,
+                [FILLPATTERN1,
+                [EQROWS,
+                        [TEXT,&#x27;© 1997/98 by&#x27;,&#x27;NewGUI ist&#x27;,FALSE,3],
+                        [TEXT,&#x27;Softwareentwicklungen&#x27;,&#x27;THE DARK FRONTIER&#x27;,FALSE,3],
+                        [TEXT,&#x27; &#x27;,&#x27;Adresse:&#x27;,FALSE,3],
+                        [TEXT,&#x27;Am Hofgraben 2&#x27;,&#x27;  &#x27;,FALSE,3],
+                        [TEXT,&#x27;67378 Zeiskam&#x27;,&#x27;  &#x27;,FALSE,3],
+                        [TEXT,&#x27;frontier@starbase.inka.de&#x27;,&#x27;Email:&#x27;,FALSE,3],
+                        [TEXT,&#x27;+49(0)7274 - 8774&#x27;,&#x27;Fax:&#x27;,FALSE,3]
+                ]]],
+                [BAR],
+                [BEVELR,
+                [FILLPATTERN1,
+                [EQCOLS,
+                        [SBUTTON,0,&#x27;OK&#x27;]]]]],
+        NIL,NIL])                               -&gt; TagListe abschließen (normalerweise mit TAG_END)
+
+   ng_setattrsA([NG_GUI,gui,                    -&gt; GUI anhängen!
+        NG_APPENDGUI,guihandle,NIL,NIL])
+ENDPROC
+
+PROC test1()
+ WriteF(&#x27;Test!\n&#x27;)
+ENDPROC
+
+PROC block()
+ DEF    a
+  WriteF(&#x27;\nBlockiere Fenster :&#x27;)
+   ng_setattrsA([NG_GUI,gui,
+        NG_CHANGEGUI,NG_BLOCKGUI,NIL,NIL])
+    FOR a:=0 TO 50                              -&gt; Eine Schleife ist eigendlich eine etwas unsaubere
+     Delay(1)                                   -&gt; Methode, sie dient hier nur zur veranschaulichung
+      WriteF(&#x27;.&#x27;)                               -&gt; in einem &quot;richtigen&quot; Programm würden an dieser
+     guimessage(gui)                            -&gt; Stelle rechenintensive Sachen etc. stehen, WICHTIG
+    ENDFOR                                      -&gt; ist, daß guimessage() manchmal zwischendurch aufgerufen wird!
+   ng_setattrsA([NG_GUI,gui,
+        NG_CHANGEGUI,NG_UNBLOCKGUI,NIL,NIL])
+ENDPROC
+
+PROC hide()
+ DEF    a
+  WriteF(&#x27;\nVerstecke Fenster :&#x27;)
+   ng_setattrsA([NG_GUI,gui,
+        NG_CHANGEGUI,NG_HIDE,NIL,NIL])
+    FOR a:=0 TO 50
+     Delay(1)
+      WriteF(&#x27;.&#x27;)
+     guimessage(gui)
+    ENDFOR
+   ng_setattrsA([NG_GUI,gui,
+        NG_CHANGEGUI,NG_APPEAR,NIL,NIL])
+ENDPROC
+
+PROC rexxmsg(s,mes=NIL)                         -&gt; Programm zum parsen von ARexx-Messages
+ WriteF(&#x27;Rexx-Msg: &quot;\s&quot;\n&#x27;,s)                   -&gt; ARexx-String (s) ausgeben!
+
+  mes:=NIL                                      -&gt; Message auf NIL setzen
+ENDPROC  StrCmp(&#x27;QUIT&#x27;,s),0,&#x27;Reply-Message&#x27;     -&gt; Rückgabe! Format = BOOL,INT,STRING     (Beenden?,Returncode,Replystring)
+
+PROC ticker()
+ IF tickon=TRUE
+   ng_setattrsA([NG_GUI,gui,
+        NG_CHANGETICKER,TRUE,NIL,NIL])
+  tickon:=FALSE
+ ELSE
+   ng_setattrsA([NG_GUI,gui,
+        NG_CHANGETICKER,{tickmsg},NIL,NIL])
+  tickon:=TRUE
+ ENDIF
+ENDPROC
+
+PROC tickmsg()                  IS      WriteF(&#x27;Tick für das Main-Fenster!\n&#x27;)
+
+PROC onchildclose()
+ id--
+ENDPROC -2
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

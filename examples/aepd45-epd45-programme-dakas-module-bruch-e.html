@@ -1,0 +1,274 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>bruch.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-aepd45.html">AEPD45</a> &rsaquo; bruch.e</div><h1>File: <code>bruch.e</code></h1><p class="meta">248 lines · project <a href="../examples/pkg-aepd45.html"><code>AEPD45</code></a></p><p class="pathctx">AEPD45/EPD45/Programme/DaKas/Module/bruch.e</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/math.html">nukes/math</a></li></ul></div><h2>Source</h2><pre class="code">OPT MODULE
+
+MODULE &#x27;nukes/math&#x27;
+
+EXPORT OBJECT bruch PRIVATE   
+  z : LONG
+  n : LONG
+ENDOBJECT /* -- 8 Bytes -- */
+
+
+-&gt;--------------------------------------------------------------
+-&gt; Konstanten:
+
+PROC bru_Pi(bru_faktor=1) OF bruch
+  self.z := 3927 * bru_faktor    /* -- x * PI als Bruch -- */
+  self.n := 1250                 /* -- PI = Kreiszahl   -- */
+  self.bru_Kuerze()
+ENDPROC
+
+PROC bru_E(bru_faktor=1) OF bruch
+  self.z := 1359 * bru_faktor    /* -- x * E als Bruch    -- */
+  self.n := 500                  /* -- E = Eulersche Zahl -- */
+  self.bru_Kuerze()
+ENDPROC
+
+-&gt;--------------------------------------------------------------
+-&gt; Vergleichs(Boolesche)-Operatoren:
+
+PROC bru_Negativ() OF bruch
+
+/* -- TRUE, wenn &quot;self&quot; kleiner 0 -- */
+
+  IF (self.z &lt; 0) AND (self.n &gt; 0)
+    RETURN TRUE
+  ELSEIF (self.z &gt; 0) AND (self.n &lt; 0)
+    RETURN TRUE
+  ENDIF
+ENDPROC FALSE
+
+PROC bru_Groesser(bru_bruch:PTR TO bruch) OF bruch
+
+/* -- (self &gt; bru_bruch) = TRUE -- */
+
+DEF bool_i,bool_j,bru_a,bru_b
+
+  bool_i := self.n &gt; 0
+  bool_j := bru_bruch.n &gt; 0
+
+  bru_a  := self.z * bru_bruch.n
+  bru_b  := self.n * bru_bruch.z
+
+  IF bool_i = bool_j
+    bool_i := bru_a &gt; bru_b
+  ELSE
+    bool_i := bru_b &gt; bru_a
+  ENDIF
+
+ENDPROC bool_i
+
+
+PROC bru_Gleich(bru_bruch:PTR TO bruch) OF bruch
+
+/* -- (self = bru_bruch) = TRUE -- */
+
+DEF bru_a,bru_b
+
+  bru_a := self.z * bru_bruch.n
+  bru_b := self.n * bru_bruch.z
+
+  IF bru_a = bru_b
+    RETURN TRUE
+  ELSE
+    RETURN FALSE
+  ENDIF
+
+ENDPROC
+
+PROC bru_Kleiner(bru_bruch:PTR TO bruch) OF bruch
+
+/* -- (self &lt; bru_bruch) = TRUE -- */
+
+  RETURN bru_bruch.bru_Groesser(self)
+ENDPROC
+
+-&gt;--------------------------------------------------------------
+-&gt; Mathematische Operatoren:
+
+PROC bru_Negiere() OF bruch
+
+/* -- self := -self -- */
+
+  self.z := - self.z
+  IF (self.z &lt; 0) AND (self.n &lt; 0)
+     self.z := - self.z
+     self.n := - self.n
+  ENDIF
+ENDPROC
+
+
+PROC bru_Sqr() OF bruch
+
+/* -- self := self * self -- */
+
+  self.bru_Kuerze()
+  self.z := Mul(self.z,self.z)
+  self.n := Mul(self.n,self.n)
+ENDPROC
+
+
+PROC bru_Potenz(exponent=1) OF bruch
+
+/* -- self := self ^ exponent -- */
+
+DEF exp_bruch : PTR TO bruch
+DEF exp_lauf,exp_even
+
+  NEW exp_bruch
+  exp_bruch.bru_Zahl2Bruch(1,1)
+ 
+  exp_even := Mod(exponent,2)
+  exponent := exponent - exp_even
+  exponent := Div(exponent,2)
+  IF exponent = 1
+    exp_bruch.bru_Mul(self)
+  ENDIF
+  self.bru_Sqr()
+  FOR exp_lauf := 1 TO exponent
+    exp_bruch.bru_Mul(self)
+  ENDFOR    
+  self.bru_Bruch(exp_bruch)
+  END exp_bruch
+  
+ENDPROC
+
+
+PROC bru_Kuerze() OF bruch
+
+/* -- Kürzt den Bruch so, daß die Zahlen den kleinstmöglichen Wert haben -- */
+
+DEF bru_gt
+
+  bru_gt := mat_GGT(self.z,self.n)
+  self.z := Div(self.z,bru_gt)
+  self.n := Div(self.n,bru_gt)
+
+ENDPROC
+
+
+PROC bru_Add(bru_toadd:PTR TO bruch) OF bruch
+
+/* -- self := self + bru_toadd -- */
+
+  IF self.n &lt;&gt; bru_toadd.n
+    self.n := Mul(self.n,bru_toadd.n)
+    self.z := Mul(self.z,bru_toadd.n) + bru_toadd.z
+  ELSE
+    self.z := self.z + bru_toadd.z
+  ENDIF
+  self.bru_Kuerze()
+
+ENDPROC
+
+
+PROC bru_Sub(bru_toadd:PTR TO bruch) OF bruch
+
+/* -- self := self - bru_toadd -- */
+
+  IF self.n &lt;&gt; bru_toadd.n
+    self.n := Mul(self.n,bru_toadd.n)
+    self.z := Mul(self.z,bru_toadd.n) - bru_toadd.z
+  ELSE
+    self.z := self.z - bru_toadd.z
+  ENDIF
+  self.bru_Kuerze()
+
+ENDPROC
+
+
+PROC bru_Mul(bru_sec:PTR TO bruch) OF bruch
+
+/* -- self := self * bru_sec -- */
+
+  self.z := Mul(self.z,bru_sec.z)
+  self.n := Mul(self.n,bru_sec.n)
+  self.bru_Kuerze()
+
+ENDPROC
+
+
+PROC bru_KehrWert() OF bruch
+
+/* -- self := 1 / self -- */
+
+DEF bru_a
+
+  bru_a  := self.z
+  self.z := self.n
+  self.n := bru_a
+
+ENDPROC
+
+
+PROC bru_Div(bru_sec:PTR TO bruch) OF bruch
+
+/* -- self := self / bru_sec -- */
+
+  bru_sec.bru_KehrWert()
+  self.bru_Mul(bru_sec)
+  bru_sec.bru_KehrWert()
+
+ENDPROC
+
+ 
+-&gt;--------------------------------------------------------------
+-&gt; Umformungsfunktionen:
+
+PROC bru_Bruch(bru_z:PTR TO bruch) OF bruch
+
+/* -- self := bru_z -- */
+
+  self.z := bru_z.z
+  self.n := bru_z.n
+ENDPROC
+
+PROC bru_Zahl2Bruch(zaehler=1,nenner=1) OF bruch
+
+/* -- self := [zaehler,nenner]:bruch -- */
+
+  self.z := zaehler
+  self.n := nenner
+  self.bru_Kuerze()
+ENDPROC
+
+
+PROC bru_Real2Bruch(bru_fl,bru_prec=10000) OF bruch
+
+/* -- self := SingleIEEE -- */
+
+DEF bru_zaehler
+
+  bru_zaehler := !bru_fl * (bru_prec!)
+  bru_zaehler := !bru_zaehler!
+  self.z   := bru_zaehler
+  self.n   := bru_prec
+
+ENDPROC
+
+CHAR &#x27;$VER: Bruch.M (E-Modul) v1.0 © Copyrights by Daniel Kasmeroglu&#x27;</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

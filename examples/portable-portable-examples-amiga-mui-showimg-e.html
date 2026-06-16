@@ -1,0 +1,167 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Showimg.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-portable.html">PortablE</a> &rsaquo; Showimg.e</div><h1>File: <code>Showimg.e</code></h1><p class="meta">141 lines · project <a href="../examples/pkg-portable.html"><code>PortablE</code></a></p><p class="pathctx">PortablE/PortablE/Examples/Amiga/MUI/Showimg.e</p><p class="prose">** Original C Code written by Stefan Stuntz ** ** Translation into E by Klaus Becker ** ** All comments are from the C-Source</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/exec.html">exec</a></li><li><a href="../modules/gadtools.html">libraries/gadtools</a></li><li><a href="../modules/muimaster.html">muimaster</a></li><li><a href="../modules/tagitem.html">utility/tagitem</a></li></ul></div><h2>Source</h2><pre class="code">/*
+**  Original C Code written by Stefan Stuntz
+**
+**  Translation into E by Klaus Becker
+**
+**  All comments are from the C-Source
+*/
+
+OPT PREPROCESS, POINTER
+
+MODULE &#x27;exec&#x27;
+MODULE &#x27;utility/tagitem&#x27;
+MODULE &#x27;libraries/gadtools&#x27;
+MODULE &#x27;muimaster&#x27;, &#x27;libraries/mui&#x27;, &#x27;libraries/muip&#x27;,
+       /*&#x27;mui/muicustomclass&#x27;,*/ &#x27;amigalib/boopsi&#x27;,
+       &#x27;intuition/classes&#x27;, &#x27;intuition/classusr&#x27;,
+       &#x27;intuition/screens&#x27;, &#x27;intuition/intuition&#x27;
+
+TYPE PTIO IS PTR TO INTUIOBJECT
+
+/*
+** We want our images displayed in a group with five columns.
+*/
+
+#define cols 4
+#define startimg 11
+
+/*
+** This is a image object at its standard size.
+*/
+
+#define FixedImg(x) ImageObject,\
+  ButtonFrame,\
+  MUIA_InputMode, MUIV_InputMode_RelVerify,\
+  MUIA_Image_FreeHoriz, FALSE,\
+  MUIA_Image_FreeVert, FALSE,\
+  MUIA_Image_Spec, x,\
+  MUIA_Background, MUII_BACKGROUND,\
+  End
+
+
+/*
+** This is a resizable image.
+** Since the user might have configured a fixed size image,
+** we need to enclose our image in groups of spacing objects
+** to make it centered. The spacing objects have a very little
+** weight, so the images will get every pixel they want.
+*/
+
+#define sp            RectangleObject, MUIA_Weight, 1, End
+#define hcenter(obj)  HGroup, Child, sp, Child, obj, Child, sp, End
+#define vcenter(obj)  VGroup, Child, sp, Child, obj, Child, sp, End
+#define hvcenter(obj) hcenter(vcenter(obj))
+
+#define FreeImg(x) hcenter(vcenter(xFreeImg(x)))
+
+#define xFreeImg(x) ImageObject,\
+  ButtonFrame,\
+  MUIA_InputMode, MUIV_InputMode_RelVerify,\
+  MUIA_Image_FreeHoriz, MUI_TRUE,\
+  MUIA_Image_FreeVert, MUI_TRUE,\
+  MUIA_Image_Spec, x,\
+  MUIA_Background, MUII_BACKGROUND,\
+  End
+
+PROC main()
+  DEF signal, app:PTIO, wi_Master:PTIO
+  DEF fixGroup:PTIO, freeGroup:PTIO, i
+
+  IF (muimasterbase := OpenLibrary(MUIMASTER_NAME, MUIMASTER_VMIN))=NIL THEN Throw(&quot;ERR&quot;, &#x27;failed to open muimaster.library&#x27;)
+
+  /*
+  ** Create the application.
+  ** Note that we generate two empty groups without children.
+  ** These children will be added later with OM_ADDMEMBER.
+  */
+
+  app := ApplicationObject,
+    MUIA_Application_Title      , &#x27;ShowImg&#x27;,
+    MUIA_Application_Version    , &#x27;$VER: ShowImg 10.11 (23.12.94)&#x27;,
+    MUIA_Application_Copyright  , &#x27;c1992/93, Stefan Stuntz&#x27;,
+    MUIA_Application_Author     , &#x27;Stefan Stuntz &amp; Klaus Becker&#x27;,
+    MUIA_Application_Description, &#x27;Show MUI standard images&#x27;,
+    MUIA_Application_Base       , &#x27;SHOWIMG&#x27;,
+    SubWindow, wi_Master := WindowObject,
+      MUIA_Window_ID, &quot;MAIN&quot;,
+      MUIA_Window_Title, &#x27;MUI Standard Images&#x27;,
+      WindowContents, HGroup,
+        Child, VGroup,
+          Child, VSpace(0),
+          Child, fixGroup := ColGroup(cols), GroupFrameT(&#x27;Minimum Size&#x27;), End,
+          Child, VSpace(0),
+        End,
+        Child, freeGroup := ColGroup(cols), GroupFrameT(&#x27;Free Size&#x27;), End,
+      End,
+    End,
+  End
+
+  IF app=NIL THEN Throw(&quot;ERR&quot;, &#x27;Failed to create Application.&#x27;)
+
+  /*
+  ** No we insert the image elements in our groups.
+  */
+
+  FOR i := 0 TO MUII_Count-startimg-1
+    doMethodA(fixGroup, [OM_ADDMEMBER, FixedImg(i+startimg)])
+    doMethodA(freeGroup, [OM_ADDMEMBER, FreeImg(i+startimg)])
+  ENDFOR
+
+  /*
+  ** Append some empty objects to make our columnized
+  ** group contain exactly cols*rows elements.
+  */
+
+  WHILE (Mod(i, cols))
+    doMethodA(fixGroup, [OM_ADDMEMBER, HVSpace])
+    doMethodA(freeGroup, [OM_ADDMEMBER, HVSpace])
+    i++
+  ENDWHILE
+
+  /*
+  ** Simplest possible MUI input loop.
+  */
+
+  doMethodA(wi_Master, [MUIM_Notify, MUIA_Window_CloseRequest,MUI_TRUE,app,2,MUIM_Application_ReturnID,MUIV_Application_ReturnID_Quit])
+    
+  set(wi_Master, MUIA_Window_Open, MUI_TRUE)
+
+  WHILE (doMethodA(app, [MUIM_Application_Input, ADDRESSOF signal]) &lt;&gt; MUIV_Application_ReturnID_Quit)
+    IF signal THEN Wait(signal)
+  ENDWHILE
+  
+  set(wi_Master, MUIA_Window_Open, FALSE)
+
+FINALLY
+  IF app THEN Mui_DisposeObject(app)
+  IF muimasterbase THEN CloseLibrary(muimasterbase)
+  IF exceptionInfo THEN Print(&#x27;\s\n&#x27;,  exceptionInfo)
+ENDPROC
+
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

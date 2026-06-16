@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ARexxComm-R.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-arexxcomm.html">ARexxComm</a> &rsaquo; ARexxComm-R.e</div><h1>File: <code>ARexxComm-R.e</code></h1><p class="meta">85 lines · project <a href="../examples/pkg-arexxcomm.html"><code>ARexxComm</code></a></p><p class="pathctx">ARexxComm/ARexxComm-R.e</p><p class="prose">ARexxComm-R - a program to demo/test the module ARexxComm</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/arexxcomm.html">csh/arexxcomm</a></li></ul></div><h2>Source</h2><pre class="code">/* ARexxComm-R - a program to demo/test the module ARexxComm */
+
+MODULE &#x27;CSH/arexxcomm&#x27;
+
+-&gt;how to create a port, send a message, wait for a message, &amp; close a port
+PROC main() HANDLE
+ DEF portinfo=NIL:PTR TO rxcom, portname=NIL:PTR TO CHAR,
+     command=NIL:PTR TO CHAR, args=NIL:PTR TO CHAR,
+     cmdknown, quit=FALSE, wasack=FALSE
+	portname:=&#x27;ExampleHost&#x27;
+	WriteF(&#x27;ARexxComm-R program\nPress Ctrl-C to quit, or send the QUIT command\n&#x27;)
+	WriteF(&#x27;1.To send a command type at another shell: Sys:RexxC/Rx &quot;Address \a\s\a \aCOMMAND\a&quot;\n2.Known commands: SAYYO, SAYHI, QUIT\n\n&#x27;,portname)
+
+	NEW portinfo.createPort(portname,{portinfo})
+	IF portinfo
+		IF portinfo.portExists(&#x27;TestHost&#x27;)
+			WriteF(&#x27;I see that &quot;TestHost&quot; is already running!\n&#x27;)
+		ELSE
+			WriteF(&#x27;Why not try running ARexxComm-S (&quot;TestHost&quot;)?\n&#x27;)
+		ENDIF
+		 -&gt;portinfo.sendRexxMsg(&#x27;GOLDED.1&#x27;,&#x27;UP&#x27;)
+		 -&gt;portinfo.sendRexxMsg(&#x27;REXX&#x27;,&#x27;scriptname&#x27;)
+		 -&gt;portinfo.sendRexxMsg(portname,&#x27;QUIT&#x27;)
+
+		WriteF(&#x27;Sent RexxMaster a command to run &quot;list ram:&quot;\n&#x27;)
+		portinfo.sendRexxMsg(&#x27;REXX&#x27;,&#x27;&quot;ADDRESS COMMAND \alist ram:\a&quot;&#x27;)
+
+		REPEAT
+			cmdknown:=FALSE
+			command,args:=portinfo.waitForRexxMsg()			-&gt;get a command (uses zero CPU time)
+			-&gt;command,args,wasack:=portinfo.waitForRexxMsg(TRUE)	-&gt;get a command (uses zero CPU time), may instead return wasack=TRUE (recieved acknowledge of our message)
+			/*REPEAT						-&gt;get a command (uses LOTS of CPU time - &quot;busy waiting&quot;)
+				command,args,wasack:=portinfo.waitForRexxMsg(TRUE)
+			UNTIL (command&lt;&gt;NIL) OR wasack*/
+
+			IF wasack=TRUE		-&gt;don&#x27;t need this IF statement if waitRexxMsg() is used above
+				WriteF(&#x27;  Happy! Happy! Joy! Joy!  Recieved acknowledgement our message was recieved!\n&#x27;)
+			ELSE
+				 /* code to deal with commands */
+				IF command				-&gt;you *must* check for this! (command=NIL if recieve Ctrl-C)
+					WriteF(&#x27;#I recieved the &quot;\s&quot; Rexx command.\n&#x27;,command)
+					IF StrCmp(&#x27;SAYYO&#x27;,command)
+						WriteF(&#x27;Yo&#x27;)
+						IF args[0]&lt;&gt;&quot;\0&quot; THEN WriteF(&#x27; &quot;\s&quot;!\n&#x27;,args) ELSE WriteF(&#x27;!\n&#x27;)
+						cmdknown:=TRUE
+					ELSEIF StrCmp(&#x27;SAYHI&#x27;,command)
+						WriteF(&#x27;Hi&#x27;)
+						IF args[0]&lt;&gt;&quot;\0&quot; THEN WriteF(&#x27; &quot;\s&quot;!\n&#x27;,args) ELSE WriteF(&#x27;!\n&#x27;)
+						cmdknown:=TRUE
+					ELSEIF StrCmp(&#x27;QUIT&#x27;,command)
+						quit:=TRUE
+						cmdknown:=TRUE
+					ENDIF
+					portinfo.ackRexxMsg(cmdknown)
+				ELSE
+					quit:=TRUE
+				ENDIF
+			ENDIF
+
+			-&gt;this sends ourself a message that is never read (waited for or polled), as we quit soon after; this used to cause END to freeze miggy
+			/*IF quit OR (command=FALSE)
+				WriteF(&#x27;Sent myself a SAYYO command\n&#x27;)
+				portinfo.sendRexxMsg(portname,&#x27;SAYYO ExampleHost&#x27;)
+			ENDIF*/
+		UNTIL quit
+
+		END portinfo
+	ENDIF
+EXCEPT
+	WriteF(&#x27;ERROR:  &#x27;)
+	SELECT exception
+		CASE &quot;LIB&quot;;	WriteF(&#x27;Could not open library &quot;\s&quot;!\n&#x27;,exceptioninfo)
+		CASE &quot;PORT&quot;;	WriteF(&#x27;Could not open ARexx port &quot;\s&quot;!\n&#x27;,exceptioninfo)
+		CASE &quot;RXNA&quot;;	WriteF(&#x27;Did not acknowledge previous ARexx message &quot;\s&quot;!\n&#x27;,exceptioninfo)
+		CASE &quot;RXNM&quot;;	WriteF(&#x27;No ARexx message to acknowledge!\n&#x27;)
+		CASE &quot;RXCM&quot;;	WriteF(&#x27;\s!\n&#x27;)
+		DEFAULT;	IF exceptioninfo
+					WriteF(&#x27;&quot;\c&quot;; \s.\n&#x27;,exception,exceptioninfo)
+				ELSE
+					WriteF(&#x27;&quot;\c&quot;.\n&#x27;,exception)
+				ENDIF
+	ENDSELECT
+	IF portinfo THEN END portinfo		-&gt;only close port if it has not been closed already
+ENDPROC
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

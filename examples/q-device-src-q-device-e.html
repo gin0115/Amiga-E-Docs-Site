@@ -1,0 +1,1312 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Q-Device.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-q-device-src.html">q-device_src</a> &rsaquo; Q-Device.e</div><h1>File: <code>Q-Device.e</code></h1><p class="meta">1286 lines · project <a href="../examples/pkg-q-device-src.html"><code>q-device_src</code></a></p><p class="pathctx">q-device_src/Q-Device.e</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/ports.html">exec/ports</a></li></ul></div><h2>Source</h2><pre class="code">OPT PREPROCESS, OSVERSION=37
+
+/*
+    Program:     Q-Device!
+    Version:     V0.6
+    Author:      Ian Chapman
+    Description: A low-level SCSI query, command and diagnostic tool.
+
+    LICENSE: Permission is granted to use this source code in whole or in part,
+             providing that the author (Ian Chapman) is credited in your project
+             in either the documentation, or the program itself. This applies to
+             both free and commercial software. In the case of commerical
+             software (including ShareWare), I am entitled to a free, fully
+             functional copy of the software.
+
+             NO WARRANTY EITHER EXPRESSED OR IMPLIED AS TO THE FITNESS OF THIS
+             CODE FOR ANY PURPOSE. ALL USE IS ENTIRELY AND WHOLLY AT YOUR OWN
+             RISK
+*/
+
+MODULE  &#x27;exec/ports&#x27;,
+        &#x27;exec/io&#x27;,
+        &#x27;exec/execbase&#x27;,
+        &#x27;exec/lists&#x27;,
+        &#x27;exec/nodes&#x27;,
+        &#x27;exec/tasks&#x27;,
+        &#x27;exec/memory&#x27;,
+        &#x27;amigalib/io&#x27;,
+        &#x27;amigalib/boopsi&#x27;,
+        &#x27;devices/scsidisk&#x27;,
+        &#x27;mui/betterstring_mcc&#x27;,
+        &#x27;libraries/mui&#x27;,
+        &#x27;libraries/gadtools&#x27;,
+        &#x27;libraries/reqtools&#x27;,
+        &#x27;utility/tagitem&#x27;,
+        &#x27;utility/hooks&#x27;,
+        &#x27;tools/installhook&#x27;,
+        &#x27;dos/dos&#x27;,
+        &#x27;dos/dosextens&#x27;,
+        &#x27;miami/netinclude/pragmas/socket&#x27;,
+        &#x27;amitcp/sys/ioctl&#x27;,
+        &#x27;amitcp/sys/socket&#x27;,
+        &#x27;amitcp/sys/types&#x27;,
+        &#x27;amitcp/sys/time&#x27;,
+        &#x27;amitcp/netdb&#x27;,
+        &#x27;amitcp/netinet/in&#x27;,
+        &#x27;muimaster&#x27;,
+        &#x27;icon&#x27;,
+        &#x27;reqtools&#x27;,
+        &#x27;*scsi/opcodes&#x27;,
+        &#x27;*scsi/params&#x27;,
+        &#x27;*scsi/headers&#x27;,
+        &#x27;*handlers/defects&#x27;,
+        &#x27;*handlers/inquiry&#x27;,
+        &#x27;*handlers/capacity&#x27;,
+        &#x27;*handlers/toc&#x27;,
+        &#x27;*handlers/atip&#x27;,
+        &#x27;*handlers/sense&#x27;,
+        &#x27;*handlers/modesense&#x27;,
+        &#x27;*handlers/logs&#x27;,
+        &#x27;*listview/outlist&#x27;
+        
+CONST BUFFSIZE=255, BUFFSIZEBIG=65535
+
+ENUM ID_INQUIRE=1, ID_EJECT, ID_INSERT, ID_LOCK, ID_UNLOCK, ID_CAPACITY, ID_TESTREADY, ID_READTOC,
+     ID_POWERUP, ID_POWERDOWN, ID_PROBE, ID_ABOUT, ID_MUIABOUT, ID_ICONIFY, ID_MUISET, ID_DIAGNOSTIC,
+     ID_MODESENSE, ID_DOUBLECLICK, ID_PREFS, ID_SAVEPREF, ID_USEPREF, ID_CANCELPREF, ID_SERIAL, ID_ATIP,
+     ID_SHOWLOGS, ID_SHOWDEFECTS, ID_SAVELOG, ID_REWIND
+
+ENUM NORMAL=0, ERR_MP=1, ERR_IOR, ERR_DEVICE, ERR_NOMUI, ERR_NOICON, ERR_NOAPP,
+     ERR_NOBSD, ERR_NOSOCK, ERR_NOCONNECT, ERR_REMOTESCSI, ERR_NOREQTOOLS
+
+ENUM OBID_DRIVER=1, OBID_UNIT, OBID_PROBEFROM, OBID_PROBETO, OBID_HOST,
+     OBID_PORT, OBID_AUTOSENSE
+
+DEF app, mui_output_lst, mui_output_lv, mui_status_tb, mui_device_tb, mui_unit_tb, displayhook:hook,
+    constructhook:hook, destructhook:hook, devicelist[50]:ARRAY OF LONG, execobject:PTR TO execbase,
+    global_devtype=0, host[80]:STRING, port[5]:STRING, driver[80]:STRING, unit[6]:STRING, autosenseflag=0,
+    logpath[255]:STRING, alternatelog=0
+
+PROC main() HANDLE
+DEF signal, result, running=TRUE,   probefrom[6]:STRING, probeto[6]:STRING, probefromtemp[6]:STRING,
+    probetotemp[6]:STRING, hosttemp[80]:STRING, porttemp[5]:STRING, mui_probefrom_tb, mui_probeto_tb,
+    mui_host_tb, mui_port_tb,  mui_main_win, mui_prefs_win, mui_inquire_but, mui_eject_but, mui_insert_but,
+    mui_lock_but, mui_unlock_but, mui_capacity_but, mui_testready_but, mui_readtoc_but, mui_powerup_but,
+    mui_powerdown_but, mui_probe_but, mui_diagnostic_but,  mui_modesense_but, mui_diagnostic_cyc, mui_defects_cyc,
+    mui_defectsformat_cyc, mui_prefsave_but, mui_prefuse_but, mui_prefcancel_but, mui_serial_but, mui_atip_but,
+    mui_showlogs_but, mui_autosense_cm, mui_showdefects_but, mui_savelog_but, mui_rewind_but, menu, diagflag=0,
+    diskobj=NIL, i, task:PTR TO process, icon[255]:STRING, autosenseflagtemp=0
+
+    grab_devices()
+    menu:= [ NM_TITLE, 0, &#x27;Project&#x27;, 0, 0, 0, 0,
+             NM_ITEM,  0, &#x27;About...&#x27;, &#x27;?&#x27;, 0, 0, ID_ABOUT,
+             NM_ITEM,  0, &#x27;About MUI...&#x27;, 0, 0, 0, ID_MUIABOUT,
+             NM_ITEM,  0, NM_BARLABEL, 0, 0, 0, 0,
+             NM_ITEM,  0, &#x27;Iconify&#x27;, &#x27;I&#x27;, 0, 0, ID_ICONIFY,
+             NM_ITEM,  0, &#x27;Quit&#x27;, &#x27;Q&#x27;, 0, 0, MUIV_Application_ReturnID_Quit,
+             NM_TITLE, 0, &#x27;Query&#x27;, 0, 0, 0, 0,
+             NM_ITEM,  0, &#x27;Probe&#x27;, 0, 0, 0, ID_PROBE,
+             NM_ITEM,  0, &#x27;Full Inquiry&#x27;, 0, 0, 0, ID_INQUIRE,
+             NM_ITEM,  0, &#x27;Capacity&#x27;, 0, 0, 0, ID_CAPACITY,
+             NM_ITEM,  0, &#x27;Test Ready&#x27;, 0, 0, 0, ID_TESTREADY,
+             NM_ITEM,  0, &#x27;Device Parameters&#x27;, 0, 0, 0, ID_MODESENSE,
+             NM_ITEM,  0, &#x27;Show Firmware Logs&#x27;, 0, 0, 0, ID_SHOWLOGS,
+             NM_ITEM,  0, &#x27;Serial #&#x27;, 0, 0, 0, ID_SERIAL,
+             NM_ITEM,  0, &#x27;Read TOC&#x27;, 0, 0, 0, ID_READTOC,
+             NM_ITEM,  0, &#x27;ATIP&#x27;, 0, 0, 0, ID_ATIP,  
+             NM_TITLE, 0, &#x27;Control&#x27;, 0, 0, 0, 0,
+             NM_ITEM,  0, &#x27;Power Up&#x27;, 0, 0, 0, ID_POWERUP,
+             NM_ITEM,  0, &#x27;Power Down&#x27;, 0, 0, 0, ID_POWERDOWN,
+             NM_ITEM,  0, &#x27;Lock&#x27;, 0, 0, 0, ID_LOCK,
+             NM_ITEM,  0, &#x27;UnLock&#x27;, 0, 0, 0, ID_UNLOCK,
+             NM_ITEM,  0, &#x27;Insert&#x27;, 0, 0, 0, ID_INSERT,
+             NM_ITEM,  0, &#x27;Eject&#x27;, 0, 0, 0, ID_EJECT,
+             NM_ITEM,  0, &#x27;Rewind/Rezero&#x27;, 0, 0, 0, ID_REWIND,
+             NM_TITLE, 0, &#x27;Diagnostic&#x27;, 0, 0, 0, 0,
+             NM_ITEM,  0, &#x27;Unit Self Test&#x27;, 0, 0, 0, ID_DIAGNOSTIC,
+             NM_ITEM,  0, &#x27;Show Defects&#x27;, 0, 0, 0, ID_SHOWDEFECTS,
+             NM_TITLE, 0, &#x27;Settings&#x27;, 0, 0, 0, 0,
+             NM_ITEM,  0, &#x27;MUI Settings&#x27;, 0, 0, 0, ID_MUISET,
+             NM_ITEM,  0, &#x27;Preferences&#x27;, &#x27;P&#x27;, 0, 0, ID_PREFS,
+             NM_ITEM,  0, NM_BARLABEL, 0, 0, 0, 0,
+             NM_ITEM,  0, &#x27;Save Preferences&#x27;, 0, 0, 0, ID_SAVEPREF,
+             NM_END,   0, NIL, 0, 0, 0, 0]:newmenu
+    
+    -&gt;Quick hack to use program icon as AppIcon. A bit limited if Q-Device! is
+    -&gt;launched from the CLI
+    Forbid()
+    task:=FindTask(NIL)
+    IF StrCmp(task.task.ln.name, &#x27;Shell Process&#x27;) = TRUE THEN StrCopy(icon, &#x27;PROGDIR:Q-Device&#x27;) ELSE StringF(icon, &#x27;PROGDIR:\s&#x27;, task.task.ln.name)
+    Permit()
+    
+    IF (muimasterbase:=OpenLibrary(&#x27;muimaster.library&#x27;, 19))=NIL THEN Raise(ERR_NOMUI)
+    IF (iconbase:=OpenLibrary(&#x27;icon.library&#x27;, 33))=NIL THEN Raise(ERR_NOICON)
+    IF (reqtoolsbase:=OpenLibrary(&#x27;reqtools.library&#x27;, 38))=NIL THEN Raise(ERR_NOREQTOOLS)
+    
+    installhook(displayhook, {disp})
+    installhook(constructhook, {construct})
+    installhook(destructhook, {destruct})
+
+    mui_output_lv:=ListviewObject,
+                    MUIA_Listview_Input, MUI_TRUE,
+                    MUIA_CycleChain, 1,
+                    MUIA_Listview_List, mui_output_lst:=ListObject,
+                        ReadListFrame,
+                            MUIA_List_Title, MUI_TRUE,
+                            MUIA_List_Format, &#x27;BAR,&#x27;,
+                            MUIA_List_DisplayHook, displayhook,
+                            MUIA_List_ConstructHook, constructhook, -&gt;MUIV_List_ConstructHook_String,
+                            MUIA_List_DestructHook, destructhook, -&gt;MUIV_List_DestructHook_String,
+                            MUIA_ShortHelp, &#x27;Information and diagnostic output&#x27;,
+                        End, -&gt; ReadListFrame
+                    End -&gt;Listviewobject
+
+    mui_inquire_but:=make_button(&#x27;Full Inquiry&#x27;, &#x27;Display full inquiry information&#x27;)
+    mui_serial_but:=make_button(&#x27;Serial #&#x27;, &#x27;Show product serial number&#x27;)
+    mui_eject_but:=make_button(&#x27;Eject&#x27;, &#x27;Attempt to eject media&#x27;)
+    mui_insert_but:=make_button(&#x27;Insert&#x27;, &#x27;Attempt to insert media&#x27;)
+    mui_lock_but:=make_button(&#x27;Lock&#x27;, &#x27;Prevent media from being removed&#x27;)
+    mui_unlock_but:=make_button(&#x27;UnLock&#x27;, &#x27;Allow media to be removed&#x27;)
+    mui_capacity_but:=make_button(&#x27;Capacity&#x27;, &#x27;Show device capacity&#x27;)
+    mui_testready_but:=make_button(&#x27;Test Ready&#x27;, &#x27;Test if unit is ready&#x27;)
+    mui_readtoc_but:=make_button(&#x27;Read TOC&#x27;, &#x27;Show CD Table of Contents&#x27;)
+    mui_powerup_but:=make_button(&#x27;Power Up&#x27;, &#x27;Attempt to spin-up the device&#x27;)
+    mui_powerdown_but:=make_button(&#x27;Power Down&#x27;, &#x27;Attempt to spin-down the device&#x27;)
+    mui_probe_but:=make_button(&#x27;\eb\eiProbe\en&#x27;, &#x27;Probe driver for attached devices&#x27;)
+    mui_diagnostic_but:=make_button(&#x27;Start Self Test&#x27;, &#x27;Instruct the device to perform a self test&#x27;)
+    mui_modesense_but:=make_button(&#x27;Device Parameters&#x27;, &#x27;Return information about the device\as parameters and specs&#x27;)
+    mui_atip_but:=make_button(&#x27;ATIP&#x27;, &#x27;Show ATIP information for CD-R/RW&#x27;)
+    mui_rewind_but:=make_button(&#x27;Rewind/Rezero&#x27;, &#x27;Rewinds the tape for sequential devices\nall other devices perform a rezero&#x27;)
+    mui_showlogs_but:=make_button(&#x27;Firmware Logs&#x27;, &#x27;Attempt to display and decode all firmware logs.&#x27;)
+    mui_showdefects_but:=make_button(&#x27;Show Defects&#x27;, &#x27;Display drive defects&#x27;)
+    mui_savelog_but:=make_button(&#x27;Save Output&#x27;, &#x27;Save listview output to a file&#x27;)
+    mui_prefsave_but:=make_button(&#x27;Save&#x27;, &#x27;Save preferences&#x27;)
+    mui_prefuse_but:=make_button(&#x27;Use&#x27;, &#x27;Use preferences, changes are lost after reboot&#x27;)
+    mui_prefcancel_but:=make_button(&#x27;Cancel&#x27;, &#x27;Discard any changes&#x27;)
+    mui_autosense_cm:=make_checkmark(FALSE, &#x27;Guarantees the preservation of sense data\nMost drivers do not support this so disable\nit if you experience problems&#x27;)
+    SetAttrsA(mui_autosense_cm, [MUIA_ObjectID, OBID_AUTOSENSE, TAG_DONE])
+    mui_defects_cyc:=KeyCycle([&#x27;Primary List&#x27;, &#x27;Grown List&#x27;, &#x27;Both&#x27;, NIL], &quot;m&quot;)
+    SetAttrsA(mui_defects_cyc, [MUIA_ShortHelp, &#x27;Choose the type of defects to show\nPrimary = Areas marked as faulty at the factory\nGrown = Areas which have become faulty since&#x27;, MUIA_CycleChain, 1, TAG_DONE])  
+    mui_diagnostic_cyc:=KeyCycle([&#x27;Simple 1&#x27;, &#x27;Simple 2&#x27;, &#x27;Deep 1&#x27;, &#x27;Deep 2&#x27;, NIL], &quot;d&quot;)
+    SetAttrsA(mui_diagnostic_cyc, [MUIA_ShortHelp, &#x27;Choose diagnostic test&#x27;, MUIA_CycleChain, 1, TAG_DONE])    
+    mui_defectsformat_cyc:=KeyCycle([&#x27;Physical Sector&#x27;, &#x27;Bytes From Index&#x27;, &#x27;Block&#x27;, NIL], &quot;f&quot;)
+    SetAttrsA(mui_defectsformat_cyc, [MUIA_ShortHelp, &#x27;Choose defect output format&#x27;, MUIA_CycleChain, 1, TAG_DONE])
+    
+
+    mui_device_tb:=BetterStringObject, StringFrame,
+                    MUIA_String_AdvanceOnCR, MUI_TRUE,
+                    MUIA_String_Contents, driver,
+                    MUIA_ShortHelp, &#x27;Device driver to use&#x27;,
+                    MUIA_CycleChain, 1,
+                    MUIA_ObjectID, OBID_DRIVER,
+                   End
+
+    mui_unit_tb:=BetterStringObject, StringFrame,
+                    MUIA_String_AdvanceOnCR, MUI_TRUE,
+                    MUIA_String_Contents, unit,
+                    MUIA_ShortHelp, &#x27;AmigaDOS Unit Number&#x27;,
+                    MUIA_String_Accept, &#x27;0123456789&#x27;,
+                    MUIA_String_MaxLen, 6,
+                    MUIA_CycleChain, 1,
+                    MUIA_ObjectID, OBID_UNIT,
+                 End
+
+    mui_status_tb:=TextObject, TextFrame,
+                    MUIA_String_Contents, &#x27;Ready&#x27;,
+                    MUIA_ShortHelp, &#x27;SCSI/IDE target condition&#x27;,
+                   End
+
+    mui_probefrom_tb:=BetterStringObject, StringFrame,
+                    MUIA_String_AdvanceOnCR, MUI_TRUE,
+                    MUIA_String_Contents, probefrom,
+                    MUIA_ShortHelp, &#x27;Probing devices starts at this unit&#x27;,
+                    MUIA_String_Accept, &#x27;0123456789&#x27;,
+                    MUIA_String_MaxLen, 6,
+                    MUIA_CycleChain, 1,
+                    MUIA_ObjectID, OBID_PROBEFROM,
+                 End
+
+    mui_probeto_tb:=BetterStringObject, StringFrame,
+                    MUIA_String_AdvanceOnCR, MUI_TRUE,
+                    MUIA_String_Contents, probeto,
+                    MUIA_ShortHelp, &#x27;Probing devices ends at this unit&#x27;,
+                    MUIA_String_Accept, &#x27;0123456789&#x27;,
+                    MUIA_String_MaxLen, 6,
+                    MUIA_CycleChain, 1,
+                    MUIA_ObjectID, OBID_PROBETO,
+                 End
+
+    mui_host_tb:=BetterStringObject, StringFrame,
+                    MUIA_String_AdvanceOnCR, MUI_TRUE,
+                    MUIA_String_Contents, host,
+                    MUIA_ShortHelp, &#x27;Host to connect to when using tcpip-scsi.device&#x27;,
+                    MUIA_String_MaxLen, 80,
+                    MUIA_CycleChain, 1,
+                    MUIA_ObjectID, OBID_HOST,
+                 End
+
+    mui_port_tb:=BetterStringObject, StringFrame,
+                    MUIA_String_AdvanceOnCR, MUI_TRUE,
+                    MUIA_String_Contents, port,
+                    MUIA_ShortHelp, &#x27;Base port to connect to when using tcpip-scsi.device&#x27;,
+                    MUIA_String_MaxLen, 5,
+                    MUIA_CycleChain, 1,
+                    MUIA_ObjectID, OBID_PORT,
+                 End
+
+
+    app:=ApplicationObject,
+        MUIA_Application_Title      , &#x27;Q-Device!&#x27;,
+        MUIA_Application_Version    , &#x27;$VER: Q-Device! v0.6&#x27;,
+        MUIA_Application_Copyright  , &#x27;Written By Ian Chapman (2004)&#x27;,
+        MUIA_Application_Author     , &#x27;Ian Chapman&#x27;,
+        MUIA_Application_Description, &#x27;IDE/SCSI device query tool&#x27;,
+        MUIA_Application_Base       , &#x27;QDEVICE&#x27;,
+        MUIA_Application_SingleTask , FALSE,
+        MUIA_Application_DiskObject , diskobj:=GetDiskObject(icon),
+        MUIA_Application_Menustrip  , Mui_MakeObjectA(MUIO_MenustripNM,[menu,0]),
+        MUIA_Application_HelpFile   , &#x27;Q-Device!.guide&#x27;,
+
+        SubWindow, mui_main_win:=WindowObject,
+        MUIA_Window_Title       , &#x27;Q-Device! V0.6 by Ian Chapman&#x27;,
+        MUIA_Window_ID          , &quot;QDEV&quot;,
+        MUIA_Window_Activate    , MUI_TRUE,
+
+        WindowContents, VGroup,
+                        Child, HGroup,
+                            Child, Label(&#x27;Driver:&#x27;),
+                            Child, PoplistObject,
+                                    MUIA_Popstring_String, mui_device_tb,
+                                    MUIA_Popstring_Button, PopButton( MUII_PopUp ),
+                                    MUIA_Poplist_Array, devicelist,
+                            End,
+                            Child, Label(&#x27;Unit:&#x27;),                            
+                            Child, PoplistObject,
+                                    MUIA_Popstring_String, mui_unit_tb,
+                                    MUIA_Popstring_Button, PopButton( MUII_PopUp ),
+                                    MUIA_Poplist_Array, [&#x27;0&#x27;, &#x27;1&#x27;, &#x27;2&#x27;, &#x27;3&#x27;, &#x27;4&#x27;, &#x27;5&#x27;, &#x27;6&#x27;, &#x27;7&#x27;, &#x27;8&#x27;, &#x27;9&#x27;, &#x27;10&#x27;, &#x27;11&#x27;, &#x27;12&#x27;, &#x27;13&#x27;, &#x27;14&#x27;, &#x27;15&#x27;, NIL],
+                            End,
+                        End, -&gt;HGroup
+                        Child, HGroup,
+                            Child, Label(&#x27;Target Status:&#x27;),
+                            Child, mui_status_tb,
+                        End, -&gt; HGroup
+                        Child, RegisterGroup([&#x27;Query&#x27;, &#x27;Control&#x27;, &#x27;Diagnostic&#x27;, NIL]),
+                            Child, VGroup,
+                                Child, ColGroup(3), 
+                                    Child, mui_probe_but,
+                                    Child, mui_inquire_but,
+                                    Child, mui_capacity_but,
+                                    Child, mui_testready_but,
+                                    Child, mui_modesense_but,
+                                    Child, mui_showlogs_but,
+                                    Child, mui_serial_but,
+                                    Child, mui_readtoc_but,
+                                    Child, mui_atip_but,                                    
+                                End, -&gt; ColGroup
+                            End, -&gt; VGroup
+                            Child, ColGroup(2),
+                                Child, mui_powerup_but,
+                                Child, mui_powerdown_but,
+                                Child, mui_lock_but,
+                                Child, mui_unlock_but,
+                                Child, mui_insert_but,
+                                Child, mui_eject_but,
+                                Child, mui_rewind_but,
+                                Child, HSpace(0),
+                                Child, HSpace(0), 
+                            End, -&gt; Colgroup
+                            /*
+                            Child, ColGroup(2), 
+                                Child, HGroup, 
+                                End, -&gt; HGroup
+                                Child, mui_diagnostic_but,
+                                Child, HGroup,
+                                    Child, Label(&#x27;_Medium Defect Type:&#x27;),
+                                    Child, mui_defects_cyc,
+                                    Child, Label(&#x27;_Format&#x27;),
+                                    Child, mui_defectsformat_cyc,
+                                End, -&gt; HGroup
+                                Child, mui_showdefects_but,
+                            End, -&gt; ColGroup
+                            */
+
+                            Child, HGroup,
+                                Child, VGroup,
+                                    GroupFrameT(&#x27;Self Tests&#x27;),
+                                    Child, ColGroup(2),
+                                        Child, Label(&#x27;_Diagnostic Test Type:&#x27;),
+                                        Child, mui_diagnostic_cyc,
+                                        Child, HSpace(0),
+                                        Child, mui_diagnostic_but,
+                                    End, -&gt;ColGroup
+                                    Child,VSpace(0),
+                                End, -&gt;VGroup
+
+                                Child, VGroup,
+                                    GroupFrameT(&#x27;Defects&#x27;),
+                                    Child, ColGroup(2),
+                                        Child, Label(&#x27;_Medium Defect Type:&#x27;),
+                                        Child, mui_defects_cyc,
+                                        Child, Label(&#x27;_Format&#x27;),
+                                        Child, mui_defectsformat_cyc,
+                                        Child, HSpace(0),
+                                        Child, mui_showdefects_but,
+                                    End, -&gt; ColGroup
+                                End, -&gt;VGroup
+
+                            End, -&gt;Hgroup
+
+                        End, -&gt; Register,
+                        Child, BalanceObject, End,
+                        Child, mui_output_lv,
+                        Child, mui_savelog_but,
+                    End, -&gt;VGroup
+  
+                End, -&gt; WindowObject
+
+        SubWindow, mui_prefs_win:=WindowObject,
+        MUIA_Window_Title       , &#x27;Preferences&#x27;,
+        MUIA_Window_ID          , &quot;PREF&quot;,
+        MUIA_Window_Activate    , MUI_TRUE,
+        MUIA_HelpNode           , &#x27;Preferences Window&#x27;,
+
+        WindowContents, VGroup,
+                            Child, HGroup,
+                                GroupFrameT(&#x27;Probing&#x27;),
+                                Child, Label(&#x27;From Unit:&#x27;),
+                                Child, mui_probefrom_tb,
+                                Child, Label(&#x27;To Unit:&#x27;),
+                                Child, mui_probeto_tb,
+                            End, -&gt; HGroup
+                            Child, HGroup,
+                                GroupFrameT(&#x27;tcpip-scsi.device&#x27;),
+                                Child, Label(&#x27;Host:&#x27;),
+                                Child, mui_host_tb,
+                                Child, Label(&#x27;Port:&#x27;),
+                                Child, mui_port_tb,
+                            End, -&gt; HGroup  
+                            Child, HGroup,
+                                GroupFrameT(&#x27;Flags&#x27;),
+                                Child, HSpace(0),
+                                Child, Label(&#x27;Use SCSIF-AUTOSENSE:&#x27;),
+                                Child, mui_autosense_cm,
+                            End,
+                            Child, BalanceObject, End,
+                            Child, HGroup,
+                                Child, mui_prefsave_but,
+                                Child, mui_prefuse_but,
+                                Child, mui_prefcancel_but,
+                            End, -&gt; HGroup
+                        End, -&gt; VGroup
+        End, -&gt; Window
+
+    End -&gt; Application
+
+    IF (app=NIL) THEN Raise(ERR_NOAPP)
+
+    doMethodA(mui_inquire_but,      [MUIM_Notify, MUIA_Pressed, FALSE, app, 2, MUIM_Application_ReturnID, ID_INQUIRE])
+    doMethodA(mui_serial_but,       [MUIM_Notify, MUIA_Pressed, FALSE, app, 2, MUIM_Application_ReturnID, ID_SERIAL])
+    doMethodA(mui_eject_but,        [MUIM_Notify, MUIA_Pressed, FALSE, app, 2, MUIM_Application_ReturnID, ID_EJECT])
+    doMethodA(mui_insert_but,       [MUIM_Notify, MUIA_Pressed, FALSE, app, 2, MUIM_Application_ReturnID, ID_INSERT])
+    doMethodA(mui_lock_but,         [MUIM_Notify, MUIA_Pressed, FALSE, app, 2, MUIM_Application_ReturnID, ID_LOCK])
+    doMethodA(mui_unlock_but,       [MUIM_Notify, MUIA_Pressed, FALSE, app, 2, MUIM_Application_ReturnID, ID_UNLOCK])
+    doMethodA(mui_capacity_but,     [MUIM_Notify, MUIA_Pressed, FALSE, app, 2, MUIM_Application_ReturnID, ID_CAPACITY])
+    doMethodA(mui_testready_but,    [MUIM_Notify, MUIA_Pressed, FALSE, app, 2, MUIM_Application_ReturnID, ID_TESTREADY])
+    doMethodA(mui_readtoc_but,      [MUIM_Notify, MUIA_Pressed, FALSE, app, 2, MUIM_Application_ReturnID, ID_READTOC])
+    doMethodA(mui_powerup_but,      [MUIM_Notify, MUIA_Pressed, FALSE, app, 2, MUIM_Application_ReturnID, ID_POWERUP])
+    doMethodA(mui_powerdown_but,    [MUIM_Notify, MUIA_Pressed, FALSE, app, 2, MUIM_Application_ReturnID, ID_POWERDOWN])
+    doMethodA(mui_probe_but,        [MUIM_Notify, MUIA_Pressed, FALSE, app, 2, MUIM_Application_ReturnID, ID_PROBE])
+    doMethodA(mui_diagnostic_but,   [MUIM_Notify, MUIA_Pressed, FALSE, app, 2, MUIM_Application_ReturnID, ID_DIAGNOSTIC])
+    doMethodA(mui_modesense_but,    [MUIM_Notify, MUIA_Pressed, FALSE, app, 2, MUIM_Application_ReturnID, ID_MODESENSE])
+    doMethodA(mui_atip_but,         [MUIM_Notify, MUIA_Pressed, FALSE, app, 2, MUIM_Application_ReturnID, ID_ATIP])
+    doMethodA(mui_rewind_but,       [MUIM_Notify, MUIA_Pressed, FALSE, app, 2, MUIM_Application_ReturnID, ID_REWIND])
+    doMethodA(mui_showlogs_but,     [MUIM_Notify, MUIA_Pressed, FALSE, app, 2, MUIM_Application_ReturnID, ID_SHOWLOGS])
+    doMethodA(mui_prefsave_but,     [MUIM_Notify, MUIA_Pressed, FALSE, app, 2, MUIM_Application_ReturnID, ID_SAVEPREF])
+    doMethodA(mui_prefuse_but,      [MUIM_Notify, MUIA_Pressed, FALSE, app, 2, MUIM_Application_ReturnID, ID_USEPREF])
+    doMethodA(mui_prefcancel_but,   [MUIM_Notify, MUIA_Pressed, FALSE, app, 2, MUIM_Application_ReturnID, ID_CANCELPREF])
+    doMethodA(mui_showdefects_but,  [MUIM_Notify, MUIA_Pressed, FALSE, app, 2, MUIM_Application_ReturnID, ID_SHOWDEFECTS])
+    doMethodA(mui_savelog_but,      [MUIM_Notify, MUIA_Pressed, FALSE, app, 2, MUIM_Application_ReturnID, ID_SAVELOG])
+    doMethodA(mui_diagnostic_cyc,   [MUIM_Notify, MUIA_Cycle_Active, MUIV_EveryTime, mui_diagnostic_cyc, 3, MUIM_WriteLong, MUIV_TriggerValue, {diagflag}])
+    doMethodA(mui_defects_cyc,      [MUIM_Notify, MUIA_Cycle_Active, MUIV_EveryTime, mui_defects_cyc,    3, MUIM_WriteLong, MUIV_TriggerValue, {defectsflag}])
+    doMethodA(mui_defectsformat_cyc,[MUIM_Notify, MUIA_Cycle_Active, MUIV_EveryTime, mui_defectsformat_cyc,    3, MUIM_WriteLong, MUIV_TriggerValue, {defectsformatflag}])
+    doMethodA(mui_device_tb,        [MUIM_Notify, MUIA_String_Contents, MUIV_EveryTime, mui_device_tb,    3, MUIM_WriteString, MUIV_TriggerValue, driver])
+    doMethodA(mui_unit_tb,          [MUIM_Notify, MUIA_String_Contents, MUIV_EveryTime, mui_unit_tb,      3, MUIM_WriteString, MUIV_TriggerValue, unit])
+    doMethodA(mui_probefrom_tb,     [MUIM_Notify, MUIA_String_Contents, MUIV_EveryTime, mui_probefrom_tb, 3, MUIM_WriteString, MUIV_TriggerValue, probefrom])
+    doMethodA(mui_probeto_tb,       [MUIM_Notify, MUIA_String_Contents, MUIV_EveryTime, mui_probeto_tb,   3, MUIM_WriteString, MUIV_TriggerValue, probeto])
+    doMethodA(mui_host_tb,          [MUIM_Notify, MUIA_String_Contents, MUIV_EveryTime, mui_host_tb,      3, MUIM_WriteString, MUIV_TriggerValue, host])
+    doMethodA(mui_port_tb,          [MUIM_Notify, MUIA_String_Contents, MUIV_EveryTime, mui_port_tb,      3, MUIM_WriteString, MUIV_TriggerValue, port])
+    doMethodA(mui_main_win,         [MUIM_Notify, MUIA_Window_CloseRequest, MUI_TRUE, app, 2, MUIM_Application_ReturnID, MUIV_Application_ReturnID_Quit])
+    doMethodA(mui_prefs_win,        [MUIM_Notify, MUIA_Window_CloseRequest, MUI_TRUE, app, 2, MUIM_Application_ReturnID, ID_CANCELPREF])
+    doMethodA(mui_output_lv,        [MUIM_Notify, MUIA_Listview_DoubleClick, MUI_TRUE, app, 2, MUIM_Application_ReturnID, ID_DOUBLECLICK])
+    doMethodA(mui_autosense_cm,      [MUIM_Notify, MUIA_Selected, MUIV_EveryTime, mui_autosense_cm, 3, MUIM_WriteLong, MUIV_TriggerValue, {autosenseflag}])
+    set(mui_status_tb, MUIA_Text_Contents, &#x27;Ready&#x27;)
+    SetAttrsA(mui_main_win, [MUIA_Window_ActiveObject, mui_unit_tb, MUIA_Window_Open, MUI_TRUE, TAG_DONE])
+
+    doMethodA(app, [MUIM_Application_Load, MUIV_Application_Load_ENV])
+
+    IF (StrCmp(unit, &#x27;&#x27;, ALL) = TRUE)
+        StrCopy(unit, &#x27;0&#x27;)
+        set(mui_unit_tb, MUIA_String_Contents, &#x27;0&#x27;)
+    ENDIF
+
+    IF (StrCmp(driver, &#x27;&#x27;, ALL) = TRUE)
+        StrCopy(driver, &#x27;scsi.device&#x27;)
+        set(mui_device_tb, MUIA_String_Contents, driver)
+    ENDIF
+
+    IF (StrCmp(probefrom, &#x27;&#x27;, ALL) = TRUE)
+        StrCopy(probefrom, &#x27;0&#x27;)
+        set(mui_probefrom_tb, MUIA_String_Contents, &#x27;0&#x27;)
+    ENDIF
+
+    IF (StrCmp(probeto, &#x27;&#x27;, ALL) = TRUE)
+        StrCopy(probeto, &#x27;12&#x27;)
+        set(mui_probeto_tb, MUIA_String_Contents, &#x27;15&#x27;)
+    ENDIF
+
+    IF (StrCmp(host, &#x27;&#x27;, ALL) = TRUE)
+        StrCopy(host, &#x27;localhost&#x27;)
+        set(mui_host_tb, MUIA_String_Contents, &#x27;localhost&#x27;)
+    ENDIF
+
+    IF (StrCmp(port, &#x27;&#x27;, ALL) = TRUE)
+        StrCopy(port, &#x27;8000&#x27;)
+        set(mui_port_tb, MUIA_String_Contents, &#x27;8000&#x27;)
+    ENDIF
+
+    WHILE running
+        result:=doMethodA(app, [MUIM_Application_Input,{signal}])
+        SELECT result
+            CASE MUIV_Application_ReturnID_Quit
+                running:=FALSE
+            CASE ID_SAVEPREF
+                doMethodA(app, [MUIM_Application_Save, MUIV_Application_Save_ENV])
+                doMethodA(app, [MUIM_Application_Save, MUIV_Application_Save_ENVARC])
+                set(mui_prefs_win, MUIA_Window_Open, FALSE)
+            CASE ID_USEPREF
+                doMethodA(app, [MUIM_Application_Save, MUIV_Application_Save_ENV])
+                set(mui_prefs_win, MUIA_Window_Open, FALSE)
+            CASE ID_CANCELPREF
+                StrCopy(probefrom, probefromtemp)
+                StrCopy(probeto, probetotemp)
+                StrCopy(host, hosttemp)
+                StrCopy(port, porttemp)
+                autosenseflag:=autosenseflagtemp
+                set(mui_autosense_cm, MUIA_Selected, autosenseflag)
+                set(mui_prefs_win, MUIA_Window_Open, FALSE)
+                set(mui_probeto_tb, MUIA_String_Contents, probeto)
+                set(mui_probefrom_tb, MUIA_String_Contents, probefrom)
+                set(mui_port_tb, MUIA_String_Contents, port)
+                set(mui_host_tb, MUIA_String_Contents, host)
+            CASE ID_PREFS
+                StrCopy(probefromtemp, probefrom)
+                StrCopy(probetotemp, probeto)
+                StrCopy(hosttemp, host)
+                StrCopy(porttemp, port)
+                autosenseflagtemp:=autosenseflag
+                set(mui_prefs_win, MUIA_Window_Open, MUI_TRUE)
+            CASE ID_INQUIRE
+                doMethodA(mui_output_lst, [MUIM_List_Clear])
+                query(driver, Val(unit), [SCSI_INQUIRY, 0, 0, 0, BUFFSIZE,0]:cdb6, SIZEOF cdb6, AFLG_INQUIRY_VERBOSE)
+            CASE ID_SERIAL
+                doMethodA(mui_output_lst, [MUIM_List_Clear])
+                query(driver, Val(unit), [SCSI_INQUIRY, 1, $80, 0, BUFFSIZE, 0]:cdb6, SIZEOF cdb6, AFLG_INQUIRY_SERIAL)
+            CASE ID_EJECT
+                doMethodA(mui_output_lst, [MUIM_List_Clear])
+                query(driver, Val(unit), [SCSI_CD_START_STOP_UNIT, 0, 0, 0, P_EJECT, 0]:cdb6, SIZEOF cdb6, NIL)
+            CASE ID_INSERT
+                doMethodA(mui_output_lst, [MUIM_List_Clear])
+                query(driver, Val(unit), [SCSI_CD_START_STOP_UNIT, 0, 0, 0, P_INSERT, 0]:cdb6, SIZEOF cdb6, NIL)
+            CASE ID_POWERUP
+                doMethodA(mui_output_lst, [MUIM_List_Clear])
+                query(driver, Val(unit), [SCSI_DA_START_STOP_UNIT, 0, 0, 0, P_START, 0]:cdb6, SIZEOF cdb6, NIL)
+            CASE ID_POWERDOWN
+                doMethodA(mui_output_lst, [MUIM_List_Clear])
+                query(driver, Val(unit), [SCSI_DA_START_STOP_UNIT, 0, 0, 0, P_STOP, 0]:cdb6, SIZEOF cdb6, NIL)
+            CASE ID_LOCK
+                doMethodA(mui_output_lst, [MUIM_List_Clear])
+                query(driver, Val(unit), [SCSI_CD_PREVENT_ALLOW_MEDIUM_REMOVAL, 0, 0, 0, P_LOCK, 0]:cdb6, SIZEOF cdb6, NIL)
+            CASE ID_UNLOCK
+                doMethodA(mui_output_lst, [MUIM_List_Clear])
+                query(driver, Val(unit), [SCSI_CD_PREVENT_ALLOW_MEDIUM_REMOVAL, 0, 0, 0, P_UNLOCK, 0]:cdb6, SIZEOF cdb6, NIL)
+            CASE ID_CAPACITY
+                doMethodA(mui_output_lst, [MUIM_List_Clear])
+                query(driver, Val(unit), [SCSI_DA_READ_CAPACITY, 0, 0, 0, 0, 0, 0, 0, 0, 0]:cdb10, SIZEOF cdb10, NIL)
+            CASE ID_TESTREADY
+                doMethodA(mui_output_lst, [MUIM_List_Clear])
+                query(driver, Val(unit), [SCSI_TEST_UNIT_READY, 0, 0, 0, 0, 0]:cdb6, SIZEOF cdb6, NIL)
+            CASE ID_READTOC
+                doMethodA(mui_output_lst, [MUIM_List_Clear])
+                query(driver, Val(unit), [SCSI_CD_READ_TOC, 0, 0, 0, 0, 0, 1, BUFFSIZE, BUFFSIZE, 0]:cdb10, SIZEOF cdb10, NIL)
+            CASE ID_ATIP
+                doMethodA(mui_output_lst, [MUIM_List_Clear])
+                query(driver, Val(unit), [SCSI_CD_READ_TOC, 0, %00000100, 0, 0, 0, 0, BUFFSIZE, BUFFSIZE, 0]:cdb10, SIZEOF cdb10, NIL)
+            CASE ID_REWIND
+                doMethodA(mui_output_lst, [MUIM_List_Clear])
+                query(driver, Val(unit), [SCSI_SA_REWIND, 0, 0, 0, 0, 0]:cdb6, SIZEOF cdb6, NIL)
+            CASE ID_SHOWLOGS
+                doMethodA(mui_output_lst, [MUIM_List_Clear])
+                query(driver, Val(unit), [SCSI_LOG_SENSE, 0, P_LOG_LIST, 0, 0, 0, 0, BUFFSIZE, BUFFSIZE, 0]:cdb10, SIZEOF cdb10, NIL)
+            CASE ID_PROBE
+                doMethodA(mui_output_lst, [MUIM_List_Clear])
+                IF Val(probefrom) &gt; Val(probeto)
+                    FOR i:=Val(probefrom) TO Val(probeto) STEP -1 DO query(driver, i, [SCSI_INQUIRY, 0, 0, 0, BUFFSIZE, 0]:cdb6, SIZEOF cdb6, AFLG_INQUIRY_PROBE)
+                ELSE
+                    FOR i:=Val(probefrom) TO Val(probeto) DO query(driver, i, [SCSI_INQUIRY, 0, 0, 0, BUFFSIZE, 0]:cdb6, SIZEOF cdb6, AFLG_INQUIRY_PROBE)
+                ENDIF
+            CASE ID_DIAGNOSTIC
+                doMethodA(mui_output_lst, [MUIM_List_Clear])
+                SELECT diagflag
+                    CASE 0
+                        query(driver, Val(unit), [SCSI_SEND_DIAGNOSTIC, P_DIAG_SIMPLE1, 0, 0, 0, 0]:cdb6, SIZEOF cdb6, NIL)
+                    CASE 1
+                        query(driver, Val(unit), [SCSI_SEND_DIAGNOSTIC, P_DIAG_SIMPLE2, 0, 0, 0, 0]:cdb6, SIZEOF cdb6, NIL)
+                    CASE 2
+                        IF Mui_RequestA(app, mui_main_win, 0, &#x27;Warning!&#x27;, &#x27;_Proceed|*_Cancel&#x27;, &#x27;A deep test may require the device to take itself offline temporarily\nor make temporary changes to the medium. It is highly recommended\nyou make sure nothing else is accessing the device before performing\nthis test.&#x27;, NIL)&lt;&gt;0
+                            query(driver, Val(unit), [SCSI_SEND_DIAGNOSTIC, P_DIAG_COMPLEX1, 0, 0, 0, 0]:cdb6, SIZEOF cdb6, NIL)
+                        ENDIF
+                    CASE 3
+                        IF Mui_RequestA(app, mui_main_win, 0, &#x27;Warning!&#x27;, &#x27;_Proceed|*_Cancel&#x27;, &#x27;A deep test may require the device to take itself offline temporarily\nor make temporary changes to the medium. It is highly recommended\nyou make sure nothing else is accessing the device before performing\nthis test.&#x27;, NIL)&lt;&gt;0
+                            query(driver, Val(unit), [SCSI_SEND_DIAGNOSTIC, P_DIAG_COMPLEX2, 0, 0, 0, 0]:cdb6, SIZEOF cdb6, NIL)
+                        ENDIF
+                ENDSELECT
+            CASE ID_MODESENSE
+                doMethodA(mui_output_lst, [MUIM_List_Clear])
+                IF query(driver, Val(unit), [SCSI_INQUIRY, 0, 0, 0, BUFFSIZE, 0]:cdb6, SIZEOF cdb6, AFLG_INQUIRY_SILENT) = 0
+                   IF query(driver, Val(unit), [SCSI_MODE_SENSE_10, 0, P_ALLPAGES, 0, 0, 0, 0, BUFFSIZE, BUFFSIZE, 0]:cdb10, SIZEOF cdb10, NIL) &lt;&gt; 0
+                       query(driver, Val(unit), [SCSI_MODE_SENSE_6, 0, P_ALLPAGES, 0, BUFFSIZE, 0]:cdb6, SIZEOF cdb6, NIL)
+                   ENDIF
+                ENDIF
+            CASE ID_SHOWDEFECTS
+                doMethodA(mui_output_lst, [MUIM_List_Clear])
+                SELECT defectsflag
+                    CASE 0
+                        IF defectsformatflag = 0
+                            query(driver, Val(unit), [SCSI_DA_READ_DEFECT_DATA, 0, %00010101, 0, 0, 0, 0, BUFFSIZE, BUFFSIZE, 0]:cdb10, SIZEOF cdb10, NIL)
+                        ELSEIF defectsformatflag = 1
+                            query(driver, Val(unit), [SCSI_DA_READ_DEFECT_DATA, 0, %00010100, 0, 0, 0, 0, BUFFSIZE, BUFFSIZE, 0]:cdb10, SIZEOF cdb10, NIL)
+                        ELSE
+                            query(driver, Val(unit), [SCSI_DA_READ_DEFECT_DATA, 0, %00010000, 0, 0, 0, 0, BUFFSIZE, BUFFSIZE, 0]:cdb10, SIZEOF cdb10, NIL)
+                        ENDIF
+                    CASE 1
+                        IF defectsformatflag = 0
+                            query(driver, Val(unit), [SCSI_DA_READ_DEFECT_DATA, 0, %00001101, 0, 0, 0, 0, BUFFSIZE, BUFFSIZE, 0]:cdb10, SIZEOF cdb10, NIL)
+                        ELSEIF defectsformatflag = 1
+                            query(driver, Val(unit), [SCSI_DA_READ_DEFECT_DATA, 0, %00001100, 0, 0, 0, 0, BUFFSIZE, BUFFSIZE, 0]:cdb10, SIZEOF cdb10, NIL)
+                        ELSE
+                            query(driver, Val(unit), [SCSI_DA_READ_DEFECT_DATA, 0, %00001000, 0, 0, 0, 0, BUFFSIZE, BUFFSIZE, 0]:cdb10, SIZEOF cdb10, NIL)
+                        ENDIF                                  
+                    CASE 2
+                        IF defectsformatflag = 0
+                            query(driver, Val(unit), [SCSI_DA_READ_DEFECT_DATA, 0, %00011101, 0, 0, 0, 0, BUFFSIZE, BUFFSIZE, 0]:cdb10, SIZEOF cdb10, NIL)
+                        ELSEIF defectsformatflag = 1
+                            query(driver, Val(unit), [SCSI_DA_READ_DEFECT_DATA, 0, %00011100, 0, 0, 0, 0, BUFFSIZE, BUFFSIZE, 0]:cdb10, SIZEOF cdb10, NIL)
+                        ELSE
+                            query(driver, Val(unit), [SCSI_DA_READ_DEFECT_DATA, 0, %00011000, 0, 0, 0, 0, BUFFSIZE, BUFFSIZE, 0]:cdb10, SIZEOF cdb10, NIL)
+                        ENDIF                    
+                ENDSELECT
+            CASE ID_ABOUT
+                Mui_RequestA(app, mui_main_win, 0, &#x27;About Q-Device!&#x27;,&#x27;*_OK&#x27;,&#x27;\ecQ-Device! by Ian Chapman (2003-2004)\nVersion 0.6\n\nA low-level SCSI/IDE query, control and diagnostic tool\n\n\ebUse of this software is entirely at YOUR OWN risk!\en&#x27;, NIL)
+            CASE ID_MUIABOUT
+                doMethodA(app, [MUIM_Application_AboutMUI, mui_main_win])
+            CASE ID_MUISET
+                doMethodA(app, [MUIM_Application_OpenConfigWindow, 0])
+            CASE ID_ICONIFY
+                set(app, MUIA_Application_Iconified, MUI_TRUE)
+            CASE ID_DOUBLECLICK
+                click_inquiry()
+            CASE ID_SAVELOG
+                openfreq(mui_main_win)
+                savelog(mui_main_win)  
+        ENDSELECT
+        IF (running AND signal) THEN Wait(signal)
+    ENDWHILE
+
+    EXCEPT DO
+        IF (app) THEN Mui_DisposeObject(app)
+        IF (diskobj) THEN FreeDiskObject(diskobj)
+        IF (iconbase) THEN CloseLibrary(iconbase)
+        IF (reqtoolsbase) THEN CloseLibrary(reqtoolsbase)
+        IF (muimasterbase) THEN CloseLibrary(muimasterbase)
+        SELECT exception
+            CASE NORMAL
+                -&gt;Normal Exit
+            CASE ERR_NOMUI
+                PrintF(&#x27;Unable to open muimaster.library V19+\n&#x27;)
+            CASE ERR_NOICON
+                PrintF(&#x27;Unable to open icon.library V33+\n&#x27;)
+            CASE ERR_NOREQTOOLS
+                PrintF(&#x27;Unable to open reqtools.library V38+\n&#x27;)    
+            CASE ERR_NOAPP
+                PrintF(&#x27;Unable to create application\n&#x27;)
+            DEFAULT
+                PrintF(&#x27;Unknown exception of type (\d)\n&#x27;, exception)
+        ENDSELECT
+ENDPROC
+
+
+/*
+** Procedure which distributes a query to the appropriate query procedure
+** depending on whether it&#x27;s a real SCSI device or the pseudo tcpip-scsi
+** device. It is then responsible for distributing the results to the
+** appropriate handler procedure for processing
+*/
+PROC query(device:PTR TO CHAR, unit, cmd:PTR TO cdb12, size, aflg)
+DEF buffer=NIL, sensebuffer=NIL, returncode=0, returnexcept=0
+
+    buffer:=New(BUFFSIZEBIG)
+    sensebuffer:=New(BUFFSIZE)
+
+    IF StrCmp(device, &#x27;tcpip-scsi.device&#x27;)
+        returncode,returnexcept:=netquery(device, unit, cmd, size, buffer)
+    ELSE
+        returncode,returnexcept:=scsiquery(device, unit, cmd, size, buffer, sensebuffer)
+    ENDIF
+
+    IF returnexcept = 0
+        SELECT returncode
+            CASE 0
+                IF cmd.opcode &lt;&gt; SCSI_REQUEST_SENSE THEN set(mui_status_tb, MUIA_Text_Contents, &#x27;Target Response: GOOD&#x27;)
+                SELECT $FF OF cmd.opcode
+                    CASE SCSI_CD_READ_TOC
+                        IF (Char(cmd+2) = 0) THEN process_toc(buffer) ELSE process_atip(buffer)
+                    CASE SCSI_TEST_UNIT_READY
+                        outlist_d(&#x27;Unit Ready&#x27;, device, unit)
+                    CASE SCSI_SA_REWIND
+                        outlist_d(&#x27;Sent rewind/rezero command&#x27;, device, unit)   
+                    CASE SCSI_INQUIRY
+                        IF aflg=AFLG_INQUIRY_SERIAL THEN process_serial(buffer) ELSE process_inquiry(device, unit, buffer, aflg)
+                    CASE SCSI_DA_READ_CAPACITY
+                        process_capacity(buffer)
+                    CASE SCSI_CD_START_STOP_UNIT
+                        IF cmd.param4=P_EJECT
+                            outlist_d(&#x27;Sent eject command&#x27;, device, unit)
+                        ELSEIF cmd.param4=P_INSERT
+                            outlist_d(&#x27;Sent insert command&#x27;, device, unit)
+                        ELSEIF cmd.param4=P_START
+                            outlist_d(&#x27;Sent power up command&#x27;, device, unit)
+                        ELSEIF cmd.param4=P_STOP
+                            outlist_d(&#x27;Sent power down command&#x27;, device, unit)
+                        ENDIF
+                    CASE SCSI_CD_PREVENT_ALLOW_MEDIUM_REMOVAL
+                        IF cmd.param4=P_LOCK THEN outlist_d(&#x27;Sent lock command&#x27;, device, unit) ELSE outlist_d(&#x27;Sent unlock command&#x27;, device, unit)
+                    CASE SCSI_REQUEST_SENSE
+                        process_sense(buffer)
+                    CASE SCSI_MODE_SENSE_6
+                        process_modesense(buffer, size)
+                    CASE SCSI_MODE_SENSE_10
+                        process_modesense(buffer, size)
+                    CASE SCSI_LOG_SENSE
+                        SELECT $3F OF Char(buffer)
+                            CASE $0
+                                outlist(&#x27;\ebLog Type:\en&#x27;, &#x27;List of supported log types&#x27;)
+                                process_log_support(buffer)
+                            CASE $1
+                                process_log_buffer(buffer)
+                            CASE $2
+                                process_log_errors(buffer)
+                            CASE $3
+                                process_log_errors(buffer)
+                            CASE $4
+                                process_log_errors(buffer)
+                            CASE $5
+                                process_log_errors(buffer)
+                            CASE $6
+                                process_log_nmerrors(buffer)
+                            CASE $D
+                                process_log_temperature(buffer)
+                            CASE $2F
+                                process_log_ie(buffer)
+                            CASE $30
+                                IF alternatelog = 1
+                                    process_log_smartsense(buffer)
+                                    alternatelog:=0
+                                ELSEIF alternatelog = 2
+                                    process_log_performance(buffer)
+                                    alternatelog:=0
+                                ENDIF    
+                            CASE $32
+                                process_log_physical(buffer) 
+                            CASE $33
+                                process_log_lba(buffer)
+                            CASE $35
+                                process_log_cache(buffer)
+                            CASE $36
+                                process_log_ibmtemp(buffer)               
+                        ENDSELECT
+                    CASE SCSI_SEND_DIAGNOSTIC
+                        outlist_d(&#x27;Self Test Passed&#x27;, device, unit)
+                    CASE $37
+                        process_defects(buffer)
+                ENDSELECT
+            CASE 2
+            
+                IF cmd.opcode &lt;&gt; SCSI_REQUEST_SENSE  -&gt; Hopefully avoids recursive loops with bad devices/drivers which don&#x27;t support request sense.                
+                    set(mui_status_tb, MUIA_Text_Contents, &#x27;Target Response: CHECK_CONDITION&#x27;)
+                    outlist(&#x27;\ebWarning:\en&#x27;, &#x27;Command generated an error response (see below)&#x27;)
+                    IF autosenseflag = 1 THEN process_sense(sensebuffer) ELSE query(device, unit, [SCSI_REQUEST_SENSE, 0, 0, 0, BUFFSIZE, 0]:cdb6, SIZEOF cdb6, NIL)
+                ENDIF
+            
+            CASE 4
+                set(mui_status_tb, MUIA_Text_Contents, &#x27;Target Response: CONDITION_MET&#x27;)
+            CASE 8
+                set(mui_status_tb, MUIA_Text_Contents, &#x27;Target Response: BUSY&#x27;)
+            CASE 16
+                set(mui_status_tb, MUIA_Text_Contents, &#x27;Target Response: INTERMEDIATE&#x27;)
+            CASE 20
+                set(mui_status_tb, MUIA_Text_Contents, &#x27;Target Response: INTERMEDIATE_CONDITION_MET&#x27;)
+            CASE 24
+                set(mui_status_tb, MUIA_Text_Contents, &#x27;Target Response: RESERVATION_CONFLICT&#x27;)
+            CASE 34
+                set(mui_status_tb, MUIA_Text_Contents, &#x27;Target Response: COMMAND_TERMINATED&#x27;)
+            CASE 72
+                set(mui_status_tb, MUIA_Text_Contents, &#x27;Target Response: QUEUE_FULL&#x27;)
+            DEFAULT
+                set(mui_status_tb, MUIA_Text_Contents, &#x27;Target Response: UNKNOWN&#x27;)
+        ENDSELECT
+    ENDIF
+    
+    Dispose(buffer)
+    Dispose(sensebuffer)
+    
+ENDPROC
+
+
+/*
+** Procedure for simply sending the SCSI command to the scsi device driver and
+** writing the return data into the buffer for processing by the handler
+** procedures
+*/
+PROC scsiquery(device:PTR TO CHAR, unit, cmd:PTR TO cdb12, size, buffer, sensebuffer) HANDLE
+DEF myport=NIL:PTR TO mp, ioreq=NIL:PTR TO iostd, scsiio:scsicmd, error=-1, status
+
+    IF (myport:=CreateMsgPort())=NIL THEN Raise(ERR_MP)
+    IF (ioreq:=createStdIO(myport))=NIL THEN Raise(ERR_IOR)
+    IF (error:=OpenDevice(device, unit, ioreq, 0)) &lt;&gt; NIL THEN Raise(ERR_DEVICE)
+
+    scsiio.data:=buffer
+    scsiio.length:=BUFFSIZEBIG
+    scsiio.command:=cmd
+    scsiio.cmdlength:=size
+
+    IF autosenseflag &gt; 0
+        scsiio.flags:=SCSIF_READ OR SCSIF_AUTOSENSE
+    ELSE
+        scsiio.flags:=SCSIF_READ
+    ENDIF
+
+    scsiio.senseactual:=0
+    scsiio.sensedata:=sensebuffer
+    ioreq.command:=HD_SCSICMD
+    ioreq.data:=scsiio
+    ioreq.length:=SIZEOF scsicmd
+    DoIO(ioreq)
+    status:=ioreq.error
+
+    SELECT status
+        CASE HFERR_SELFUNIT
+            outlist_d(&#x27;&lt;self issuing command error&gt;&#x27;, device, unit)
+        CASE HFERR_DMA
+            outlist_d(&#x27;&lt;DMA Failure&gt;&#x27;, device, unit)
+        CASE HFERR_PHASE
+            outlist_d(&#x27;&lt;illegal scsi phase&gt;&#x27;, device, unit)
+        CASE HFERR_PARITY
+            outlist_d(&#x27;&lt;parity error&gt;&#x27;, device, unit)
+        CASE HFERR_SELTIMEOUT
+            outlist_d(&#x27;&lt;device timed out&gt;&#x27;, device, unit)
+    ENDSELECT
+
+    EXCEPT DO
+        IF error=NIL
+            IF  CheckIO(ioreq)&lt;&gt;NIL
+                AbortIO(ioreq)
+                WaitIO(ioreq)
+            ENDIF
+        ENDIF
+
+    CloseDevice(ioreq)
+    IF ioreq &lt;&gt; NIL THEN deleteStdIO(ioreq)
+    IF myport &lt;&gt; NIL THEN DeleteMsgPort(myport)
+
+    SELECT exception
+        CASE ERR_MP
+            outlist(&#x27;\ebError:\en&#x27;, &#x27;Unable to create message port&#x27;)
+        CASE ERR_IOR
+            outlist(&#x27;\ebError:\en&#x27;, &#x27;Unable to create IORequest&#x27;)
+        CASE ERR_DEVICE
+            outlist_d(&#x27;&lt;no device&gt;&#x27;, device, unit)
+    ENDSELECT
+
+ENDPROC (scsiio.status AND %00111110), exception
+
+
+/*
+** Procedure for sending the scsi command across the network to a remote
+** helper daemon such as qdd, then writing the return data into the buffer for
+** processing by the handler procedures
+*/
+PROC netquery(device:PTR TO CHAR, unit, cmd:PTR TO cdb12, size, buffer) HANDLE
+DEF sock, sain:PTR TO sockaddr_in, received=0, returncode=0, hst:PTR TO hostent,
+    address:in_addr, saou:sockaddr_in, tv:timeval, readfds:fd_set
+
+    IF (socketbase:=OpenLibrary(&#x27;bsdsocket.library&#x27;, NIL)) = NIL THEN Raise(ERR_NOBSD)
+    sain:=NewM(SIZEOF sockaddr_in, MEMF_PUBLIC OR MEMF_CLEAR)
+    IF (host[0] &gt; 47) AND (host[0] &lt; 58)
+        address.addr:=Inet_addr(host)
+        IF address.addr = INADDR_NONE THEN Raise(ERR_NOCONNECT)
+        IF (hst:=Gethostbyaddr(address, SIZEOF in_addr, AF_INET)) = NIL THEN Raise(ERR_NOCONNECT)
+    ELSE
+        IF (hst:=Gethostbyname(host)) = NIL THEN Raise(ERR_NOCONNECT)
+        address:=hst.addr_list[0]
+    ENDIF
+
+    sain.family:=AF_INET
+    sain.addr.addr:=address.addr
+    sain.port:=Val(port)+unit
+    IF (sock:=Socket(AF_INET, SOCK_DGRAM, 0)) = -1 THEN Raise(ERR_NOSOCK)
+    Sendto(sock, cmd, size, 0, sain, SIZEOF sockaddr_in)
+
+    fd_zero(readfds)
+    fd_set(sock, readfds)
+
+    -&gt; Some commands take a long time to complete, so increase the timeout value
+    IF cmd.opcode = SCSI_SEND_DIAGNOSTIC
+        tv.sec:=19
+        tv.usec:=5
+    ELSEIF cmd.opcode = SCSI_CD_START_STOP_UNIT
+        tv.sec:=10
+        tv.usec:=5
+    ELSEIF cmd.opcode = SCSI_DA_START_STOP_UNIT
+        tv.sec:=10
+        tv.usec:=5
+    ELSEIF cmd.opcode = $37
+        tv.sec:=10
+        tv.usec:=5
+    ELSE
+        tv.sec:=1
+        tv.usec:=5
+    ENDIF
+
+    IF WaitSelect(sock+1, readfds, NIL, NIL, tv, 0) &gt; 0
+        IF fd_isset(sock, readfds)
+            IF ((received:=Recvfrom(sock, buffer, BUFFSIZEBIG, 0, saou, SIZEOF sockaddr_in)) &lt; 255)
+                returncode:=Char(buffer)
+            ENDIF
+        ELSE
+            Raise(ERR_NOCONNECT)
+        ENDIF
+    ELSE
+        Raise(ERR_NOCONNECT)
+    ENDIF
+
+    EXCEPT DO
+        IF sock &lt;&gt; -1 THEN CloseSocket(sock)
+        IF (socketbase) THEN CloseLibrary(socketbase)
+        SELECT exception
+            CASE ERR_NOBSD
+                outlist(&#x27;\ebError:\en&#x27;, &#x27;Unable to open bsdsocket.library&#x27;)
+            CASE ERR_NOSOCK
+                outlist(&#x27;\ebError:\en&#x27;, &#x27;Unable to create socket&#x27;)
+            CASE ERR_NOCONNECT
+                outlist_d(&#x27;&lt;no device&gt; (or unable to connect)&#x27;, device, unit)
+        ENDSELECT
+
+ENDPROC returncode, exception
+
+/*
+** Handler processing the data returned when requesting a list of known logs
+** It then calls the handler processes for each known log type
+*/
+PROC process_log_support(reply:PTR TO l_sense)
+DEF x=0
+
+    outlist_i(&#x27;\ebLog Size:\en&#x27;, reply.len, &#x27; bytes&#x27;)
+    outlist(&#x27; &#x27;, &#x27; &#x27;)
+
+    FOR x:=0 TO (reply.len-1)
+        SELECT $3F OF Char(reply+x+4)
+            CASE $0
+                -&gt;No real point in listing it, we know the disk supports it or we wouldn&#x27;t get a reply
+                -&gt;outlist_h(&#x27;\ebFound Log:\en&#x27;, Char(reply+x+4), &#x27;:  List of supported log types&#x27;)
+            CASE $1
+                outlist(&#x27;\ebFound Log:\en&#x27;, &#x27;Buffer Over- and Under-runs&#x27;)
+                outlist_h(&#x27;\ebLog Code:\en&#x27;, Char(reply+x+4), &#x27; &#x27;)
+                query(driver, Val(unit), [SCSI_LOG_SENSE, 0, P_LOG_BUFFER, 0, 0, 0, 0, 0, BUFFSIZE, 0]:cdb10, SIZEOF cdb10, NIL)
+                outlist(&#x27; &#x27;, &#x27; &#x27;)
+            CASE $2
+                outlist(&#x27;\ebFound Log:\en&#x27;, &#x27;Write Errors&#x27;)
+                outlist_h(&#x27;\ebLog Code:\en&#x27;, Char(reply+x+4), &#x27; &#x27;)
+                query(driver, Val(unit), [SCSI_LOG_SENSE, 0, P_LOG_WRITE, 0, 0, 0, 0, 0, BUFFSIZE, 0]:cdb10, SIZEOF cdb10, NIL)
+                outlist(&#x27; &#x27;, &#x27; &#x27;)
+            CASE $3
+                outlist(&#x27;\ebFound Log:\en&#x27;, &#x27;Read Errors&#x27;)
+                outlist_h(&#x27;\ebLog Code:\en&#x27;, Char(reply+x+4), &#x27; &#x27;)
+                query(driver, Val(unit), [SCSI_LOG_SENSE, 0, P_LOG_READ, 0, 0, 0, 0, 0, BUFFSIZE, 0]:cdb10, SIZEOF cdb10, NIL)
+                outlist(&#x27; &#x27;, &#x27; &#x27;)
+            CASE $4
+                outlist(&#x27;\ebFound Log:\en&#x27;, &#x27;Reverse-Read Errors&#x27;)
+                outlist_h(&#x27;\ebLog Code:\en&#x27;, Char(reply+x+4), &#x27; &#x27;)
+                query(driver, Val(unit), [SCSI_LOG_SENSE, 0, P_LOG_REVREAD, 0, 0, 0, 0, 0, BUFFSIZE, 0]:cdb10, SIZEOF cdb10, NIL)
+                outlist(&#x27; &#x27;, &#x27; &#x27;)
+            CASE $5
+                outlist(&#x27;\ebFound Log:\en&#x27;, &#x27;Verify Errors&#x27;)
+                outlist_h(&#x27;\ebLog Code:\en&#x27;, Char(reply+x+4), &#x27; &#x27;)
+                query(driver, Val(unit), [SCSI_LOG_SENSE, 0, P_LOG_VERIFY, 0, 0, 0, 0, 0, BUFFSIZE, 0]:cdb10, SIZEOF cdb10, NIL)
+                outlist(&#x27; &#x27;, &#x27; &#x27;)
+            CASE $6
+                outlist(&#x27;\ebFound Log:\en&#x27;, &#x27;Non-medium Errors&#x27;)
+                outlist_h(&#x27;\ebLog Code:\en&#x27;, Char(reply+x+4), &#x27; &#x27;)
+                query(driver, Val(unit), [SCSI_LOG_SENSE, 0, P_LOG_NMERRORS, 0, 0, 0, 0, 0, BUFFSIZE, 0]:cdb10, SIZEOF cdb10, NIL)
+                outlist(&#x27; &#x27;, &#x27; &#x27;)
+            CASE $7
+                outlist(&#x27;\ebFound Log:\en&#x27;, &#x27;Last # of Error Events&#x27;)
+                outlist_h(&#x27;\ebLog Code:\en&#x27;, Char(reply+x+4), &#x27; (Not Decodable)&#x27;)
+                outlist(&#x27; &#x27;, &#x27; &#x27;)
+            CASE $8
+                outlist(&#x27;\ebFound Log:\en&#x27;, &#x27;Format Status&#x27;)
+                outlist_h(&#x27;\ebLog Code:\en&#x27;, Char(reply+x+4), &#x27; (Cannot Decode Yet)&#x27;)
+                outlist(&#x27; &#x27;, &#x27; &#x27;)
+            CASE $9
+                outlist(&#x27;\ebFound Log:\en&#x27;, &#x27;Reserved to the MS59 Standard&#x27;)
+                outlist_h(&#x27;\ebLog Code:\en&#x27;, Char(reply+x+4), &#x27; (Cannot Decode Yet)&#x27;)
+                outlist(&#x27; &#x27;, &#x27; &#x27;)
+            CASE $A
+                outlist(&#x27;\ebFound Log:\en&#x27;, &#x27;Reserved to the MS59 Standard&#x27;)
+                outlist_h(&#x27;\ebLog Code:\en&#x27;, Char(reply+x+4), &#x27; (Cannot Decode Yet)&#x27;)
+                outlist(&#x27; &#x27;, &#x27; &#x27;)
+            CASE $B
+                outlist(&#x27;\ebFound Log:\en&#x27;, &#x27;Last # deferred errors or Async Events&#x27;)
+                outlist_h(&#x27;\ebLog Code:\en&#x27;, Char(reply+x+4), &#x27; (Cannot Decode Yet)&#x27;)
+                outlist(&#x27; &#x27;, &#x27; &#x27;)
+            CASE $C
+                outlist(&#x27;\ebFound Log:\en&#x27;, &#x27;Sequential Access&#x27;)
+                outlist_h(&#x27;\ebLog Code:\en&#x27;, Char(reply+x+4), &#x27; (Cannot Decode Yet)&#x27;)
+                outlist(&#x27; &#x27;, &#x27; &#x27;)
+            CASE $D
+                outlist(&#x27;\ebFound Log:\en&#x27;, &#x27;Temperature&#x27;)
+                outlist_h(&#x27;\ebLog Code:\en&#x27;, Char(reply+x+4), &#x27; &#x27;)
+                query(driver, Val(unit), [SCSI_LOG_SENSE, 0, P_LOG_TEMP, 0, 0, 0, 0, 0, BUFFSIZE, 0]:cdb10, SIZEOF cdb10, NIL)
+                outlist(&#x27; &#x27;, &#x27; &#x27;)
+            CASE $E
+                outlist(&#x27;\ebFound Log:\en&#x27;, &#x27;Start Stop Cycle&#x27;)
+                outlist_h(&#x27;\ebLog Code:\en&#x27;, Char(reply+x+4), &#x27; (Cannot Decode Yet)&#x27;)
+                outlist(&#x27; &#x27;, &#x27; &#x27;)
+            CASE $F
+                outlist(&#x27;\ebFound Log:\en&#x27;, &#x27;Application Client&#x27;)
+                outlist_h(&#x27;\ebLog Code:\en&#x27;, Char(reply+x+4), &#x27; (Cannot Decode Yet)&#x27;)
+                outlist(&#x27; &#x27;, &#x27; &#x27;)
+            CASE $10
+                outlist(&#x27;\ebFound Log:\en&#x27;, &#x27;Self Test Results&#x27;)
+                outlist_h(&#x27;\ebLog Code:\en&#x27;, Char(reply+x+4), &#x27; (Cannot Decode Yet)&#x27;)
+                outlist(&#x27; &#x27;, &#x27; &#x27;)
+            CASE $11
+                outlist(&#x27;\ebFound Log:\en&#x27;, &#x27;DTD Status&#x27;)
+                outlist_h(&#x27;\ebLog Code:\en&#x27;, Char(reply+x+4), &#x27; (Cannot Decode Yet)&#x27;)
+                outlist(&#x27; &#x27;, &#x27; &#x27;)
+            CASE $12
+                outlist(&#x27;\ebFound Log:\en&#x27;, &#x27;Tape Alert Response&#x27;)
+                outlist_h(&#x27;\ebLog Code:\en&#x27;, Char(reply+x+4), &#x27; (Cannot Decode Yet)&#x27;)
+                outlist(&#x27; &#x27;, &#x27; &#x27;)
+            CASE $13
+                outlist(&#x27;\ebFound Log:\en&#x27;, &#x27;Requested Recovery&#x27;)
+                outlist_h(&#x27;\ebLog Code:\en&#x27;, Char(reply+x+4), &#x27; (Cannot Decode Yet)&#x27;)
+                outlist(&#x27; &#x27;, &#x27; &#x27;)
+            CASE $14
+                outlist(&#x27;\ebFound Log:\en&#x27;, &#x27;Device Statistics&#x27;)
+                outlist_h(&#x27;\ebLog Code:\en&#x27;, Char(reply+x+4), &#x27; (Cannot Decode Yet)&#x27;)
+                outlist(&#x27; &#x27;, &#x27; &#x27;)
+            CASE $17
+                outlist(&#x27;\ebFound Log:\en&#x27;, &#x27;Non-Volatile Cache&#x27;)
+                outlist_h(&#x27;\ebLog Code:\en&#x27;, Char(reply+x+4), &#x27; (Cannot Decode Yet)&#x27;)
+                outlist(&#x27; &#x27;, &#x27; &#x27;)
+            CASE $18
+                outlist(&#x27;\ebFound Log:\en&#x27;, &#x27;Protocol Specific Port&#x27;)
+                outlist_h(&#x27;\ebLog Code:\en&#x27;, Char(reply+x+4), &#x27; (Cannot Decode Yet)&#x27;)
+                outlist(&#x27; &#x27;, &#x27; &#x27;)
+            CASE $2E
+                outlist(&#x27;\ebFound Log:\en&#x27;, &#x27;TapeAlert&#x27;)
+                outlist_h(&#x27;\ebLog Code:\en&#x27;, Char(reply+x+4), &#x27; (Cannot Decode Yet)&#x27;)
+            CASE $2F
+                outlist(&#x27;\ebFound Log:\en&#x27;, &#x27;Informational Exceptions Status&#x27;)
+                outlist_h(&#x27;\ebLog Code:\en&#x27;, Char(reply+x+4), NIL)
+                query(driver, Val(unit), [SCSI_LOG_SENSE, 0, P_LOG_IE, 0, 0, 0, 0, 0, BUFFSIZE, 0]:cdb10, SIZEOF cdb10, NIL)
+                outlist(&#x27; &#x27;, &#x27; &#x27;)
+            CASE $30
+                outlist(&#x27;\ebFound Log:\en&#x27;, &#x27;SMART Sense Data (Alternate Decoding #1)&#x27;)
+                outlist_h(&#x27;\ebLog Code:\en&#x27;, Char(reply+x+4), NIL)
+                alternatelog:=1
+                query(driver, Val(unit), [SCSI_LOG_SENSE, 0, P_LOG_SMARTSENSE, 0, 0, 0, 0, 0, BUFFSIZE, 0]:cdb10, SIZEOF cdb10, NIL)
+                outlist(&#x27; &#x27;, &#x27; &#x27;)
+                outlist(&#x27;\ebFound Log:\en&#x27;, &#x27;Performance Counters (IBM)  (Alternate Decoding #2)&#x27;)
+                outlist(&#x27;\ebWarning:\en&#x27;, &#x27;Log format may be device specific. Info may be incorrect&#x27;)
+                outlist(&#x27;\ebReference:\en&#x27;, &#x27;IBM DGHS09Z&#x27;)
+                outlist_h(&#x27;\ebLog Code:\en&#x27;, Char(reply+x+4), NIL)
+                alternatelog:=2
+                query(driver, Val(unit), [SCSI_LOG_SENSE, 0, P_LOG_PERFORMANCE, 0, 0, 0, 0, 0, BUFFSIZE, 0]:cdb10, SIZEOF cdb10, NIL)
+                outlist(&#x27; &#x27;, &#x27; &#x27;)
+            CASE $32
+                outlist(&#x27;\ebFound Log:\en:&#x27;, &#x27;Physical Error Sites (IBM)&#x27;)
+                outlist(&#x27;\ebWarning:\en&#x27;, &#x27;Log format may be device specific. Info may be incorrect&#x27;)
+                outlist(&#x27;\ebReference:\en&#x27;, &#x27;IBM DGHS09Z&#x27;)
+                outlist_h(&#x27;\ebLog Code:\en&#x27;, Char(reply+x+4), NIL)
+                query(driver, Val(unit), [SCSI_LOG_SENSE, 0, P_LOG_PHYSICAL, 0, 0, 0, 0, 0, BUFFSIZE, 0]:cdb10, SIZEOF cdb10, NIL)
+                outlist(&#x27; &#x27;, &#x27; &#x27;) 
+            CASE $33
+                outlist(&#x27;\ebFound Log:\en:&#x27;, &#x27;LBA Error Sites (IBM)&#x27;)
+                outlist(&#x27;\ebWarning:\en&#x27;, &#x27;Log format may be device specific. Info may be incorrect&#x27;)
+                outlist(&#x27;\ebReference:\en&#x27;, &#x27;IBM DGHS09Z&#x27;)
+                outlist_h(&#x27;\ebLog Code:\en&#x27;, Char(reply+x+4), NIL)
+                query(driver, Val(unit), [SCSI_LOG_SENSE, 0, P_LOG_LBA, 0, 0, 0, 0, 0, BUFFSIZE, 0]:cdb10, SIZEOF cdb10, NIL)
+                outlist(&#x27; &#x27;, &#x27; &#x27;) 
+            CASE $35
+                outlist(&#x27;\ebFound Log:\en&#x27;, &#x27;Cache Statistics (IBM)&#x27;)
+                outlist(&#x27;\ebWarning:\en&#x27;, &#x27;Log format may be device specific. Info may be incorrect&#x27;)
+                outlist(&#x27;\ebReference:\en&#x27;, &#x27;IBM DGHS09Z&#x27;)
+                outlist_h(&#x27;\ebLog Code:\en&#x27;, Char(reply+x+4), NIL)
+                query(driver, Val(unit), [SCSI_LOG_SENSE, 0, P_LOG_CACHE, 0, 0, 0, 0, 0, BUFFSIZE, 0]:cdb10, SIZEOF cdb10, NIL)
+                outlist(&#x27; &#x27;, &#x27; &#x27;)
+            CASE $36
+                outlist(&#x27;\ebFound Log:\en&#x27;, &#x27;Temperature Log (IBM)&#x27;)
+                outlist(&#x27;\ebWarning:\en&#x27;, &#x27;Log format may be device specific. Info may be incorrect&#x27;)
+                outlist(&#x27;\ebReference:\en&#x27;, &#x27;IBM DGHS09Z&#x27;)
+                outlist_h(&#x27;\ebLog Code:\en&#x27;, Char(reply+x+4), NIL)
+                query(driver, Val(unit), [SCSI_LOG_SENSE, 0, P_LOG_IBMTEMP, 0, 0, 0, 0, 0, BUFFSIZE, 0]:cdb10, SIZEOF cdb10, NIL)
+                outlist(&#x27; &#x27;, &#x27; &#x27;)                                          
+            CASE $37
+                outlist(&#x27;\ebFound Log:\en&#x27;, &#x27;Cache Statistics (Seagate)&#x27;)
+                outlist_h(&#x27;\ebLog Code:\en&#x27;, Char(reply+x+4), &#x27; (Cannot Decode Yet)&#x27;)
+                outlist(&#x27; &#x27;, &#x27; &#x27;)
+            CASE $3E
+                outlist(&#x27;\ebFound Log:\en&#x27;, &#x27;Factory (Seagate)&#x27;)
+                outlist_h(&#x27;\ebLog Code:\en&#x27;, Char(reply+x+4), &#x27; (Cannot Decode yet)&#x27;)
+                outlist(&#x27; &#x27;, &#x27; &#x27;)
+            DEFAULT
+                outlist(&#x27;\ebFound Log:\en&#x27;, &#x27;Unknown Vendor Log&#x27;)
+                outlist_h(&#x27;\ebLog Code:\en&#x27;, Char(reply+x+4), &#x27; (Cannot Decode)&#x27;)
+                outlist(&#x27; &#x27;, &#x27; &#x27;)
+        ENDSELECT
+    ENDFOR
+ENDPROC
+
+
+/*
+** The display hook for the listview. Entries are processed from an object
+** and insert into the appropriate columns
+*/
+PROC disp(hook:PTR TO LONG, array:PTR TO LONG, entry:PTR TO listentry)
+
+    IF entry=NIL -&gt; MUI means update the titles whenever entry=NIL
+        array[0]:=&#x27;\eb\eu\ecField\en&#x27;
+        array[1]:=&#x27;\eb\eu\ecValue\en&#x27;
+    ELSE
+        array[0]:=entry.field
+        array[1]:=entry.value
+    ENDIF
+
+ENDPROC 0
+
+
+/*
+** The construction hook for the listview. Memory needs to be reserved
+** somewhere for each entry added, because only a pointer to a string actually
+** gets inserted. This copies each string into memory reserved from a pool. The
+** strings HAVE to be copied, as they will otherwise be freed by other
+** procedures, meaning the pointers in the listview would suddenly be invalid.
+*/
+PROC construct (hook:PTR TO hook, pool:PTR TO LONG, obj:PTR TO listentry)
+DEF value, field, driver=NIL, new:PTR TO listentry
+
+    IF (field:=AllocPooled(pool, StrLen(obj.field)+1)) THEN CopyMem(obj.field, field, StrLen(obj.field)+1) -&gt; +1 ensures NULL byte is copied
+    IF (value:=AllocPooled(pool, StrLen(obj.value)+1)) THEN CopyMem(obj.value, value, StrLen(obj.value)+1) -&gt; ditto
+    IF obj.driver&lt;&gt;NIL
+        IF (driver:=AllocPooled(pool, StrLen(obj.driver)+1)) THEN CopyMem(obj.driver, driver, StrLen(obj.driver)+1) -&gt; ditto
+    ENDIF
+    new:=AllocPooled(pool, SIZEOF listentry)
+    new.field:=field
+    new.value:=value
+    new.driver:=driver
+    new.unit:=obj.unit
+ENDPROC new
+
+
+/*
+** Whenever an entry is removed from the listview, this procedure frees the
+** previously reserved memory for the strings.
+*/
+PROC destruct (hook:PTR TO hook, pool:PTR TO LONG, obj:PTR TO listentry)
+    FreePooled(pool, obj.field, StrLen(obj.field)+1)
+    FreePooled(pool, obj.value, StrLen(obj.value)+1)
+    IF obj.driver&lt;&gt;NIL THEN FreePooled(pool, obj.driver, StrLen(obj.driver)+1)
+    FreePooled(pool, obj, SIZEOF listentry)
+ENDPROC
+
+
+/*
+** Simple macro procedure for making MUI buttons. Parameter 1 is the button
+** face, parameter 2 is the bubble help text. The buttons are automatically
+** added to the cycle chain
+*/
+PROC make_button(face, bubble)
+DEF button
+
+    button:=SimpleButton(face)
+    SetAttrsA(button, [MUIA_ShortHelp, bubble, MUIA_CycleChain, 1, TAG_DONE])
+ENDPROC button
+
+
+/*
+** Simple macro procedure for making MUI checkmarks. Parameter 1 is the default
+** value, parameter 2 is the bubble help text. The checkmarks are automatically
+** added to the cycle chain
+*/
+PROC make_checkmark(value, bubble)
+DEF check
+
+    check:=CheckMark(value)
+    SetAttrsA(check, [MUIA_ShortHelp, bubble, MUIA_CycleChain, 1, TAG_DONE])
+ENDPROC check
+
+
+/*
+** This procedure is called when the user double clicks and entry in the
+** listview. It queries the hidden data (as handled by outlist_d()) to
+** discover which device and unit to send the inquiry command to.
+*/
+PROC click_inquiry()
+DEF entry:PTR TO listentry, driver[99]:STRING, unit[4]:STRING
+
+    doMethodA(mui_output_lst, [MUIM_List_GetEntry, MUIV_List_GetEntry_Active, {entry}])
+    
+    IF entry.driver &lt;&gt; NIL
+        StrCopy(driver, entry.driver)
+        StringF(unit, &#x27;\d&#x27;, entry.unit)
+        set(mui_device_tb, MUIA_String_Contents, driver)
+        set(mui_unit_tb, MUIA_String_Contents, unit)
+        doMethodA(mui_output_lst, [MUIM_List_Clear])
+        query(driver, Val(unit), [SCSI_INQUIRY, 0, 0, 0, 36, 0]:cdb6, SIZEOF cdb6, AFLG_INQUIRY_VERBOSE)=0
+    ENDIF
+ENDPROC
+
+
+/*
+** Procedure to fill an array with device drivers from the execlist. The array
+** is used in the device driver poplist so the user can select one instead of
+** manually typing it.
+*/
+PROC grab_devices()
+DEF i=0, devnode:PTR TO ln, devlist:PTR TO lh, d[99]:STRING
+
+    -&gt; NOTE. This might need placing inside a Forbid()/Permit() pair but
+    -&gt; I&#x27;m not entirely certain about that.
+    execobject:=execbase
+    devlist:=execobject.devicelist
+    devnode:=devlist.head
+
+    WHILE devnode.succ
+        StrCopy(d, devnode.name)
+        IF StrCmp(d, &#x27;audio.device&#x27;)=TRUE           -&gt; We only filter out
+        ELSEIF StrCmp(d, &#x27;audio.device&#x27;)=TRUE       -&gt; standard AmigaOS
+        ELSEIF StrCmp(d, &#x27;timer.device&#x27;)=TRUE       -&gt; drivers which are not
+        ELSEIF StrCmp(d, &#x27;gameport.device&#x27;)=TRUE    -&gt; appropriate. 
+        ELSEIF StrCmp(d, &#x27;keyboard.device&#x27;)=TRUE    
+        ELSEIF StrCmp(d, &#x27;console.device&#x27;)=TRUE   
+        ELSEIF StrCmp(d, &#x27;clipboard.device&#x27;)=TRUE   
+        ELSEIF StrCmp(d, &#x27;ramdrive.device&#x27;)=TRUE   
+        ELSEIF StrCmp(d, &#x27;input.device&#x27;)=TRUE
+        ELSEIF StrCmp(d, &#x27;trackdisk.device&#x27;)=TRUE
+        ELSEIF StrCmp(d, &#x27;serial.device&#x27;)=TRUE
+        ELSEIF StrCmp(d, &#x27;printer.device&#x27;)=TRUE
+        ELSEIF StrCmp(d, &#x27;parallel.device&#x27;)=TRUE
+        ELSE
+            devicelist[i]:=devnode.name
+            i++
+        ENDIF
+        devnode:=devnode.succ
+    ENDWHILE
+    -&gt;Temporarily Removed
+    devicelist[i]:=&#x27;(DISABLED) tcpip-scsi.device&#x27;
+    i++
+    devicelist[i]:=NIL
+
+ENDPROC
+
+
+/*
+** Procedure to open a reqtools file requester
+*/
+PROC openfreq(window)
+DEF req:PTR TO rtfilerequester,
+    fname[108]:STRING,
+    q,
+    ret,
+    wptr
+    
+    StrCopy(fname, &#x27;q-device.log&#x27;)
+    set(app, MUIA_Application_Sleep, MUI_TRUE)
+    req:=RtAllocRequestA(RT_FILEREQ, NIL)
+    GetAttr(MUIA_Window_Window, window, {wptr})
+    RtChangeReqAttrA(req, [RTFI_DIR, &#x27;Ram:&#x27;, TAG_END])
+    ret:=RtFileRequestA(req, fname, &#x27;Choose logfile&#x27;, [RT_WINDOW, wptr, RTFI_FLAGS, FREQF_SAVE OR FREQF_PATGAD, TAG_END])
+    
+    IF ret &lt;&gt; FALSE
+        StrCopy(logpath, req.dir)
+        q:=EstrLen(logpath)
+        IF (logpath[q-1] &lt;&gt; 47)
+            IF (logpath[q-1] &lt;&gt; 58) THEN StrAdd(logpath, &#x27;/&#x27;, ALL)
+        ENDIF
+        StrAdd(logpath, fname, ALL)
+    ENDIF
+    
+    IF req THEN RtFreeRequest(req)
+    set(app, MUIA_Application_Sleep, FALSE)
+
+ENDPROC    
+
+
+/*
+** Procedure to save the entries from the output listview
+*/
+PROC savelog(window)
+DEF entry:PTR TO listentry,
+    fh,
+    total,
+    i,
+    line[500]:STRING
+    
+    IF fh:=Open(logpath, MODE_READWRITE)
+        Seek(fh, 0, OFFSET_END) 
+        GetAttr(MUIA_List_Entries, mui_output_lst, {total})
+    
+        FOR i:=0 TO (total - 1)
+            doMethodA(mui_output_lst, [MUIM_List_GetEntry, i, {entry}])
+            MidStr(line, entry.field, 2, StrLen(entry.field) - 4)
+            StrAdd(line, &#x27; &#x27;)
+            StrAdd(line, entry.value)
+            StrAdd(line, &#x27;\n&#x27;)
+            Write(fh, line, EstrLen(line))         
+        ENDFOR
+        Close(fh)
+    ELSE
+        Mui_RequestA(app, window, 0, &#x27;Error&#x27;, &#x27;_OK&#x27;, &#x27;\ecUnable to save file!\nPlease make sure the filename is valid\nand the disk/file is not write-protected\en&#x27;, NIL)
+    ENDIF
+    
+ENDPROC
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

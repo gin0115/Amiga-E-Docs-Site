@@ -1,0 +1,478 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Example.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-executive-api.html">Executive_API</a> &rsaquo; Example.e</div><h1>File: <code>Example.e</code></h1><p class="meta">452 lines · project <a href="../examples/pkg-executive-api.html"><code>Executive_API</code></a></p><p class="pathctx">Executive_API/executive/Example.e</p><p class="prose">* ExecutiveAPI example * * This file is public domain. * * Original Author: Petri Nordlund &lt;petrin@megabaud.fi&gt; * Converted to E by Jaco Schoonen (jaco@<a href="../modules/stack.html">stack</a>.urc.tue.nl) * * $Id: <a href="../modules/example.html">Example</a>.c 1.1 1996/10/01 23:06:09 petrin Exp petrin $ *</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/types.html">exec/types</a></li></ul></div><h2>Source</h2><pre class="code">/*
+ * ExecutiveAPI example
+ *
+ * This file is public domain.
+ *
+ * Original Author: Petri Nordlund &lt;petrin@megabaud.fi&gt;
+ * Converted to E by Jaco Schoonen (jaco@stack.urc.tue.nl)
+ *
+ * $Id: Example.c 1.1 1996/10/01 23:06:09 petrin Exp petrin $
+ *
+ */
+
+
+OPT PREPROCESS
+
+MODULE &#x27;exec/types&#x27;,&#x27;exec/memory&#x27;,&#x27;exec/ports&#x27;,&#x27;exec/tasks&#x27;,&#x27;exec/nodes&#x27;,
+       &#x27;dos/dos&#x27;,&#x27;dos/dostags&#x27;,
+       &#x27;other/geta4&#x27;,&#x27;other/executiveapi&#x27;
+
+ENUM NO_ERROR,FAIL
+
+
+#define STACK_SIZE 10000
+
+DEF msg:PTR TO executivemessage,
+    parent_task:tc,
+    parent_signal,
+    active_tasks
+
+
+/**
+ ** This is an example on how to use ExecutiveAPI. All ExecutiveAPI features
+ ** are demonstrated.
+ **
+ **/
+
+PROC main() HANDLE
+DEF oldnice,
+    task:tc
+
+
+/**
+ ** Allocate ExecutiveMessage structure and initialize it.
+ **
+ **/
+	IF (msg:=AllocVec(SIZEOF executivemessage,MEMF_PUBLIC OR MEMF_CLEAR))=0
+	    WriteF(&#x27;Can&#x27;&#x27;t allocate ExecutiveMessage structure.\n&#x27;)
+	    Raise(FAIL)
+	ENDIF
+
+	msg.message.replyport:=CreateMsgPort()
+	IF msg.message.replyport=0
+	    WriteF(&#x27;Can&#x27;&#x27;t create message port.\n&#x27;)
+	    Raise(FAIL)
+	ENDIF
+
+	msg.message.ln.type := NT_MESSAGE
+	msg.message.length  := SIZEOF executivemessage
+
+	/** Make sure this is always initialized to zero! **/
+	msg.ident := 0
+
+/**
+ ** Add this program as Executive client. Executive can&#x27;t quit
+ ** before all clients have been removed.
+ **
+ **/
+
+	msg.command := EXAPI_CMD_ADD_CLIENT
+
+	IF (sendmessage(msg))=FALSE
+	   WriteF(&#x27;Can&#x27;&#x27;t add new client.&#x27;)
+	   Raise(FAIL)
+	ENDIF
+
+/**
+ ** Ask Executive to return the real (not the scheduling) priority of this
+ ** task. If this task is currently scheduled and you read the priority
+ ** directly from task-structure, it will be somewhere in the dynamic
+ ** range. There&#x27;s no GetTaskPri() routine in exec.library which could
+ ** be patched to return the real priority.
+ **
+ ** In a case a new task is launched with its parent task&#x27;s priority, which
+ ** is in the dynamic range, Executive notices this, and sets the real
+ ** priority of the new task to its parent task&#x27;s real priority. But if
+ ** wish to create a childtask whose priority will be the priority of the 
+ ** parent task plus one, and you read the priority from task-structure, it
+ ** might be something like -58. Add one to this value, and you&#x27;ll get -57.
+ ** Executive can&#x27;t correct this, so in this case use the
+ ** EXAPI_CMD_GET_PRIORITY command to obtain task&#x27;s real priority.
+ **
+ **/
+
+	msg.command := EXAPI_CMD_GET_PRIORITY
+	msg.task    := FindTask(NIL)
+
+	IF (sendmessage(msg))=0
+		WriteF(&#x27;Can&#x27;&#x27;t obtain this task&#x27;&#x27;s real priority.\n&#x27;)
+		Raise(FAIL)
+	ENDIF
+
+	task:=FindTask(NIL)
+	WriteF(&#x27;Scheduling priority: \d --- Real priority: \d\n&#x27;,
+			signed_char(task.ln.pri),
+			msg.value1
+	      )
+
+/**
+ ** Set this task&#x27;s nice-value to -10. Store old value and restore it later.
+ ** You should restore the nice-value, if the program can be executed in a
+ ** shell, as the shell process will then get the nice-value.
+ **
+ **/
+
+	msg.command := EXAPI_CMD_SET_NICE;
+	msg.task    := FindTask(NIL);
+	msg.value1  := -10;                                             /* new nice-value */
+
+	IF (sendmessage(msg))=0
+		WriteF(&#x27;Can&#x27;&#x27;t set this task&#x27;&#x27;s nice-value.\n&#x27;)
+		Raise(FAIL)
+	ENDIF
+
+	oldnice := msg.value1
+
+	WriteF(&#x27;Old nice-value: \d\n&#x27;,oldnice)
+
+/**
+ ** Get current nice-value.
+ **
+ **/
+
+	msg.command := EXAPI_CMD_GET_NICE
+	msg.task    := FindTask(NIL)
+
+	IF (sendmessage(msg))=0
+		WriteF(&#x27;Can&#x27;&#x27;t obtain this task&#x27;&#x27;s nice-value.\n&#x27;)
+		Raise(FAIL)
+	ENDIF
+
+	WriteF(&#x27;Current nice-value: \d\n&#x27;,msg.value1)
+
+/**
+ ** Restore old nice-value.
+ **
+ **/
+
+	msg.command := EXAPI_CMD_SET_NICE
+	msg.task    := FindTask(NIL)
+	msg.value1  := oldnice
+
+	IF (sendmessage(msg))=0
+		WriteF(&#x27;Can&#x27;&#x27;t set this task&#x27;&#x27;s nice-value.\n&#x27;)
+		Raise(FAIL)
+	ENDIF
+
+
+/**
+ ** Two EXAPI_CMD_WATCH examples.
+ **
+ **/
+	storea4()
+
+	watchme()
+	Delay(2*50)
+	watchrelative()
+
+/**
+ ** Client is removed in exception handler. Don&#x27;t forget TO DO it.
+ **
+ **/
+
+
+Raise(NO_ERROR)
+
+
+EXCEPT
+
+/**
+ ** Remove the client. This can&#x27;t fail.
+ **
+ **/
+	IF (msg AND (msg.message.replyport))
+		msg.command := EXAPI_CMD_REM_CLIENT
+		sendmessage(msg)
+	ENDIF
+
+/**
+ ** Delete the message.
+ **
+ **/
+
+	IF msg
+	   IF msg.message.replyport
+	       DeleteMsgPort(msg.message.replyport)
+	       FreeVec(msg)
+	   ENDIF
+       ENDIF
+
+ENDPROC exception -&gt; return exception-number to shell (0 or 1)
+
+
+
+/**
+ ** Send message to Executive&#x27;s public message port.
+ ** Return TRUE if success, FALSE if error occurred.
+ ** See msg-&gt;error for the specific error code.
+ **
+ **/
+PROC sendmessage(message:PTR TO executivemessage)
+
+DEF port
+
+/**
+ ** Find Executive public message port and send the message.
+ ** Wait for reply.
+ **
+ **/
+
+	Forbid()
+
+	IF (port:=FindPort(EXECUTIVEAPI_PORTNAME))
+		PutMsg(port, message)
+		Permit()
+		WaitPort(message.message.replyport)
+		WHILE GetMsg(message.message.replyport) DO NOP
+
+		IF message.error=0 THEN RETURN TRUE
+	ELSE
+		/** Executive is not running **/
+		Permit();
+	ENDIF
+
+	RETURN FALSE
+ENDPROC
+
+
+
+/**
+ ** Create a new task. The new task will send a message to Executive and ask
+ ** that its priority is kept below all scheduled tasks. This is like having
+ ** the following entry in Executive.prefs:
+ **
+ **   TASK  Example_childtask NOSCHEDULE  BELOW
+ **
+ ** Start the Top client and you&#x27;ll se what happens to the childtask&#x27;s
+ ** priority.
+ **
+ **/
+
+PROC watchme()
+
+	IF (parent_signal:=AllocSignal(-1)) &lt;&gt; -1
+	   parent_task := FindTask(NIL)
+
+	   IF CreateNewProc( [NP_ENTRY, {watchme_entry},
+			       NP_NAME,  &#x27;Example_childtask&#x27;,
+			       NP_PRIORITY,    0,
+			       NP_STACKSIZE,   STACK_SIZE,
+			       0
+			      ]
+			   )
+
+	      WriteF(&#x27;Childtask started. Wait...\n&#x27;)
+	      Wait(Shl(1,parent_signal))
+	      WriteF(&#x27;Childtask finished.\n&#x27;)
+	   ELSE
+		   FreeSignal(parent_signal)
+		   WriteF(&#x27;Can&#x27;&#x27;t create new process.\n&#x27;)
+		   Raise(FAIL)
+	   ENDIF
+
+	   FreeSignal(parent_signal)
+	ELSE
+	   WriteF(&#x27;Can&#x27;&#x27;t allocate signal.\n&#x27;)
+	   Raise(FAIL)
+	ENDIF
+ENDPROC
+
+PROC watchme_entry()
+
+DEF message:executivemessage
+DEF t,i
+
+	/** This routine needs DosBase, parent_task and parent_signal **/
+	geta4()
+
+	IF (message:=AllocVec(SIZEOF executivemessage, MEMF_PUBLIC OR MEMF_CLEAR))
+		message.message.replyport:=CreateMsgPort()
+		IF message.message.replyport
+			message.message.ln.type := NT_MESSAGE
+			message.message.length  := SIZEOF executivemessage
+
+			/** Make sure this is always initialized to zero! **/
+			message.ident := 0
+
+			message.command := EXAPI_CMD_WATCH
+			message.task    := FindTask(NIL)
+			message.value1  := EXAPI_WHICH_TASK
+			message.value2  := EXAPI_TYPE_NOSCHEDULE
+			message.value3  := EXAPI_PRI_BELOW
+
+			/** Ignore error **/
+			sendmessage(message)
+		ENDIF
+	ENDIF
+
+	/** Use some CPU time **/
+	FOR t:=0 TO 20
+		FOR i:=0 TO 1000000 DO NOP
+		Delay(30)
+	    INC t
+	ENDFOR
+
+	IF message
+		IF message.message.replyport THEN DeleteMsgPort(message.message.replyport)
+		FreeVec(message);
+	ENDIF
+
+	/** Forbid so we can finish completely, before the parent cleans up. **/
+	Forbid()
+
+	Signal(parent_task, Shl(1, parent_signal))
+ENDPROC
+
+
+/**
+ ** Create three tasks with priorities -1, 0 and +1. Assume that this task&#x27;s
+ ** priority is 0. Configure Executive to schedule all childtasks of this
+ ** task so that their priority is relative to this task&#x27;s priority. This is
+ ** like having the following entry in Executive.prefs:
+ **
+ **   CHILDTASKS  Example  RELATIVE
+ **
+ ** Start the Top client and you&#x27;ll se what happens to childtask priorities.
+ ** Try using the PGRP option with Ps: &quot;ps PGRP=&lt;this task&#x27;s pid&gt;&quot;. You&#x27;ll
+ ** see that the childtasks don&#x27;t seem to use any CPU time. CPU usage is
+ ** transferred to the parent task, because its CPU usage is used when
+ ** scheduling priority is calculated.
+ **
+ ** IMPORTANT! You&#x27;ll have to issue the WATCH-command BEFORE starting any
+ ** childtasks!
+ **
+ **/
+
+
+PROC watchrelative()
+
+DEF proc1,proc2,proc3
+
+	msg.command := EXAPI_CMD_WATCH
+	msg.task    := FindTask(NIL)
+	msg.value1  := EXAPI_WHICH_CHILDTASKS
+	msg.value2  := EXAPI_TYPE_RELATIVE
+
+	IF (sendmessage(msg))=FALSE
+		WriteF(&#x27;EXAPI_CMD_WATCH command failed.\n&#x27;)
+		IF (msg.error = EXAPI_ERROR_ALREADY_WATCHED)
+			WriteF(&#x27;You can only issue an EXAPI_CMD_WATCH command once for each task.\n&#x27;)
+			WriteF(&#x27;Executive remembers the task name, and if that task is started again,\n&#x27;)
+			WriteF(&#x27;it knows what to do with it.\n&#x27;)
+			WriteF(&#x27;If EXAPI_CMD_WATCH fails, check for EXAPI_ERROR_ALREADY_WATCHED\n&#x27;)
+			WriteF(&#x27;in msg.error. You can safely ignore this error. It&#x27;&#x27;s also possible\n&#x27;)
+			WriteF(&#x27;that user has put the task to Executive.prefs.\n&#x27;)
+		ELSE
+			Raise(FAIL)
+		ENDIF
+	ENDIF
+
+	IF (parent_signal:=AllocSignal(-1)) &lt;&gt; -1
+
+		parent_task := FindTask(NIL)
+
+		/** Forbid so all tasks start to run at the same time **/
+		Forbid()
+
+
+
+		proc1 := CreateNewProc( [NP_ENTRY, {watchrelative_entry},
+					 NP_NAME,  &#x27;Example_childtask1&#x27;,
+					 NP_PRIORITY,    -1,
+					 NP_STACKSIZE,   STACK_SIZE,
+					 0
+					]
+				      )
+
+		proc2 := CreateNewProc( [NP_ENTRY, {watchrelative_entry},
+					 NP_NAME,  &#x27;Example_childtask2&#x27;,
+					 NP_PRIORITY,    0,
+					 NP_STACKSIZE,   STACK_SIZE,
+					 0
+					]
+				      )
+
+		proc3 := CreateNewProc( [NP_ENTRY, {watchrelative_entry},
+					 NP_NAME,  &#x27;Example_childtask3&#x27;,
+					 NP_PRIORITY,    1,
+					 NP_STACKSIZE,   STACK_SIZE,
+					 0
+					]
+				      )
+
+		Permit()
+
+		IF proc1 THEN active_tasks++
+		IF proc2 THEN active_tasks++
+		IF proc3 THEN active_tasks++
+
+		IF active_tasks
+			WriteF(&#x27;Childtasks started. Wait...\n&#x27;)
+			REPEAT
+			    Wait(Shl(1,parent_signal))
+			UNTIL active_tasks=0
+
+			WriteF(&#x27;Childtasks finished.\n&#x27;)
+		ELSE
+			FreeSignal(parent_signal)
+			WriteF(&#x27;Can&#x27;&#x27;t create new process.\n&#x27;)
+			Raise(FAIL)
+		ENDIF
+
+		FreeSignal(parent_signal)
+	ELSE
+		WriteF(&#x27;Can&#x27;&#x27;t allocate signal.&#x27;)
+		Raise(FAIL)
+	ENDIF
+ENDPROC
+
+PROC watchrelative_entry()
+DEF t,i
+
+	/** We need DosBase, parent_task, parent_signal and active_tasks **/
+	geta4()
+
+	/** Use some CPU time **/
+	FOR t:=0 TO 20
+		FOR i:=0 TO 350000 DO NOP
+		Delay(40)
+		INC t
+	ENDFOR
+
+	/** Forbid so we can finish completely, before the parent cleans up. **/
+	Forbid()
+
+	active_tasks--
+
+	Signal(parent_task, Shl(1,parent_signal))
+ENDPROC
+
+PROC signed_char(c) IS IF c&lt;128 THEN c ELSE c-256
+
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

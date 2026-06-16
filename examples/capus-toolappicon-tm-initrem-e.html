@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>TM_InitRem.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-capus.html">capus</a> &rsaquo; TM_InitRem.e</div><h1>File: <code>TM_InitRem.e</code></h1><p class="meta">100 lines · project <a href="../examples/pkg-capus.html"><code>capus</code></a></p><p class="pathctx">capus/ToolAppIcon/TM_InitRem.e</p><h2>Source</h2><pre class="code">PROC tm_OpenLibraries() HANDLE /*&quot;tm_OpenLibraries()&quot;*/
+    IF (intuitionbase:=OpenLibrary(&#x27;intuition.library&#x27;,37))=NIL THEN Raise(ER_INTUITIONLIB)
+    IF (gadtoolsbase:=OpenLibrary(&#x27;gadtools.library&#x27;,37))=NIL THEN Raise(ER_GADTOOLSLIB)
+    IF (gfxbase:=OpenLibrary(&#x27;graphics.library&#x27;,37))=NIL THEN Raise(ER_GRAPHICSLIB)
+    IF (reqtoolsbase:=OpenLibrary(&#x27;reqtools.library&#x27;,38))=NIL THEN Raise(ER_REQTOOLSLIB)
+    IF FindTask(&#x27;ToolManager Handler&#x27;)=0
+        tm_Request(&#x27;ToolManager n\aest pas actif&#x27;,&#x27;_Merci&#x27;,NIL)
+        Raise(ER_NOTM)
+    ENDIF
+    IF (toolmanagerbase:=OpenLibrary(&#x27;toolmanager.library&#x27;,3))=NIL THEN Raise(ER_TOOLMANAGERLIB)
+    IF (workbenchbase:=OpenLibrary(&#x27;workbench.library&#x27;,37))=NIL THEN Raise(ER_WORKBENCHLIB)
+    Raise(ER_NONE)
+EXCEPT
+    RETURN exception
+ENDPROC
+PROC tm_InitAPP() HANDLE /*&quot;tm_InitAPP()&quot;*/
+    DEF tt
+    IF (prgsig:=AllocSignal(prgsig))=NIL THEN Raise(ER_SIG)
+    IF (tm_h:=AllocTMHandle())=NIL THEN Raise(ER_TMHANDLE)
+    IF (tt:=tm_InitMainWindow())&lt;&gt;ER_NONE THEN Raise(tt)
+    IF (list_appicon:=p_InitList())=NIL THEN Raise(ER_LIST)
+    list_empty:=[0,0,0,0]; list_empty[0]:=list_empty+4; list_empty[2]:=list_empty
+    AddTail(list_empty,[0,0,0,0,&#x27; &#x27;]:ln)
+    IF (prgport:=CreateMsgPort())=NIL THEN Raise(ER_PORT)
+    IF (appitem:=AddAppMenuItemA(0,0,&#x27;TMAppIc&#x27;,prgport,[MTYPE_APPMENUITEM,TAG_DONE]))=NIL THEN Raise(ER_APPITEM)
+    Raise(ER_NONE)
+EXCEPT
+    RETURN exception
+ENDPROC
+PROC tm_InitMainWindow() HANDLE /*&quot;tm_InitMainWindow()&quot;*/
+    IF (execw_screen:=LockPubScreen(&#x27;Workbench&#x27;))=NIL THEN Raise(ER_WB)
+    IF (execw_visual:=GetVisualInfoA(execw_screen,NIL))=NIL THEN Raise(ER_VISUAL)
+    IF (execw_glist:=CreateContext({execw_glist}))=NIL THEN Raise(ER_CONTEXT)
+    IF (g_name:=CreateGadgetA(STRING_KIND,execw_glist,[156,17,181,13,&#x27;Nom de L\aobjet&#x27;,tattr,0,1,execw_visual,0]:newgadget,[GTST_STRING,&#x27;&#x27;,GTST_MAXCHARS,100,GA_RELVERIFY,TRUE,GA_DISABLED,FALSE,GT_UNDERSCORE,&quot;_&quot;,TAG_DONE,0]))=NIL THEN Raise(ER_GADGET)
+    IF (g_exectype:=CreateGadgetA(CYCLE_KIND,g_name,[156,30,181,12,&#x27;Mode Exec&#x27;,tattr,1,1,execw_visual,0]:newgadget,[GA_RELVERIFY,TRUE,GTCY_LABELS,[&#x27;CLI&#x27;,&#x27;WB&#x27;,&#x27;Arexx&#x27;,0],GT_UNDERSCORE,&quot;_&quot;,TAG_DONE,0]))=NIL THEN Raise(ER_GADGET)
+    IF (g_getcommand:=CreateGadgetA(BUTTON_KIND,g_exectype,[309,42,28,13,&#x27;?&#x27;,tattr,2,16,execw_visual,0]:newgadget,[GA_RELVERIFY,TRUE,GA_DISABLED,FALSE,GT_UNDERSCORE,&quot;_&quot;,TAG_DONE,0]))=NIL THEN Raise(ER_GADGET)
+    IF (g_command:=CreateGadgetA(STRING_KIND,g_getcommand,[159,42,148,13,&#x27;Commande&#x27;,tattr,3,1,execw_visual,0]:newgadget,[GTST_STRING,&#x27;&#x27;,GTST_MAXCHARS,100,GA_RELVERIFY,TRUE,GA_DISABLED,FALSE,GT_UNDERSCORE,&quot;_&quot;,TAG_DONE,0]))=NIL THEN Raise(ER_GADGET)
+    IF (g_hotkey:=CreateGadgetA(STRING_KIND,g_command,[158,55,181,13,&#x27;Raccourci-clavier&#x27;,tattr,4,1,execw_visual,0]:newgadget,[GTST_STRING,&#x27;&#x27;,GTST_MAXCHARS,100,GA_RELVERIFY,TRUE,GA_DISABLED,FALSE,GT_UNDERSCORE,&quot;_&quot;,TAG_DONE,0]))=NIL THEN Raise(ER_GADGET)
+    IF (g_stack:=CreateGadgetA(STRING_KIND,g_hotkey,[157,68,181,13,&#x27;Pile&#x27;,tattr,5,1,execw_visual,0]:newgadget,[GTST_STRING,&#x27;&#x27;,GTST_MAXCHARS,100,GA_RELVERIFY,TRUE,GA_DISABLED,FALSE,GT_UNDERSCORE,&quot;_&quot;,TAG_DONE,0]))=NIL THEN Raise(ER_GADGET)
+    IF (g_priority:=CreateGadgetA(STRING_KIND,g_stack,[157,81,181,13,&#x27;Priorité&#x27;,tattr,6,1,execw_visual,0]:newgadget,[GTST_STRING,&#x27;&#x27;,GTST_MAXCHARS,100,GA_RELVERIFY,TRUE,GA_DISABLED,FALSE,GT_UNDERSCORE,&quot;_&quot;,TAG_DONE,0]))=NIL THEN Raise(ER_GADGET)
+    IF (g_delay:=CreateGadgetA(STRING_KIND,g_priority,[157,94,181,13,&#x27;Délai&#x27;,tattr,7,1,execw_visual,0]:newgadget,[GTST_STRING,&#x27;&#x27;,GTST_MAXCHARS,100,GA_RELVERIFY,TRUE,GA_DISABLED,FALSE,GT_UNDERSCORE,&quot;_&quot;,TAG_DONE,0]))=NIL THEN Raise(ER_GADGET)
+    IF (g_currentdir:=CreateGadgetA(STRING_KIND,g_delay,[159,107,148,13,&#x27;Tiroir courant&#x27;,tattr,8,1,execw_visual,0]:newgadget,[GTST_STRING,&#x27;&#x27;,GTST_MAXCHARS,100,GA_RELVERIFY,TRUE,GA_DISABLED,FALSE,GT_UNDERSCORE,&quot;_&quot;,TAG_DONE,0]))=NIL THEN Raise(ER_GADGET)
+    IF (g_getpath:=CreateGadgetA(BUTTON_KIND,g_currentdir,[309,120,28,13,&#x27;?&#x27;,tattr,9,16,execw_visual,0]:newgadget,[GA_RELVERIFY,TRUE,GA_DISABLED,FALSE,GT_UNDERSCORE,&quot;_&quot;,TAG_DONE,0]))=NIL THEN Raise(ER_GADGET)
+    IF (g_path:=CreateGadgetA(STRING_KIND,g_getpath,[159,120,148,13,&#x27;Chemin&#x27;,tattr,10,1,execw_visual,0]:newgadget,[GTST_STRING,&#x27;&#x27;,GTST_MAXCHARS,100,GA_RELVERIFY,TRUE,GA_DISABLED,FALSE,GT_UNDERSCORE,&quot;_&quot;,TAG_DONE,0]))=NIL THEN Raise(ER_GADGET)
+    IF (g_getoutput:=CreateGadgetA(BUTTON_KIND,g_path,[309,133,28,13,&#x27;?&#x27;,tattr,11,16,execw_visual,0]:newgadget,[GA_RELVERIFY,TRUE,GA_DISABLED,FALSE,GT_UNDERSCORE,&quot;_&quot;,TAG_DONE,0]))=NIL THEN Raise(ER_GADGET)
+    IF (g_output:=CreateGadgetA(STRING_KIND,g_getoutput,[159,133,148,13,&#x27;Fichier sortie&#x27;,tattr,12,1,execw_visual,0]:newgadget,[GTST_STRING,&#x27;&#x27;,GTST_MAXCHARS,100,GA_RELVERIFY,TRUE,GA_DISABLED,FALSE,GT_UNDERSCORE,&quot;_&quot;,TAG_DONE,0]))=NIL THEN Raise(ER_GADGET)
+    IF (g_getpubscreen:=CreateGadgetA(BUTTON_KIND,g_output,[309,146,28,13,&#x27;?&#x27;,tattr,13,16,execw_visual,0]:newgadget,[GA_RELVERIFY,TRUE,GA_DISABLED,FALSE,GT_UNDERSCORE,&quot;_&quot;,TAG_DONE,0]))=NIL THEN Raise(ER_GADGET)
+    IF (g_pubscreen:=CreateGadgetA(STRING_KIND,g_getpubscreen,[159,146,148,13,&#x27;Ecran public&#x27;,tattr,14,1,execw_visual,0]:newgadget,[GTST_STRING,&#x27;&#x27;,GTST_MAXCHARS,100,GA_RELVERIFY,TRUE,GA_DISABLED,FALSE,GT_UNDERSCORE,&quot;_&quot;,TAG_DONE,0]))=NIL THEN Raise(ER_GADGET)
+    IF (g_arguments:=CreateGadgetA(CHECKBOX_KIND,g_pubscreen,[37,165,26,11,&#x27;Arguments&#x27;,tattr,15,2,execw_visual,0]:newgadget,[GA_RELVERIFY,TRUE,GTCB_CHECKED,FALSE,GT_UNDERSCORE,&quot;_&quot;, TAG_DONE,0]))=NIL THEN Raise(ER_GADGET)
+    IF (g_tofront:=CreateGadgetA(CHECKBOX_KIND,g_arguments,[160,165,26,11,&#x27;Au premier plan&#x27;,tattr,16,2,execw_visual,0]:newgadget,[GA_RELVERIFY,TRUE,GTCB_CHECKED,FALSE,GT_UNDERSCORE,&quot;_&quot;, TAG_DONE,0]))=NIL THEN Raise(ER_GADGET)
+    IF (g_add:=CreateGadgetA(BUTTON_KIND,g_tofront,[383,114,101,12,&#x27;Add&#x27;,tattr,17,16,execw_visual,0]:newgadget,[GA_RELVERIFY,TRUE,GA_DISABLED,FALSE,GT_UNDERSCORE,&quot;_&quot;,TAG_DONE,0]))=NIL THEN Raise(ER_GADGET)
+    IF (g_rem:=CreateGadgetA(BUTTON_KIND,g_add,[488,114,101,12,&#x27;Rem&#x27;,tattr,18,16,execw_visual,0]:newgadget,[GA_RELVERIFY,TRUE,GA_DISABLED,FALSE,GT_UNDERSCORE,&quot;_&quot;,TAG_DONE,0]))=NIL THEN Raise(ER_GADGET)
+    IF (g_file:=CreateGadgetA(STRING_KIND,g_rem,[159,187,148,13,&#x27;Fichier Image&#x27;,tattr,19,1,execw_visual,0]:newgadget,[GTST_STRING,&#x27;&#x27;,GTST_MAXCHARS,100,GA_RELVERIFY,TRUE,GA_DISABLED,FALSE,GT_UNDERSCORE,&quot;_&quot;,TAG_DONE,0]))=NIL THEN Raise(ER_GADGET)
+    IF (g_getfile:=CreateGadgetA(BUTTON_KIND,g_file,[309,187,30,13,&#x27;?&#x27;,tattr,20,16,execw_visual,0]:newgadget,[GA_RELVERIFY,TRUE,GA_DISABLED,FALSE,GT_UNDERSCORE,&quot;_&quot;,TAG_DONE,0]))=NIL THEN Raise(ER_GADGET)
+    IF (g_position:=CreateGadgetA(CYCLE_KIND,g_getfile,[366,17,234,12,&#x27;&#x27;,tattr,21,0,execw_visual,0]:newgadget,[GA_RELVERIFY,TRUE,GTCY_LABELS,[&#x27;Positionnement&#x27;,&#x27;Terminer positionnement&#x27;,0],GT_UNDERSCORE,&quot;_&quot;,TAG_DONE,0]))=NIL THEN Raise(ER_GADGET)
+    IF (g_posx:=CreateGadgetA(STRING_KIND,g_position,[419,29,181,13,&#x27;PosX&#x27;,tattr,22,1,execw_visual,0]:newgadget,[GTST_STRING,&#x27;&#x27;,GTST_MAXCHARS,100,GA_RELVERIFY,TRUE,GA_DISABLED,FALSE,GT_UNDERSCORE,&quot;_&quot;,TAG_DONE,0]))=NIL THEN Raise(ER_GADGET)
+    IF (g_posy:=CreateGadgetA(STRING_KIND,g_posx,[419,42,181,13,&#x27;PosY&#x27;,tattr,23,1,execw_visual,0]:newgadget,[GTST_STRING,&#x27;&#x27;,GTST_MAXCHARS,100,GA_RELVERIFY,TRUE,GA_DISABLED,FALSE,GT_UNDERSCORE,&quot;_&quot;,TAG_DONE,0]))=NIL THEN Raise(ER_GADGET)
+    IF (g_showname:=CreateGadgetA(CHECKBOX_KIND,g_posy,[419,62,26,11,&#x27;Monter le nom&#x27;,tattr,24,2,execw_visual,0]:newgadget,[GA_RELVERIFY,TRUE,GTCB_CHECKED,FALSE,GT_UNDERSCORE,&quot;_&quot;, TAG_DONE,0]))=NIL THEN Raise(ER_GADGET)
+    IF (g_save:=CreateGadgetA(BUTTON_KIND,g_showname,[357,80,101,12,&#x27;Sauver&#x27;,tattr,25,16,execw_visual,0]:newgadget,[GA_RELVERIFY,TRUE,GA_DISABLED,FALSE,GT_UNDERSCORE,&quot;_&quot;,TAG_DONE,0]))=NIL THEN Raise(ER_GADGET)
+    IF (g_saveas:=CreateGadgetA(BUTTON_KIND,g_save,[462,80,101,12,&#x27;Sauver S.&#x27;,tattr,26,16,execw_visual,0]:newgadget,[GA_RELVERIFY,TRUE,GA_DISABLED,FALSE,GT_UNDERSCORE,&quot;_&quot;,TAG_DONE,0]))=NIL THEN Raise(ER_GADGET)
+    IF (g_use:=CreateGadgetA(BUTTON_KIND,g_saveas,[358,93,101,12,&#x27;Charger&#x27;,tattr,27,16,execw_visual,0]:newgadget,[GA_RELVERIFY,TRUE,GA_DISABLED,FALSE,GT_UNDERSCORE,&quot;_&quot;,TAG_DONE,0]))=NIL THEN Raise(ER_GADGET)
+    IF (g_test:=CreateGadgetA(BUTTON_KIND,g_use,[463,93,101,12,&#x27;Tester&#x27;,tattr,28,16,execw_visual,0]:newgadget,[GA_RELVERIFY,TRUE,GA_DISABLED,FALSE,GT_UNDERSCORE,&quot;_&quot;,TAG_DONE,0]))=NIL THEN Raise(ER_GADGET)
+    IF (g_quit:=CreateGadgetA(BUTTON_KIND,g_test,[572,80,51,25,&#x27;QUIT&#x27;,tattr,29,16,execw_visual,0]:newgadget,[GA_RELVERIFY,TRUE,GA_DISABLED,FALSE,GT_UNDERSCORE,&quot;_&quot;,TAG_DONE,0]))=NIL THEN Raise(ER_GADGET)
+    IF (g_getcurrentdir:=CreateGadgetA(BUTTON_KIND,g_quit,[309,107,28,13,&#x27;?&#x27;,tattr,30,16,execw_visual,0]:newgadget,[GA_RELVERIFY,TRUE,GA_DISABLED,FALSE,GT_UNDERSCORE,&quot;_&quot;,TAG_DONE,0]))=NIL THEN Raise(ER_GADGET)
+    IF (g_list:=CreateGadgetA(LISTVIEW_KIND,g_getcurrentdir,[369,130,231,73,&#x27;&#x27;,tattr,31,0,execw_visual,0]:newgadget,[GTLV_SHOWSELECTED,NIL,GTLV_LABELS,-1,GT_UNDERSCORE,&quot;_&quot;,TAG_DONE,0]))=NIL THEN Raise(ER_GADGET)
+    Raise(ER_NONE)
+EXCEPT
+    RETURN exception
+ENDPROC
+PROC tm_CloseLibraries() /*&quot;tm_CloseLibraries()&quot;*/
+    IF workbenchbase THEN CloseLibrary(workbenchbase)
+    IF tm_Request(&#x27;       Avec l\aaimable participation de      \n&#x27;+
+                  &#x27;    &lt;&lt;&lt;&lt;&lt;&lt;&lt;&lt;&lt;&lt;&lt;&lt;&lt;&lt;&lt;&lt;&lt;&lt;&lt;&gt;&gt;&gt;&gt;&gt;&gt;&gt;&gt;&gt;&gt;&gt;&gt;&gt;&gt;&gt;&gt;&gt;&gt;&gt;   \n&#x27;+
+                  &#x27;   Nico François         ReqTools.library.   \n&#x27;+
+                  &#x27;   Stefan Becker         ToolManager.library.\n&#x27;+
+                  &#x27;   Jaba Development      GadToolsBox.        \n&#x27;+
+                  &#x27;   Dietmar Eilert        GoldED.             \n&#x27;+
+                  &#x27;   Barry Wills           Epp.                \n&#x27;+
+                  &#x27;   Wouter Van Oortmersen Ec.                 \n&#x27;+
+                  &#x27;    &lt;&lt;&lt;&lt;&lt;&lt;&lt;&lt;&lt;&lt;&lt;&lt;&lt;&lt;&lt;&lt;&lt;&lt;&lt;&gt;&gt;&gt;&gt;&gt;&gt;&gt;&gt;&gt;&gt;&gt;&gt;&gt;&gt;&gt;&gt;&gt;&gt;&gt;   \n&#x27;+
+                  &#x27;       Voulez-vous Quitter ToolManager ?     \n&#x27;+
+                  &#x27;    &lt;&lt;&lt;&lt;&lt;&lt;&lt;&lt;&lt;&lt;&lt;&lt;&lt;&lt;&lt;&lt;&lt;&lt;&lt;&gt;&gt;&gt;&gt;&gt;&gt;&gt;&gt;&gt;&gt;&gt;&gt;&gt;&gt;&gt;&gt;&gt;&gt;&gt;   &#x27;,&#x27;_Oui|_Non&#x27;,NIL)
+        VOID QuitToolManager()
+    ENDIF
+    IF toolmanagerbase THEN CloseLibrary(toolmanagerbase)
+    IF reqtoolsbase THEN CloseLibrary(reqtoolsbase)
+    IF gfxbase THEN CloseLibrary(gfxbase)
+    IF gadtoolsbase THEN CloseLibrary(gadtoolsbase)
+    IF intuitionbase THEN CloseLibrary(intuitionbase)
+ENDPROC
+PROC tm_RemAPP() /*&quot;tm_RemAPP()&quot;*/
+    IF appitem THEN RemoveAppMenuItem(appitem)
+    IF prgport THEN DeleteMsgPort(prgport)
+    IF list_appicon THEN tm_CleanAppIconList(list_appicon,LIST_REMOVE)
+    tm_RemMainWindow()
+    IF tm_h THEN FreeTMHandle(tm_h)
+    IF prgsig THEN FreeSignal(prgsig)
+ENDPROC
+
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

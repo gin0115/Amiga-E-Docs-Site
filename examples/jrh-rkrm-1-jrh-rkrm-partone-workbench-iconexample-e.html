@@ -1,0 +1,212 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>iconexample.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-jrh-rkrm-1.html">JRH-RKRM-1</a> &rsaquo; iconexample.e</div><h1>File: <code>iconexample.e</code></h1><p class="meta">186 lines · project <a href="../examples/pkg-jrh-rkrm-1.html"><code>JRH-RKRM-1</code></a></p><p class="pathctx">JRH-RKRM-1/JRH-RKRM-PartOne/Workbench/iconexample.e</p><p class="prose">iconexample.e - Workbench <a href="../modules/icon.html">icon</a> <a href="../modules/startup.html">startup</a>, creation, and parsing example</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/icon.html">icon</a></li></ul></div><h2>Source</h2><pre class="code">-&gt; iconexample.e - Workbench icon startup, creation, and parsing example
+
+MODULE &#x27;icon&#x27;,
+       &#x27;dos/dos&#x27;,
+       &#x27;intuition/intuition&#x27;,
+       &#x27;workbench/startup&#x27;,
+       &#x27;workbench/workbench&#x27;
+
+ENUM ERR_NONE, ERR_LIB, ERR_OPEN, ERR_WRITE, ERR_MAKE
+
+RAISE ERR_LIB   IF OpenLibrary()=NIL,
+      ERR_OPEN  IF Open()=NIL,
+      ERR_WRITE IF Write()=-1
+
+DEF projIcon:diskobject
+
+PROC main() HANDLE
+  DEF wbenchMsg:PTR TO wbstartup, wbarg:PTR TO wbarg, file=NIL, i, olddir,
+      projname, deftoolname, iconImageData, iconGadget, toolTypes
+  projname:=&#x27;RAM:Example_Project&#x27;
+  deftoolname:=&#x27;iconexample&#x27;
+  toolTypes:=[&#x27;FILETYPE=text&#x27;, &#x27;FLAGS=BOLD|ITALICS&#x27;, NIL]
+                 -&gt; Plane 0
+  iconImageData:=[$0000,$0000,$0000,$1000,$0000,$0000,$0000,$3000,
+                  $0FFF,$FFFC,$0000,$3000,$0800,$0004,$0000,$3000,
+                  $0800,$07FF,$FFC0,$3000,$08A8,$A400,$00A0,$3000,
+                  $0800,$0400,$0090,$3000,$08AA,$A400,$0088,$3000,
+                  $0800,$042A,$A0FC,$3000,$082A,$A400,$0002,$3000,
+                  $0800,$0400,$0002,$3000,$0800,$A42A,$A0A2,$3000,
+                  $0800,$0400,$0002,$3000,$0950,$A42A,$8AA2,$3000,
+                  $0800,$0400,$0002,$3000,$082A,$A400,$0002,$3000,
+                  $0800,$042A,$2AA2,$3000,$0FFF,$FC00,$0002,$3000,
+                  $0000,$0400,$0002,$3000,$0000,$07FF,$FFFE,$3000,
+                  $0000,$0000,$0000,$3000,$7FFF,$FFFF,$FFFF,$F000,
+                 -&gt; Plane 1
+   	          $FFFF,$FFFF,$FFFF,$E000,$D555,$5555,$5555,$4000,
+		  $D000,$0001,$5555,$4000,$D7FF,$FFF9,$5555,$4000,
+		  $D7FF,$F800,$0015,$4000,$D757,$5BFF,$FF55,$4000,
+		  $D7FF,$FBFF,$FF65,$4000,$D755,$5BFF,$FF75,$4000,
+		  $D7FF,$FBD5,$5F01,$4000,$D7D5,$5BFF,$FFFD,$4000,
+		  $D7FF,$FBFF,$FFFD,$4000,$D7FF,$5BD5,$5F5D,$4000,
+		  $D7FF,$FBFF,$FFFD,$4000,$D6AF,$5BD5,$755D,$4000,
+		  $D7FF,$FBFF,$FFFD,$4000,$D7D5,$5BFF,$FFFD,$4000,
+		  $D7FF,$FBD5,$D55D,$4000,$D000,$03FF,$FFFD,$4000,
+		  $D555,$53FF,$FFFD,$4000,$D555,$5000,$0001,$4000,
+		  $D555,$5555,$5555,$4000,$8000,$0000,$0000,$0000]:INT
+  -&gt; E-Note: C version uses obsolete gadget flags
+  iconGadget:=[NIL,                        -&gt; Next Gadget Pointer
+               97, 12, 52, 23,             -&gt; Left, Top, Width, Height
+               GFLG_GADGIMAGE OR GFLG_GADGHBOX,  -&gt; Flags
+               GACT_IMMEDIATE OR GACT_RELVERIFY, -&gt; Activation Flags
+               GTYP_BOOLGADGET,            -&gt; Gadget Type
+                [0, 0,           -&gt; Top Corner
+                 52, 22, 2,      -&gt; Width, Height, Depth
+                 iconImageData,  -&gt; Image Data
+                 3, 0,           -&gt; PlanePick, PlaneOnOff
+                 NIL]:image,     -&gt; Next Image
+               NIL,                        -&gt; Select Image
+               NIL,                        -&gt; Gadget Text
+               NIL,                        -&gt; Mutual Exclude
+               NIL,                        -&gt; Special Info
+               0,                          -&gt; Gadget ID
+               NIL]:gadget                 -&gt; User Data
+  -&gt; E-Note: a list can&#x27;t be used for a diskobject because of the nested gadget
+  projIcon.magic:=WB_DISKMAGIC
+  projIcon.version:=WB_DISKVERSION
+  CopyMem(iconGadget, projIcon.gadget, SIZEOF gadget)
+  projIcon.type:=WBPROJECT
+  projIcon.defaulttool:=deftoolname
+  projIcon.tooltypes:=toolTypes
+  projIcon.currentx:=NO_ICON_POSITION
+  projIcon.currenty:=NO_ICON_POSITION
+  projIcon.drawerdata:=NIL
+  projIcon.toolwindow:=NIL
+  projIcon.stacksize:=4000
+
+  -&gt; Open icon.library
+  iconbase:=OpenLibrary(&#x27;icon.library&#x27;,33)
+
+  -&gt; If started from CLI, this example will create a small text file
+  -&gt; RAM:Example_Project, and create an icon for the file which points
+  -&gt; to this program as its default tool.
+  IF wbmessage=NIL
+    -&gt; Make a sample project (data) file
+    file:=Open(projname, NEWFILE)
+    Write(file, &#x27;Have a nice day\n&#x27;, STRLEN)
+
+    -&gt; Now save/update icon for this data file
+    makeIcon(projname, toolTypes, deftoolname)
+    WriteF(&#x27;\s data file and icon saved.\n&#x27;, projname)
+    WriteF(&#x27;Use Workbench menu Icon Information to examine the icon.\n&#x27;)
+    WriteF(&#x27;Then copy this example (iconexample) to RAM:\n&#x27;)
+    WriteF(&#x27;and double-click the \s project icon\n&#x27;, projname)
+  ELSE -&gt; Else we are from WB - ie. we were either started by a tool icon,
+       -&gt; or as in this case, by being the default tool of a project icon.
+    -&gt; E-Note: WriteF opens its own window if necessary
+    wbenchMsg:=wbmessage
+
+    -&gt; First arg is our executable (tool).  Any additional args are projects
+    -&gt; or icons passed to us via either extend select or default tool method.
+    wbarg:=wbenchMsg.arglist
+    FOR i:=0 TO wbenchMsg.numargs-1
+      -&gt; If there&#x27;s a directory lock for this wbarg, CD there
+      olddir:=-1
+      IF wbarg.lock AND (wbarg.name[]&lt;&gt;0) THEN olddir:=CurrentDir(wbarg.lock)
+
+      showToolTypes(wbarg)
+
+      IF (i&gt;0) AND (wbarg.name[]&lt;&gt;0)
+        WriteF(&#x27;In Main. We could open the \s file here\n&#x27;, wbarg.name)
+      ENDIF
+      IF olddir&lt;&gt;-1 THEN CurrentDir(olddir)  -&gt; CD back where we were
+      wbarg++
+    ENDFOR
+    Delay(500)
+    WriteF(&#x27;\nPress RETURN to close window\n&#x27;)
+  ENDIF
+EXCEPT DO
+  IF file THEN Close(file)
+  SELECT exception
+  CASE ERR_LIB;   WriteF(&#x27;Can&#x27;&#x27;t open icon.library\n&#x27;)
+  CASE ERR_OPEN;  WriteF(&#x27;Can&#x27;&#x27;t open file &quot;\s&quot;\n&#x27;, projname)
+  CASE ERR_WRITE; WriteF(&#x27;Error writing data file\n&#x27;)
+  CASE ERR_MAKE;  WriteF(&#x27;Error writing icon\n&#x27;)
+  ENDSELECT
+  RETURN IF exception=ERR_NONE THEN RETURN_OK ELSE RETURN_FAIL
+ENDPROC
+
+PROC makeIcon(name, newtooltypes, newdeftool)
+  DEF dobj:PTR TO diskobject, oldtooltypes, olddeftool, success=FALSE
+  IF dobj:=GetDiskObject(name)
+    -&gt; If file already has an icon, we will save off any fields we need to
+    -&gt; update, update those fields, put the object, restore the old field
+    -&gt; pointers and then free the object.  This will preserve any custom
+    -&gt; imagery the user has, and the user&#x27;s current placement of the icon.
+    -&gt; If your application does not know where the user currently keeps your
+    -&gt; application, you should not update his dobj.defaulttool.
+    oldtooltypes:=dobj.tooltypes
+    olddeftool:=dobj.defaulttool
+
+    dobj.tooltypes:=newtooltypes
+    dobj.defaulttool:=newdeftool
+
+    success:=PutDiskObject(name, dobj)
+
+    -&gt; We must restore the original pointers before freeing
+    dobj.tooltypes:=oldtooltypes
+    dobj.defaulttool:=olddeftool
+    FreeDiskObject(dobj)
+  ENDIF
+  -&gt; Else, put our default icon
+  IF success=FALSE THEN success:=PutDiskObject(name, projIcon)
+  IF success=FALSE THEN Raise(ERR_MAKE)
+ENDPROC
+
+PROC showToolTypes(wbarg:PTR TO wbarg)
+  DEF dobj:PTR TO diskobject, toolarray, s, success=FALSE
+  WriteF(&#x27;\nWBArg Lock=$\h, Name=\s ($\h)\n&#x27;,
+         wbarg.lock, wbarg.name, wbarg.name[])
+
+  IF (wbarg.name[]&lt;&gt;0) AND (dobj:=GetDiskObject(wbarg.name))
+    WriteF(&#x27;  We have read the DiskObject (icon) for this arg\n&#x27;)
+    toolarray:=dobj.tooltypes
+
+    IF s:=FindToolType(toolarray, &#x27;FILETYPE&#x27;)
+      WriteF(&#x27;    Found tooltype FILETYPE with value \s\n&#x27;, s)
+    ENDIF
+    IF s:=FindToolType(toolarray, &#x27;FLAGS&#x27;)
+      WriteF(&#x27;    Found tooltype FLAGS with value \s\n&#x27;, s)
+      IF MatchToolValue(s, &#x27;BOLD&#x27;)
+        WriteF(&#x27;      BOLD flag requested\n&#x27;)
+      ENDIF
+      IF MatchToolValue(s, &#x27;ITALICS&#x27;)
+        WriteF(&#x27;      ITALICS flag requested\n&#x27;)
+      ENDIF
+    ENDIF
+    -&gt; Free the diskobject we got
+    FreeDiskObject(dobj)
+    success:=TRUE
+  ELSEIF wbarg.name[]=0
+    WriteF(&#x27;  Must be a disk or drawer icon\n&#x27;)
+  ELSE
+    WriteF(&#x27;  Can&#x27;&#x27;t find any DiskObject (icon) for this WBArg\n&#x27;)
+  ENDIF
+ENDPROC success
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

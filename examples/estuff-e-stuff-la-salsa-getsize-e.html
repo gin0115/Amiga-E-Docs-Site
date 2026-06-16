@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>GetSize.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-estuff.html">Estuff</a> &rsaquo; GetSize.e</div><h1>File: <code>GetSize.e</code></h1><p class="meta">82 lines · project <a href="../examples/pkg-estuff.html"><code>Estuff</code></a></p><p class="pathctx">Estuff/e-stuff/la salsa/GetSize.e</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/dos.html">dos/dos</a></li></ul></div><h2>Source</h2><pre class="code">OPT OSVERSION=37
+
+MODULE &#x27;dos/dos&#x27;, &#x27;dos/dosasl&#x27;, &#x27;REQTOOLS&#x27;, &#x27;libraries/REQTOOLS&#x27;
+
+DEF rdargs, myargs[10]:ARRAY OF LONG, pub[120]:STRING
+
+PROC main()
+  DEF lock, info:fileinfoblock
+  DEF tempstr[120]:STRING
+  DEF size, files, dirs
+  DEF str[200]:STRING
+  IF (reqtoolsbase:=OpenLibrary(&#x27;reqtools.library&#x27;, 37))
+    IF (rdargs:=ReadArgs(&#x27;DIR/A,K=KILOBYTES/S,FILES/S,DIRS/S,NOREC/S,GUI/S,PUBNAME/K&#x27;,myargs,NIL))
+      StringF(pub,myargs[6])
+      StrCopy(tempstr,myargs[0])
+      IF (lock:=Lock(tempstr,-2))
+        Examine(lock,info)
+        IF info.direntrytype&gt;0
+          AddPart(tempstr,&#x27;#?&#x27;,100)
+          size,files,dirs:=dodir(tempstr)
+        ELSE
+          StrCopy(str,&#x27;Not a dir&#x27;)
+          output(str)
+        ENDIF
+        UnLock(lock)
+      ELSE
+        size,files,dirs:=dodir(tempstr)
+      ENDIF
+      dirs++
+      StringF(str,&#x27;In \s there is \n\d \sBytes&#x27;, myargs[0], IF myargs[1]=-1 THEN size/1024 ELSE size, IF myargs[1]=-1 THEN &#x27;Kilo&#x27; ELSE &#x27;&#x27;)
+      IF myargs[3]=-1
+        StringF(str,&#x27;\s\nin \d directories&#x27;, str, dirs)
+        IF myargs[2]=-1 THEN StringF(str,&#x27;\s &amp; &#x27;,str)
+      ENDIF
+      IF myargs[2]=-1 THEN StringF(str,&#x27;\s\nin \d files&#x27;, str, files)
+      output(str)
+      FreeArgs(rdargs)
+    ELSE
+      PrintF(&#x27;Crap args!\n&#x27;)
+    ENDIF
+    CloseLibrary(reqtoolsbase)
+  ENDIF
+ENDPROC
+
+PROC dodir(place:PTR TO CHAR)
+  DEF er=0, anchor:PTR TO anchorpath
+  DEF tempstr[120]:STRING
+  DEF size=NIL, files=NIL, dirs=NIL
+  DEF t1, t2, t3
+  anchor:=New(SIZEOF anchorpath + 250)
+  anchor.breakbits:=4096
+  anchor.strlen:=249
+  er:=MatchFirst(place,anchor)
+  WHILE er=0
+    IF anchor.info.direntrytype&gt;0
+      dirs++
+      StrCopy(tempstr,anchor + SIZEOF anchorpath)
+      StrAdd(tempstr,&#x27;/#?&#x27;)
+      
+      IF myargs[4]&lt;&gt;-1 
+        t1,t2,t3:=dodir(tempstr)
+        size:=size+t1
+        files:=files+t2
+        dirs:=dirs+t3
+      ENDIF
+    ELSE
+      size:=size+anchor.info.size
+      files++
+    ENDIF
+    er:=MatchNext(anchor)
+  ENDWHILE
+  MatchEnd(anchor)
+ENDPROC size,files,dirs
+
+PROC output(str:PTR TO CHAR)
+  IF myargs[5]=-1
+    RtEZRequestA(str,&#x27;OK&#x27;,0,0,[RT_PUBSCRNAME,pub,RTEZ_REQTITLE,&#x27;GetSize&#x27;,NIL])
+  ELSE
+    PrintF(&#x27;\s\n&#x27;,str)
+  ENDIF
+ENDPROC
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

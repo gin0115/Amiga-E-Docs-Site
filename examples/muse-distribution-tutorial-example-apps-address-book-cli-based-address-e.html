@@ -1,0 +1,181 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>address.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-muse.html">muse</a> &rsaquo; address.e</div><h1>File: <code>address.e</code></h1><p class="meta">155 lines · project <a href="../examples/pkg-muse.html"><code>muse</code></a></p><p class="pathctx">muse/distribution/tutorial/Example Apps/Address Book/CLI Based/address.e</p><p class="prose">Address Book Program - Text Based Version 0 - Michael Sparks 1996 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ This is a toy application to allow you to compare a text based version of a `proper&#x27; application with a Muse based version. I make no guarantees as to its decency conce</p><h2>Source</h2><pre class="code">
+/*
+       Address Book Program - Text Based Version 0 - Michael Sparks 1996
+       ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+          This is a toy application to allow you to compare a text
+          based version of a `proper&#x27; application with a Muse based
+          version. I make no guarantees as to its decency concerning
+          its program style, but it should be `followable&#x27;.
+
+         (Adding a save/load/modify option could even make this _useful_
+          as well as improving the flexibility of the search - its
+          currently case sensitive...)
+
+              · Share and enjoy, no warranties. Public Domain! ·
+*/
+
+MODULE &#x27;*person&#x27;, &#x27;*texty&#x27;, &#x27;*people&#x27;
+
+/*{----------- Constants used through out this part of the program ------------}*/
+ENUM INSERT=1, REMOVE, SEARCH, QUIT 
+CONST MAX_PEOPLE=100
+
+/*{-------------------- Variables that are used throughout --------------------}*/
+DEF str[1024]:STRING
+
+/* Where we start off, and finish up...   */
+/* Hopefully this procedure is _readable_ */
+PROC main()
+DEF choice, quit_flag
+   initialise_database()
+   REPEAT
+      choice:=get_choice()
+      quit_flag:=do(choice)
+   UNTIL quit_flag=QUIT
+   shutdown_database()
+ENDPROC
+
+/* Get a decision from the user... */
+PROC get_choice()
+DEF choice, format_ok
+   REPEAT
+      show_menu()                                      -&gt; draw prompt
+      ReadStr(stdout,str)                              -&gt; get the choice
+      choice,format_ok:=Val(str)                       -&gt; convert to integer
+      choice:=validate_choice(choice, format_ok)       -&gt; check it!
+      IF choice=0                                      -&gt; bad value entered !
+         complain(&#x27;You must make a selection between 1 and 4, OK?!&#x27;)
+      ENDIF
+   UNTIL choice&lt;&gt;0
+ENDPROC choice -&gt;!
+
+/* Check an entry the user&#x27;s made... */
+PROC validate_choice(choice, format_ok)
+   IF format_ok=0 THEN RETURN 0 ELSE 0                 -&gt; Wasn&#x27;t a number...
+   IF (choice&gt;QUIT) OR (choice&lt;1) THEN RETURN 0 ELSE 0 -&gt; outside range...
+ENDPROC choice                                         -&gt; hunkey dory!!!
+
+/* Do what the user wants... */
+PROC do(action)
+DEF q
+   SELECT action
+      CASE INSERT; insert()
+      CASE REMOVE; remove()
+      CASE SEARCH; search()
+      CASE QUIT; q:=IF really(
+                    &#x27;Are you absolutely certain you really want to do that?&#x27;
+                             ) THEN QUIT ELSE 0
+   ENDSELECT
+ENDPROC q
+
+
+/* Double check they really do want to quit the program
+PROC really_quit()
+DEF r=FALSE
+   WriteF(&#x27;\nAre you absolutely certain you really want to do that?\n»» &#x27;)
+   IF ReadStr(stdout, str)=-1 THEN RETURN TRUE ELSE 0
+   r:=(InStr(str,&#x27;Y&#x27;)&lt;&gt;-1) OR (InStr(str,&#x27;y&#x27;)&lt;&gt;-1)
+ENDPROC r*/
+
+
+/* Tell the user what they can do */
+
+/* Something&#x27;s not quite right. Complain to the user, and then continue */
+PROC complain(complainstring)
+   WriteF(&#x27;\n\s\nPress return to continue...&#x27;,complainstring)
+   ReadStr(stdout, str)
+ENDPROC
+
+-&gt; We&#x27;re adding a person to the database!
+PROC insert() HANDLE
+-&gt; get person, store at end of list, makelist coherent
+DEF p
+   insert_display()                 -&gt; Let user know what&#x27;s gonna happen...
+   p:=get_person()
+   add_person(p)
+EXCEPT
+   IF exception=&quot;peop&quot; THEN complain(&#x27;Too many people!!!&#x27;)
+ENDPROC
+
+/* They want to *remove* someone? How dare they...! */
+PROC remove() HANDLE
+   IF no_records()=0 THEN Raise(&quot;prat&quot;)
+   remove_display()
+   set_searchperson(get_person()) -&gt; Find out which record(s) the user wishes
+                                  -&gt; to delete, by getting a search pattern
+   do_search({query_delete})      -&gt; Search for the items, deleting
+                                  -&gt;   them as we go as required.
+   complain(&#x27;Going back to main menu&#x27;)
+EXCEPT
+   complain(&#x27;You haven&#x27;&#x27;t entered an records!\n&#x27;+
+            &#x27;I can&#x27;&#x27;t therefore remove any!&#x27;)
+ENDPROC
+
+PROC query_delete(p)
+   display_person(p)
+   IF really(&#x27;Do you wish to delete this person?&#x27;)
+      delete_person()
+      IF Not(really(&#x27;Continue searching for people to delete?&#x27;))
+         RETURN TRUE
+      ENDIF
+   ENDIF
+ENDPROC FALSE
+
+
+-&gt; Search for all people matching a pattern as demonstarted by the user...
+PROC search()
+   search_display()                    -&gt; Tell user what&#x27;s happening!
+   set_searchperson(get_person())      -&gt; Get/Set a search pattern
+   results_display()                   -&gt; Display search results
+   do_search({display_it})             -&gt; Do the actual search, display results
+   complain(&#x27;no (more) records&#x27;)
+ENDPROC
+
+PROC display_it(p)
+   display_person(p); complain(&#x27;&#x27;)
+ENDPROC FALSE
+
+PROC do_search(visit)
+DEF p, found=FALSE, quit=FALSE
+   REPEAT
+         p,found:=find_next()                   -&gt; find next record
+         IF found                               -&gt; If we found one,
+            quit:=visit(p)                         -&gt; Visit it!
+         ENDIF
+   UNTIL Not(found) OR quit                     -&gt; repeat until no more.
+ENDPROC
+
+PROC really(comment)
+DEF r=FALSE
+   WriteF(&#x27;\n\s\n»» &#x27;,comment)
+   IF ReadStr(stdout, str)=-1 THEN RETURN TRUE ELSE 0
+   r:=(InStr(str,&#x27;Y&#x27;)&lt;&gt;-1) OR (InStr(str,&#x27;y&#x27;)&lt;&gt;-1)
+ENDPROC r
+
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

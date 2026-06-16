@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>bitmap.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-svensmodules.html">SvensModules</a> &rsaquo; bitmap.e</div><h1>File: <code>bitmap.e</code></h1><p class="meta">57 lines · project <a href="../examples/pkg-svensmodules.html"><code>SvensModules</code></a></p><p class="pathctx">SvensModules/emodules/sven/bitmap.e</p><p class="prose">general routines to allocate/deallocate bitmaps. ** same syntax as v39+ <a href="../modules/graphics.html#fn-allocbitmap">AllocBitMap</a>()/<a href="../modules/graphics.html#fn-freebitmap">FreeBitMap</a>() but also works ** on lower OS-versions ** ** Does *not* throw <a href="../modules/exceptions.html">exceptions</a>!</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/gfx.html">graphics/gfx</a></li><li><a href="../modules/getconfigsoftware.html">sven/getconfigsoftware</a></li></ul></div><h2>Source</h2><pre class="code">/* general routines to allocate/deallocate bitmaps.
+** same syntax as v39+ AllocBitMap()/FreeBitMap() but also works
+** on lower OS-versions
+**
+** Does *not* throw exceptions!
+*/
+
+OPT MODULE
+OPT REG=5
+
+MODULE &#x27;graphics/gfx&#x27;,
+       &#x27;exec/memory&#x27;
+MODULE &#x27;sven/getConfigSoftware&#x27;
+
+EXPORT PROC allocBitMap(width,height,depth,flags=BMF_CLEAR,friend=NIL)
+DEF bm:PTR TO bitmap,
+    i,
+    planeptr
+
+  IF getGfxVersion()&lt;39
+    IF bm:=AllocMem(SIZEOF bitmap,MEMF_PUBLIC OR MEMF_CLEAR)
+      InitBitMap(bm,depth,width,height)
+      FOR i:=0 TO depth-1
+        IF planeptr:=AllocRaster(bm.bytesperrow*8,bm.rows)
+          IF (flags AND BMF_CLEAR)
+            BltClear(planeptr,Mul(bm.bytesperrow,bm.rows),0)
+          ENDIF
+          bm.planes[i]:=planeptr
+        ELSE
+          freeBitMap(bm)
+          RETURN NIL
+        ENDIF
+      ENDFOR
+    ENDIF
+  ELSE
+    bm:=AllocBitMap(width,height,depth,flags,friend)
+  ENDIF
+
+ENDPROC bm
+
+EXPORT PROC freeBitMap(bm:PTR TO bitmap)
+DEF i
+
+  IF bm
+    IF getGfxVersion()&lt;39
+      FOR i:=0 TO bm.depth-1
+        IF bm.planes[i] THEN FreeRaster(bm.planes[i],bm.bytesperrow*8,bm.rows)
+      ENDFOR
+      FreeMem(bm,SIZEOF bitmap)
+    ELSE
+      FreeBitMap(bm)
+    ENDIF
+  ENDIF
+
+ENDPROC NIL
+
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

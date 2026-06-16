@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>windowify_os12.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-easygui-os12.html">EasyGUI_OS12</a> &rsaquo; windowify_os12.e</div><h1>File: <code>windowify_os12.e</code></h1><p class="meta">87 lines · project <a href="../examples/pkg-easygui-os12.html"><code>EasyGUI_OS12</code></a></p><p class="pathctx">EasyGUI_OS12/easygui_os12/source/plugins/windowify_os12.e</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/intuition.html">intuition/intuition</a></li><li><a href="../modules/easygui.html">tools/easygui</a></li><li><a href="../modules/easygui-os12.html">tools/easygui_os12</a></li></ul></div><h2>Source</h2><pre class="code">OPT MODULE
+OPT PREPROCESS
+
+-&gt; RST: Added conditional EASY_OS12 support
+#define EASY_OS12
+
+#ifdef EASY_OS12
+  MODULE &#x27;tools/easygui_os12&#x27;
+#endif
+#ifndef EASY_OS12
+  OPT OSVERSION=37
+  MODULE &#x27;tools/easygui&#x27;
+#endif
+
+MODULE &#x27;intuition/intuition&#x27;, &#x27;intuition/gadgetclass&#x27;,
+       &#x27;libraries/gadtools&#x27;,
+       &#x27;tools/textlen&#x27;,
+       &#x27;gadtools&#x27;,&#x27;utility/tagitem&#x27;
+
+EXPORT OBJECT windowify OF plugin
+  disabled
+PRIVATE
+  gadget:PTR TO gadget
+  label, winlabel, winxsize
+  resize
+ENDOBJECT
+
+OBJECT sizeplug OF plugin
+  xsize
+ENDOBJECT
+PROC sizeplug(xsize) OF sizeplug
+  self.xsize:=xsize
+ENDPROC
+PROC min_size(ta,fh) OF sizeplug IS self.xsize,0
+
+
+PROC windowify(label,winlabel=NIL,
+             resizex=FALSE,resizey=FALSE,disabled=FALSE) OF windowify
+  self.label:=IF label THEN label ELSE &#x27;&#x27;
+  self.winlabel:=IF winlabel THEN winlabel ELSE self.label
+  self.disabled:=disabled
+  self.resize:=(IF resizex THEN RESIZEX ELSE 0) OR
+               (IF resizey THEN RESIZEY ELSE 0)
+ENDPROC
+
+PROC end() OF windowify IS EMPTY
+
+PROC min_size(ta,fh) OF windowify
+  self.winxsize:=textlen(self.winlabel,ta)+48
+ENDPROC textlen(self.label,ta)+16,fh+6
+
+PROC will_resize() OF windowify IS self.resize
+
+-&gt; Don&#x27;t need to define this:
+-&gt;PROC render(ta,x,y,xs,ys,w) OF windowify IS EMPTY
+
+PROC gtrender(gl,vis,ta,x,y,xs,ys,w) OF windowify
+  -&gt; Or, a gadget in the title bar would have also been nice...
+  self.gadget:=CreateGadgetA(BUTTON_KIND,gl,
+                 [x,y,xs,ys,self.label,ta,0,
+                  PLACETEXT_IN,vis,NIL]:newgadget,
+                 [GA_DISABLED,self.disabled,TAG_DONE])
+  IF self.gadget=NIL THEN Raise(&quot;tlfy&quot;)
+ENDPROC self.gadget
+
+-&gt; Don&#x27;t need to define this:
+-&gt; PROC clear_render(win:PTR TO window) OF windowify IS EMPTY
+
+PROC message_test(imsg:PTR TO intuimessage,win:PTR TO window) OF windowify
+  IF imsg.class=IDCMP_GADGETUP THEN RETURN imsg.iaddress=self.gadget
+ENDPROC FALSE
+
+PROC message_action(class,qual,code,win:PTR TO window) OF windowify HANDLE
+  DEF sp=NIL:PTR TO sizeplug
+  NEW sp.sizeplug(self.winxsize)
+  closewin(self.gh)
+  easyguiA(self.winlabel,[ROWS, [PLUGIN,0,sp,TRUE] ], [EG_WTYPE, WTYPE_NOSIZE, EG_TOP, 0, EG_LEFT,  0, TAG_DONE])
+EXCEPT DO
+  openwin(self.gh)
+  END sp
+ENDPROC FALSE
+
+PROC setdisabled(disabled=TRUE) OF windowify
+  Gt_SetGadgetAttrsA(self.gadget,self.gh.wnd,NIL,[GA_DISABLED,disabled,NIL])
+  self.disabled:=disabled
+ENDPROC
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

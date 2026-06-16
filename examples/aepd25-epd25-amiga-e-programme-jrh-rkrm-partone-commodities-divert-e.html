@@ -1,0 +1,142 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>divert.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-aepd25.html">AEPD25</a> &rsaquo; divert.e</div><h1>File: <code>divert.e</code></h1><p class="meta">116 lines · project <a href="../examples/pkg-aepd25.html"><code>AEPD25</code></a></p><p class="pathctx">AEPD25/EPD25/Amiga_E-Programme/JRH-RKRM-PartOne/Commodities/divert.e</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/gadtools.html">gadtools</a></li></ul></div><h2>Source</h2><pre class="code">  ‹2065 bytes of embedded binary/non-text data elided›
+-&gt; Example showing the basic usage of the menu system with a window.
+-&gt; Menu layout is done with GadTools, as is recommended for applications.
+
+OPT PREPROCESS
+
+MODULE &#x27;gadtools&#x27;,
+       &#x27;intuition/intuition&#x27;,
+       &#x27;libraries/gadtools&#x27;
+
+ENUM ERR_NONE, ERR_LIB, ERR_MENU, ERR_VIS, ERR_WIN
+
+RAISE ERR_LIB  IF OpenLibrary()=NIL,
+      ERR_MENU IF CreateMenusA()=NIL,
+      ERR_VIS  IF GetVisualInfoA()=NIL,
+      ERR_WIN  IF OpenWindowTagList()=NIL
+
+-&gt; E-Note: used to convert an INT to unsigned
+#define UNSIGNED(x) ((x) AND $FFFF)
+
+-&gt; Watch the menus and wait for the user to select the close gadget or quit
+-&gt; from the menus.
+PROC handle_window_events(win, menuStrip)
+  DEF done=FALSE, menuNumber, menuNum, itemNum, subNum,
+      item:PTR TO menuitem, class
+  REPEAT
+    -&gt; E-Note: we can use WaitIMessage in this example
+    class:=WaitIMessage(win)
+    SELECT class
+    CASE IDCMP_CLOSEWINDOW
+      done:=TRUE
+    CASE IDCMP_MENUPICK
+      -&gt; E-Note: convert message code to an unsigned INT
+      menuNumber:=UNSIGNED(MsgCode())
+      WHILE (menuNumber&lt;&gt;MENUNULL) AND (done=FALSE)
+        item:=ItemAddress(menuStrip, menuNumber)
+
+        -&gt; Process the item here!
+        menuNum:=MENUNUM(menuNumber)
+        itemNum:=ITEMNUM(menuNumber)
+        subNum:=SUBNUM(menuNumber)
+
+        -&gt; Stop if quit is selected
+        IF (menuNum=0) AND (itemNum=5) THEN done:=TRUE
+
+        -&gt; E-Note: convert item.nextselz«t iÐ aYunÖÃgnÈ\ Iþò
+  ‹9 bytes of embedded binary/non-text data elided›
+  ‹94 bytes of embedded binary/non-text data elided›
+  ‹45 bytes of embedded binary/non-text data elided›
+  ‹91 bytes of embedded binary/non-text data elided›
+  ‹29 bytes of embedded binary/non-text data elided›
+  ‹50 bytes of embedded binary/non-text data elided›
+  ‹70 bytes of embedded binary/non-text data elided›
+  ‹178 bytes of embedded binary/non-text data elided›
+ëEs$%Û[{Kcwiæ®ÊüWþ@`0r: Could not activate broker\n&#x27;)
+  CASE ERR_ECODE; WriteF(&#x27;Error: Ran out of memory in eCodeCxCustom()\n&#x27;)
+  CASE ERR_LIB;   WriteF(&#x27;Error: Could not open commodities.library\n&#x27;)
+  CASE ERR_PORT;  WriteF(&#x27;Error: Could not create message port\n&#x27;)
+  CASE ERR_SIG;   WriteF(&#x27;Error: Could not allocate signal\n&#x27;)
+  ENDSELECT
+ENDPROC
+
+PROC processMsg()
+  DEF msg, sigrcvd, msgid, done=FALSE
+  REPEAT
+    sigrcvd:=Wait(SIGBREAKF_CTRL_C OR cxsigflag)
+
+    WHILE msg:=GetMsg(broker_mp)
+      msgid:=CxMsgID(msg)
+      ReplyMsg(msg)
+
+      SELECT msgid
+      CASE CXCMD_DISABLE
+        ActivateCxObj(broker, FALSE)
+      CASE CXCMD_ENABLE
+        ActivateCxObj(broker, TRUE)
+      CASE CXCMD_KILL
+        done:=TRUE
+      CASE CXCMD_UNIQUE
+        done:=TRUE
+      ENDSELECT
+    ENDWHILE
+
+    IF sigrcvd AND SIGBREAKF_CTRL_C THEN done:=TRUE
+
+    -&gt; Check to see if the signal CxObj signalled us.
+    IF sigrcvd AND cxobjsignal THEN WriteF(&#x27;Got Signal\n&#x27;)
+  UNTIL done
+ENDPROC
+
+-&gt; The custom function for the custom CxObject.  Any code for a custom CxObj
+-&gt; must be short and sweet because it runs as part of the input.device task.
+PROC cxFunction(cxm, co)
+  DEF ie:PTR TO inputevent
+
+  -&gt; Get the struct InputEvent associated with this CxMsg.  Unlike the
+  -&gt; InputEvent extracted from a CxSender&#x27;s CxMsg, this is a *REAL* input
+  -&gt; event, be careful with it.
+  ie:=CxMsgData(cxm)
+
+  -&gt; This custom function counts the number of timer events that go by while
+  -&gt; no other input events occur.  If it counts more than a certain amount of
+  -&gt; timer events, it clears the count and diverts the timer event CxMsg to the
+  -&gt; custom object&#x27;s personal list.  If an event besides a timer event passes
+  -&gt; by, the timer event count is reset.
+  IF ie.class=IECLASS_TIMER
+    time++
+    IF time&gt;=TIMER_CLICKS
+      time:=0
+      DivertCxMsg(cxm, co, co)
+    ENDIF
+  ELSE
+    time:=0
+  ENDIF
+ENDPROC
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

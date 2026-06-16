@@ -1,0 +1,144 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>GetString.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-gec-extra.html">GEC-extra</a> &rsaquo; GetString.e</div><h1>File: <code>GetString.e</code></h1><p class="meta">118 lines · project <a href="../examples/pkg-gec-extra.html"><code>GEC-extra</code></a></p><p class="pathctx">GEC-extra/GEC/source/Grio/End/GetString.e</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/reqtools.html">reqtools</a></li></ul></div><h2>Source</h2><pre class="code">
+
+
+ENUM OK,ER_RT,ER_PIP,ER_ALLOC,ER_SET
+
+MODULE &#x27;reqtools&#x27;,&#x27;libraries/reqtools&#x27;,&#x27;dos/var&#x27;,&#x27;utility/tagitem&#x27;
+
+ENUM STR,TIT,FILL,GAD,TEXT,LIGHT,SVAR,CVAR,GLOB,PUB,NUMARGS
+
+CONST STRSIZE=256
+
+RAISE ER_RT IF OpenLibrary()=NIL,
+      ER_ALLOC IF RtAllocRequestA()=NIL,
+      OK IF RtGetStringA()=NIL,
+      ER_PIP IF StrCmp()=TRUE,
+      ER_SET IF SetVar()=NIL
+
+
+DEF args[NUMARGS]:ARRAY OF LONG,readargs=NIL,temp,x,gs,
+    strbuf[256]:STRING,req,pip,endgad[4]:STRING
+
+
+
+PROC main() HANDLE
+
+    IF KickVersion(37)=FALSE
+       Write(stdout,&#x27;os 2.04+ required\n&#x27;,18)
+       Raise(OK)
+    ENDIF
+
+
+    VOID &#x27;$VER: GetString 1.23 (17.01.97) by Grio&#x27;
+
+
+    reqtoolsbase:=OpenLibrary(&#x27;reqtools.library&#x27;,38)
+
+    FOR x:=0 TO NUMARGS-1 DO args[x]:=NIL
+
+
+    temp:= &#x27;String,Title,NoFill/S,Gads/K,Text/K,LightText/S,SV=StringVar/K,&#x27;+
+           &#x27;CV=ChoiceVar/K,Global/S,PubScreen/K&#x27;
+
+    IF (readargs:=ReadArgs(temp,args,NIL))=NIL
+       PrintFault(IoErr(),NIL)
+       Raise(OK)
+    ENDIF
+
+    IF args[STR] THEN StrCopy(strbuf,args[STR],STRSIZE)
+
+    IF args[GAD]
+        pip:=&#x27;|&#x27;
+        StrCmp(args[GAD],pip,1)
+        MidStr(endgad,args[GAD],StrLen(args[GAD])-1,1)
+        StrCmp(endgad,pip,1)
+        IF InStr(args[GAD],pip,1)=-1 THEN Raise(ER_PIP)
+        IF InStr(args[GAD],&#x27;||&#x27;,1)&gt;0 THEN Raise(ER_PIP)
+    ENDIF
+
+
+    req:=RtAllocRequestA(RT_REQINFO,NIL)
+    gs:=RtGetStringA(strbuf,STRSIZE,args[TIT],req,
+                    [RTGS_BACKFILL,
+                     IF args[FILL] THEN FALSE ELSE TRUE,
+                     RT_PUBSCRNAME,args[PUB],
+                     RT_REQPOS,REQPOS_POINTER,
+                     RTGS_FLAGS,
+                     IF args[LIGHT] AND args[TEXT]
+                     THEN GSREQF_HIGHLIGHTTEXT OR GSREQF_CENTERTEXT
+                     ELSE GSREQF_CENTERTEXT,
+                     RTGS_TEXTFMT,args[TEXT],
+                     IF args[GAD] THEN RTGS_GADFMT ELSE NIL,
+                     args[GAD],
+                     RT_UNDERSCORE,&quot;_&quot;,
+                     TAG_DONE])
+
+    IF args[GLOB] THEN
+       args[GLOB]:=GVF_GLOBAL_ONLY ELSE args[GLOB]:=GVF_LOCAL_ONLY
+
+    SetVar(IF args[SVAR] THEN args[SVAR] ELSE &#x27;GetStringResult&#x27;,
+              strbuf,StrLen(strbuf), args[GLOB] )
+
+
+    IF args[CVAR]
+       StringF(endgad,&#x27;\d&#x27;,gs)
+       gs:=NIL
+       SetVar(args[CVAR],endgad,StrLen(endgad),args[GLOB])
+    ENDIF
+
+
+
+EXCEPT DO
+
+  IF readargs THEN FreeArgs(readargs)
+  IF req THEN RtFreeRequest(req)
+  IF reqtoolsbase THEN CloseLibrary(reqtoolsbase)
+
+  IF exception
+     SELECT exception
+         CASE ER_RT
+              temp:=&#x27;could not open reqtools.library v38\n&#x27;
+         CASE ER_PIP
+              temp:=&#x27;bad entering &quot;|&quot; sign\n&#x27;
+         CASE ER_ALLOC
+              temp:=&#x27;unable to allocate requester\n&#x27;
+         CASE ER_SET
+              temp:=&#x27;can\at set variable\n&#x27;
+     ENDSELECT
+     PrintF(temp)
+  ENDIF
+
+ENDPROC gs
+
+
+
+
+
+
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

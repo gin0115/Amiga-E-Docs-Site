@@ -1,0 +1,174 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>gfx_shared1.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-portable.html">PortablE</a> &rsaquo; gfx_shared1.e</div><h1>File: <code>gfx_shared1.e</code></h1><p class="meta">148 lines · project <a href="../examples/pkg-portable.html"><code>PortablE</code></a></p><p class="pathctx">PortablE/PortablE/PEmodules/target/CPP_AmigaOS4/graphics/gfx_shared1.e</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/nodes.html">target/exec/nodes</a></li></ul></div><h2>Source</h2><pre class="code">OPT NATIVE, PREPROCESS
+MODULE &#x27;target/graphics/gfx_shared2&#x27;
+MODULE &#x27;target/exec/nodes&#x27;, &#x27;target/exec/semaphores&#x27;, &#x27;target/utility/tagitem&#x27;, &#x27;target/exec/types&#x27;
+
+NATIVE {CopIns} OBJECT copins
+    {OpCode}	opcode	:INT /* 0 = move, 1 = wait */
+    {u3.nxtlist}	nxtlist	:PTR TO coplist
+    {u3.u4.u1.VWaitPos}	vwaitpos	:INT        /* vertical beam wait */
+    {u3.u4.u1.DestAddr}	destaddr	:INT        /* destination address of copper move */
+    {u3.u4.u2.HWaitPos}	hwaitpos	:INT        /* horizontal beam wait position */
+    {u3.u4.u2.DestData}	destdata	:INT        /* destination immediate data to send */
+ENDOBJECT
+
+NATIVE {CopList} OBJECT coplist
+    {Next}	next	:PTR TO coplist      /* next block for this copper list */
+    {_CopList}	coplist_	:PTR TO coplist  /* system use */
+    {_ViewPort}	viewport_	:PTR TO viewport /* system use */
+    {CopIns}	copins	:PTR TO copins    /* start of this block */
+    {CopPtr}	copptr	:PTR TO copins    /* intermediate ptr */
+    {CopLStart}	coplstart	:PTR TO UINT /* mrgcop fills this in for Long Frame*/
+    {CopSStart}	copsstart	:PTR TO UINT /* mrgcop fills this in for Short Frame*/
+    {Count}	count	:INT     /* intermediate counter */
+    {MaxCount}	maxcount	:INT  /* max # of copins for this block */
+    {DyOffset}	dyoffset	:INT  /* offset this copper list vertical waits */
+-&gt;#ifdef V1_3
+-&gt;    {Cop2Start}	cop2start	:PTR TO UINT
+-&gt;    {Cop3Start}	cop3start	:PTR TO UINT
+-&gt;    {Cop4Start}	cop4start	:PTR TO UINT
+-&gt;    {Cop5Start}	cop5start	:PTR TO UINT
+-&gt;#endif
+    {SLRepeat}	slrepeat	:UINT
+    {Flags}	flags	:UINT
+ENDOBJECT
+
+NATIVE {UCopList} OBJECT ucoplist
+    {Next}	next	:PTR TO ucoplist
+    {FirstCopList}	firstcoplist	:PTR TO coplist /* head node of this copper list */
+    {CopList}	coplist	:PTR TO coplist      /* node in use */
+ENDOBJECT
+
+
+NATIVE {ViewPort} OBJECT viewport
+    {Next}	next	:PTR TO viewport
+    {ColorMap}	colormap	:PTR TO colormap  /* table of colors for this viewport */
+                                /* if this is nil, MakeVPort assumes */
+                                /* default values */
+    {DspIns}	dspins	:PTR TO coplist    /* used by MakeVPort() */
+    {SprIns}	sprins	:PTR TO coplist    /* used by sprite stuff */
+    {ClrIns}	clrins	:PTR TO coplist    /* used by sprite stuff */
+    {UCopIns}	ucopins	:PTR TO ucoplist   /* User copper list */
+    {DWidth}	dwidth	:INT
+    {DHeight}	dheight	:INT
+    {DxOffset}	dxoffset	:INT
+    {DyOffset}	dyoffset	:INT
+    {Modes}	modes	:UINT
+    {SpritePriorities}	spritepriorities	:UBYTE
+    {ExtendedModes}	extendedmodes	:UBYTE
+    {RasInfo}	rasinfo	:PTR TO rasinfo
+ENDOBJECT
+
+NATIVE {VecTable} OBJECT vectable /* private structure */
+ENDOBJECT
+
+NATIVE {ViewPortExtra} OBJECT viewportextra
+    {n}	xln	:xln
+    {ViewPort}	viewport	:PTR TO viewport      /* backwards link */
+    {DisplayClip}	displayclip	:rectangle   /* MakeVPort display
+                                         * clipping information
+                                         */
+    /* These are added for V39 */
+    {VecTable}	vectable	:PTR TO vectable      /* private */
+    {DriverData}	driverdata[2]	:ARRAY OF APTR
+    {Flags}	flags	:UINT
+    {Origin}	origin[2]	:ARRAY OF tpoint     /* First visible point relative to
+                                         * the DClip.
+                                         * One for each possible playfield.
+                                         */
+    {cop1ptr}	cop1ptr	:ULONG       /* private */
+    {cop2ptr}	cop2ptr	:ULONG       /* private */
+    /* Added with V51.20 */
+    {MonitorData}	monitordata	:APTR   /* private */
+ENDOBJECT
+
+NATIVE {RasInfo} OBJECT rasinfo
+    {Next}	next	:PTR TO rasinfo               /* used for dualpf */
+    {BitMap}	bitmap	:PTR TO bitmap
+    {RxOffset}	rxoffset	:INT
+	{RyOffset}	ryoffset	:INT /* scroll offsets in this BitMap */
+ENDOBJECT
+
+NATIVE {ColorMap} OBJECT colormap
+    {Flags}	flags	:UBYTE
+    {Type}	type	:UBYTE
+    {Count}	count	:UINT
+    {ColorTable}	colortable	:APTR
+    {cm_vpe}	vpe	:PTR TO viewportextra
+    {LowColorBits}	lowcolorbits	:APTR
+    {TransparencyPlane}	transparencyplane	:UBYTE
+    {SpriteResolution}	spriteresolution	:UBYTE
+    {SpriteResDefault}	spriteresdefault	:UBYTE /* what resolution you get when
+                                             * you have set
+                                             * SPRITERESN_DEFAULT
+                                             */
+    {AuxFlags}	auxflags	:UBYTE
+    {cm_vp}	vp	:PTR TO viewport
+    {NormalDisplayInfo}	normaldisplayinfo	:APTR
+    {CoerceDisplayInfo}	coercedisplayinfo	:APTR
+    {cm_batch_items}	batch_items	:ARRAY OF tagitem
+    {VPModeID}	vpmodeid	:ULONG
+    {PalExtra}	palextra	:PTR TO paletteextra
+    {SpriteBase_Even}	spritebase_even	:UINT
+    {SpriteBase_Odd}	spritebase_odd	:UINT
+    {Bp_0_base}	bp_0_base	:UINT
+    {Bp_1_base}	bp_1_base	:UINT
+ENDOBJECT
+
+NATIVE {PaletteExtra} OBJECT paletteextra
+    {pe_Semaphore}	semaphore	:ss /* shared semaphore for arbitration */
+    {pe_FirstFree}	firstfree	:UINT                 /* *private*                        */
+    {pe_NFree}	nfree	:UINT                     /* number of free colors            */
+    {pe_FirstShared}	firstshared	:UINT               /* *private*                        */
+    {pe_NShared}	nshared	:UINT                   /* *private*                        */
+    {pe_RefCnt}	refcnt	:PTR TO UBYTE                    /* *private*                        */
+    {pe_AllocList}	alloclist	:PTR TO UBYTE                 /* *private*                        */
+    {pe_ViewPort}	viewport	:PTR TO viewport        /* back pointer to viewport         */
+    {pe_SharableColors}	sharablecolors	:UINT            /* the number of sharable colors.   */
+ENDOBJECT
+
+
+-&gt;OBJECT rectangle
+
+-&gt;OBJECT tpoint
+
+-&gt;OBJECT bitmap
+
+
+NATIVE {ExtendedNode} OBJECT xln
+    {xln_Succ}	succ	:PTR TO ln
+    {xln_Pred}	pred	:PTR TO ln
+    {xln_Type}	type	:UBYTE
+    {xln_Pri}	pri	:BYTE
+    {xln_Name}	name	:ARRAY OF CHAR
+    {xln_Subsystem}	subsystem	:UBYTE
+    {xln_Subtype}	subtype	:UBYTE
+    {xln_Library}	library	:VALUE
+    {xln_Init}	init	:NATIVE {LONG (*)(struct GraphicsIFace *,struct ExtendedNode *,UWORD)} PTR /*LONG (*xln_Init)(struct GraphicsIFace *,struct ExtendedNode *,UWORD)*/ /* only used if MONITOR_SPEC_TYPE */
+ENDOBJECT
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

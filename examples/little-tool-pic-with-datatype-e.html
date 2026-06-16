@@ -1,0 +1,279 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Pic_with_datatype.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-little-tool.html">little_tool</a> &rsaquo; Pic_with_datatype.e</div><h1>File: <code>Pic_with_datatype.e</code></h1><p class="meta">253 lines · project <a href="../examples/pkg-little-tool.html"><code>little_tool</code></a></p><p class="pathctx">little_tool/Pic_with_datatype.e</p><h2>Source</h2><pre class="code">
+
+OPT OSVERSION=37
+MODULE &#x27;tools/EasyGUI_lite&#x27;, &#x27;tools/exceptions&#x27;, &#x27;libraries/gadtools&#x27;,
+       &#x27;gadtools&#x27;,&#x27;libraries/gadtools&#x27;,&#x27;intuition/intuition&#x27;,
+       &#x27;graphics/text&#x27;,&#x27;workbench/startup&#x27;,&#x27;workbench/workbench&#x27;,
+       &#x27;tools/constructors&#x27;,&#x27;Asl&#x27;,&#x27;libraries/Asl&#x27;,&#x27;dos/dostags&#x27;,&#x27;dos/dos&#x27;,
+       &#x27;exec/memory&#x27;,&#x27;amigaguide&#x27;,&#x27;libraries/amigaguide&#x27;
+
+
+OBJECT makes
+s             
+ENDOBJECT
+
+
+DEF     s[50]:STRING,
+        mystr,gh,mlab,
+	nk,altstd,mycon,
+	sound,umf[5]:STRING,
+        ioi[255]:STRING,y,texte,mywb,fdev[10]:STRING,
+        bn[101]:ARRAY OF makes
+
+
+PROC main() HANDLE
+VOID &#x27;$VER:Test_GUI © F.Bunk  V1.0beta  (12.03.1997)&#x27; 
+FOR y:=0 TO 101
+  bn[y].s:=String(255) 
+ENDFOR  
+StrCopy(bn[100].s,&#x27;RAM:&#x27;,ALL)
+StrCopy(bn[99].s,bn[100].s,ALL)
+StrCopy(fdev,&#x27;DF0:&#x27;,ALL)
+StrCopy(s,&#x27;Ram:&#x27;)
+StrCopy(umf,&#x27;c:&#x27;,ALL)
+reporterr(anlauf())
+mystartup()
+direntry()
+mycon:=Open(&#x27;CON:10/10/600/73/GUI_Output &#x27;,1006)
+altstd:=stdout
+stdout:=mycon
+easyguiA(&#x27;Test_GUI 1.0&#x27;,
+    [ROWS,
+    mlab:=[LISTV,{myact},&#x27;Click for action&#x27;,5,4,texte,0,NIL,0],
+      [SPACEH],
+      [ROWS ,[CYCLE,{x}, &#x27;Action &#x27;,[&#x27; Sound / Picture &#x27;,&#x27; ASC / Text &#x27;,NIL],1]],
+       [SPACEH],
+      [BEVEL,[COLS,
+        mystr:=[STR,{mss},&#x27; Path&#x27;,s,255,10],
+        [BUTTON,{masl},&#x27;Path_Requester&#x27;]]]],[EG_GHVAR,{gh},NIL])
+beende()
+EXCEPT
+report_exception()
+ENDPROC
+
+
+PROC beende()
+IF aslbase THEN CloseLibrary(aslbase)
+IF amigaguidebase THEN CloseLibrary(amigaguidebase)
+stdout:=altstd
+Close(mycon)  
+ENDPROC
+
+
+PROC x(x,y)
+ IF y=0 
+ sound:=TRUE
+ ELSE
+ sound:=FALSE
+ENDIF
+ENDPROC
+
+
+PROC masl(x)
+/*gh:=x*/
+aslfilereq()
+setstr(gh,mystr,bn[99].s)
+StrCopy(bn[97].s,bn[99].s,ALL)
+setlistvlabels(gh,mlab,-1)
+direntry()
+setlistvlabels(gh,mlab,texte)
+
+ENDPROC
+
+
+PROC mss(x,y)
+StrCopy(bn[99].s,y,ALL)
+ENDPROC
+
+
+PROC myact(x,y)
+DEF mpack,moi[255]:STRING,umf[255]:STRING,mrun[255]:STRING
+     StrCopy(bn[95].s,bn[97].s,ALL)    
+     AddPart(bn[95].s,bn[y+1].s,255) 
+     StrCopy(ioi,bn[y+1].s,ALL)
+  IF sound=0
+   nk:=6
+        testas()
+       IF nk&gt;=0
+       guidm()
+       ELSE
+         WriteF(&#x27;NO Text File !!\n&#x27;)
+       ENDIF
+  ELSE
+    nk:=9
+        testes()
+       IF nk&gt;=0
+       guidm()
+       ELSE
+         WriteF(&#x27;NO Picture File !!\n&#x27;)
+       ENDIF
+  ENDIF
+ENDPROC
+
+
+PROC aslfilereq()
+ DEF req:PTR TO filerequester
+ IF req:=AllocFileRequest()
+  IF AslRequest(req,[ASL_DIR,bn[99].s,ASLFR_FLAGS2,1,ASL_HAIL,&#x27;Unpack Ziel-Pfad&#x27;,ASL_HEIGHT,180,NIL])
+  StrCopy(bn[99].s,req.drawer,ALL)
+  RightStr(ioi,bn[99].s,1)
+  IF StrCmp(ioi,&#x27;:&#x27;,ALL)
+  SetStr(bn[99].s,StrLen(bn[99].s)) 
+  ELSE
+  StrAdd(bn[99].s,&#x27;/&#x27;,1)
+  ENDIF
+  ENDIF 
+  FreeFileRequest(req)
+  ENDIF
+ENDPROC
+
+
+
+PROC testes()
+DEF x
+LowerStr(ioi)
+x:=InStr(ioi,&#x27;.jpeg&#x27;)
+nk:=nk+x
+x:=InStr(ioi,&#x27;.iff&#x27;)
+nk:=nk+x
+x:=InStr(ioi,&#x27;.pcx&#x27;)
+nk:=nk+x
+x:=InStr(ioi,&#x27;.pic&#x27;)
+nk:=nk+x
+x:=InStr(ioi,&#x27;.gif&#x27;)
+nk:=nk+x
+x:=InStr(ioi,&#x27;.ilbm&#x27;)
+nk:=nk+x
+x:=InStr(ioi,&#x27;.aiff&#x27;)
+nk:=nk+x
+x:=InStr(ioi,&#x27;.wav&#x27;)
+nk:=nk+x
+x:=InStr(ioi,&#x27;.8svx&#x27;)
+nk:=nk+x
+x:=InStr(ioi,&#x27;.aif&#x27;)
+nk:=nk+x
+ENDPROC
+
+
+PROC testas()
+DEF x
+LowerStr(ioi)
+x:=InStr(ioi,&#x27;.readme&#x27;)
+nk:=nk+x
+x:=InStr(ioi,&#x27;.txt&#x27;)
+nk:=nk+x
+x:=InStr(ioi,&#x27;.doc&#x27;)
+nk:=nk+x
+x:=InStr(ioi,&#x27;.asc&#x27;)
+nk:=nk+x
+x:=InStr(ioi,&#x27;.e&#x27;)
+nk:=nk+x
+x:=InStr(ioi,&#x27;.guide&#x27;)
+nk:=nk+x
+x:=InStr(ioi,&#x27;.dok&#x27;)
+nk:=nk+x
+ENDPROC
+
+
+
+PROC direntry()
+DEF info:fileinfoblock,lock2,x
+texte:=newlist()
+y:=1
+IF lock2:=Lock(bn[97].s,-2)
+ IF Examine(lock2,info)
+  WHILE ExNext(lock2,info)
+   IF info.direntrytype&lt;1 
+   StrCopy(bn[y].s,info.filename,ALL)
+   StrCopy(ioi,bn[y].s,ALL)
+nk:=15
+x:=InStr(ioi,&#x27;.info&#x27;)
+nk:=nk-x
+testes()
+testas()
+IF nk&gt;=0
+    Enqueue(texte,newnode(NIL,bn[y].s))
+    INC y
+ENDIF
+    ENDIF
+  EXIT y=91 
+ ENDWHILE
+ ENDIF
+ UnLock(lock2)
+ENDIF
+ENDPROC
+
+
+/* Start einer Amigaguidedatei b.z.w. alles wofuer es Datatypes im system gibt*/
+PROC guidm()   
+DEF ja, myg:newamigaguide,mxlock
+mxlock:=Lock(bn[97].s,ACCESS_READ)
+myg.lock:=mxlock
+myg.screen:=0
+myg.pubscreen:=0
+myg.hostport:=0
+myg.clientport:=0
+myg.basename:=0
+myg.flags:=2
+myg.context:=0
+myg.extens:=0
+myg.client:=0
+myg.name:=ioi
+myg.node:=0
+myg.line:=0
+ja:=OpenAmigaGuideA(myg,NIL)
+CloseAmigaGuide(ja)
+UnLock(mxlock)
+ENDPROC
+
+
+PROC reporterr(er)
+IF er=1 
+Throw(&quot;ASL&quot;,er)
+ELSEIF er=2
+Throw(&quot;GUID&quot;,er)
+ENDIF
+ENDPROC
+
+
+PROC mystartup()
+DEF lock1,y,x[15]:STRING
+mywb:=TRUE
+lock1:=GetProgramDir()
+IF lock1
+ y:=NameFromLock(lock1,bn[97].s,250)
+StrCopy(bn[96].s,bn[97].s,ALL)
+ENDIF
+ENDPROC
+
+PROC anlauf()
+IF (aslbase:=OpenLibrary(&#x27;asl.library&#x27;,37))=NIL THEN RETURN 1
+IF (amigaguidebase:=OpenLibrary(&#x27;amigaguide.library&#x27;,37))=NIL THEN RETURN 2  
+ENDPROC
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

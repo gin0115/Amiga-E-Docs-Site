@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>port1.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-jrh-rkrm-1.html">JRH-RKRM-1</a> &rsaquo; port1.e</div><h1>File: <code>port1.e</code></h1><p class="meta">52 lines · project <a href="../examples/pkg-jrh-rkrm-1.html"><code>JRH-RKRM-1</code></a></p><p class="pathctx">JRH-RKRM-1/JRH-RKRM-PartOne/Exec_Library/Ports/port1.e</p><p class="prose">port1.e - Port and <a href="../modules/message.html">message</a> example, run at the same time as port2.e</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/ports.html">amigalib/ports</a></li></ul></div><h2>Source</h2><pre class="code">-&gt; port1.e - Port and message example, run at the same time as port2.e
+
+MODULE &#x27;amigalib/ports&#x27;,
+       &#x27;dos/dos&#x27;,
+       &#x27;exec/ports&#x27;
+
+ENUM ERR_NONE, ERR_PORT
+
+OBJECT xyMessage
+  msg:mn
+  x:INT
+  y:INT
+ENDOBJECT
+
+PROC main() HANDLE
+  DEF xyport=NIL:PTR TO mp, xymsg:PTR TO xyMessage,
+      portsig, usersig, signal, abort=FALSE
+  IF NIL=(xyport:=createPort(&#x27;xyport&#x27;, 0)) THEN Raise(ERR_PORT)
+  portsig:=Shl(1, xyport.sigbit)
+  usersig:=SIGBREAKF_CTRL_C  -&gt; Give user a &#x27;break&#x27; signal.
+
+  WriteF(&#x27;Start port2 in another shell.  CTRL-C here when done.\n&#x27;)
+  -&gt; port1 will wait forever and reply to messages, until the user breaks
+  REPEAT
+    signal:=Wait(portsig OR usersig)
+    -&gt; Since we only have one port that might get messages we have to reply
+    -&gt; to, it is not really necessary to test for the portsignal.  If there
+    -&gt; is not a message at the port, xymsg simply will be NIL.
+    IF signal AND portsig
+      WHILE xymsg:=GetMsg(xyport)
+        WriteF(&#x27;port1 received: x = \d y = \d\n&#x27;, xymsg.x, xymsg.y)
+        xymsg.x:=xymsg.x+50  -&gt; Since we have not replied yet to the owner of
+        xymsg.y:=xymsg.y+50  -&gt; xymsg, we can change the data contents of xymsg.
+        WriteF(&#x27;port1 replying with: x = \d y = \d\n&#x27;, xymsg.x, xymsg.y)
+        ReplyMsg(xymsg)
+      ENDWHILE
+    ENDIF
+    IF signal AND usersig  -&gt; The user wants to abort.
+      abort:=TRUE
+    ENDIF
+  UNTIL abort
+EXCEPT DO
+  IF xyport
+    -&gt; Make sure the port is empty.
+    WHILE xymsg:=GetMsg(xyport) DO ReplyMsg(xymsg)
+    deletePort(xyport)
+  ENDIF
+  SELECT exception
+  CASE ERR_PORT;  WriteF(&#x27;Couldn&#x27;&#x27;t create &quot;xyport&quot;\n&#x27;)
+  ENDSELECT
+ENDPROC
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

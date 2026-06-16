@@ -1,0 +1,171 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>doublebuffer.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-aepd25.html">AEPD25</a> &rsaquo; doublebuffer.e</div><h1>File: <code>doublebuffer.e</code></h1><p class="meta">145 lines · project <a href="../examples/pkg-aepd25.html"><code>AEPD25</code></a></p><p class="pathctx">AEPD25/EPD25/Amiga_E-Programme/JRH-RKRM-PartOne/Intuition/Screens/doublebuffer.e</p><p class="prose"><a href="../modules/doublebuffer.html">doublebuffer</a>.e - Show the use of a double-buffered screen</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/screens.html">intuition/screens</a></li></ul></div><h2>Source</h2><pre class="code">-&gt; doublebuffer.e - Show the use of a double-buffered screen
+
+MODULE &#x27;intuition/screens&#x27;,  -&gt; Screen data structures
+       &#x27;graphics/rastport&#x27;,  -&gt; RastPort and other structures
+       &#x27;graphics/view&#x27;,      -&gt; ViewPort and other structures
+       &#x27;graphics/gfx&#x27;        -&gt; BitMap and other structures
+
+-&gt; Characteristics of the screen
+CONST SCR_WIDTH=320, SCR_HEIGHT=200, SCR_DEPTH=2
+
+-&gt; Exception values
+-&gt; E-Note: exceptions are a much better way of handling errors
+ENUM ERR_NONE, ERR_SCRN, ERR_RAST
+
+-&gt; Automatically raise exceptions
+-&gt; E-Note: these take care of a lot of error cases
+RAISE ERR_SCRN IF OpenScreen()=NIL,
+      ERR_RAST IF AllocRaster()=NIL
+
+-&gt; Main routine.  Setup for using the double buffered screen.  Clean up all
+-&gt; resources when done or on any error.
+PROC main() HANDLE
+  DEF myBitMaps=NIL:PTR TO LONG, screen=NIL:PTR TO screen
+  -&gt; E-Note: E automatically opens the Intuition and Graphics libraries
+  myBitMaps:=setupBitMaps(SCR_DEPTH, SCR_WIDTH, SCR_HEIGHT)
+
+  -&gt; Open a simple quiet screen that is using the first of the two bitmaps.
+  -&gt; E-Note: use a typed list to get an initialised object
+  -&gt; E-Note: automatically error-checked (automatic exception)
+  screen:=OpenScreen([0,           -&gt; LeftEdge
+                      0,           -&gt; TopEdge
+                      SCR_WIDTH,   -&gt; Width
+                      SCR_HEIGHT,  -&gt; Height
+                      SCR_DEPTH,   -&gt; Depth
+                      0,           -&gt; DetailPen
+                      1,           -&gt; BlockPen
+                      V_HIRES,     -&gt; ViewModes
+                      CUSTOMSCREEN OR CUSTOMBITMAP OR SCREENQUIET,  -&gt; Type
+                      NIL,         -&gt; Font
+                      NIL,         -&gt; DefaultTitle
+                      NIL,         -&gt; Gadgets
+                      myBitMaps[0] -&gt; CustomBitMap
+                     ]:ns)
+  -&gt; Indicate that the rastport is double buffered.
+  screen.rastport.flags:=RPF_DBUFFER
+  runDBuff(screen, myBitMaps)
+
+  -&gt; E-Note: exit and clean up via handler
+EXCEPT DO
+  IF screen THEN CloseScreen(screen)
+  IF myBitMaps THEN freeBitMaps(myBitMaps, SCR_DEPTH, SCR_WIDTH, SCR_HEIGHT)
+  -&gt; E-Note: we can print a minimal error message
+  SELECT exception
+  CASE ERR_SCRN; WriteF(&#x27;Error: Failed to open custom screen\n&#x27;)
+  CASE ERR_RAST; WriteF(&#x27;Error: Ran out of memory in AllocRaster()\n&#x27;)
+  CASE &quot;MEM&quot;;    WriteF(&#x27;Error: Ran out of memory\n&#x27;)
+  ENDSELECT
+ENDPROC
+
+-&gt; setupBitMaps(): allocate the bit maps for a double buffered screen.
+PROC setupBitMaps(depth, width, height) HANDLE
+  DEF myBitMaps:PTR TO LONG
+  -&gt; E-Note: an immediate list in E takes the place of the static in C
+  -&gt; E-Note: initialise the two bitmaps to NIL pointers 
+  myBitMaps:=[NIL,NIL]
+  -&gt; E-Note: NewR raises an exception if it fails
+  myBitMaps[0]:=NewR(SIZEOF bitmap)
+  myBitMaps[1]:=NewR(SIZEOF bitmap)
+  InitBitMap(myBitMaps[0], depth, width, height)
+  InitBitMap(myBitMaps[1], depth, width, height)
+  setupPlanes(myBitMaps[0], depth, width, height)
+  setupPlanes(myBitMaps[1], depth, width, height)
+EXCEPT
+  freeBitMaps(myBitMaps, depth, width, height)
+  -&gt; E-Note: exception must be passed on to caller
+  ReThrow()
+ENDPROC myBitMaps
+
+-&gt; runDBuff(): loop through a number of iterations of drawing into alternate
+-&gt; frames of the double-buffered screen.  Note that the object is drawn in
+-&gt; colour 1.
+PROC runDBuff(screen:PTR TO screen, myBitMaps:PTR TO LONG)
+  DEF ktr, xpos, ypos, toggleFrame=0
+  SetAPen(screen.rastport, 1)
+  FOR ktr:=1 TO 199
+    -&gt; Calculate a position to place the object, these calculations ensure the
+    -&gt; object will stay on the screen given the range of ktr and the size of
+    -&gt; the object.
+    xpos:=ktr
+    ypos:=IF Mod(ktr,100)&gt;=50 THEN 50-Mod(ktr,50) ELSE Mod(ktr,50)
+
+    -&gt; Switch the bitmap so that we are drawing into the correct place
+    screen.rastport.bitmap:=myBitMaps[toggleFrame]
+    screen.viewport.rasinfo.bitmap:=myBitMaps[toggleFrame]
+
+    -&gt; Draw the object
+    -&gt; Here we clear the old frame and draw a simple filled rectangle
+    SetRast(screen.rastport, 0)
+    RectFill(screen.rastport, xpos, ypos, xpos+100, ypos+100)
+
+    -&gt; Update the physical display to match the newly drawn bitmap
+    MakeScreen(screen)  -&gt; Tell Intuition to do its stuff
+    RethinkDisplay()    -&gt; Intuition compatible MrgCop() &amp; LoadView()
+                        -&gt;   It also does a WaitTOF()
+
+    -&gt; Switch the frame number for the next time through
+    -&gt; E-Note: this is exactly what the C version does...
+    toggleFrame:=Eor(toggleFrame, 1)
+  ENDFOR
+ENDPROC
+
+-&gt; freeBitMaps(): free up the memory allocated by setupBitMaps()
+PROC freeBitMaps(myBitMaps:PTR TO LONG, depth, width, height)
+  -&gt; E-Note: freeBitMaps() can be safely if written carefully
+  IF myBitMaps[0]
+    freePlanes(myBitMaps[0], depth, width, height)
+    Dispose(myBitMaps[0])
+  ENDIF
+  IF myBitMaps[1]
+    freePlanes(myBitMaps[1], depth, width, height)
+    Dispose(myBitMaps[1])
+  ENDIF
+ENDPROC
+
+-&gt; setupPlanes(): allocate the bit planes for a screen bit map
+PROC setupPlanes(bitMap:PTR TO bitmap, depth, width, height)
+  DEF plane_num, planes:PTR TO LONG
+  planes:=bitMap.planes
+  FOR plane_num:=0 TO depth-1
+    -&gt; E-Note: automatically error-checked (automatic exception)
+    planes[plane_num]:=AllocRaster(width, height)
+    BltClear(planes[plane_num], (width/8)*height, 1)
+  ENDFOR
+  -&gt; E-Note: exceptions handled in caller, which frees memory
+ENDPROC
+
+-&gt; freePlanes(): free up the memory allocated by setupPlanes()
+PROC freePlanes(bitMap:PTR TO bitmap, depth, width, height)
+  DEF plane_num, planes:PTR TO LONG
+  planes:=bitMap.planes
+  FOR plane_num:=0 TO depth-1
+    IF planes[plane_num] THEN FreeRaster(planes[plane_num], width, height)
+  ENDFOR
+ENDPROC
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

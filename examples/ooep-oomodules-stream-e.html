@@ -1,0 +1,141 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>stream.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-ooep.html">OOEP</a> &rsaquo; stream.e</div><h1>File: <code>stream.e</code></h1><p class="meta">115 lines · project <a href="../examples/pkg-ooep.html"><code>OOEP</code></a></p><p class="pathctx">OOEP/oomodules/stream.e</p><p class="prose"><a href="../modules/stream.html">stream</a>.e * * The <a href="../modules/stream.html">stream</a> <a href="../modules/object.html">object</a> of the OOE. Very important <a href="../modules/object.html">object</a>, * really. * * &#x27;i&#x27; refers to inputting things from the <a href="../modules/stream.html">stream</a>. * &#x27;o&#x27; refers to outputting things to the <a href="../modules/stream.html">stream</a>. * &#x27;limit&#x27; denotes how much can be in the buffer before * a flush automatically becomes performed.</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/object.html">oomodules/object</a></li></ul></div><h2>Source</h2><pre class="code">/* stream.e
+ *
+ * The stream object of the OOE.  Very important object,
+ * really.
+ *
+ * &#x27;i&#x27; refers to inputting things from the stream.
+ * &#x27;o&#x27; refers to outputting things to the stream.
+ * &#x27;limit&#x27; denotes how much can be in the buffer before
+ *   a flush automatically becomes performed.
+ */
+
+OPT MODULE
+
+MODULE &#x27;oomodules/object&#x27;,&#x27;oomodules/sort/string&#x27;
+
+EXPORT OBJECT stream OF object
+ buffer:PTR TO string
+ lim
+ENDOBJECT
+
+EXPORT PROC init() OF stream
+ DEF tmp:PTR TO string
+ self.buffer := NEW tmp.new()
+ENDPROC
+
+EXPORT PROC select(opt,i) OF stream
+ DEF item
+ item:=ListItem(opt,i)
+ SELECT item
+  CASE &quot;lim&quot;
+   INC i
+   self.limit(ListItem(opt,i))
+  CASE &quot;o&quot;
+   INC i
+   self.o(ListItem(opt,i))
+  CASE &quot;oStr&quot;
+   INC i
+   self.oString(ListItem(opt,i))
+ ENDSELECT
+ENDPROC i
+
+EXPORT PROC flush() OF stream IS self.derivedClassResponse()
+
+EXPORT PROC i(n=ALL) OF stream
+ DEF buffer,out:PTR TO string
+ IF self.buffer.length() = 0 THEN RETURN
+ out:=self.iString(n)
+ buffer:=String(out.length()+1)
+ StrCopy(buffer,out.write())
+ END out
+ RETURN buffer
+ /*
+ IF self.buffer.length() = 0 THEN RETURN
+ buffer:=self.buffer.write()
+ size:=IF n=ALL THEN StrLen(buffer) ELSE n
+ out:=String(size+1)
+ StrCopy(out,buffer)
+ DisposeLink(buffer)
+ buffer:=String(self.buffer.length()-size+1)
+ */
+ENDPROC
+
+EXPORT PROC iString(n=ALL) OF stream
+ DEF buffer:PTR TO string,tmp:PTR TO string,out:PTR TO string
+ IF self.buffer.length() = 0 THEN RETURN
+ out:=self.buffer.left(n)
+ buffer:=self.buffer.right(self.buffer.length()-n)
+ tmp:=self.buffer
+ self.buffer:=buffer
+ END tmp
+ RETURN out
+ /*
+ IF self.buffer.length() = 0 THEN RETURN
+ buffer:=self.buffer.write()
+ size := IF n=ALL THEN StrLen(buffer) ELSE n
+ out:=String(size+1)
+ StrCopy(out,buffer)
+ NEW tmp.new([&quot;set&quot;,out])
+ DisposeLink(out)
+ size := StrLen(buffer) - IF n=ALL THEN StrLen(buffer) ELSE n
+ out:=String(size+1)
+ StrCopy(out,buffer+size)
+ bye:=self.buffer
+ END bye
+ DisposeLink(buffer)
+ NEW bye.new([&quot;set&quot;,out])
+ DisposeLink(out)
+ self.buffer := bye
+ */
+ENDPROC
+
+EXPORT PROC needFlush() OF stream
+ RETURN IF self.buffer.length() &gt;= self.lim THEN TRUE ELSE FALSE
+ENDPROC
+
+EXPORT PROC o(a) OF stream
+ self.buffer.cat(a)
+ENDPROC
+
+EXPORT PROC oString(a:PTR TO string) OF stream
+ self.buffer.catString(a)
+ENDPROC
+
+EXPORT PROC end() OF stream
+ DEF tmp:PTR TO string
+ tmp := self.buffer
+ END tmp
+ENDPROC
+
+EXPORT PROC limit(i) OF stream
+ self.lim := i
+ENDPROC
+
+EXPORT PROC name() OF stream IS &#x27;Stream&#x27;
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

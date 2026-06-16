@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>depthawarevisitor.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-energy.html">energy</a> &rsaquo; depthawarevisitor.e</div><h1>File: <code>depthawarevisitor.e</code></h1><p class="meta">76 lines · project <a href="../examples/pkg-energy.html"><code>energy</code></a></p><p class="pathctx">energy/Energy/C2E/Compatibility/depthawarevisitor.e</p><p class="prose">depthawarevisitor.e * * (c) Copyright 1992 Commodore-Amiga, Inc. All rights reserved. * * This software is provided as-is and is subject to change; no warranties * are made. All use is at your own risk. No liability or responsibility * is assumed. *</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/intuition.html">intuition/intuition</a></li></ul></div><h2>Source</h2><pre class="code">/* depthawarevisitor.e
+ *
+ * (c) Copyright 1992 Commodore-Amiga, Inc.  All rights reserved.
+ *
+ * This software is provided as-is and is subject to change; no warranties
+ * are made.  All use is at your own risk.  No liability or responsibility
+ * is assumed.
+ *
+ */
+
+MODULE	&#x27;intuition/intuition&#x27;,
+	&#x27;intuition/iobsolete&#x27;,
+	&#x27;intuition/screens&#x27;,
+	&#x27;dos/dos&#x27;
+
+DEF screen:PTR TO screen
+
+PROC quit(whytext, failcode)
+    IF whytext THEN WriteF(&#x27;\s\n&#x27;,whytext)
+    IF (screen)	THEN UnlockPubScreen(NIL, screen)
+ENDPROC failcode
+
+
+PROC main()
+
+DEF drawinfo:PTR TO drawinfo,window:PTR TO window,depth
+
+    screen := LockPubScreen(NIL)
+	IF screen=NIL THEN quit(&#x27;Can\at lock default public screen&#x27;,RETURN_FAIL)
+
+    /* Here&#x27;s where we&#x27;ll ask Intuition about the screen. */
+    drawinfo:=GetScreenDrawInfo(screen)
+	IF drawinfo=NIL THEN quit(&#x27;Can\at get DrawInfo&#x27;,RETURN_FAIL)
+
+    depth:=drawinfo.depth
+
+    /* Because Intuition allocates the DrawInfo structure,
+     * we have to tell it when we&#x27;re done, to get the memory back.
+     */
+    FreeScreenDrawInfo(screen, drawinfo)
+
+    /* This next line takes advantage of the stack-based amiga.lib
+     * version of OpenWindowTagList.
+     */
+    IF window := OpenWindowTagList(NIL,
+				[WA_PUBSCREEN,screen,
+                                 WA_LEFT      ,0,
+                                 WA_WIDTH     ,screen.width,
+                                 WA_TOP       ,screen.barheight,
+                                 WA_HEIGHT    ,screen.height - screen.barheight,
+                                 WA_FLAGS     ,WINDOWDRAG OR
+						WINDOWDEPTH OR
+						WINDOWCLOSE OR
+                                             	ACTIVATE OR
+						SIMPLE_REFRESH OR
+						NOCAREREFRESH,
+                                 WA_TITLE     ,&#x27;Big Visitor&#x27;,
+                                 NIL])
+        WriteF(&#x27;depth=\d\n&#x27;,depth)
+        
+        /* All our window event handling might go here */
+
+        Delay(TICKS_PER_SECOND * 10)
+
+        /* Of course, some other program might come along
+         * and change the attributes of the screen that we read from
+         * DrawInfo, but that&#x27;s a mean thing to do to a public screen,
+         * so let&#x27;s hope it doesn&#x27;t happen.
+         */
+
+        CloseWindow(window)
+    ENDIF
+
+quit(&#x27;&#x27;,RETURN_OK)	/* clean up (close/unlock) and exit */
+ENDPROC
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

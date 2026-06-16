@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>pl_imagebutton.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-newgui3-1beta.html">newgui3_1beta</a> &rsaquo; pl_imagebutton.e</div><h1>File: <code>pl_imagebutton.e</code></h1><p class="meta">105 lines · project <a href="../examples/pkg-newgui3-1beta.html"><code>newgui3_1beta</code></a></p><p class="pathctx">newgui3_1beta/NewGUI/Src/Plugins/pl_imagebutton.e</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/button.html">gadgets/button</a></li><li><a href="../modules/rastport.html">graphics/rastport</a></li><li><a href="../modules/gadgetclass.html">intuition/gadgetclass</a></li><li><a href="../modules/intuition.html">intuition/intuition</a></li><li><a href="../modules/newgui.html">newgui/newgui</a></li></ul></div><h2>Source</h2><pre class="code">OPT     OSVERSION=37
+OPT     MODULE
+
+MODULE  &#x27;newgui/newgui&#x27;
+MODULE  &#x27;graphics/rastport&#x27;
+MODULE  &#x27;intuition/intuition&#x27;
+MODULE  &#x27;intuition/gadgetclass&#x27;
+MODULE  &#x27;gadgets/button&#x27;
+
+EXPORT  CONST   IMGBUTTON = PLUGIN
+
+EXPORT OBJECT imagebutton OF plugin
+  selected
+PRIVATE
+  button:PTR TO gadget
+  buttonbase
+  image:PTR TO image
+  toggle, push, resize
+  width, height
+ENDOBJECT
+
+PROC imagebutton(image:PTR TO image,width=0,height=0,resizex=FALSE,
+                 resizey=FALSE,disabled=FALSE) OF imagebutton
+  self.buttonbase:=OpenLibrary(&#x27;gadgets/button.gadget&#x27;,37)
+  IF self.buttonbase=NIL THEN Raise(&quot;butt&quot;)
+  self.image:=image
+  self.toggle:=FALSE
+  self.push:=FALSE
+  self.selected:=FALSE
+  self.resize:=(IF resizex THEN RESIZEX ELSE 0) OR
+               (IF resizey THEN RESIZEY ELSE 0)
+  self.dis:=disabled
+  self.width:=Max(width,image.width)
+  self.height:=Max(height,image.height)
+ENDPROC
+
+PROC toggleimagebutton(image,width=0,height=0,selected=FALSE,resizex=FALSE,
+                       resizey=FALSE,disabled=FALSE) OF imagebutton
+  self.imagebutton(image,width,height,resizex,resizey)
+  self.toggle:=TRUE
+  self.selected:=selected
+ENDPROC
+
+PROC pushimagebutton(image,width=0,height=0,selected=FALSE,resizex=FALSE,
+                     resizey=FALSE,disabled=FALSE) OF imagebutton
+  self.imagebutton(image,width,height,resizex,resizey)
+  self.push:=TRUE
+  self.selected:=selected
+ENDPROC
+
+PROC end() OF imagebutton
+  IF self.buttonbase THEN CloseLibrary(self.buttonbase)
+ENDPROC
+
+PROC min_size(ta,fh) OF imagebutton
+ENDPROC self.width+4, self.height+2
+
+PROC will_resize() OF imagebutton IS self.resize
+
+PROC render(ta,x,y,xs,ys,w:PTR TO window) OF imagebutton
+  self.button:=NewObjectA(NIL,&#x27;button.gadget&#x27;,
+                         [GA_TOP,y, GA_LEFT,x, GA_WIDTH,xs, GA_HEIGHT,ys,
+                          GA_IMAGE,self.image, GA_TOGGLESELECT,self.toggle,
+                          BUTTON_PUSHBUTTON,self.push,
+                          GA_DISABLED,self.dis, GA_SELECTED,self.selected,
+                          GA_RELVERIFY,TRUE, BUTTON_FILLPEN,w.rport.bgpen, NIL])
+  IF self.button=NIL THEN Raise(&quot;butt&quot;)
+  AddGList(w,self.button,-1,1,NIL)
+  RefreshGList(self.button,w,NIL,1)
+ENDPROC
+
+PROC clear_render(win:PTR TO window) OF imagebutton
+  IF self.button
+    RemoveGList(win,self.button,1)
+    DisposeObject(self.button)
+  ENDIF
+ENDPROC
+
+PROC message_test(imsg:PTR TO intuimessage,win) OF imagebutton
+  IF imsg.class=IDCMP_GADGETUP THEN RETURN imsg.iaddress=self.button
+ENDPROC FALSE
+
+PROC message_action(class,qual,code,win) OF imagebutton
+  self.selected:=code
+ENDPROC TRUE
+
+PROC setselected(selected=TRUE) OF imagebutton
+  IF self.toggle OR self.push
+    SetGadgetAttrsA(self.button,self.gh.wnd,NIL,[GA_SELECTED,selected,NIL])
+    self.selected:=selected
+  ENDIF
+ENDPROC
+
+PROC setimage(image:PTR TO image) OF imagebutton
+  IF (image.width&lt;=self.width) AND (image.height&lt;=self.height)
+    SetGadgetAttrsA(self.button,self.gh.wnd,NIL,[GA_IMAGE,image,NIL])
+    self.image:=image
+  ENDIF
+ENDPROC
+
+PROC disable(disabled=TRUE) OF imagebutton
+  SetGadgetAttrsA(self.button,self.gh.wnd,NIL,[GA_DISABLED,disabled,NIL])
+  self.dis:=disabled
+ENDPROC
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

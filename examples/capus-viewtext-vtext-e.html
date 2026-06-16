@@ -1,0 +1,319 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>VText.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-capus.html">capus</a> &rsaquo; VText.e</div><h1>File: <code>VText.e</code></h1><p class="meta">293 lines · project <a href="../examples/pkg-capus.html"><code>capus</code></a></p><p class="pathctx">capus/ViewText/VText.e</p><p class="prose">******************************************************************************* * &lt;&lt; <a href="../modules/opal.html#const-auto">AUTO</a> HEADER XDME &gt;&gt; ******************************************************************************** ED &quot;EDG&quot; EC &quot;EC&quot; PREPRO &quot;EPP&quot; SOURCE &quot;Vtext.e&quot; EPPDEST &quot;VText_EPP.e&quot; EXEC &quot;Vtext&quot; ISOURCE &quot; &quot; HSOURCE &quot; &quot; ERROREC </p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/asl.html">asl</a></li><li><a href="../modules/intuition.html">intuition/intuition</a></li><li><a href="../modules/utility.html">utility</a></li></ul></div><h2>Source</h2><pre class="code">/********************************************************************************
+ * &lt;&lt; AUTO HEADER XDME &gt;&gt;
+ ********************************************************************************
+ ED            &quot;EDG&quot;
+ EC            &quot;EC&quot;
+ PREPRO        &quot;EPP&quot;
+ SOURCE        &quot;Vtext.e&quot;
+ EPPDEST       &quot;VText_EPP.e&quot;
+ EXEC          &quot;Vtext&quot;
+ ISOURCE       &quot; &quot;
+ HSOURCE       &quot; &quot;
+ ERROREC       &quot; &quot;
+ ERROREPP      &quot; &quot;
+ VERSION       &quot;0&quot;
+ REVISION      &quot;1&quot;
+ NAMEPRG       &quot;Vtext&quot;
+ NAMEAUTHOR    &quot;NasGûl&quot;
+ ********************************************************************************
+ * HISTORY :
+ *******************************************************************************/
+ENUM ER_NONE,ER_OPENLIB,ER_WB,ER_VISUAL,ER_CONTEXT,ER_GADGET,ER_WINDOW,ER_MENUS,
+     ER_MEM,ER_BA,ER_SCREEN,ER_SIG
+ENUM ARG_FICHIER,NUMARGS
+MODULE &#x27;intuition/intuition&#x27;, &#x27;gadtools&#x27;, &#x27;libraries/gadtools&#x27;,
+       &#x27;intuition/gadgetclass&#x27;, &#x27;exec/nodes&#x27;, &#x27;intuition/screens&#x27;,
+       &#x27;exec/lists&#x27;,&#x27;graphics/displayinfo&#x27; ,&#x27;graphics/text&#x27;
+MODULE &#x27;utility&#x27;,&#x27;utility/tagitem&#x27;,&#x27;wb&#x27;,&#x27;workbench/startup&#x27;,&#x27;dos/dosextens&#x27;
+MODULE &#x27;asl&#x27;,&#x27;libraries/asl&#x27;
+RAISE ER_MEM IF New()=NIL
+RAISE ER_MEM IF String()=NIL
+DEF new_screen=NIL:PTR TO screen,
+    visual=NIL,
+    wnd=NIL:PTR TO window,
+    glist=NIL,g,g1,type
+DEF new_liste:PTR TO lh,fichier[256]:STRING,base_lock,task,sig=-1
+DEF tattr
+PROC main() HANDLE /*&quot;main()&quot;*/
+/********************************************************************************
+ * Para         : NONE
+ * Return       : NONE
+ * Description  : Main Porc.
+ *******************************************************************************/
+  DEF test
+  task:=FindTask(0)
+  tattr:=[&#x27;topaz.font&#x27;,8,0,0]:textattr
+  SetTopaz(8)
+  VOID {prg_banner}
+  IF wbmessage&lt;&gt;NIL
+      IF (test:=start_from_wb())&lt;&gt;ER_NONE THEN Raise(test)
+  ELSE
+      IF (test:=start_from_cli())&lt;&gt;ER_NONE THEN Raise(test)
+  ENDIF
+  new_liste:=New(SIZEOF lh)
+  new_liste.tail:=0
+  new_liste.head:=new_liste.tail
+  new_liste.tailpred:=new_liste.head
+  new_liste.type:=0
+  new_liste.pad:=0
+  IF (test:=readfile())&lt;&gt;ER_NONE THEN Raise(test)
+  checkerror(openinterface())
+  REPEAT
+    wait4message()
+  UNTIL type=IDCMP_CLOSEWINDOW
+  Raise(ER_NONE)
+EXCEPT
+    CurrentDir(base_lock)
+    IF new_liste THEN Dispose(new_liste)
+    IF wnd
+        closeinterface()
+        IF new_screen.firstwindow&lt;&gt;0
+            Wait(Shl(1,sig))            /* wait until all windows closed */
+        ENDIF
+        IF sig THEN FreeSignal(sig)
+        IF new_screen THEN CloseScreen(new_screen)
+    ENDIF
+    SetDefaultPubScreen(&#x27;Workbench&#x27;)    /* workbench is default again */
+    SELECT exception
+        CASE ER_NONE;   NOP
+        CASE ER_MEM;     WriteF(&#x27;Mémoire insuffisante.\n&#x27;)
+        CASE ER_BA;      WriteF(&#x27;Bad Args !.\n&#x27;)
+        CASE ER_SCREEN;  WriteF(&#x27;Ouverture de l\aécran impossible.\n&#x27;)
+        DEFAULT;     NOP
+    ENDSELECT
+ENDPROC
+PROC start_from_cli() /*&quot;start_from_cli()&quot;*/
+/********************************************************************************
+ * Para         : NONE
+ * Return       : NONE
+ * Description  : Start from Cli (lock current dir).
+ *******************************************************************************/
+    DEF pro:PTR TO process
+    DEF myargs:PTR TO LONG,rdargs
+    DEF ret=ER_NONE
+    myargs:=[0]
+    pro:=task
+    base_lock:=CurrentDir(pro.currentdir)
+    IF rdargs:=ReadArgs(&#x27;SOURCE&#x27;,myargs,NIL)
+        IF myargs[0] THEN StrCopy(fichier,myargs[0],ALL) ELSE ret:=ER_BA
+        FreeArgs(rdargs)
+    ELSE
+        ret:=ER_BA
+    ENDIF
+    RETURN ret
+ENDPROC
+PROC start_from_wb() /*&quot;start_from_wb()&quot;*/
+/********************************************************************************
+ * Para         : NONE
+ * Return       : NONE
+ * Description  : Start from wb (Lock the dir of the first arg).
+ *******************************************************************************/
+    DEF wb:PTR TO wbstartup /*wb_args:PTR TO wbarg */
+    DEF args:PTR TO wbarg
+    wb:=wbmessage
+    args:=wb.arglist
+    StrCopy(fichier,args[1].name,ALL)
+    base_lock:=CurrentDir(args[1].lock)
+    RETURN ER_NONE
+ENDPROC
+PROC openinterface() HANDLE /*&quot;openinterface()&quot;*/
+/********************************************************************************
+ * Para         : NONE
+ * Return       : ER_NONE if ok,else the error.
+ * Description  : Open lib,Call getdisplayid().
+ *                open screen and window.
+ *******************************************************************************/
+  DEF name,wb_scr,id_wb=HIRES_KEY
+  IF (gadtoolsbase:=OpenLibrary(&#x27;gadtools.library&#x27;,37))=NIL THEN RETURN ER_OPENLIB
+  IF (aslbase:=OpenLibrary(&#x27;asl.library&#x27;,37))=NIL THEN RETURN ER_OPENLIB
+  name:=fichier
+  IF wb_scr:=LockPubScreen(&#x27;Workbench&#x27;)
+      IF (id_wb:=getdisplayid(wb_scr))=FALSE THEN id_wb:=HIRES_KEY
+      UnlockPubScreen(wb_scr,NIL)
+      id_wb:=PAL_MONITOR_ID+id_wb
+  ENDIF
+  IF (new_screen:=OpenScreenTagList(NIL,          /* get ourselves a public screen */
+         [SA_TOP,0,
+          SA_DEPTH,2,
+          SA_FONT,tattr,
+          SA_DISPLAYID,id_wb,
+          SA_PUBNAME,name,
+          SA_TITLE,name,
+          SA_PUBSIG,IF (sig:=AllocSignal(-1))=NIL THEN Raise(ER_SIG) ELSE sig,
+          SA_PUBTASK,task,
+          SA_AUTOSCROLL,TRUE,
+          SA_OVERSCAN,OSCAN_TEXT,
+          SA_PENS,[0,0,1,2,1,3,1,0,1,1,2]:INT,
+          0,0]))=NIL THEN Raise(ER_SCREEN)
+  PubScreenStatus(new_screen,0)                 /* make it available */
+  SetDefaultPubScreen(fichier)
+  SetPubScreenModes(SHANGHAI)
+  IF (visual:=GetVisualInfoA(new_screen,NIL))=NIL THEN RETURN ER_VISUAL
+  IF (g:=CreateContext({glist}))=NIL THEN RETURN ER_CONTEXT
+  IF (g1:=CreateGadgetA(LISTVIEW_KIND,g,[new_screen.wborleft,
+                                         new_screen.topedge+new_screen.barheight,
+                                         new_screen.width-new_screen.wborright,
+                                         new_screen.height-new_screen.barheight,&#x27;&#x27;,tattr,2,16,visual,0]:newgadget,[GTLV_READONLY,TRUE,GTLV_SCROLLWIDTH,15,GTLV_LABELS,new_liste,0]))=NIL THEN RETURN ER_GADGET
+  IF (wnd:=OpenW(0,0,new_screen.width,new_screen.height,$700 OR LISTVIEWIDCMP,$190E,&#x27;Viewtext v0.0 (c) 1993 NasGûl&#x27;,new_screen,15,glist))=NIL THEN RETURN ER_WINDOW
+  wnd.screentitle:=arg
+  Gt_RefreshWindow(wnd,NIL)
+  Gt_SetGadgetAttrsA(g1,wnd,NIL,[GTLV_TOP,0,GTLV_LABELS,new_liste,0])
+EXCEPT
+    RETURN exception
+ENDPROC
+PROC closeinterface() /*&quot;closeinterface()&quot;*/
+/********************************************************************************
+ * Para         : NONE
+ * Return       : NONE
+ * Description  : Free All and Close lib.
+ *******************************************************************************/
+  IF glist THEN FreeGadgets(glist)
+  IF visual THEN FreeVisualInfo(visual)
+  IF wnd THEN CloseWindow(wnd)
+  IF gadtoolsbase THEN CloseLibrary(gadtoolsbase)
+  IF aslbase THEN CloseLibrary(aslbase)
+ENDPROC
+PROC checkerror(er) /*&quot;checkerror(er)&quot;*/
+/********************************************************************************
+ * Para         : the error.
+ * Return       : NONE
+ * Description  : Check error.
+ *******************************************************************************/
+  DEF errors:PTR TO LONG
+  IF er&gt;0
+    closeinterface()
+    errors:=[&#x27;&#x27;,&#x27;open &quot;gadtools.library&quot; v37&#x27;,&#x27;lock workbench&#x27;,&#x27;get visual infos&#x27;,&#x27;create context&#x27;,&#x27;create gadget&#x27;,&#x27;open window&#x27;,&#x27;allocate menus&#x27;,&#x27;allocate signal&#x27;]
+    WriteF(&#x27;Could not \s !\n&#x27;,errors[er])
+    CleanUp(10)
+  ENDIF
+ENDPROC
+PROC wait4message() /*&quot;wait4message()&quot;*/
+/********************************************************************************
+ * Para         : NONE
+ * Return       : NONE
+ * Description  : Wait Message.
+ *******************************************************************************/
+  DEF mes:PTR TO intuimessage
+  DEF ret
+  REPEAT
+    type:=0
+    IF mes:=Gt_GetIMsg(wnd.userport)
+      type:=mes.class
+      IF type:=IDCMP_RAWKEY
+          ret:=mes.code
+          SELECT ret
+              CASE $45; type:=IDCMP_CLOSEWINDOW
+              CASE $4D  /* Down */
+              CASE $4C  /* Up   */
+              DEFAULT; NOP
+          ENDSELECT
+      ELSEIF type=IDCMP_REFRESHWINDOW
+        Gt_BeginRefresh(wnd)
+        Gt_EndRefresh(wnd,TRUE)
+        type:=0
+      ELSEIF type&lt;&gt;IDCMP_CLOSEWINDOW
+        type:=0
+      ENDIF
+      Gt_ReplyIMsg(mes)
+    ELSE
+      Wait(-1)
+    ENDIF
+  UNTIL type
+ENDPROC
+PROC readfile() /*&quot;readfile()&quot;*/
+/********************************************************************************
+ * Para         : NONE
+ * Return       : ER_NONE if ok,else the error.
+ * Description  : read file and build a list (For ListView).
+ *******************************************************************************/
+  DEF len,a,adr,buf,handle,flen=TRUE
+  DEF my_string[256]:STRING,p=0,num_node=0
+  DEF node:PTR TO ln
+  IF (flen:=FileLength(fichier))=-1 THEN RETURN ER_BA
+  IF (buf:=New(flen+1))=NIL THEN RETURN ER_BA
+  IF (handle:=Open(fichier,1005))=NIL THEN RETURN ER_BA
+  len:=Read(handle,buf,flen)
+  Close(handle)
+  IF len&lt;1 THEN RETURN ER_BA
+  adr:=buf
+  FOR a:=0 TO len-1
+    IF buf[a]=10
+        IF a-p&lt;&gt;0
+            StrCopy(my_string,adr,a-p)
+        ELSE
+            StrCopy(my_string,&#x27;&#x27;,ALL)
+        ENDIF
+        node:=New(SIZEOF ln)
+        node.succ:=0
+        node.name:=String(EstrLen(my_string))
+        StrCopy(node.name,my_string,ALL)
+        AddTail(new_liste,node)
+        IF num_node=0
+            new_liste.head:=node
+            node.pred:=0
+        ENDIF
+        new_liste.tailpred:=node
+        p:=a+1
+        adr:=buf+a+1
+        num_node:=num_node+1
+    ENDIF
+  ENDFOR
+  Dispose(buf)
+  RETURN ER_NONE
+ENDPROC
+PROC getdisplayid(wb_scr) /*&quot;getdisplayid(wb_scr)&quot;*/
+/********************************************************************************
+ * Para         : Address of screen.
+ * Return       : DisplayId.
+ * Description  : Retrun the DisplayId of a screen.
+ *******************************************************************************/
+    DEF s:PTR TO screen,w=NIL,h=NIL
+    s:=wb_scr
+    w:=s.width
+    h:=s.height
+    IF (w=320) AND (h=256)
+        RETURN LORES_KEY
+    ELSEIF (w=320) AND (h=512)
+        RETURN LORESLACE_KEY
+    ELSEIF (w=640) AND (h=256)
+        RETURN HIRES_KEY
+    ELSEIF (w=640) AND (h=512)
+        RETURN HIRESLACE_KEY
+    ELSEIF (w=1280) AND (h=256)
+        RETURN SUPER_KEY
+    ELSEIF (w=1280) AND (h=512)
+        RETURN SUPERLACE_KEY
+    ENDIF
+    RETURN FALSE
+ENDPROC
+prg_banner:
+INCBIN &#x27;Vtext.header&#x27;
+
+
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

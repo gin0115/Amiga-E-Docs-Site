@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Edoc2Guide.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-amigae30a-fr.html">amigae30a_fr</a> &rsaquo; Edoc2Guide.e</div><h1>File: <code>Edoc2Guide.e</code></h1><p class="meta">97 lines · project <a href="../examples/pkg-amigae30a-fr.html"><code>amigae30a_fr</code></a></p><p class="pathctx">amigae30a_fr/AmigaE30f/Sources/Utils/Edoc2Guide.e</p><p class="prose">Bin/Edoc2Guide POur gagner de la place (pourquoi en fait?), mais aussi pour convertir être facilement converti en .guide, E.doc est uniquement distribué au format ascii, qui peut être mis au format .guide en utilisant ce programme. (la version compilée est dans le répertoire bin/). 1&gt; edoc2guide e:d</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/file.html">tools/file</a></li></ul></div><h2>Source</h2><pre class="code">/* Bin/Edoc2Guide
+
+POur gagner de la place (pourquoi en fait?), mais aussi pour convertir être
+facilement converti en .guide, E.doc est uniquement distribué au format
+ascii, qui peut être mis au format .guide en utilisant ce programme.
+(la version compilée est dans le répertoire bin/).
+
+1&gt; edoc2guide e:docs/e.doc
+
+donnera un fichier e.doc.guide, que vous pourrez rennomer en &#x27;e.guide&#x27;.
+
+ATTENTION: le datatype AmigaGuide (multiview) semble sauter tous les &quot;\&quot;
+           dans le texte, ce qui est embêtant avec les &#x27;\n&#x27; etc.
+           C&#x27;est un bug, car l&#x27;AmigaGuide v34 marche bien. I vous conseille
+           de lire le doc avec la v34 de toute façon, car il est mieux pour
+           d&#x27;autre chose aussi.
+
+*/
+
+OPT OSVERSION=37
+
+MODULE &#x27;tools/file&#x27;
+
+PROC main() HANDLE
+  DEF m=NIL,l,n,list,myargs:PTR TO LONG,rdargs=NIL,fh=NIL,outf[50]:STRING
+  IF (rdargs:=ReadArgs(&#x27;DOC/A&#x27;,myargs:=[0],NIL))=NIL THEN Raise(&quot;RDAR&quot;)
+  m,l:=readfile(myargs[])
+  list:=stringsinfile(m,l,n:=countstrings(m,l))
+  StrCopy(outf,myargs[])
+  StrAdd(outf,&#x27;.guide&#x27;)
+  IF (fh:=Open(outf,NEWFILE))=NIL THEN Raise(&quot;OPEN&quot;)
+  process(fh,list,n)
+EXCEPT DO
+  IF fh THEN Close(fh)
+  IF rdargs THEN FreeArgs(rdargs)
+  IF m THEN freefile(m)
+  SELECT exception
+    CASE &quot;RDAR&quot;; WriteF(&#x27;Mauvais argument!\n&#x27;)
+    CASE &quot;NEW&quot;;  WriteF(&#x27;Pas de mémoire!\n&#x27;)
+    CASE &quot;OPEN&quot;; WriteF(&#x27;Ne peut pas ouvrir le fichier!\n&#x27;)
+  ENDSELECT
+ENDPROC
+
+PROC process(fh,list:PTR TO LONG,num)
+  DEF line,l:PTR TO CHAR,c,s[500]:STRING,a,b,d
+  Fputs(fh,&#x27;@database &quot;e.guide&quot;\n@node MAIN\n@title &quot;Amiga E v3.0a&quot;\n&#x27;)
+  FOR line:=0 TO num-1
+     l:=list[line]
+     IF StrCmp(l,&#x27;\t    &#x27;,5)
+       IF l[6]=&quot;.&quot;
+         c:=l[5]
+         IF cap(c)
+           StringF(s,&#x27;\t  @{&quot;  \c. \s  &quot; link CH_\d\c }&#x27;,c,l+8,a,c)
+           l:=s
+         ENDIF
+       ENDIF
+     ELSE
+       a,b:=Val(l)
+       IF b
+         c:=l[b]
+         IF cap(c)
+           IF (l[b+1]=&quot;.&quot;) AND (l[b+2]=&quot; &quot;)
+             IF StrCmp(list[line+1],&#x27;------&#x27;,6)
+               StringF(s,&#x27;@endnode\n@node CH_\d\c\n@title &quot;\s&quot;\n\s&#x27;,a,c,l,l)
+               l:=s
+             ENDIF
+           ENDIF
+         ENDIF
+       ELSEIF StrCmp(l,&#x27;+-----&#x27;,6)
+         IF StrCmp(list[line+1],&#x27;|&#x27;,1)
+           IF StrCmp(list[line+2],&#x27;+-----&#x27;,6)
+             line:=line+3
+             l:=list[line]
+           ENDIF
+         ENDIF
+       ELSEIF (b:=InStr(l,&#x27;(see &#x27;,0))&lt;&gt;-1
+         b:=b+5
+         l[b-1]:=0
+         a,c:=Val(l+b)
+         IF c
+           d:=b+c
+           c:=l[d]
+           IF cap(c)
+             StringF(s,&#x27;\s @{&quot; \d\c &quot; link CH_\d\c }\s&#x27;,l,a,c,a,c,l+d+1)
+             l:=s
+           ENDIF
+         ENDIF
+       ENDIF
+     ENDIF
+     Fputs(fh,l)
+     FputC(fh,&quot;\n&quot;)
+  ENDFOR
+  Fputs(fh,&#x27;@endnode\n&#x27;)
+ENDPROC
+
+PROC cap(c) IS IF c&gt;=&quot;A&quot; THEN c&lt;=&quot;Z&quot; ELSE FALSE
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

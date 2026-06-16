@@ -1,0 +1,1536 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>OptiRe_68k.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-re.html">RE</a> &rsaquo; OptiRe_68k.e</div><h1>File: <code>OptiRe_68k.e</code></h1><p class="meta">1510 lines · project <a href="../examples/pkg-re.html"><code>RE</code></a></p><p class="pathctx">RE/RE/bin/OptiRe_68k.e</p><p class="prose">Re &quot;compiler&quot; and optimizer to <a href="../modules/getconfighardware.html#const-mc68020">MC68020</a> by Marco Antoniazzi 10-12-2005</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/dos.html">dos</a></li></ul></div><h2>Source</h2><pre class="code">/* Re &quot;compiler&quot; and optimizer to MC68020 by Marco Antoniazzi 10-12-2005 */
+/* 17-09-2008 finished translation to E */
+/*PROC;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;
+;; Marco Antoniazzi 2008
+;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;
+;;
+;; The zlib/libpng License
+;;
+;; Copyright (C) 2008 Marco Antoniazzi
+;;
+;; This software is provided &#x27;as-is&#x27;, without any express or implied warranty.
+;; In no event will the authors be held liable for any damages arising from
+;; the use of this software.
+;;
+;; Permission is granted to anyone to use this software for any purpose,
+;; including commercial applications, and to alter it and redistribute it
+;; freely, subject to the following restrictions:
+;;
+;;
+;; 1. The origin of this software must not be misrepresented; you must not
+;;    claim that you wrote the original software. If you use this software
+;;    in a product, an acknowledgment in the product documentation would be
+;;    appreciated but is not required.
+;;
+;; 2. Altered source versions must be plainly marked as such, and must not be
+;;    misrepresented as being the original software.
+;;
+;; 3. This notice may not be removed or altered from any source distribution.
+;;
+ENDPROC;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+*/
+OPT OPTIMIZE
+
+MODULE
+        &#x27;dos&#x27;,
+        &#x27;dos/dos&#x27;,
+        &#x27;exec/lists&#x27;,
+        &#x27;exec/nodes&#x27;,
+        &#x27;exec/memory&#x27;
+
+DEF fh,fhm=0,destmod[255]:STRING,pool
+DEF end,pos:PTR TO CHAR,float=FALSE
+
+  DEF mnem1:PTR TO LONG,mnem2:PTR TO LONG,mnem3:PTR TO LONG
+  DEF mnem4:PTR TO LONG,mnem5:PTR TO LONG,mnem6:PTR TO LONG
+  DEF c1:PTR TO LONG,c2:PTR TO LONG
+  DEF preline:PTR TO CHAR
+  DEF reg11:PTR TO CHAR,reg12:PTR TO CHAR
+  DEF reg21:PTR TO CHAR,reg22:PTR TO CHAR
+  DEF reg31:PTR TO CHAR,reg32:PTR TO CHAR
+  DEF reg41:PTR TO CHAR,reg42:PTR TO CHAR
+  DEF reg51:PTR TO CHAR,reg52:PTR TO CHAR
+  DEF reg61:PTR TO CHAR,reg62:PTR TO CHAR
+  DEF regt1:PTR TO CHAR,regt2:PTR TO CHAR
+  DEF len,null=0,optim
+  DEF pre,post1,post2,post3,post4
+
+#define CLRMEM            MEMF_PUBLIC + MEMF_CLEAR
+#define new(size)         AllocVecPooled(pool,size)
+#define free(mem)         IF mem THEN FreeVecPooled(pool,mem)
+
+-&gt;#define outcon
+
+-&gt;#define DEBUG
+#ifdef DEBUG
+#define DBPrintF FPrintF
+#else
+#define DBPrintF() NOP
+#endif
+
+OBJECT dNode
+  Succ:PTR TO Node,
+  Pred:PTR TO Node,
+  Type:BYTE,
+  Pri :BYTE,
+  Name:PTR TO CHAR,
+  Name2:PTR TO CHAR
+ENDOBJECT
+
+
+PROC main() HANDLE
+  DEF filelen,destname[255]:STRING,start,prog,rc=0
+  DEF cliargs:PTR TO LONG,rdargs,template=&#x27;SOURCE/A,DEST&#x27;
+
+  cliargs:=[0,0]
+  IFN rdargs:=ReadArgs(template,cliargs,NIL) THEN Raise(&#x27;BAD Args&#x27;)
+  arg:=cliargs[]
+  IFN pool:=CreatePool(CLRMEM,4096*2,4096) THEN Raise(&#x27;Out of RAM&#x27;)
+
+  IF prog,filelen:=loadfile(arg)
+
+    destname[]:=0
+    IF cliargs[1] THEN StrAdd(destname,cliargs[1])
+
+    end:=-1 ; WHILE (start:=InStr(arg+end+1,&#x27;.&#x27;))&gt;-1 DO end +=start+1 -&gt;find last dot
+    StrAdd(destname,arg,end) -&gt;copy till extension
+    StrAdd(destname,&#x27;.ass&#x27;) -&gt;add new extension
+    StrCopy(destmod,arg,end) -&gt;copy till extension
+    StrAdd(destmod,&#x27;.m&#x27;) -&gt;add new extension
+#ifdef outcon
+    fh:=stdout
+#else
+    IF fh:=Open(destname,NEWFILE)
+#endif
+      IF (IOErr()=205) THEN SetIoErr(0) -&gt;since we are creating a new file it obviously doesn&#x27;t exist yet!
+      pos := start := prog
+      end := start+filelen+1
+      StrCopy(destname,arg,InStr(arg,&#x27;.&#x27;)) -&gt;copy till extension
+      FPrintF(fh,&#x27;;rE\n\tmachine mc68020\n\tfpu\t1\n\n&#x27;)
+      translate()
+#ifndef outcon
+      Close(fh)
+    ELSE
+      Raise(&#x27;Unable to open new file:&#x27;,destname)
+    ENDIF
+#endif
+  ENDIF
+
+EXCEPT DO
+  freefile(prog)
+  IF IOErr() THEN PrintFault(IOErr(),&#x27;OptiRe&#x27;)
+  IF fhm
+    /* remove the last comma */
+    Seek(fhm,-2,OFFSET_END)
+    Write(fhm,&#x27;\n&#x27;,1)
+    Close(fhm)
+  ENDIF
+  IF pool THEN DeletePool(pool)
+  FreeArgs(rdargs)
+  IF exception THEN PrintF(&#x27;\s \s\n&#x27;,exception,exceptioninfo)
+  IF exception THEN rc:=5
+ENDPROC rc
+
+
+
+PROC loadfile(filename)(LONG,LONG)
+  DEF file=0,filelen=0,mem=0:PTR TO LONG
+
+  IF file:=Open(filename,OLDFILE)
+    filelen:=FileLength(filename)
+    IF mem := AllocVec(filelen+1,MEMF_PUBLIC + MEMF_CLEAR)
+      IF Read(file,mem,filelen)&lt;&gt;filelen
+        FreeVec(mem)
+        mem:=0
+        SetIoErr(310) -&gt;random number!
+      ENDIF
+    ELSE
+      SetIoErr(ERROR_NO_FREE_STORE)
+    ENDIF
+    Close(file)
+  ENDIF
+ENDPROC mem,filelen
+
+PROC freefile(mem:PTR TO LONG)
+  IF mem THEN FreeVec(mem)
+ENDPROC
+
+PROC addNode(list,str,str2=0)
+  DEF node:PTR TO dNode
+  node:=new(SIZEOF dNode)
+  node.Name:=new(StrLen(str))
+  StrCopy(node.Name,str)
+  IF str2
+    node.Name2:=new(StrLen(str2))
+    StrCopy(node.Name2,str2)
+  ENDIF
+  AddHead(list,node)
+ENDPROC
+
+PROC newList()(LONG)
+  DEF list=0:PTR TO MinList
+
+  IFN list:=new(SIZEOF MinList) THEN RETURN 0
+  list.Head:=list+4
+  list.Tail:=0
+  list.TailPred:=list
+ENDPROC list
+
+
+
+PROC translate()
+  DEF n,ver,rev,tracestr=FALSE,tracelst,data=FALSE,
+      argn=0,stk=0,local=0,pregs=&#x27;0&#x27;,regsparams=FALSE,
+      ulist=0:PTR TO MinList,urf:PTR TO LONG,lib=FALSE,src:PTR TO CHAR
+
+  reg11 := new(100) ;  reg12 := new(100)
+  reg21 := new(100) ;  reg22 := new(100)
+  reg31 := new(100) ;  reg32 := new(100)
+  reg41 := new(100) ;  reg42 := new(100)
+  reg51 := new(100) ;  reg52 := new(100)
+  reg61 := new(100) ;  reg62 := new(100)
+  regt1 := new(100) ;  regt2 := new(100)
+  preline := new(100)
+
+  src := new(255)
+  -&gt;collect unreferenced procedures
+  IF (n := InStr(pos,&#x27; URF&#x27;))&gt;0
+    urf := pos+n
+    ulist := newList()
+    WHILE n&gt;=0
+      setregs(urf,reg11,reg12)
+      addNode(ulist,reg11)
+      n := InStr(urf+1,&#x27; URF&#x27;)
+      urf += n+1
+    ENDWHILE
+  ENDIF
+
+  mnem1:=pos              ; setregs(mnem1,reg11,reg12)
+  mnem2:=nextmnem(mnem1)  ; setregs(mnem2,reg21,reg22)
+  mnem3:=nextmnem(mnem2)  ; setregs(mnem3,reg31,reg32)
+  mnem4:=nextmnem(mnem3)  ; setregs(mnem4,reg41,reg42)
+  mnem5:=nextmnem(mnem4)  ; setregs(mnem5,reg51,reg52)
+  mnem6:=nextmnem(mnem5)  ; setregs(mnem6,reg61,reg62)
+  -&gt;mnem6:=pos
+  -&gt;advancelines(6)
+  WHILE (pos&lt;end)
+    IF pos[]=&quot; &quot;
+      IF float
+        pre:=&#x27;f&#x27;
+        post1:=&#x27;.s&#x27;
+        post2:=&#x27;.s&#x27;
+        post3:=&#x27;.x&#x27;
+        post4:=&#x27;.x&#x27;
+      ELSE
+        pre:=[0,0]:CHAR -&gt;use list since strings are not aligned
+        post1:=&#x27;.l&#x27;
+        post2:=&#x27;s.l&#x27;
+        post3:=&#x27;.l&#x27;
+        post4:=&#x27;s.l&#x27;
+      ENDIF
+      optim:=FALSE
+
+      SELECT mnem1[]
+        -&gt;put number in register
+        CASE &quot; MVI&quot; -&gt;; FPrintF(fh,&#x27;\tmove.l\t#\s,\s\n&#x27;,reg12,reg11)
+          trans_MVI()
+        -&gt; put address of var in address register
+        CASE &quot; LEA&quot; -&gt;; FPrintF(fh,&#x27;\tlea.l\t\s\s,\s\n&#x27;,reg12,IF reg12[]=&quot;_&quot; THEN &amp;null ELSE &#x27;(a5)&#x27;,reg11)
+          trans_LEA()
+        -&gt;&quot;fake&quot; mnem not present in REC output
+        CASE &quot; MVL&quot;
+          trans_MVL()
+        -&gt; move contents of one register inside the other
+        CASE &quot; MVR&quot; -&gt;; FPrintF(fh,&#x27;\tmove.l\t\s,\s\n&#x27;,reg12,reg11)
+          trans_MVR()
+        -&gt; load 4bytes contained at address in register in the other register (load indirect)
+        CASE &quot; LDL&quot; -&gt;; FPrintF(fh,&#x27;\tmove.l\t(\s),\s\n&#x27;,reg12,reg11)
+          trans_LDL()
+        -&gt; load 2bytes contained at address in register in the other register (load indirect)
+        CASE &quot; LDW&quot; ; FPrintF(fh,&#x27;\tmove.w\t(\s),\s\n&#x27;,reg12,reg11)
+        -&gt; load 1byte contained at address in register in the other register (load indirect)
+        CASE &quot; LDB&quot; ; FPrintF(fh,&#x27;\tmove.b\t(\s),\s\n&#x27;,reg12,reg11)
+        -&gt; store contents of register (4bytes) into the memory at address in the other register
+        CASE &quot; STL&quot;
+          IF (mnem2[]=&quot; ADA&quot;) AND (mnem3[]&lt;&gt;&quot; ADA&quot;) AND (UWord(reg12)=UWord(reg21)) AND (reg22[]=&quot;4&quot;)
+    DBPrintF(fh,&#x27;;optiSTL-ADA 4\n&#x27;)-&gt;optimize PrintF(a,func(),b)
+            FPrintF(fh,&#x27;\t\smove\s\t\s,(\s)+\n&#x27;,pre,post1,reg11,reg12)
+            advancelines(1)
+          ELSE
+            FPrintF(fh,&#x27;\t\smove\s\t\s,(\s)\n&#x27;,pre,post1,reg11,reg12)
+            IF (mnem2[]=&quot; LDL&quot;) AND (UWord(reg11)=UWord(reg21)) AND (UWord(reg12)=UWord(reg22))
+    DBPrintF(fh,&#x27;;optiSTL-LDL\n&#x27;)
+              advancelines(1)
+            ENDIF
+          ENDIF
+
+        -&gt; store contents of register (2bytes or 1byte) into the memory at address in the other register
+        CASE &quot; STW&quot;, &quot; STB&quot;
+          IF (mnem2[]=&quot; ADA&quot;) AND (mnem3[]&lt;&gt;&quot; ADA&quot;) AND (UWord(reg12)=UWord(reg21))
+            IF ((mnem1[]=&quot; STW&quot;) AND (reg22[]=&quot;2&quot;)) OR ((mnem1[]=&quot; STB&quot;) AND (reg22[]=&quot;1&quot;))
+    DBPrintF(fh,&#x27;;optiSTW/STB-ADA 2/1\n&#x27;)
+              FPrintF(fh,&#x27;\tmove.\c\t\s,(\s)+\n&#x27;,&quot;a&quot;-&quot;A&quot;+UByte(mnem1+3),reg11,reg12)
+              advancelines(1)
+            ENDIF
+          ELSE
+            FPrintF(fh,&#x27;\tmove.\c\t\s,(\s)\n&#x27;,&quot;a&quot;-&quot;A&quot;+UByte(mnem1+3),reg11,reg12)
+          ENDIF
+        -&gt;add value or register contents to address register
+        CASE &quot; ADA&quot;
+        /*  IF reg12[]=&quot;d&quot;
+            FPrintF(fh,&#x27;\tadda.l\t\s,\s\n&#x27;,reg12,reg11)
+          ELSE
+            FPrintF(fh,&#x27;\tadda.l\t#\s,\s\n&#x27;,reg12,reg11)
+          ENDIF
+        */
+          trans_ADA()
+        -&gt; subtract immadiate value from address of address register
+        CASE &quot; SBA&quot; ; FPrintF(fh,&#x27;\tsuba.l\t#\s,\s\n&#x27;,reg12,reg11)
+
+        -&gt; stack is decreased and  value is stored in stack
+        CASE &quot; PSH&quot;
+          IF (mnem2[]=&quot; POP&quot;)
+  DBPrintF(fh,&#x27;;optiPSH-POP;\c\c\c\c-\n&#x27;,UByte(mnem2),UByte(mnem2+1),UByte(mnem2+2),UByte(mnem2+3))
+            IF UWord(reg11)&lt;&gt;UWord(reg21) THEN FPrintF(fh,&#x27;\tmove.l\t\s,\s\n&#x27;,reg11,reg21)
+
+            advancelines(1)
+          ELSEIF (mnem2[]=&quot; F2I&quot;)
+  DBPrintF(fh,&#x27;;optiPSH-F2I\n&#x27;)
+            FPrintF(fh,&#x27;\t\smove\s\t\s,-(a7)\n&#x27;,pre,post1,reg11)
+            IF mnem3[]=&quot; I2F&quot;
+              advancelines(2)
+            ELSE
+              float := FALSE
+              advancelines(1)
+            ENDIF
+          ELSE
+  DBPrintF(fh,&#x27;;optiPSH\n&#x27;)
+            FPrintF(fh,&#x27;\t\smove\s\t\s,-(a7)\n&#x27;,pre,post1,reg11)
+
+          ENDIF
+        -&gt; contents of stack is put in register and stack is incremented
+        CASE &quot; POP&quot;
+          IF (mnem2[]=&quot; PSH&quot;)
+            IF StrCmp(reg11,reg21)
+  DBPrintF(fh,&#x27;;optiPOP-PSH\n&#x27;)
+              advancelines(2)
+              optim:=TRUE
+            ENDIF
+          ENDIF
+          IFN optim THEN FPrintF(fh,&#x27;\t\smove\s\t(a7)+,\s\n&#x27;,pre,post1,reg11)
+        -&gt;output the current source line number and byte position
+        CASE &quot; LIN&quot; ; FPrintF(fh,&#x27;\tdebug\t\s\n&#x27;,reg11)
+  DBPrintF(fh,&#x27;;LIN:\s:\s:\d:\d\n&#x27;,reg11,reg12,reg12[],Val(reg12))
+          IF (reg12[]&lt;&gt;$20) AND (Val(reg12)&gt;0)
+            FPrintF(fh,&#x27;\tmove.l\td0,-(a7)\t;debug\n&#x27;+
+                       &#x27;\tmove.l\t#\s,-(a7)\t;debug\n&#x27;+
+                       &#x27;\tlea\t_str_00\d,a6\t;debug\n&#x27;+  -&gt;FIXME: pea.l\t_str\d
+                       &#x27;\tmove.l\ta6,-(a7)\t;debug\n&#x27;+
+                       &#x27;\tlea\t_list_00\d,a6\t;debug\n&#x27;+
+                       &#x27;\tmove.l\ta6,-(a7)\t;debug\n&#x27;+
+                       &#x27;\tlea\t__source,a6\t;debug\n&#x27;+
+                       &#x27;\tmove.l\ta6,-(a7)\t;debug\n&#x27;+
+                       &#x27;\tmove.l\t#0,-(a7)\t;debug\n&#x27;+
+                       &#x27;\tjsr\t_TraceLine\t;debug\n&#x27;+
+                       &#x27;\tadda.l\t#4*5,a7\t\t;debug\n&#x27;+
+                       &#x27;\tmove.l\t(a7)+,d0\t;debug\n&#x27;,reg12,tracestr,tracelst)
+          ENDIF
+        -&gt;unconditionally branch to label
+        CASE &quot; BRA&quot; ; FPrintF(fh,&#x27;\tbra\t\s\n&#x27;,reg11)
+        -&gt;conditionally branch to label
+        CASE &quot; BLT&quot; ; FPrintF(fh,&#x27;\tblt\t\s\n&#x27;,reg11)
+        CASE &quot; BLE&quot; ; FPrintF(fh,&#x27;\tble\t\s\n&#x27;,reg11)
+        CASE &quot; BGT&quot; ; FPrintF(fh,&#x27;\tbgt\t\s\n&#x27;,reg11)
+        CASE &quot; BGE&quot; ; FPrintF(fh,&#x27;\tbge\t\s\n&#x27;,reg11)
+        CASE &quot; BEQ&quot; ; FPrintF(fh,&#x27;\tbeq\t\s\n&#x27;,reg11)
+        CASE &quot; BNE&quot; ; FPrintF(fh,&#x27;\tbne\t\s\n&#x27;,reg11)
+        -&gt;jump to sub-routine whose address is in register
+        CASE &quot; JSI&quot; ; FPrintF(fh,&#x27;\tjsr\t(\s)\n&#x27;,reg11)
+        -&gt;set current cpu
+        CASE &quot; CPU&quot;
+        -&gt;jump to sub-routine addressed by label
+        CASE &quot; JSR&quot;
+          FPrintF(fh,&#x27;\tjsr\t\s\n&#x27;,reg11)
+          IF mnem2[]=&quot; I2F&quot;
+            FPrintF(fh,&#x27;\tfmove.l\td0,fp0\n&#x27;)
+            advancelines(1)
+            float := TRUE
+          ENDIF
+        -&gt;call a shared library function given the library base address and the offset of the function
+        CASE &quot; LBC&quot; ; FPrintF(fh,&#x27;\tmovea.l\t\s,a6\n\tjsr\t\s(a6)\n&#x27;,reg12,reg11)
+        -&gt;compare the registers setting the CPU condition register
+        CASE &quot; CMP&quot; ; FPrintF(fh,&#x27;\t\scmp\s\t\s,\s\n&#x27;,pre,post1,reg12,reg11)
+        -&gt;compare the register with 0 setting the CPU condition register
+        CASE &quot; TST&quot;
+          IF float
+            FPrintF(fh,&#x27;\ttst.l\td\c\n&#x27;,reg11[2])
+          ELSE
+            FPrintF(fh,&#x27;\ttst.l\t\s\n&#x27;,reg11)
+          ENDIF
+          float:=FALSE
+        -&gt;conditionally put -1 or 0 in register
+        -&gt;FIXME: SLT-NOT -&gt; SGE ecc.
+        CASE &quot; SLT&quot;,&quot; SLE&quot;,&quot; SGT&quot;,&quot; SGE&quot;,&quot; SEQ&quot;,&quot; SNE&quot;
+          IF float
+            FPrintF(fh,&#x27;\t\ss\c\c\td\c\n\textb.l\td\c\n&#x27;,pre,&quot;a&quot;-&quot;A&quot;+UByte(mnem1+2),&quot;a&quot;-&quot;A&quot;+UByte(mnem1+3),reg11[2],reg11[2])
+          ELSE
+            FPrintF(fh,&#x27;\t\ss\c\c\t\s\n\textb.l\t\s\n&#x27;,pre,&quot;a&quot;-&quot;A&quot;+UByte(mnem1+2),&quot;a&quot;-&quot;A&quot;+UByte(mnem1+3),reg11,reg11)
+          ENDIF
+          IF (float=TRUE) AND (mnem2[]=&quot; F2I&quot;)
+            float:=FALSE
+            advancelines(1)
+          ENDIF
+        -&gt;execute operation taking value from registers
+        CASE &quot; ADD&quot;, &quot; SUB&quot;, &quot; MUL&quot;, &quot; DIV&quot;, &quot; NEG&quot;, &quot; SHR&quot;, &quot; SHL&quot;, &quot; AND&quot;, &quot; ORL&quot;, &quot; XOR&quot;, &quot; NOT&quot; -&gt;optimize
+  DBPrintF(fh,&#x27;;optimath-\c\c\c\c-\n&#x27;,UByte(mnem1),UByte(mnem1+1),UByte(mnem1+2),UByte(mnem1+3))
+          SELECT mnem1[]
+            CASE &quot; ADD&quot; ; FPrintF(fh,&#x27;\t\sadd\s\t\s,\s\n&#x27;,pre,post1,reg12,reg11)
+            CASE &quot; SUB&quot; ; FPrintF(fh,&#x27;\t\ssub\s\t\s,\s\n&#x27;,pre,post1,reg12,reg11)
+            CASE &quot; MUL&quot; ; FPrintF(fh,&#x27;\t\smul\s\t\s,\s\n&#x27;,pre,post2,reg12,reg11)
+            CASE &quot; DIV&quot; ; FPrintF(fh,&#x27;\t\sdiv\s\t\s,\s\n&#x27;,pre,post2,reg12,reg11)
+            CASE &quot; NEG&quot; ; FPrintF(fh,&#x27;\t\sneg\s\t\s\n&#x27;,pre,post1,reg11)
+            CASE &quot; SHL&quot; ; FPrintF(fh,&#x27;\tlsl.l\t\s,\s\n&#x27;,reg12,reg11)
+            CASE &quot; SHR&quot; ; FPrintF(fh,&#x27;\tlsr.l\t\s,\s\n&#x27;,reg12,reg11)
+            CASE &quot; AND&quot;
+              IF float
+                FPrintF(fh,&#x27;\tand.l\td\c,d\c\n&#x27;,reg11[2],reg11[2]-1)
+              ELSE
+                FPrintF(fh,&#x27;\tand.l\t\s\s,\s\n&#x27;,IF reg12[]=&quot;d&quot; THEN null ELSE &#x27;#&#x27;,reg12,reg11)
+              ENDIF
+              IF (mnem2[]=&quot; TST&quot;) THEN advancelines(1)
+            CASE &quot; ORL&quot; ; FPrintF(fh,&#x27;\tor.l\t\s,\s\n&#x27;,reg12,reg11)
+            CASE &quot; XOR&quot; ; FPrintF(fh,&#x27;\teor.l\t\s,\s\n&#x27;,reg12,reg11)
+            CASE &quot; NOT&quot; ; FPrintF(fh,&#x27;\tnot.l\td\c\n&#x27;,IF reg11[]=&quot;f&quot; THEN reg11[2] ELSE reg11[1])
+          ENDSELECT
+
+        -&gt;add number to register
+        CASE &quot; ADI&quot;
+          optim := FALSE
+          SELECT mnem2[]
+            CASE &quot; MVI&quot;
+              optim := TRUE
+    DBPrintF(fh,&#x27;;optiADI-MVI-\c\c\c\c-\n&#x27;,UByte(mnem3),UByte(mnem3+1),UByte(mnem3+2),UByte(mnem3+3))
+             -&gt;make a &quot;fake&quot; line to possibly optimize further
+              SELECT mnem3[]
+                CASE &quot; ADD&quot;
+                  c1 := Val(reg12)+Val(reg22)
+                  StringF(preline,&#x27; ADI \s \d\n&#x27;,reg11,c1)
+                  advancelines(1)
+                  copyprec()
+                CASE &quot; SUB&quot;
+                  c1 := Val(reg12)-Val(reg22)
+                  StringF(preline,&#x27; ADI \s \d\n&#x27;,reg11,c1)
+                  advancelines(1)
+                  copyprec()
+                CASE &quot; MUL&quot;
+                  c1 := Val(reg12)*Val(reg22)
+                  StringF(preline,&#x27; MLI \s \d\n&#x27;,reg11,c1)
+                  advancelines(1)
+                  copyprec()
+                CASE &quot; DIV&quot;
+                  c1 := Val(reg12)/Val(reg22)
+                  StringF(preline,&#x27; ADI \s \d\n&#x27;,reg11,c1)
+                  advancelines(1)
+                  copyprec()
+                DEFAULT ; optim := FALSE
+              ENDSELECT
+            CASE &quot; ADI&quot;
+  DBPrintF(fh,&#x27;;optiADI-ADI\n&#x27;)
+              c1 := Val(reg12)+Val(reg22)
+              FPrintF(fh,&#x27;\tmove.l\t#\d,\s\n&#x27;,c1,reg21)
+              advancelines(1)
+              optim := TRUE
+            CASE &quot; SBI&quot;
+  DBPrintF(fh,&#x27;;optiADI-SBI\n&#x27;)
+              c1 := Val(reg12)-Val(reg22)
+              FPrintF(fh,&#x27;\tmove.l\t#\d,\s\n&#x27;,c1,reg21)
+              advancelines(1)
+              optim := TRUE
+          ENDSELECT
+          IF optim=FALSE THEN IF reg12[]=&quot;0&quot; THEN DBPrintF(fh,&#x27;;opti ADI 0\n&#x27;) ELSE FPrintF(fh,&#x27;\taddi.l\t#\s,\s\n&#x27;,reg12,reg11)
+          
+        -&gt;sub number from register
+        CASE &quot; SBI&quot;
+          optim := FALSE
+          IF (mnem2[]=&quot; MVI&quot;)
+            optim := TRUE
+  DBPrintF(fh,&#x27;;optiSBI-MVI-\c\c\c\c-\n&#x27;,UByte(mnem3),UByte(mnem3+1),UByte(mnem3+2),UByte(mnem3+3))
+           -&gt;make a &quot;fake&quot; line and go back to possibly optimize further
+            SELECT mnem3[]
+              CASE &quot; ADD&quot;
+                c1 := Val(reg22)-Val(reg12)
+                StringF(preline,&#x27; ADI \s \d\n&#x27;,reg11,c1)
+                advancelines(1)
+                copyprec()
+              CASE &quot; SUB&quot;
+                c1 := Val(reg22)-Val(reg12)
+                StringF(preline,&#x27; ADI \s \d\n&#x27;,reg11,c1)
+                advancelines(1)
+                copyprec()
+              CASE &quot; MUL&quot;
+                c1 := Val(reg22)*Val(reg12)
+                StringF(preline,&#x27; MLI \s \d\n&#x27;,reg11,c1)
+                advancelines(1)
+                copyprec()
+              CASE &quot; DIV&quot;
+                c1 := Val(reg22)/Val(reg12)
+                StringF(preline,&#x27; ADI \s \d\n&#x27;,reg11,c1)
+                advancelines(1)
+                copyprec()
+              DEFAULT ; optim := FALSE
+            ENDSELECT
+          ELSEIF (mnem2[]=&quot; ADI&quot;)
+  DBPrintF(fh,&#x27;;optiSBI-ADI\n&#x27;)
+            setregs(mnem2,reg21,reg22)
+            c1 := Val(reg12)+Val(reg22)
+            FPrintF(fh,&#x27;\tmove.l\t#\d,\s\n&#x27;,c1,reg21)
+            advancelines(1)
+            optim := TRUE
+          ELSEIF (mnem2[]=&quot; SBI&quot;)
+  DBPrintF(fh,&#x27;;optiSBI-SBI\n&#x27;)
+            setregs(mnem2,reg21,reg22)
+            c1 := Val(reg12)-Val(reg22)
+            FPrintF(fh,&#x27;\tmove.l\t#\d,\s\n&#x27;,c1,reg21)
+            advancelines(1)
+            optim := TRUE
+          ENDIF
+          IF optim=FALSE THEN IF reg12[]=&quot;0&quot; THEN DBPrintF(fh,&#x27;;opti SBI 0\n&#x27;) ELSE FPrintF(fh,&#x27;\tsubi.l\t#\s,\s\n&#x27;,reg12,reg11)
+
+        -&gt;multiply number and register
+        CASE &quot; MLI&quot;
+  DBPrintF(fh,&#x27;;optiMLI:\h,\d\n&#x27;,UWord(reg12),reg12[1])
+          IF (mnem2[]=&quot; MLI&quot;)
+  DBPrintF(fh,&#x27;;optiMLI-MLI\n&#x27;)
+            c1 := Val(reg12)*Val(reg22)
+            FPrintF(fh,&#x27;\tmuls.l\t#\d,\s\n&#x27;,c1,reg21)
+            advancelines(1)
+          ELSEIF UWord(reg12)=$3100
+            -&gt;FPrintF(fh,&#x27;;opti MLI 1\n&#x27;)
+          ELSEIF UWord(reg12)=$3200
+            FPrintF(fh,&#x27;\tasl.l\t#1,\s\n&#x27;,reg11)
+          ELSEIF UWord(reg12)=$3400
+            FPrintF(fh,&#x27;\tasl.l\t#2,\s\n&#x27;,reg11)
+          ELSE
+            FPrintF(fh,&#x27;\tmuls.l\t#\s,\s\n&#x27;,reg12,reg11)
+          ENDIF
+        -&gt;add number to value addressed by label
+        CASE &quot; INC&quot; ; FPrintF(fh,&#x27;\tadd.l\t#\s,\s\s\n&#x27;,reg11,reg12,IF reg12[]=&quot;_&quot; THEN &amp;null ELSE &#x27;(a5)&#x27;)
+        -&gt;subtract number from value addressed by label
+        CASE &quot; DEC&quot; ; FPrintF(fh,&#x27;\tsub.l\t#\s,\s\s\n&#x27;,reg11,reg12,IF reg12[]=&quot;_&quot; THEN &amp;null ELSE &#x27;(a5)&#x27;)
+        -&gt;increment address of stack by given value (multiplied by 4)
+        CASE &quot; ADS&quot;
+          IF Val(reg11)&gt;0 THEN FPrintF(fh,&#x27;\tadda.l\t#\s*4,a7\n&#x27;,reg11)
+        -&gt; extend from 8 to 32 bit
+        CASE &quot; EXB&quot; ; FPrintF(fh,&#x27;\textb.l\t\s\n&#x27;,reg11)
+        -&gt; extend from 16 to 32 bit
+        CASE &quot; EXW&quot; ; FPrintF(fh,&#x27;\text.l\t\s\n&#x27;,reg11)-&gt;FIXME:IF mnem2[]=&quot; TST&quot; THEN advancelines(1)
+        -&gt;put value in counter register
+        CASE &quot; CTR&quot; ; FPrintF(fh,&#x27;\tmove.l\t\s,d7\n&#x27;,reg11)
+        -&gt;decrement counter register by given value and branch if &lt;&gt;0
+        CASE &quot; DBF&quot; ; FPrintF(fh,&#x27;\tdbf\td7,\s\n&#x27;,reg11)
+        -&gt;reserve 4bytes,2bytes,1byte multiplied by given value in program (static) memory
+        CASE &quot; DCL&quot; ; FPrintF(fh,&#x27;\tdc.l\t\s\n&#x27;,reg11)
+        CASE &quot; DCW&quot; ; FPrintF(fh,&#x27;\tdc.w\t\s\n&#x27;,reg11)
+        CASE &quot; DCB&quot; ; FPrintF(fh,&#x27;\tdc.b\t\s\n&#x27;,reg11)
+        -&gt;put given string in program (static) memory
+        CASE &quot; DSB&quot; ; FPrintF(fh,&#x27;\tds.b\t\s\n\tcnop\t0,2\n&#x27;,reg11)
+        -&gt;put given float number in program (static) memory
+        CASE &quot; DCF&quot; ; FPrintF(fh,&#x27;\tdc.s\t\s\n&#x27;,reg11)
+        -&gt;align to CPU&#x27;s bitness
+        CASE &quot; ALN&quot; ; FPrintF(fh,&#x27;\tcnop\t0,2\n&#x27;)
+        -&gt;declare given symbol as external
+        CASE &quot; XRF&quot; ; FPrintF(fh,&#x27;\txref\t\s\n&#x27;,reg11)
+        -&gt;let given symbol be exported
+        CASE &quot; XDF&quot;
+          FPrintF(fh,&#x27;\txdef\t\s\n&#x27;,reg11)
+          IF (data=0) AND (ulist&lt;&gt;0) AND (lib=FALSE)
+            IF FindName(ulist,reg11)
+              pos +=InStr(pos,&#x27; RTS _&#x27;)
+              pos := nextmnem(pos)-1
+              mnem6:=pos
+              advancelines(6)
+            ENDIF
+          ENDIF
+
+        -&gt;switch from integer to float registers and computations
+        CASE &quot; I2F&quot;
+            IF (float=FALSE)
+    DBPrintF(fh,&#x27;;optiI2F:\s\n&#x27;,reg11)
+              FPrintF(fh,&#x27;\tfmove.l\t\s,fp\c\n&#x27;,reg11,reg11[1])
+            ENDIF
+            float := TRUE
+
+        -&gt;switch from float to integer registers an computations
+        CASE &quot; F2I&quot;
+  DBPrintF(fh,&#x27;;optiF2I:\s \s \s \s\n&#x27;,reg11,reg12,reg21,reg22)
+          IF mnem2[]=&quot; I2F&quot;
+            float := TRUE
+            IF mnem3[]=&quot; F2I&quot;
+  DBPrintF(fh,&#x27;;optiF2I-I2F-F2I\n&#x27;)
+              float:=FALSE
+              advancelines(2)
+            ELSE
+              
+  DBPrintF(fh,&#x27;;optiF2I2-I2F:\s \s \s \s\n&#x27;,reg11,reg12,reg21,reg22)
+              IF (reg22[]&lt;&gt;0) -&gt;F2I d d
+                FPrintF(fh,&#x27;\tfmove.s\t\s,fp\c\n&#x27;,reg22,reg21[1])
+                advancelines(1)
+              ENDIF
+            ENDIF
+          ELSE
+            
+            IF (float=TRUE)
+              IF (UWord(reg12)=&quot;fp&quot;) AND (UWord(reg11)=&quot;fp&quot;)
+                FPrintF(fh,&#x27;\tfmove.s\t\s,d\c\n&#x27;,reg12,reg11[2])
+              ELSEIF  (UWord(reg11)=&quot;fp&quot;)
+                FPrintF(fh,&#x27;\tfmove.l\t\s,d\c\n&#x27;,reg11,reg11[2])
+              ENDIF
+            ENDIF
+            float := FALSE
+
+          ENDIF
+        -&gt;given symbol is an argument of current sub-routine
+        CASE &quot; ARG&quot;
+          IFN regsparams
+            IF mnem2[]=&quot; PSH&quot;
+              argn -=4
+              regsparams := argn-4
+            ENDIF
+          ENDIF
+          FPrintF(fh,&#x27;\s\tequ\t\d\n&#x27;,reg11,argn -=4)
+        -&gt; local variable size and name
+        CASE &quot; LCL&quot; ; FPrintF(fh,&#x27;\s\tequ\t-\d\n&#x27;,reg12,local) ; c1 := Val(reg11) ; c1 := (c1 +3) AND ~3 ; local -= c1
+        -&gt; number of arguments
+        CASE &quot; ARN&quot; ; argn := Val(reg11) ; argn := argn*4+8 ; float := FALSE
+        -&gt;create local stack frame
+        CASE &quot; LNK&quot; ; 
+                      stk := Val(pos+InStr(pos,&#x27;\n ULK&#x27;) + 6) +regsparams ; local := stk
+                      FPrintF(fh,&#x27;\tlink\ta5,#-\d\n&#x27;,stk)
+        -&gt;free stack frame created by LNK
+        CASE &quot; ULK&quot; ; FPrintF(fh,&#x27;\tunlk\ta5\n&#x27;)
+          IF regsparams THEN FPrintF(fh,&#x27;\tadda.l\t#\d,a7\n&#x27;,regsparams)
+          regsparams := 0
+        -&gt;multiple push registers on stack
+        CASE &quot; MPS&quot; ; IF (argn := Val(pos+InStr(pos,&#x27; MPP&#x27;) + 5))&gt;0 THEN PutByte(pregs,&quot;0&quot;+argn)
+                      FPrintF(fh,&#x27;\tmovem.l\ta0\s\s,-(a7)\n&#x27;,IF argn=0 THEN null ELSE &#x27;-a&#x27;,IF argn=0 THEN null ELSE pregs)
+        -&gt;multiple pop registers from stack
+        CASE &quot; MPP&quot;
+          IF float THEN FPrintF(fh,&#x27;\tfmove.s\tfp0,d0\n&#x27;) -&gt;FIXME:Kind of a hack!
+          FPrintF(fh,&#x27;\tmovem.l\t(a7)+,a0\s\s\n&#x27;,IF argn=0 THEN null ELSE &#x27;-a&#x27;,IF argn=0 THEN null ELSE pregs)
+        -&gt;return from subroutin (to address found on stack)
+        CASE &quot; RTS&quot; ; FPrintF(fh,&#x27;\trts\n&#x27;)
+        -&gt;activates tracing-debug output
+        CASE &quot; TRN&quot;
+          tracestr := Val(reg11)
+          tracelst := Val(reg12)
+        -&gt;deactivates tracing-debug output
+        CASE &quot; TRF&quot;
+        -&gt; start of data section
+        CASE &quot; DAT&quot; ; FPrintF(fh,&#x27;\n\tsection\t&quot;.tocd&quot;,data\n&#x27;) ; data := TRUE
+                      IF tracestr THEN FPrintF(fh,&#x27;__source:\tdc.b\t\s,0\n\tcnop\t0,2\n&#x27;,src)
+        -&gt;place given file in this position
+        CASE &quot; INB&quot; ; FPrintF(fh,&#x27;\tincbin\t\s\n&#x27;,reg11)
+        -&gt;assign given value to given symbol
+        CASE &quot; EQU&quot; ; FPrintF(fh,&#x27;\s\tequ\t\s\n&#x27;,reg11,reg12)
+        -&gt;declare current source complete path name
+        CASE &quot; SRC&quot; ; FPrintF(fh,&#x27;\tdsource\t\s\n&#x27;,reg11) ; StrCopy(src,reg11)
+        -&gt; library name
+        CASE &quot; LBN&quot; ; lib := TRUE
+                      FPrintF(fh, &#x27;\n&#x27;+
+                              &#x27;_LibNull:\n&#x27;+
+                              &#x27;\tmove.l\t#0,d0\n&#x27;+
+                              &#x27;\trts\n&#x27;+
+                              &#x27;_LibName:\n&#x27;)
+        -&gt; library version
+        CASE &quot; LBV&quot; ; ver:=Val(reg11)
+                      FPrintF(fh,&#x27;\n&#x27;+
+                              &#x27;RomTag:\n&#x27;+
+                              &#x27;\tdc.w\t$4afc\n&#x27;+
+                              &#x27;\tdc.l\tRomTag\n&#x27;+
+                              &#x27;\tdc.l\tEndRom\n&#x27;+
+                              &#x27;\tdc.b\t$80\n&#x27;+
+                              &#x27;\tdc.b\t\d\n&#x27;+
+                              &#x27;\tdc.b\t9\n&#x27;+
+                              &#x27;\tdc.b\t0\n&#x27;+
+                              &#x27;\tdc.l\t_LibName\n&#x27;+
+                              &#x27;\tdc.l\t_LibIDString\n&#x27;+
+                              &#x27;\tdc.l\t_LibInitTable\n&#x27;+
+                              &#x27;EndRom:\n&#x27;+
+                              &#x27;\tdc.w\t0\n&#x27;,
+                              ver)
+        -&gt; library revision
+        CASE &quot; LBR&quot; ; rev:=Val(reg11)
+                      FPrintF(fh,&#x27;\n&#x27;+
+                              &#x27;_LibData:\n&#x27;+
+                              &#x27;\tdc.b\t$a0,8,9,0,$80,10\n&#x27;+
+                              &#x27;\tdc.l\t_LibName\n&#x27;+
+                              &#x27;\tdc.b\t$a0,14,6,0,$90,2\n&#x27;+
+                              &#x27;\tdc.w\t\d\n&#x27;+
+                              &#x27;\tdc.b\t$90,22\n&#x27;+
+                              &#x27;\tdc.w\t\d\n&#x27;+
+                              &#x27;\tdc.b\t$80,24\n&#x27;+
+                              &#x27;\tdc.l\t_LibIDString\n&#x27;+
+                              &#x27;\tdc.l\t0\n&#x27;,
+                              ver,rev)
+        -&gt; library ID string
+        CASE &quot; LBI&quot; ; FPrintF(fh, &#x27;_LibIDString:\n&#x27;)
+        -&gt; library data size
+        CASE &quot; LBS&quot; ; fhm := Open(destmod,NEWFILE)
+                      FPrintF(fh,&#x27;\n&#x27;+
+                              &#x27;_LibInitTable:\n&#x27;+
+                              &#x27;\tdc.l\t\s\n&#x27;+
+                              &#x27;\tdc.l\t_LibVectors\n&#x27;+
+                              &#x27;\tdc.l\t_LibData\n&#x27;+
+                              &#x27;\txref\t_LibInit\n&#x27;+
+                              &#x27;\tdc.l\t_LibInit\n&#x27;+
+                              &#x27;_LibVectors:\n&#x27;+
+                              &#x27;\txref\t_LibOpen\n&#x27;+
+                              &#x27;\tdc.l\t_LibOpen\n&#x27;+
+                              &#x27;\txref\t_LibClose\n&#x27;+
+                              &#x27;\tdc.l\t_LibClose\n&#x27;+
+                              &#x27;\txref\t_LibExpunge\n&#x27;+
+                              &#x27;\tdc.l\t_LibExpunge\n&#x27;+
+                              &#x27;\tdc.l\t_LibNull\n&#x27;,
+                              reg11)
+                      IF fhm THEN FPrintF(fhm,&#x27;LIBRARY \s\n&#x27;,reg12)
+        -&gt; library function
+        CASE &quot; LBF&quot; ; FPrintF(fh, &#x27;\tdc.l\t_\s\n&#x27;,reg11)
+        -&gt; library list of functions end
+        CASE &quot; LBE&quot; ; FPrintF(fh, &#x27;\tdc.l\t-1\n&#x27;)
+        -&gt; library function &quot;prototype&quot; to be output to .m file
+        CASE &quot; LBM&quot; ; StrCopy(reg12,reg11+1,StrLen(reg11)-2); IF fhm THEN FPrintF(fhm,&#x27;\t\s\n&#x27;,reg12)
+        -&gt;end of main()
+        CASE &quot; ENM&quot; ;
+          FPrintF(fh,&#x27;\tmove.l\td0,-(a7)\t;debug\n&#x27;+
+                     &#x27;\tmove.l\t#0,-(a7)\t;debug\n&#x27;+
+                     &#x27;\tmove.l\t#0,-(a7)\t;debug\n&#x27;+
+                     &#x27;\tmove.l\t#0,-(a7)\t;debug\n&#x27;+
+                     &#x27;\tmove.l\t#0,-(a7)\t;debug\n&#x27;+
+                     &#x27;\tmove.l\t#1,-(a7)\t;debug\n&#x27;+
+                     &#x27;\tjsr\t_TraceLine\t;debug\n&#x27;+
+                     &#x27;\tadda.l\t#4*5,a7\t\t;debug\n&#x27;+
+                     &#x27;\tmove.l\t(a7)+,d0\t;debug\n&#x27;)
+
+        -&gt;mark start of assembler output block
+        CASE &quot; ASM&quot;
+          pos:=mnem2
+          REPEAT
+            FPutC(fh,pos[]++)
+          UNTIL Long(pos)=&quot; ENA&quot;
+          mnem6:=pos-1
+          advancelines(6)
+        -&gt;mark end of assembler output block (absorbed by previous CASE)
+        -&gt;CASE &quot; ENA&quot;
+        -&gt;unrecognized mnemonic
+        DEFAULT
+          FPrintF(fh,&#x27;;\c\c\c\c \s\n&#x27;,UByte(mnem1),UByte(mnem1+1),UByte(mnem1+2),UByte(mnem1+3),reg11)
+          
+      ENDSELECT
+    -&gt;write label
+    ELSEIF pos[]=&quot;:&quot;
+      FPrintF(fh,&#x27;\s:\n&#x27;,reg11)
+    -&gt;write comment
+    ELSEIF pos[]=&quot;;&quot;
+      WHILE (pos[]&lt;&gt;&quot;\n&quot;) AND (pos&lt;end) DO FPutC(fh,pos[]++)
+      FPutC(fh,&quot;\n&quot;)
+    ENDIF
+    -&gt;goto next line
+    advancelines(1)
+  ENDWHILE
+/*
+  freeing mem is done at exit by DeletePool()
+*/
+ENDPROC
+
+PROC trans_MVI()
+ DEF res=0:PTR TO LONG
+
+          SELECT mnem2[]
+            CASE &quot; MVI&quot; -&gt;optimize
+              res := Val(reg12)
+              optim:=TRUE
+              SELECT mnem3[]
+                CASE &quot; ADD&quot; ; res += Val(reg22)
+                CASE &quot; SUB&quot; ; res -= Val(reg22)
+                CASE &quot; MUL&quot; ; res *= Val(reg22)
+                CASE &quot; DIV&quot; ; res /= Val(reg22)
+                -&gt;CASE &quot; NEG&quot; ; res := 0-res
+                CASE &quot; SHR&quot; ; res := res &gt;&gt; Val(reg22)
+                CASE &quot; SHL&quot; ; res := res &lt;&lt; Val(reg22)
+                CASE &quot; AND&quot; ; res := res &amp; Val(reg22)
+                CASE &quot; ORL&quot; ; res := res | Val(reg22)
+                -&gt;FIXME:CASE &quot; XOR&quot; ; res := Eor(res , Val(reg22))
+                -&gt;CASE &quot; NOT&quot; ; res := Not(res)
+                DEFAULT ; optim := FALSE
+              ENDSELECT
+              IF optim
+  DBPrintF(fh,&#x27;;optiMVI-MVI::\d\n&#x27;,res)
+/*
+ MVI dx n
+ MVI dy m
+ math dx dy =&gt; MVI dx n(math)m
+*/
+  DBPrintF(fh,&#x27;;optiMVI-MVI-\c\c\c\c\n&#x27;,UByte(mnem3),UByte(mnem3+1),UByte(mnem3+2),UByte(mnem3+3))
+                -&gt;make a &quot;fake&quot; line to possibly optimize further
+                StringF(preline,&#x27; MVI \s \d\n&#x27;,reg11,res)
+                advancelines(1)
+                copyprec()
+
+              ENDIF
+/*
+ MVI
+ math =&gt; mathi
+*/
+            CASE &quot; ADD&quot;, &quot; SUB&quot;, &quot; MUL&quot;, &quot; MLI&quot;, &quot; DIV&quot;, &quot; NEG&quot;, &quot; SHR&quot;, &quot; SHL&quot;, &quot; AND&quot;, &quot; ORL&quot;, &quot; NOT&quot; -&gt;optimize
+  DBPrintF(fh,&#x27;;optiMVI-\c\c\c\c-\d\n&#x27;,UByte(mnem2),UByte(mnem2+1),UByte(mnem2+2),UByte(mnem2+3),Val(reg12))
+              IF float=FALSE
+                optim:=TRUE
+                SELECT mnem2[]
+                  CASE &quot; ADD&quot;
+                      -&gt;make a &quot;fake&quot; line to possibly optimize further
+                      StringF(preline,&#x27; ADI \s \s\n&#x27;,reg21,reg12)
+                      copyprec()
+                  CASE &quot; SUB&quot;
+                      -&gt;make a &quot;fake&quot; line to possibly optimize further
+                      StringF(preline,&#x27; SBI \s \s\n&#x27;,reg21,reg12)
+                      copyprec()
+                  CASE &quot; MUL&quot;
+                      -&gt;make a &quot;fake&quot; line to possibly optimize further
+                      StringF(preline,&#x27; MLI \s \s\n&#x27;,reg21,reg12)
+                      copyprec()
+                  CASE &quot; DIV&quot;
+                    IF Val(reg12)&lt;&gt;1 THEN FPrintF(fh,&#x27;\tdivs.l\t#\s,\s\n&#x27;,reg12,reg21)
+                    advancelines(1)
+                  CASE &quot; SHR&quot;
+                    IF Val(reg12)&lt;=8
+                      FPrintF(fh,&#x27;\tlsr.l\t#\s,\s\n&#x27;,reg12,reg21)
+                      advancelines(1)
+                    ELSE
+                      optim:=FALSE
+                    ENDIF
+                  CASE &quot; SHL&quot;
+                    IF Val(reg12)&lt;=8
+                      FPrintF(fh,&#x27;\tlsl.l\t#\s,\s\n&#x27;,reg12,reg21)
+                      advancelines(1)
+                    ELSE
+                      optim:=FALSE
+                    ENDIF
+                  CASE &quot; AND&quot;
+                    IF Val(reg12)&lt;&gt;-1 THEN FPrintF(fh,&#x27;\tandi.l\t#\s,\s\n&#x27;,reg12,reg21)
+                    advancelines(1)
+                  CASE &quot; ORL&quot;
+                    IF Val(reg12)&lt;&gt;0  THEN FPrintF(fh,&#x27;\tori.l\t#\s,\s\n&#x27;,reg12,reg21)
+                    advancelines(1)
+                  CASE &quot; NEG&quot; -&gt;;                       FPrintF(fh,&#x27;\tmove.l\t#-\s,\s\n&#x27;,reg12,reg21)
+                    -&gt;make a &quot;fake&quot; line to possibly optimize further
+                    StringF(preline,&#x27; MVI \s \d\n&#x27;,reg21,(0-Val(reg12)))
+      DBPrintF(fh,&#x27;;optiMVI-NEG-\s:\s\n&#x27;,reg12,preline)
+                    copyprec()
+                  CASE &quot; NOT&quot; 
+                    -&gt;make a &quot;fake&quot; line to possibly optimize further
+                    StringF(preline,&#x27; MVI \s \d\n&#x27;,reg21,Not(Val(reg12)))
+                    copyprec()
+                  CASE &quot; MLI&quot;
+                    c1:=Val(reg12)
+                    c1 *=Val(reg22)
+                    IF (mnem3[]=&quot; ADA&quot;) AND (reg32[]=&quot;d&quot;)-&gt;e.g. a:=b[1]
+
+      DBPrintF(fh,&#x27;;optiMVI-MLI-ADA-\s \d\n&#x27;,reg31,c1)
+                      -&gt;make a &quot;fake&quot; line to possibly optimize further
+                      StringF(preline,&#x27; ADA \s \d\n&#x27;,reg31,c1)
+                      copyprec()
+                    ELSE
+    DBPrintF(fh,&#x27;;optiMVI-MLI\n&#x27;)
+                      FPrintF(fh,&#x27;\tmove.l\t#\d,\s\n&#x27;,c1,reg21)
+                    ENDIF
+                ENDSELECT
+              ENDIF -&gt;IF float
+
+            CASE &quot; LEA&quot;
+              IF (mnem3[]=&quot; STL&quot;)-&gt;e.g. a:=1
+                SELECT mnem4[]
+                  CASE &quot; CMP&quot;,&quot; TST&quot;,&quot; PSH&quot;,&quot; LEA&quot;,&quot; MVI&quot;-&gt;with these I can not &quot;absorb&quot; d0
+                  DEFAULT
+  DBPrintF(fh,&#x27;;optiMVI-LEA-STL\n&#x27;)
+                    FPrintF(fh,&#x27;\tmove.l\t#\s,\s\s\n&#x27;,reg12,reg22,IF reg22[]=&quot;_&quot; THEN &amp;null ELSE &#x27;(a5)&#x27;)
+                    -&gt;FIXME:IF mnem4[]=&quot; TST&quot; THEN advancelines(3)
+                    advancelines(2)
+                    optim := TRUE
+                ENDSELECT
+              ENDIF
+            CASE &quot; CMP&quot; -&gt;optimize IF a&lt;1 THEN
+              IF UWord(mnem3)=&quot; B&quot;
+  DBPrintF(fh,&#x27;;optiMVI-CMP-Bcc\n&#x27;)
+                FPrintF(fh,&#x27;\tcmpi.l\t#\s,\s\n&#x27;,reg12,reg21)
+                advancelines(1)
+                optim := TRUE
+              ELSEIF UWord(mnem3)=&quot; S&quot;
+  DBPrintF(fh,&#x27;;optiMVI-CMP-Scc\n&#x27;)
+
+                FPrintF(fh,&#x27;\tcmpi.l\t#\s,\s\n&#x27;,reg12,reg21)
+                IF (mnem4[]=&quot; NOT&quot;) AND (mnem5[]=&quot; TST&quot;) -&gt;nextmnem
+                  c1:=&quot;a&quot;-&quot;A&quot;+UByte(mnem3+2) ; c2:=&quot;a&quot;-&quot;A&quot;+UByte(mnem3+3)
+                  advancelines(2)
+                ELSE
+                  SELECT mnem3[]
+                    CASE &quot; SLT&quot; ; c1:=&quot;g&quot; ; c2:=&quot;e&quot;
+                    CASE &quot; SLE&quot; ; c1:=&quot;g&quot; ; c2:=&quot;t&quot;
+                    CASE &quot; SGT&quot; ; c1:=&quot;l&quot; ; c2:=&quot;e&quot;
+                    CASE &quot; SGE&quot; ; c1:=&quot;l&quot; ; c2:=&quot;t&quot;
+                    CASE &quot; SEQ&quot; ; c1:=&quot;n&quot; ; c2:=&quot;e&quot;
+                    CASE &quot; SNE&quot; ; c1:=&quot;e&quot; ; c2:=&quot;q&quot;
+                    -&gt;DEFAULT
+                  ENDSELECT
+                  advancelines(1)
+                ENDIF
+                optim := TRUE
+                IF mnem3[]=&quot; TST&quot;
+  DBPrintF(fh,&#x27;;optiMVI-CMP-SET-TST\n&#x27;)
+                  FPrintF(fh,&#x27;\tb\c\c\t\s\n&#x27;,c1,c2,reg41)
+                  advancelines(3)
+                ENDIF
+              ENDIF
+            CASE &quot; PSH&quot; -&gt;e.g. func(1)
+              IF reg11[1]=reg21[1]
+                IF (mnem3[]=&quot; POP&quot;)
+                  IF reg11[1]=reg21[1]
+    DBPrintF(fh,&#x27;;optiMVI-PSH-POP2\n&#x27;)
+                    FPrintF(fh,&#x27;\tmove.l\t#\s,\s\n&#x27;,reg12,reg31)
+                    advancelines(2)
+                    optim := TRUE
+                  ENDIF
+                ELSE
+    DBPrintF(fh,&#x27;;optiMVI-PSH\n&#x27;)
+                  FPrintF(fh,&#x27;\tmove.l\t#\s,-(a7)\n&#x27;,reg12)
+                  advancelines(1)
+                  optim := TRUE
+                ENDIF
+              ENDIF
+            CASE &quot; MVR&quot; -&gt;optimize PrintF(&#x27;Hello&#x27;)
+              IF (UWord(reg11)=UWord(reg22))
+    DBPrintF(fh,&#x27;;optiMVI-MVR:\s\n&#x27;,reg21)
+                IF (reg21[]=&quot;f&quot;)
+                  float :=TRUE
+                  FPrintF(fh,&#x27;\tmove.l\t#\s,d\c\n&#x27;,reg12,reg21[2])
+                  FPrintF(fh,&#x27;\tfmove.s\td\c,fp\c\n&#x27;,reg21[2],reg22[1])
+                  pos := nextmnem(mnem2)-1
+                  advancelines(1)
+                ELSE
+                  -&gt;make a &quot;fake&quot; line to possibly optimize further
+                  StringF(preline,&#x27; MVI \s \s\n&#x27;,reg21,reg12)
+                  copyprec()
+                ENDIF
+
+                optim := TRUE
+              ENDIF
+          ENDSELECT
+          IF optim=FALSE
+            IF reg11[]=&quot;f&quot;
+              FPrintF(fh,&#x27;\tmove.l\t#\s,d\c\n&#x27;,reg12,reg11[2])
+              FPrintF(fh,&#x27;\tfmove.s\td\c,fp\c\n&#x27;,reg11[2],reg11[2])
+            ELSE
+              FPrintF(fh,&#x27;\tmove.l\t#\s,\s\n&#x27;,reg12,reg11)
+              IF float THEN FPrintF(fh,&#x27;\tfmove.s\t\s,fp\c\n&#x27;,reg11,reg11[1])
+            ENDIF
+          ENDIF
+ENDPROC
+
+PROC trans_LEA()
+          SELECT mnem2[]
+            CASE &quot; LDL&quot;
+              IF (reg21[]=&quot;d&quot;) OR (reg21[]=&quot;f&quot;)
+DBPrintF(fh,&#x27;;optiLEA-LDL;\c\c\c\c-\n&#x27;,UByte(mnem2),UByte(mnem2+1),UByte(mnem2+2),UByte(mnem2+3))
+                IF (mnem4[]&lt;&gt;&quot; STL&quot;) OR ((mnem4[]=&quot; STL&quot;) AND /*(mnem3[]&lt;&gt;&quot; LDL&quot;) AND ((UWord(11)&lt;&gt;UWord(reg42)) OR (UWord(21)&lt;&gt;UWord(reg41))))-&gt;*/(mnem3[]=&quot; LEA&quot;))
+                  IFN float
+    DBPrintF(fh,&#x27;;optiLEA-LDL-LEA/MVI/STL/PSH/I2F/TST/MVR=MVL \s \s\n&#x27;,reg21,reg12)
+                    -&gt;make a &quot;fake&quot; line to possibly optimize further
+                    StringF(preline,&#x27; MVL \s \s\n&#x27;,reg21,reg12)
+                    copyprec()
+                    optim := TRUE
+                  ELSEIF reg12[]&lt;&gt;&quot;_&quot;
+    DBPrintF(fh,&#x27;;optiLEA-LDL:float\n&#x27;)
+                    FPrintF(fh,&#x27;\tfmove.s\t\s(a5),fp\c\n&#x27;,reg12,reg21[1])
+                    float:=TRUE
+                    advancelines(1)
+                    optim := TRUE
+                  ENDIF
+                ENDIF
+              ELSEIF reg21[]=&quot;a&quot;
+  DBPrintF(fh,&#x27;;optiLEA-LDL\n&#x27;)
+                -&gt;FIXME: oppure diventa MVL
+                FPrintF(fh,&#x27;\tmovea.l\t\s\s,\s\n&#x27;,reg12,IF reg12[]=&quot;_&quot; THEN &amp;null ELSE &#x27;(a5)&#x27;,reg21)
+                advancelines(1)
+                optim := TRUE
+              ENDIF
+            CASE &quot; STL&quot; -&gt;optimize a:=b+c
+              IF mnem3[]&lt;&gt;&quot; PSH&quot;
+  DBPrintF(fh,&#x27;;optiLEA-STL:\d \s \s\n&#x27;,float,reg21,reg12)
+                IF float
+                  FPrintF(fh,&#x27;\t\smove\s\tfp\c,\s\s\n&#x27;,pre,post1,reg21[1],reg12,IF reg12[]=&quot;_&quot; THEN &amp;null ELSE &#x27;(a5)&#x27;)
+                ELSE
+                  FPrintF(fh,&#x27;\t\smove\s\t\s,\s\s\n&#x27;,pre,post1,reg21,reg12,IF reg12[]=&quot;_&quot; THEN &amp;null ELSE &#x27;(a5)&#x27;)
+                ENDIF
+                float:=FALSE
+                advancelines(1)
+                optim := TRUE
+              ENDIF
+            CASE &quot; INC&quot; -&gt;optimize a++
+              IF StrCmp(reg12,reg22)
+  DBPrintF(fh,&#x27;;optiLEA-INC\n&#x27;)
+                optim := TRUE
+              ENDIF
+
+            -&gt;DEFAULT
+          ENDSELECT
+
+          IF optim=FALSE
+    DBPrintF(fh,&#x27;;optiLEA-def\n&#x27;)
+            FPrintF(fh,&#x27;\tlea\t\s\s,\s\n&#x27;,reg12,IF reg12[]=&quot;_&quot; THEN &amp;null ELSE &#x27;(a5)&#x27;,reg11)
+          ENDIF
+
+ENDPROC
+
+PROC trans_MVL()
+          SELECT mnem2[]
+            CASE &quot; LEA&quot; -&gt;optimize a:=b
+              IF mnem3[]=&quot; STL&quot;
+                IF (reg21[1]=reg11[1]) AND (mnem4[]&lt;&gt;&quot; LEA&quot;) AND (mnem5[]&lt;&gt;&quot; STL&quot;) AND (mnem5[]&lt;&gt;&quot; CMP&quot;) AND (mnem5[]&lt;&gt;&quot; MPP&quot;)
+    DBPrintF(fh,&#x27;;optiMVL-LEA-STL\n&#x27;)
+                  FPrintF(fh,&#x27;\tmove.l\t\s\s,\s\s\n&#x27;,reg12,IF reg12[]=&quot;_&quot; THEN &amp;null ELSE &#x27;(a5)&#x27;,reg22,IF reg22[]=&quot;_&quot; THEN &amp;null ELSE &#x27;(a5)&#x27;)
+                  advancelines(2)
+                  optim := TRUE
+                ENDIF
+              ENDIF
+
+            CASE &quot; STL&quot; -&gt;optimize [a,b]
+              IF reg21[1]=reg11[1]
+                IF (mnem4[]&lt;&gt;&quot; CMP&quot;) AND (mnem5[]&lt;&gt;&quot; CMP&quot;)
+                  IF (mnem3[]=&quot; ADA&quot;) AND (mnem4[]&lt;&gt;&quot; ADA&quot;) AND (UWord(reg22)=UWord(reg31)) AND (reg32[]=&quot;4&quot;)
+    DBPrintF(fh,&#x27;;optiMVL-STL-ADA\n&#x27;)
+                    FPrintF(fh,&#x27;\tmove.l\t\s\s,(\s)+\n&#x27;,reg12,IF reg12[]=&quot;_&quot; THEN &amp;null ELSE &#x27;(a5)&#x27;,reg22)
+                    advancelines(2)
+                  ELSE
+    DBPrintF(fh,&#x27;;optiMVL-STL\n&#x27;)
+                    FPrintF(fh,&#x27;\tmove.l\t\s\s,(\s)\n&#x27;,reg12,IF reg12[]=&quot;_&quot; THEN &amp;null ELSE &#x27;(a5)&#x27;,reg22)
+                    advancelines(1)
+                  ENDIF
+                  optim := TRUE
+                ENDIF
+              ENDIF
+
+            CASE &quot; ADD&quot;, &quot; SUB&quot;, &quot; MUL&quot;, &quot; DIV&quot; -&gt;optimize a:=b+c
+              IF reg21[1]&lt;reg22[1]
+      DBPrintF(fh,&#x27;;optiMVL-\c\c\c\c-\n&#x27;,UByte(mnem2),UByte(mnem2+1),UByte(mnem2+2),UByte(mnem2+3))
+                SELECT mnem2[]
+                  CASE &quot; ADD&quot; ; FPrintF(fh,&#x27;\tadd.l\t\s\s,\s\n&#x27; ,reg12,IF reg12[]=&quot;_&quot; THEN &amp;null ELSE &#x27;(a5)&#x27;,reg21)
+                  CASE &quot; SUB&quot; ; FPrintF(fh,&#x27;\tsub.l\t\s\s,\s\n&#x27; ,reg12,IF reg12[]=&quot;_&quot; THEN &amp;null ELSE &#x27;(a5)&#x27;,reg21)
+                  CASE &quot; MUL&quot; ; FPrintF(fh,&#x27;\tmuls.l\t\s\s,\s\n&#x27;,reg12,IF reg12[]=&quot;_&quot; THEN &amp;null ELSE &#x27;(a5)&#x27;,reg21)
+                  CASE &quot; DIV&quot; ; FPrintF(fh,&#x27;\tdivs.l\t\s\s,\s\n&#x27;,reg12,IF reg12[]=&quot;_&quot; THEN &amp;null ELSE &#x27;(a5)&#x27;,reg21)
+                ENDSELECT
+
+                advancelines(1)
+                optim := TRUE
+              ENDIF
+
+            CASE &quot; PSH&quot; -&gt;optimize func(a)
+  DBPrintF(fh,&#x27;;optiMVL-PSH:\s,\s,\d\n&#x27;,reg11,reg21,float)
+              IF (UWord(reg11)=UWord(reg21)) AND (mnem3[]&lt;&gt;&quot; TST&quot;) AND (mnem3[]&lt;&gt;&quot; F2I&quot;) AND (mnem3[]&lt;&gt;&quot; PSH&quot;) AND (float=FALSE)
+  DBPrintF(fh,&#x27;;optiMVL-PSH\n&#x27;)
+                -&gt;FIXME:IF mnem3[]=&quot; F2I&quot; THEN FPrintF(move.l -(a7))
+                -&gt;make a &quot;fake&quot; line to possibly optimize further
+                StringF(preline,&#x27; PSH \s\s\n&#x27;,reg12,IF reg12[]=&quot;_&quot; THEN &amp;null ELSE &#x27;(a5)&#x27;)
+                copyprec()
+                optim := TRUE
+              ENDIF
+ 
+            CASE &quot; MVR&quot; -&gt;optimize StrCopy(a,b,StrLen(b))
+              IF (float=FALSE) AND (UWord(reg21)&lt;&gt;&quot;fp&quot;)
+  DBPrintF(fh,&#x27;;optiMVL-MVR\n&#x27;)
+                  FPrintF(fh,&#x27;\tmove.l\t\s\s,\s\n&#x27;,reg12,IF reg12[]=&quot;_&quot; THEN &amp;null ELSE &#x27;(a5)&#x27;,reg21)
+                  advancelines(1)
+                  optim := TRUE
+              ENDIF
+
+            CASE &quot; TST&quot; -&gt;optimize IF a
+  DBPrintF(fh,&#x27;;optiMVL-TST\n&#x27;)
+              IF float=FALSE
+                FPrintF(fh,&#x27;\t\smove\s\t\s\s,\s\n&#x27;,pre,post1,reg12,IF reg12[]=&quot;_&quot; THEN &amp;null ELSE &#x27;(a5)&#x27;,reg11)
+                advancelines(1)
+                optim := TRUE
+              ENDIF
+              
+            CASE &quot; CMP&quot; -&gt;optimize IF a&gt;b or FOR a:=0 TO
+              IF float=FALSE
+  DBPrintF(fh,&#x27;;optiMVL-CMP\n&#x27;)
+                FPrintF(fh,&#x27;\tcmp.l\t\s\s,\s\n&#x27;,reg12,IF reg12[]=&quot;_&quot; THEN &amp;null ELSE &#x27;(a5)&#x27;,reg21)
+                optim := TRUE
+                IF (UWord(mnem3)=&quot; S&quot;) AND
+                   ((mnem4[]=&quot; TST&quot;) OR (mnem5[]=&quot; TST&quot;)) AND
+                   (mnem4[]&lt;&gt;&quot; AND&quot;) AND (mnem4[]&lt;&gt;&quot; ORL&quot;) AND (mnem4[]&lt;&gt;&quot; XOR&quot;) AND (mnem4[]&lt;&gt;&quot; NOT&quot;)
+
+                  IF (mnem4[]=&quot; NOT&quot;) AND (mnem5[]=&quot; TST&quot;)
+                    c1:=&quot;a&quot;-&quot;A&quot;+UByte(mnem3+2) ; c2:=&quot;a&quot;-&quot;A&quot;+UByte(mnem3+3)
+                    advancelines(2)
+                  ELSE
+                    SELECT mnem3[]
+                      CASE &quot; SLT&quot; ; c1:=&quot;g&quot; ; c2:=&quot;e&quot;
+                      CASE &quot; SLE&quot; ; c1:=&quot;g&quot; ; c2:=&quot;t&quot;
+                      CASE &quot; SGT&quot; ; c1:=&quot;l&quot; ; c2:=&quot;e&quot;
+                      CASE &quot; SGE&quot; ; c1:=&quot;l&quot; ; c2:=&quot;t&quot;
+                      CASE &quot; SEQ&quot; ; c1:=&quot;n&quot; ; c2:=&quot;e&quot;
+                      CASE &quot; SNE&quot; ; c1:=&quot;e&quot; ; c2:=&quot;q&quot;
+                      -&gt;DEFAULT
+                    ENDSELECT
+                    advancelines(1)
+                  ENDIF
+                  IF mnem3[]=&quot; TST&quot;
+    DBPrintF(fh,&#x27;;optiMVL-CMP-SET-TST\n&#x27;)
+                    FPrintF(fh,&#x27;\tb\c\c\t\s\n&#x27;,c1,c2,reg41)
+                    advancelines(2)
+                  ENDIF
+                ENDIF
+                advancelines(1)
+                    
+              ENDIF
+            DEFAULT ; optim := FALSE
+          ENDSELECT
+
+          IF optim=FALSE THEN FPrintF(fh,&#x27;\t\smove\s\t\s\s,\s\n&#x27;,pre,post1,reg12,IF reg12[]=&quot;_&quot; THEN &amp;null ELSE &#x27;(a5)&#x27;,reg11)
+ENDPROC
+
+PROC trans_MVR()
+          SELECT mnem2[]
+
+            CASE &quot; PSH&quot; -&gt;optimize PrintF(&#x27;Hello&#x27;)
+              IF (UWord(reg11)=UWord(reg21)) AND (mnem3[]&lt;&gt;&quot; F2I&quot;) AND (mnem3[]&lt;&gt;&quot; PSH&quot;) -&gt;PSH d0 is used also when calling methods
+    DBPrintF(fh,&#x27;;optiMVR-PSH;\c\c\c\c-\n&#x27;,UByte(mnem2),UByte(mnem2+1),UByte(mnem2+2),UByte(mnem2+3))
+                IF (float=TRUE) AND (reg11[]=&quot;f&quot;)
+                  StringF(reg11,&#x27;d\c&#x27;,reg11[2])
+                  float := FALSE
+                ENDIF
+                -&gt;make a &quot;fake&quot; line to possibly optimize further
+                StringF(preline,&#x27; PSH \s\n&#x27;,reg12)
+                copyprec()
+                optim := TRUE
+              ENDIF
+
+            CASE &quot; LEA&quot; -&gt;optimize a:=&amp;b
+              IF mnem3[]=&quot; STL&quot;
+                IF (mnem5[]&lt;&gt;&quot; CMP&quot;) AND (mnem6[]&lt;&gt;&quot; CMP&quot;) AND ((mnem4[]&lt;&gt;&quot; TST&quot;) OR ((mnem4[]=&quot; TST&quot;) AND (StrCmp(reg11,reg41)=0) ))
+    DBPrintF(fh,&#x27;;optiMVR-LEA-STL\n&#x27;)
+                  FPrintF(fh,&#x27;\t\smove\s\t\s,\s\s\n&#x27;,pre,post1,reg12,reg22,IF reg22[]=&quot;_&quot; THEN &amp;null ELSE &#x27;(a5)&#x27;)
+                  advancelines(2)
+                  optim := TRUE
+                ENDIF
+              ENDIF
+
+            CASE &quot; MVR&quot; -&gt;optimize PrintF(a,b)
+              IF (UWord(reg11)=UWord(reg21)) AND (UWord(reg12)=UWord(reg22))
+    DBPrintF(fh,&#x27;;optiMVR-MVR:11=22,12=22\n&#x27;)
+                advancelines(1)
+                optim := TRUE
+              ELSEIF (UWord(reg11)=UWord(reg22)) AND (UWord(reg12)=UWord(reg21))
+    DBPrintF(fh,&#x27;;optiMVR-MVR:11=22,12=21\n&#x27;)
+                advancelines(1)
+                optim := TRUE
+              ELSEIF (UWord(reg11)=UWord(reg22))
+    DBPrintF(fh,&#x27;;optiMVR-MVR:11=22\n&#x27;)
+                -&gt;make a &quot;fake&quot; line to possibly optimize further
+                StringF(preline,&#x27; MVR \s \s\n&#x27;,reg21,reg12)
+                copyprec()
+                optim := TRUE
+              ENDIF
+
+            DEFAULT ; optim := FALSE
+          ENDSELECT
+          IF optim=FALSE
+      DBPrintF(fh,&#x27;;optiMVR-def:\s:\s\n&#x27;,reg11,reg12)
+            IF UWord(reg11)=&quot;fp&quot; THEN float:=TRUE
+            IF (UWord(reg11)=UWord(reg12)) AND (float=FALSE)
+      DBPrintF(fh,&#x27;;optiMVR-def-=:\s:\s\n&#x27;,reg11,reg12)
+            ELSEIF float
+              IF StrCmp(reg11,reg12)
+      DBPrintF(fh,&#x27;;optiMVR-def-float:\s:\s\n&#x27;,reg11,reg12)
+              ELSE
+                FPrintF(fh,&#x27;\tfmove.s\t\s,\s\n&#x27;,reg12,reg11)
+              ENDIF
+            ELSE
+              FPrintF(fh,&#x27;\t\smove\s\t\s,\s\n&#x27;,pre,post1,reg12,reg11)
+            ENDIF
+          ENDIF
+ENDPROC
+
+PROC trans_LDL()
+          optim := FALSE
+          IF float
+     DBPrintF(fh,&#x27;;optiLDL-float:\d,\s,\s\n&#x27;,float,reg11,reg22)
+            IF mnem2[]=&quot; MVR&quot; -&gt;e.g. f:=!Ftan(.8)
+              IF reg11[2]=reg22[1]
+      DBPrintF(fh,&#x27;;optiLDL-MVR-float \s \s \s \s\n&#x27;,reg11,reg12,reg21,reg22)
+                FPrintF(fh,&#x27;\tfmove.s\t(\s),\s\n&#x27;,reg12,reg21)
+                advancelines(1)
+                optim := TRUE
+              ENDIF
+            ELSE
+              FPrintF(fh,&#x27;\tfmove.s\t(\s),\s\n&#x27;,reg12,reg11)
+            ENDIF
+          ELSE
+            
+            SELECT mnem2[]
+
+              CASE &quot; LEA&quot; -&gt;optimize a:=b[]
+                IF mnem3[]=&quot; STL&quot;
+                  IF (mnem5[]&lt;&gt;&quot; CMP&quot;) AND (mnem6[]&lt;&gt;&quot; CMP&quot;) AND (mnem5[]&lt;&gt;&quot; STL&quot;)
+      DBPrintF(fh,&#x27;;optiLDL-LEA-STL\n&#x27;)
+                    FPrintF(fh,&#x27;\tmove.l\t(\s),\s\s\n&#x27;,reg12,reg22,IF reg22[]=&quot;_&quot; THEN &amp;null ELSE &#x27;(a5)&#x27;)
+                    advancelines(2)
+                    optim := TRUE
+                  ENDIF
+                ENDIF
+              CASE &quot; STL&quot; -&gt;a:=:b
+                IF UWord(reg11)=UWord(reg21)
+      DBPrintF(fh,&#x27;;optiLDL-STL\n&#x27;)
+                  FPrintF(fh,&#x27;\tmove.l\t(\s),(\s)\n&#x27;,reg12,reg22)
+                  advancelines(1)
+                  optim := TRUE
+                ENDIF
+              CASE &quot; ADD&quot;, &quot; SUB&quot;, &quot; MUL&quot;, &quot; DIV&quot;-&gt; optimize a:=b+c[]
+                IF (UWord(reg11)=UWord(reg22)) AND (float=FALSE)
+      DBPrintF(fh,&#x27;;optiLDL-MTH\n&#x27;)
+                  SELECT mnem2[]
+                    CASE &quot; ADD&quot; ; FPrintF(fh,&#x27;\tadd.l\t(\s),\s\n&#x27; ,reg12,reg21)
+                    CASE &quot; SUB&quot; ; FPrintF(fh,&#x27;\tsub.l\t(\s),\s\n&#x27; ,reg12,reg21)
+                    CASE &quot; MUL&quot; ; FPrintF(fh,&#x27;\tmuls.l\t(\s),\s\n&#x27;,reg12,reg21)
+                    CASE &quot; DIV&quot; ; FPrintF(fh,&#x27;\tdivs.l\t(\s),\s\n&#x27;,reg12,reg21)
+                  ENDSELECT
+                  advancelines(1)
+                  optim := TRUE
+                ENDIF
+              CASE &quot; PSH&quot; -&gt;optimize func(a[])
+                IF (UWord(reg11)=UWord(reg21)) AND (mnem3[]&lt;&gt;&quot; TST&quot;) AND (mnem3[]&lt;&gt;&quot; F2I&quot;) AND (mnem3[]&lt;&gt;&quot; PSH&quot;) AND (float=FALSE)
+    DBPrintF(fh,&#x27;;optiLDL-PSH\n&#x27;)
+                  -&gt;FIXME:IF mnem3[]=&quot; F2I&quot; THEN FPrintF(move.l -(a7))
+                  -&gt;make a &quot;fake&quot; line to possibly optimize further
+                  StringF(preline,&#x27; PSH (\s)\n&#x27;,reg12)
+                  copyprec()
+                  optim := TRUE
+                ENDIF
+              -&gt;DEFAULT ; FPrintF(fh,&#x27;\tmove.l\t(\s),\s\n&#x27;,reg12,reg11)
+            ENDSELECT
+            IF optim=FALSE THEN FPrintF(fh,&#x27;\tmove.l\t(\s),\s\n&#x27;,reg12,reg11)
+
+          ENDIF
+ENDPROC
+
+PROC trans_ADA()
+  DEF mnem7:PTR TO LONG
+
+  DBPrintF(fh,&#x27;;optiADA\n&#x27;)
+          optim := FALSE
+          IF reg12[]=&quot;d&quot;
+            SELECT mnem2[]
+              CASE &quot; STL&quot;,&quot; STW&quot;,&quot; STB&quot; -&gt;optimize a[b]:=0
+  DBPrintF(fh,&#x27;;optiADA-ST\n&#x27;)
+                FPrintF(fh,&#x27;\tmove.\c\t\s,(\s,\s)\n&#x27;,&quot;a&quot;-&quot;A&quot;+UByte(mnem2+3),reg21,reg11,reg12)
+                advancelines(1)
+              CASE &quot; LDL&quot;,&quot; LDW&quot;,&quot; LDB&quot; -&gt;optimize IF a[b]
+  DBPrintF(fh,&#x27;;optiADA-LD\n&#x27;)
+                IF (mnem2[]=&quot; LDL&quot;) AND (mnem3[]=&quot; LEA&quot;) AND (mnem4[]=&quot; STL&quot;) -&gt;optimize a:=b[c]
+                  mnem7 := nextmnem(mnem6)
+                  IF (mnem6[]&lt;&gt;&quot; CMP&quot;) AND (mnem7[]&lt;&gt;&quot; CMP&quot;)
+    DBPrintF(fh,&#x27;;optiADA-LDL-LEA-STL\n&#x27;)
+                    FPrintF(fh,&#x27;\tmove.l\t(\s,\s),\s\s\n&#x27;,reg11,reg12,reg32,IF reg32[]=&quot;_&quot; THEN &amp;null ELSE &#x27;(a5)&#x27;)
+                    IF mnem5[]=&quot; TST&quot; THEN advancelines(1)
+                    advancelines(3)
+                    optim := TRUE
+                  ENDIF
+                ELSE
+                  SELECT mnem4[]
+                    CASE &quot; ADD&quot;, &quot; SUB&quot;, &quot; MUL&quot;, &quot; MLI&quot;, &quot; DIV&quot;, &quot; NEG&quot;, &quot; SHR&quot;, &quot; SHL&quot;, &quot; AND&quot;, &quot; ORL&quot;, &quot; NOT&quot; -&gt;DO NOT optimize
+                      FPrintF(fh,&#x27;\tadda.l\t\s,\s\n&#x27;,reg12,reg11)
+                      optim := FALSE
+                    DEFAULT
+                      FPrintF(fh,&#x27;\tmove.\c\t(\s,\s),\s\n&#x27;,&quot;a&quot;-&quot;A&quot;+UByte(mnem2+3),reg11,reg12,reg21)
+                      IF mnem3[]=&quot; TST&quot; THEN advancelines(1)
+                      optim := TRUE
+                  ENDSELECT
+                ENDIF
+                IF optim THEN advancelines(1)
+              DEFAULT ; FPrintF(fh,&#x27;\tadda.l\t\s,\s\n&#x27;,reg12,reg11)
+            ENDSELECT
+          ELSE
+     DBPrintF(fh,&#x27;;ADA-#\n&#x27;) -&gt;ex. x.a
+            SELECT mnem2[]
+              CASE &quot; LDL&quot;
+                SELECT mnem3[]
+
+                  CASE &quot; STL&quot; -&gt;optimize PrintF(a,b[1])
+                    IF (mnem5[]&lt;&gt;&quot; CMP&quot;) AND (mnem6[]&lt;&gt;&quot; CMP&quot;) AND (UWord(reg21)=UWord(reg31))
+      DBPrintF(fh,&#x27;;optiADA-LDL-STL,\d,\s\n&#x27;,reg12[],reg12)
+                      IF (mnem4[]=&quot; ADA&quot;) AND (mnem5[]&lt;&gt;&quot; ADA&quot;) AND (UWord(reg32)=UWord(reg41)) AND (reg42[]=&quot;4&quot;)
+                        FPrintF(fh,&#x27;\tmove.l\t\s(\s),(\s)+\n&#x27;,IF reg12[]=&quot;0&quot; THEN null ELSE reg12,reg11,reg32)
+                        advancelines(1)
+                      ELSE
+                        FPrintF(fh,&#x27;\tmove.l\t\s(\s),(\s)\n&#x27;,IF reg12[]=&quot;0&quot; THEN null ELSE reg12,reg11,reg32)
+                      ENDIF
+                      advancelines(2)
+                      optim := TRUE
+                    ENDIF
+
+                  CASE &quot; LEA&quot; -&gt;optimize a:=b[1]
+                    IF mnem4[]=&quot; STL&quot;
+                      mnem7 := nextmnem(mnem6)
+                      IF (mnem6[]&lt;&gt;&quot; CMP&quot;) AND (mnem7[]&lt;&gt;&quot; CMP&quot;)
+        DBPrintF(fh,&#x27;;optiADA-LDL-LEA-STL\n&#x27;)
+                        FPrintF(fh,&#x27;\tmove.l\t\s(\s),\s\s\n&#x27;,IF reg12[]=&quot;0&quot; THEN null ELSE reg12,reg11,reg32,IF reg32[]=&quot;_&quot; THEN &amp;null ELSE &#x27;(a5)&#x27;)
+                        IF mnem5[]=&quot; TST&quot; THEN advancelines(1)-&gt;pos:=mnem2-1
+                        advancelines(3)
+                        optim := TRUE
+                      ENDIF
+                    ENDIF
+
+                  CASE &quot; ADD&quot;,&quot; SUB&quot;,&quot; MUL&quot;,&quot; DIV&quot; -&gt;optimize x.a +=1 or x[1] +=1
+                    IF float=FALSE
+                      IF (mnem4[]=&quot; STL&quot;) AND ((UByte(mnem5)=&quot;;&quot;) OR (UByte(mnem5)=&quot;:&quot;) OR (mnem5[]=&quot; F2I&quot;))
+                DBPrintF(fh,&#x27;;optiADA-LDL-MTH-STL\n&#x27;)
+                        optim:=TRUE
+                        SELECT mnem3[]
+                          CASE &quot; ADD&quot; ; FPrintF(fh,&#x27;\tadd.l\t\s,\s(\s)\n&#x27; ,reg32,IF reg12[]=&quot;0&quot; THEN null ELSE reg12,reg42)
+                          CASE &quot; SUB&quot; ; FPrintF(fh,&#x27;\tsub.l\t\s,\s(\s)\n&#x27; ,reg32,IF reg12[]=&quot;0&quot; THEN null ELSE reg12,reg42)
+                          -&gt;CASE &quot; MUL&quot; ; -&gt;unsupported by 68000
+                          -&gt;CASE &quot; DIV&quot; ; -&gt;unsupported by 68000
+                          DEFAULT ; optim:=FALSE
+                        ENDSELECT
+                        IF optim
+                          advancelines(3)
+                        ELSE
+                          IF reg12[]&lt;&gt;&quot;0&quot; THEN FPrintF(fh,&#x27;\tadda.l\t#\s,\s\n&#x27;,reg12,reg11)
+                          RETURN
+                        ENDIF
+                        
+                      ELSEIF (UWord(reg21)=UWord(reg32)) AND (float=FALSE)-&gt; optimize a:=b+c[1]
+            DBPrintF(fh,&#x27;;optiADA-LDL-MTH\n&#x27;)
+                        SELECT mnem3[]
+                          CASE &quot; ADD&quot; ; FPrintF(fh,&#x27;\tadd.l\t\s(\s),\s\n&#x27; ,IF reg12[]=&quot;0&quot; THEN null ELSE reg12,reg22,reg31)
+                          CASE &quot; SUB&quot; ; FPrintF(fh,&#x27;\tsub.l\t\s(\s),\s\n&#x27; ,IF reg12[]=&quot;0&quot; THEN null ELSE reg12,reg22,reg31)
+                          CASE &quot; MUL&quot; ; FPrintF(fh,&#x27;\tmuls.l\t\s(\s),\s\n&#x27;,IF reg12[]=&quot;0&quot; THEN null ELSE reg12,reg22,reg31)
+                          CASE &quot; DIV&quot; ; FPrintF(fh,&#x27;\tdivs.l\t\s(\s),\s\n&#x27;,IF reg12[]=&quot;0&quot; THEN null ELSE reg12,reg22,reg31)
+                        ENDSELECT
+                        advancelines(2)
+                        optim := TRUE
+                      ENDIF
+                    ENDIF
+                  CASE &quot; TST&quot; -&gt;optimize ex. IF x.a
+                    IF reg31[1]=reg11[1]
+          DBPrintF(fh,&#x27;;optiADA-LDL-TST\n&#x27;) -&gt;
+                      FPrintF(fh,&#x27;\ttst.l\t\s(\s)\n&#x27;,IF reg12[]=&quot;0&quot; THEN null ELSE reg12,reg11)
+                      advancelines(2)
+                      optim:=TRUE
+                    ENDIF
+                  CASE &quot; PSH&quot; -&gt;optimize func(a[1])
+                    IF (UWord(reg21)=UWord(reg31)) AND (mnem4[]&lt;&gt;&quot; TST&quot;) AND (mnem4[]&lt;&gt;&quot; F2I&quot;) AND (mnem4[]&lt;&gt;&quot; PSH&quot;) AND (float=FALSE)
+        DBPrintF(fh,&#x27;;optiADA-LDL-PSH\n&#x27;)
+                      -&gt;FIXME:IF mnem3[]=&quot; F2I&quot; THEN FPrintF(move.l -(a7))
+                      -&gt;make a &quot;fake&quot; line to possibly optimize further
+                      StringF(preline,&#x27; PSH \s(\s)\n&#x27;,reg12,reg22)
+                      advancelines(1)
+                      copyprec()
+                      optim := TRUE
+                    ENDIF
+                  -&gt;DEFAULT
+                ENDSELECT
+                IF (optim=FALSE) AND (mnem3[]&lt;&gt;&quot; LDL&quot;) AND (mnem3[]&lt;&gt;&quot; LDW&quot;) AND (mnem3[]&lt;&gt;&quot; LDB&quot;)
+      DBPrintF(fh,&#x27;;optiADA-LDL\n&#x27;)
+                  FPrintF(fh,&#x27;\tmove.l\t\s(\s),\s\n&#x27;,IF reg12[]=&quot;0&quot; THEN null ELSE reg12,reg11,reg21)
+                  advancelines(1)
+                  optim := TRUE
+                ENDIF
+              CASE &quot; LDW&quot;,&quot; LDB&quot;
+      DBPrintF(fh,&#x27;;ADA-LDW/LDB,\d\n&#x27;,optim) -&gt;ex. x.a:=b or a:=b[1]
+                SELECT mnem4[]
+                  -&gt;CASE &quot; STL&quot; -&gt;cannot optimize because of EXW/AND
+
+                  CASE &quot; ADD&quot;,&quot; SUB&quot; -&gt;optimize x.a +=1 or a[1] += 1
+                    IF ((mnem5[]=&quot; STW&quot;) OR (mnem5[]=&quot; STB&quot;)) AND ((UByte(mnem6)=&quot;;&quot;) OR (UByte(mnem6)=&quot;:&quot;) OR (mnem6[]=&quot; F2I&quot;))
+              DBPrintF(fh,&#x27;;optiADA-LDW/LDB-ADD/SUB-STW/STB\n&#x27;)
+                      IF mnem4[]=&quot; ADD&quot;
+                        FPrintF(fh,&#x27;\tadd.\c\t\s,\s(\s)\n&#x27;,IF mnem2[]=&quot; LDW&quot; THEN &quot;w&quot; ELSE &quot;b&quot;,reg42,IF reg12[]=&quot;0&quot; THEN null ELSE reg12,reg52)
+                      ELSEIF mnem4[]=&quot; SUB&quot;
+                        FPrintF(fh,&#x27;\tsub.\c\t\s,\s(\s)\n&#x27;,IF mnem2[]=&quot; LDW&quot; THEN &quot;w&quot; ELSE &quot;b&quot;,reg42,IF reg12[]=&quot;0&quot; THEN null ELSE reg12,reg52)
+                      ENDIF
+                      advancelines(4)
+                      optim:=TRUE
+                    ENDIF
+                  CASE &quot; TST&quot; -&gt;optimize ex. IF x.a
+                    IF reg31[1]=reg11[1]
+          DBPrintF(fh,&#x27;;optiADA-LDW/LDB-TST\n&#x27;) -&gt;
+                      FPrintF(fh,&#x27;\ttst.\c\t\s(\s)\n&#x27;,&quot;a&quot;-&quot;A&quot;+UByte(mnem3+3),IF reg12[]=&quot;0&quot; THEN null ELSE reg12,reg11)
+                      advancelines(3)
+                      optim:=TRUE
+                    ENDIF
+
+                  DEFAULT
+                    SELECT mnem4[]
+                      CASE &quot; ADD&quot;, &quot; SUB&quot;, &quot; MUL&quot;, &quot; MLI&quot;, &quot; DIV&quot;, &quot; NEG&quot;, &quot; SHR&quot;, &quot; SHL&quot;, &quot; AND&quot;, &quot; ORL&quot;, &quot; NOT&quot; -&gt;DO NOT optimize
+                        optim := FALSE
+                      DEFAULT
+          DBPrintF(fh,&#x27;;ADA-LDW/LDB\n&#x27;)
+                        IF mnem2[]=&quot; LDB&quot;
+                          IF ((mnem4[]&lt;&gt;&quot; STB&quot;) AND (mnem5[]&lt;&gt;&quot; STB&quot;)) OR ((mnem4[]=&quot; STB&quot;) AND (UWord(reg22)&lt;&gt;UWord(reg42)))
+                            FPrintF(fh,&#x27;\tmove.b\t\s(\s),\s\n&#x27;,IF reg12[]=&quot;0&quot; THEN null ELSE reg12,reg11,reg21)
+                            advancelines(1)
+                            optim:=TRUE
+                          ENDIF
+                        ELSEIF mnem2[]=&quot; LDW&quot;
+                          IF ((mnem4[]&lt;&gt;&quot; STW&quot;) AND (mnem5[]&lt;&gt;&quot; STW&quot;)) OR ((mnem4[]=&quot; STW&quot;) AND (UWord(reg22)&lt;&gt;UWord(reg42)))
+                            FPrintF(fh,&#x27;\tmove.w\t\s(\s),\s\n&#x27;,IF reg12[]=&quot;0&quot; THEN null ELSE reg12,reg11,reg21)
+                            advancelines(1)
+                            optim:=TRUE
+                          ENDIF
+                        ENDIF
+                      
+                  ENDSELECT
+                ENDSELECT
+
+              CASE &quot; ADA&quot;
+                -&gt;make a &quot;fake&quot; line to possibly optimize further
+                c1 := Val(reg12)+Val(reg22)
+    DBPrintF(fh,&#x27;;optiADA-ADA:\d\n&#x27;,c1)
+                StringF(preline,&#x27; ADA \s \d\n&#x27;,reg11,c1)
+                copyprec()
+                optim := TRUE
+
+              CASE &quot; SBA&quot;
+                IF Val(reg12)=Val(reg22)
+    DBPrintF(fh,&#x27;;optiADA-SBA:\s=\s:\n&#x27;,reg12,reg22)
+                  advancelines(1)
+                  optim := TRUE
+                ELSEIF UWord(reg11)=UWord(reg21)
+    DBPrintF(fh,&#x27;;optiADA-SBA:\s&lt;&gt;\s:\n&#x27;,reg12,reg22)
+                  c1 := Val(reg12)-Val(reg22)
+                  FPrintF(fh,&#x27;\tadda.l\t#\d,\s\n&#x27;,c1,reg11)
+                  advancelines(1)
+                  optim := TRUE
+                ENDIF
+
+              CASE &quot; STL&quot;,&quot; STB&quot;,&quot; STW&quot; -&gt;optimize a[1]:=0
+                IF (mnem4[]&lt;&gt;&quot; CMP&quot;) AND (mnem5[]&lt;&gt;&quot; CMP&quot;)
+    DBPrintF(fh,&#x27;;optiADA-STL/STW/STB\n&#x27;)
+                  c2 := &quot;a&quot;-&quot;A&quot;+UByte(mnem2+3)
+                  FPrintF(fh,&#x27;\tmove.\c\t\s,\s(\s)\n&#x27;,c2,reg21,IF reg12[]=&quot;0&quot; THEN null ELSE reg12,reg22)
+                  advancelines(1)
+                  optim := TRUE
+                ENDIF
+
+            ENDSELECT
+            IF optim=FALSE THEN IF reg12[]&lt;&gt;&quot;0&quot; THEN FPrintF(fh,&#x27;\tadda.l\t\s\s,\s\n&#x27;,IF reg12[]=&quot;d&quot; THEN null ELSE &#x27;#&#x27;,reg12,reg11)
+          ENDIF
+ENDPROC
+
+PROC copyprec()
+  len := StrLen(preline)
+  mnem2 := mnem3-len
+  CopyMem(preline,mnem2,len)
+  setregs(mnem2,reg21,reg22)
+ENDPROC
+
+PROC advancelines(lines)
+  DEF mnemt
+  WHILE lines
+    mnemt:=nextmnem(mnem6)
+    setregs(mnemt,regt1,regt2)
+    mnem1:=mnem2 ; reg11:=reg21 ;  reg12:=reg22
+    IF (float=TRUE)
+      IF (reg11[]=&quot;d&quot;) AND (reg11[2]=0)
+        reg11[2]:=reg11[1] ; reg11[3]:=0 ; reg11[]:=&quot;f&quot; ; reg11[1] := &quot;p&quot;
+      ENDIF
+      IF (reg12[]=&quot;d&quot;) AND (reg12[2]=0)
+        reg12[2]:=reg12[1] ; reg12[3]:=0 ; reg12[]:=&quot;f&quot; ; reg12[1] := &quot;p&quot;
+      ENDIF
+    ENDIF
+    mnem2:=mnem3 ; reg21:=reg31 ;  reg22:=reg32
+    mnem3:=mnem4 ; reg31:=reg41 ;  reg32:=reg42
+    mnem4:=mnem5 ; reg41:=reg51 ;  reg42:=reg52
+    mnem5:=mnem6 ; reg51:=reg61 ;  reg52:=reg62
+    mnem6:=mnemt ; reg61:=regt1 ;  reg62:=regt2
+    regt1:=reg11 ; regt2:=reg12
+    pos:=mnem1
+    lines--
+  ENDWHILE
+ENDPROC
+
+PROC setregs(spos:PTR TO CHAR,sreg11:PTR TO CHAR,sreg12:PTR TO CHAR)(LONG)
+  IF spos&lt;end
+    IF (spos[]=&quot;:&quot;) OR (spos[]=&quot;;&quot;)
+      spos++
+      spos:=copyuntilspace(spos,sreg11)
+      sreg12[]:=0-&gt;erase
+      RETURN spos
+    ENDIF
+    IF spos[]=&quot; &quot; THEN spos +=4
+    IF (spos[]=&quot; &quot;)
+      spos++
+      spos:=copyuntilspace(spos,sreg11)
+    ELSE
+      sreg11[]:=0-&gt;erase
+    ENDIF
+    IF spos[]=&quot; &quot;
+      spos++
+      spos:=copyuntilspace(spos,sreg12)
+    ELSE
+      sreg12[]:=0-&gt;erase
+    ENDIF
+  ENDIF
+ENDPROC spos
+
+PROC copyuntilspace(spos:PTR TO CHAR,dst:PTR TO CHAR)(LONG)
+  DEF n=0
+
+  IF spos[]=&quot;\q&quot; -&gt;a quoted string
+    WHILE (spos[]&lt;&gt;&quot;\n&quot;) AND (spos&lt;end) AND (n&lt;100)
+      dst[n] := spos[]++
+      n++
+    ENDWHILE
+  ELSE
+    WHILE (spos[]&lt;&gt;&quot;\n&quot;) AND (spos&lt;end) AND (n&lt;100) AND (spos[]&lt;&gt;&quot; &quot;)
+      dst[n] := spos[]++
+      n++
+    ENDWHILE
+  ENDIF
+  dst[n] := 0 -&gt;trailing 0 byte
+ENDPROC spos
+
+PROC nextmnem(spos:PTR TO CHAR)(LONG)
+    WHILE (spos[]&lt;&gt;&quot;\n&quot;) AND (spos&lt;end) DO spos++
+    spos++
+ENDPROC spos
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Nkript.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-amigae30a-fr.html">amigae30a_fr</a> &rsaquo; Nkript.e</div><h1>File: <code>Nkript.e</code></h1><p class="meta">71 lines · project <a href="../examples/pkg-amigae30a-fr.html"><code>amigae30a_fr</code></a></p><p class="pathctx">amigae30a_fr/AmigaE30f/Sources/Utils/Nkript.e</p><p class="prose">Nkript.e, très simple (dé)codeur de fichier USAGE: nkript &lt;file&gt; nkript demande une clé de 4 lettre,et un code de 3 lettre. Comme nkrip utilise EOR, vous pouvez utiliser ce programme pour coder et décoder. La clé et le code ne sont sauvés nul part, comme ça il est _relativement_ sûr. Ca a pour effet</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/file.html">tools/file</a></li></ul></div><h2>Source</h2><pre class="code">/* Nkript.e, très simple (dé)codeur de fichier
+   USAGE: nkript &lt;file&gt;
+
+   nkript demande une clé de 4 lettre,et un code de 3 lettre.
+   Comme nkrip utilise EOR, vous pouvez utiliser ce programme pour coder et
+   décoder. La clé et le code ne sont sauvés nul part, comme ça il est
+   _relativement_ sûr. Ca a pour effet que si vous taper la mauvaise clé,
+   aucune erreur n&#x27;est donné, mais le fichier est simplement mal décodé.
+
+*/
+
+MODULE &#x27;tools/file&#x27;
+
+ENUM ER_NONE,ER_FILE,ER_MEM,ER_USAGE,ER_OUT,ER_ILLEGAL,ER_NONUM
+
+PROC main() HANDLE
+  DEF flen,mem=NIL,key,keyadd,file[200]:STRING,p
+  WriteF(&#x27;Nkript (c) 1992 $#%!\n&#x27;)
+  IF StrCmp(arg,&#x27;&#x27;,1) OR StrCmp(arg,&#x27;?&#x27;,2) THEN Raise(ER_USAGE)
+  mem,flen:=readfile(arg)
+  key:=readpass(&#x27;key&#x27;,4,FALSE)
+  keyadd:=readpass(&#x27;pin&#x27;,3,TRUE) OR 3
+  WriteF(&#x27;Now (de)coding &quot;\s&quot;.\n&#x27;,arg)
+  MOVE.L flen,D7
+  LSR.L  #2,D7          /* D7 = #of LONGs */
+  MOVE.L key,D6
+  MOVE.L keyadd,D4
+  MOVE.L mem,A0
+  loop:
+  MOVE.L D4,D5
+  SUB.L  D6,D5
+  LSL.L  #3,D6          /* random alg.  D6*7+keyadd (11) */
+  ADD.L  D5,D6
+  EOR.L  D6,(A0)+
+  DBRA   D7,loop
+  SUB.L  #$10000,D7
+  BCC.S  loop           /* DBRA.L emulation */
+  p:=InStr(arg,&#x27;.&#x27;,0)
+  StrCopy(file,arg,p)
+  IF StrCmp(arg+p,&#x27;.nkr&#x27;,ALL)=FALSE THEN StrAdd(file,&#x27;.nkr&#x27;,ALL)
+  writefile(file,mem,flen)
+EXCEPT DO
+  IF mem THEN freefile(mem)
+  SELECT exception
+    CASE ER_NONE;    WriteF(&#x27;OK.\n&#x27;)
+    CASE &quot;OPEN&quot;;     WriteF(&#x27;Ne peut atteindre le fichier &quot;\s&quot; !\n&#x27;,exceptioninfo)
+    CASE &quot;IN&quot;;       WriteF(&#x27;Ne peut lire le fichier &quot;\s&quot; !\n&#x27;,exceptioninfo)
+    CASE &quot;OUT&quot;;      WriteF(&#x27;Ne peut écrire le fichier &quot;\s&quot; !\n&#x27;,exceptioninfo)
+    CASE &quot;MEM&quot;;      WriteF(&#x27;Pas de mémoire pour charger!\n&#x27;)
+    CASE ER_USAGE;   WriteF(&#x27;USAGE: Nkript &lt;file&gt;\n&#x27;)
+    CASE ER_ILLEGAL; WriteF(&#x27;Mauvais nombre de caractères\n&#x27;)
+    CASE ER_NONUM;   WriteF(&#x27;N&#x27;&#x27;est pas un nombre décimal\n&#x27;)
+  ENDSELECT
+ENDPROC
+
+PROC readpass(messy,numchars,decflag)
+  DEF s[25]:STRING,a,t,n=0,f=1
+  WriteF(&#x27;\s[\d]: &#x27;,messy,numchars)
+  ReadStr(stdout,s)
+  IF EstrLen(s)&lt;&gt;numchars THEN Raise(ER_ILLEGAL)
+  IF decflag
+    t:=s
+    FOR a:=1 TO numchars
+      n:=n+(t[]-&quot;0&quot;*f)
+      IF (t[]&lt;&quot;0&quot;) OR (t[]++&gt;&quot;9&quot;) THEN Raise(ER_NONUM)
+      f:=f*10
+    ENDFOR
+    ^s:=n
+  ENDIF
+ENDPROC ^s
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

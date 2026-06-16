@@ -1,0 +1,393 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>https.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-amissl-in-e.html">AmiSSL_in_E</a> &rsaquo; https.e</div><h1>File: <code>https.e</code></h1><p class="meta">367 lines · project <a href="../examples/pkg-amissl-in-e.html"><code>AmiSSL_in_E</code></a></p><p class="pathctx">AmiSSL_in_E/AMISSL_in_E/Developer/Examples/https.e</p><p class="prose">NOREV</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/amissl.html">amissl</a></li><li><a href="../modules/misc.html">amissl/misc</a></li><li><a href="../modules/tags.html">amissl/tags</a></li><li><a href="../modules/amisslmaster.html">amisslmaster</a></li><li><a href="../modules/in.html">amitcp/netinet/in</a></li><li><a href="../modules/socket.html">amitcp/sys/socket</a></li><li><a href="../modules/dosextens.html">dos/dosextens</a></li><li><a href="../modules/amissl.html">libraries/amissl</a></li><li><a href="../modules/amisslmaster.html">libraries/amisslmaster</a></li><li><a href="../modules/bio.html">openssl/bio</a></li></ul></div><h2>Source</h2><pre class="code">-&gt; NOREV
+OPT PREPROCESS
+OPT OSVERSION=39
+
+#ifdef PPC
+OPT MORPHOS
+OPT REG=-1
+#endif
+
+MODULE  &#x27;bsdsocket&#x27;
+MODULE  &#x27;amitcp/sys/socket&#x27;
+MODULE  &#x27;amitcp/netinet/in&#x27;
+
+MODULE  &#x27;dos/dosextens&#x27;
+
+MODULE &#x27;openssl/bio&#x27;
+
+MODULE &#x27;amissl&#x27;
+MODULE &#x27;amisslmaster&#x27;
+MODULE &#x27;amissl/tags&#x27;
+MODULE &#x27;amissl/misc&#x27;
+MODULE &#x27;libraries/amissl&#x27;
+MODULE &#x27;libraries/amisslmaster&#x27;
+
+#define FPrintf(out, str) WriteF(str)
+#define Printf(str, arg) WriteF(str, arg)
+
+PROC errorOutput()
+  DEF tc:PTR TO process
+  tc:=FindTask(NIL)
+ENDPROC tc.ces
+
+PROC getStdErr()
+  DEF err
+  err := errorOutput()
+ENDPROC IF err THEN err ELSE Output()
+
+/* The program expects at most four arguments: host in IP format, port
+ * number to connect to, proxy in IP format and proxy port number.
+ * If last two are specified, host can be in any format proxy will
+ * understand (since this is an example for SSL programming, host name
+ * resolving code is left out).
+ *
+ * Default values are &#x27;127.0.0.1&#x27;, 443. If any proxy parameter is
+ * omitted, the program will connect directly to the host.
+ */
+
+PROC main()
+  DEF buffer[4096]:ARRAY /* This should be dynamically allocated */
+  DEF request:PTR TO CHAR
+  DEF is_ok = FALSE
+  DEF server_cert:PTR TO LONG-&gt;X509
+  DEF ctx:PTR TO LONG-&gt;SSL_CTX
+  DEF bio_err:PTR TO LONG-&gt;BIO
+  DEF ssl:PTR TO LONG-&gt;SSL
+
+  DEF sock
+  DEF ssl_err
+  DEF str:PTR TO CHAR
+
+  DEF argt[6]:ARRAY OF LONG, argc=0
+  DEF c=0
+
+  request := &#x27;GET / HTTP/1.0\r\n\r\n&#x27;
+
+  -&gt; E-Note: parsing space separated arguments from &#x27;arg&#x27; to argt array, argt[0] is broken and just a copy of first argument
+  argt[argc++]:=arg
+  WHILE arg[c]
+    IF arg[c] = &quot; &quot;
+      arg[c] := 0
+      argt[argc++]:=arg
+      arg:=arg + c + 1
+      c:=0
+    ELSE
+      c++
+    ENDIF
+
+    EXIT argc &gt; 4
+  ENDWHILE
+  IF argc &lt; 5 THEN argt[argc++]:=arg
+
+  IF init()
+    /* Basic intialization. Next few steps (up to SSL_new()) need
+     * to be done only once per AmiSSL opener.
+     */
+
+    ssLeay_add_ssl_algorithms()
+    ssL_load_error_strings()
+
+    /* Note: BIO writing routines are prepared for NULL BIO handle */
+    IF (bio_err := BiO_new(BiO_s_file())) &lt;&gt; NIL THEN
+      BiO_set_fp_amiga(bio_err, getStdErr(), BIO_NOCLOSE OR BIO_FP_TEXT)
+
+    /* Get a new SSL context */
+    IF (ctx := SsL_CTX_new( SsLv23_client_method() )) &lt;&gt; NIL
+
+      /* Basic certificate handling. OpenSSL documentation has more
+       * information on this.
+       */
+      SsL_CTX_set_default_verify_paths(ctx)
+      SsL_CTX_set_verify(ctx, SSL_VERIFY_PEER OR SSL_VERIFY_FAIL_IF_NO_PEER_CERT,NIL)
+
+      /* The following needs to be done once per socket */
+      IF (ssl := SsL_new(ctx)) &lt;&gt; NIL
+
+        /* Connect to the HTTPS server, directly or through a proxy */
+        IF (argc &gt; 4)
+          sock := connectToServer(argt[1], Val(argt[2]), argt[3], Val(argt[4]))
+        ELSE
+          sock := connectToServer(IF argt[1] THEN argt[1] ELSE &#x27;127.0.0.1&#x27;, IF argc &gt; 2 THEN Val(argt[2]) ELSE 443, NIL, 0)
+        ENDIF
+
+        /* Check if connection was established */
+        IF sock &gt;= 0
+          ssl_err := 0
+
+          /* Associate the socket with the ssl structure */
+          SsL_set_fd(ssl, sock)
+
+          /* Perform SSL handshake */
+          IF (ssl_err := SsL_connect(ssl)) &gt;= 0
+            Printf(&#x27;SSL connection using \s\n&#x27;, SsL_get_cipher(ssl))
+
+            /* Certificate checking. This example is *very* basic */
+            IF server_cert := SsL_get_peer_certificate(ssl)
+
+              Printf(&#x27;Server certificate:\n&#x27;,&#x27;&#x27;)
+
+              IF str := Xu09_NAME_oneline(Xu09_get_subject_name(server_cert), 0, 0)
+                Printf(&#x27;\tSubject: \s\n&#x27;, str)
+                OpENSSL_free(str)
+              ELSE
+                WriteF(&#x27;Warning: couldnt read subject name in certificate!\n&#x27;)
+              ENDIF
+
+              IF (str := Xu09_NAME_oneline(Xu09_get_issuer_name(server_cert),0, 0)) &lt;&gt; NIL
+                Printf(&#x27;\tIssuer: \s\n&#x27;, str)
+                OpENSSL_free(str)
+              ELSE
+                WriteF(&#x27;Warning: couldn&quot;t read issuer name in certificate!\n&#x27;)
+              ENDIF
+              Xu09_free(server_cert)
+
+              /* Send a HTTP request. Again, this is just
+               * a very basic example.
+               */
+              IF (ssl_err := SsL_write(ssl, request, StrLen(request))) &gt; 0
+                /* Dump everything to output */
+                WHILE (ssl_err := SsL_read(ssl, buffer, 1024  - 1)) &gt; 0
+                  Write(Output(), buffer, ssl_err)
+                ENDWHILE
+
+                -&gt;no need to flush since we&#x27;re using Write()
+                -&gt;Fflush(Output())
+
+                /* This is not entirely true, check
+                 * the SSL_read documentation
+                 */
+                is_ok := ssl_err = 0
+              ELSE
+                WriteF(&#x27;Couldnt write request!\n&#x27;)
+              ENDIF
+
+            ELSE
+              WriteF(&#x27;Couldnt get server certificate!\n&#x27;)
+            ENDIF
+
+          ELSE
+            WriteF(&#x27;Couldnt establish SSL connection!\n&#x27;)
+          ENDIF
+
+          /* If there were errors, print them */
+          IF ssl_err &lt; 0 THEN
+            ErR_print_errors(bio_err)
+
+          /* Send SSL close notification and close the socket */
+          SsL_shutdown(ssl)
+          CloseSocket(sock)
+
+        ELSE
+          WriteF(&#x27;Couldnt connect to host!\n&#x27;)
+        ENDIF
+
+        WriteF(&#x27;before SSL_free()\n&#x27;)
+        SsL_free(ssl)
+      ELSE
+        WriteF(&#x27;Couldnt create new SSL handle!\n&#x27;)
+      ENDIF
+
+      WriteF(&#x27;before SSL_CTX_free()\n&#x27;)
+      SsL_CTX_free(ctx)
+    ELSE
+      WriteF(&#x27;Couldnt create new context!\n&#x27;)
+    ENDIF
+
+    WriteF(&#x27;before Cleanup()\n&#x27;)
+    cleanup()
+  ENDIF
+
+  WriteF(&#x27;before end of main()\n&#x27;)
+ENDPROC
+
+/* Open and initialize AmiSSL */
+PROC init()
+  DEF is_ok = FALSE
+  DEF errno
+
+  IF (socketbase := OpenLibrary(&#x27;bsdsocket.library&#x27;, 4)) = 0
+    WriteF(&#x27;Couldnt open bsdsocket.library v4!\n&#x27;)
+
+  ELSEIF (amisslmasterbase := OpenLibrary(&#x27;amisslmaster.library&#x27;, AMISSLMASTER_MIN_VERSION)) = 0
+    WriteF(&#x27;Couldnt open amisslmaster.library v\d!\n&#x27;, AMISSLMASTER_MIN_VERSION)
+
+  ELSEIF InitAmiSSLMaster(AMISSL_CURRENT_VERSION, TRUE) = 0
+    WriteF(&#x27;AmiSSL version is too old!\n&#x27;)
+
+  ELSEIF (amisslbase := OpenAmiSSL()) = 0
+    WriteF(&#x27;Couldnt open AmiSSL!\n&#x27;)
+
+  ELSEIF InitAmiSSLA([AMISSL_ERRNOPTR, {errno}, AMISSL_SOCKETBASE, socketbase, TAG_DONE]) &lt;&gt; 0
+    WriteF(&#x27;Couldnt initialize AmiSSL!\n&#x27;)
+
+  ELSE
+    is_ok := TRUE
+
+  ENDIF
+
+  IF is_ok = 0 THEN
+    cleanup() /* This is safe to call even if something failed above */
+
+ENDPROC is_ok
+
+PROC cleanup()
+  IF amisslbase
+    CleanupAmiSSLA([TAG_DONE])
+
+    CloseAmiSSL()
+    amisslbase := NIL
+  ENDIF
+
+  CloseLibrary(amisslmasterbase)
+  amisslmasterbase := NIL
+
+  CloseLibrary(socketbase)
+  socketbase := NIL
+ENDPROC
+
+/* Connect to the specified server, either directly or through the specified
+ * proxy using HTTP CONNECT method.
+ */
+
+PROC connectToServer(host:PTR TO CHAR, port, proxy:PTR TO CHAR, pport)
+  DEF addr:sockaddr_in
+  DEF buffer[1024]:ARRAY /* This should be dynamically alocated */
+  DEF is_ok = FALSE
+  DEF s1:PTR TO CHAR, s2:PTR TO CHAR
+  DEF sock
+  DEF len
+
+  WriteF(&#x27;Trying to connect to host: &quot;\s&quot; on port: \d\n&#x27;, host, port)
+
+  /* Create a socket and connect to the server */
+  IF (sock := Socket(AF_INET, SOCK_STREAM, 0)) &gt;= 0
+    memset(addr, 0, SIZEOF sockaddr_in)
+    addr.family := AF_INET
+
+    IF (proxy&lt;&gt;0) AND (pport&lt;&gt;0)
+      addr.addr.addr := Inet_addr(proxy) /* This should be checked against INADDR_NONE */
+      addr.port := pport
+    ELSE
+      addr.addr.addr := Inet_addr(host) /* This should be checked against INADDR_NONE */
+      addr.port := port
+    ENDIF
+
+    IF Connect(sock, addr, SIZEOF sockaddr_in) &gt;= 0
+
+      /* For proxy connection, use SSL tunneling. First issue a HTTP CONNECT
+       * request and then proceed as with direct HTTPS connection.
+       */
+      IF (proxy&lt;&gt;0) AND (pport&lt;&gt;0)
+
+        /* This should be done with snprintf to prevent buffer
+         * overflows, but some compilers don&quot;t have it and
+         * handling that would be an overkill for this example
+         */
+        StringF(buffer, &#x27;CONNECT \s:\d HTTP/1.0\r\n\r\n&#x27;, host, port)
+
+        /* In a real application, it would be necessary to loop
+         * until everything is sent or an error occurrs, but here we
+         * hope that everything gets sent at once.
+         */
+        IF Send(sock, buffer, StrLen(buffer), 0) &gt;= 0
+
+          /* Again, some optimistic behaviour: HTTP response might not be
+           * received with only one recv
+           */
+          IF (len := Recv(sock, buffer, 1024 - 1, 0)) &gt;= 0
+
+            /* Assuming it was received, find the end of
+             * the line and cut it off
+             */
+            IF (s1 := strchr(buffer, &quot;\b&quot;)) OR (s1 := strchr(buffer, &quot;\n&quot;))
+              s1[] := &quot;\0&quot;
+            ELSE
+              buffer[len] := &quot;\0&quot;
+            ENDIF
+
+            Printf(&#x27;Proxy returned: \s\n&#x27;, buffer)
+
+            /* Check if HTTP response makes sense */
+
+            IF (strcmp(buffer, &#x27;HTTP/&#x27;) = 0) AND (s1 := strchr(buffer, &quot; &quot;)) AND (s2 := strchr(s1[1], &quot; &quot;)) AND (s2 - s1 = 3)
+              /* Only accept HTTP 200 OK response */
+              IF (s1 = 200)
+                is_ok := TRUE
+              ELSE
+                WriteF(&#x27;Proxy response indicates error!\n&#x27;)
+              ENDIF
+            ELSE
+              WriteF(&#x27;Amibigous proxy response!\n&#x27;)
+            ENDIF
+
+          ELSE
+            WriteF(&#x27;Couldnt get proxy response!\n&#x27;)
+          ENDIF
+
+        ELSE
+          WriteF(&#x27;Couldnt send request to proxy!\n&#x27;)
+        ENDIF
+
+      ELSE
+        is_ok := TRUE
+      ENDIF
+
+    ELSE
+      WriteF(&#x27;Couldnt connect to server\n&#x27;)
+    ENDIF
+
+    IF is_ok = 0
+      CloseSocket(sock)
+      sock := -1
+    ENDIF
+  ENDIF
+
+ENDPROC sock
+
+/*
+** C support funcs
+*/
+PROC strcmp(str1:PTR TO CHAR, str2:PTR TO CHAR) IS StrCmp(str1, str2)
+
+PROC strchr(str:PTR TO CHAR, in)
+  WHILE str[]
+    IF str[] = in
+      RETURN str
+    ENDIF
+    str[]++
+  ENDWHILE
+ENDPROC NIL
+
+PROC memset(mem:PTR TO CHAR, value, size)
+  DEF dummy
+
+  dummy:=mem
+  WHILE size--&gt;=0 DO mem[]++:=value
+ENDPROC dummy
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>readline.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-fr-modules.html">FR-Modules</a> &rsaquo; readline.e</div><h1>File: <code>readline.e</code></h1><p class="meta">75 lines · project <a href="../examples/pkg-fr-modules.html"><code>FR-Modules</code></a></p><p class="pathctx">FR-Modules/readline.e</p><p class="prose">$VER: readline 1.2 (25.9.97) © Frédéric RODRIGUES plus rapide que <a href="../modules/readstr.html">ReadStr</a> et <a href="../modules/dos.html#fn-fgets">Fgets</a> v1.1 (28.2.97) - cette version ajuste son tampon dynamiquement il reste un bug : je ne peux pas utiliser l&#x27;écran pour les redirections : problèmes d&#x27;affichage plus qu&#x27;un seul appel à InStr : cette version devrait être</p><h2>Source</h2><pre class="code">/* $VER: readline 1.2 (25.9.97) © Frédéric RODRIGUES
+   plus rapide que ReadStr et Fgets
+   v1.1 (28.2.97) - cette version ajuste son tampon dynamiquement
+                    il reste un bug : je ne peux pas utiliser l&#x27;écran pour
+                    les redirections : problèmes d&#x27;affichage
+                    plus qu&#x27;un seul appel à InStr : cette version devrait
+                    être plus rapide
+   v1.2 (25.9.97) - j&#x27;en ai fait un module
+
+   Timings:              milliseconds  (file in RAM)
+   readline            - 0.786
+   readStr (E list)    - 3.257
+   FGets (dos.library) - 3.562
+   ReadStr             - 30.082
+*/
+
+OPT MODULE
+
+CONST SIZEBUF=1024 /* ATTENTION ! doit être multiple de 4 pour que çà marche */
+                   /* la vitesse dépend de cette valeur */
+
+OBJECT objreadline
+  line
+  s
+  buf
+  sizebuf
+  fh
+ENDOBJECT
+
+EXPORT PROC readlinefrom(fh)
+  DEF objreadline:PTR TO objreadline
+  NEW objreadline
+  objreadline.buf:=&#x27;\0&#x27;
+  objreadline.sizebuf:=0
+  objreadline.s:=objreadline.buf
+  objreadline.fh:=fh
+ENDPROC objreadline
+
+EXPORT PROC readline(o)
+  DEF pos,objreadline:PTR TO objreadline
+  objreadline:=o
+  objreadline.line:=objreadline.s
+l:
+  IF (pos:=InStr(objreadline.line,&#x27;\n&#x27;,0))=-1
+    IF objreadline.line&lt;&gt;objreadline.buf
+      AstrCopy(objreadline.buf,objreadline.line,ALL)
+    ELSE
+      objreadline.sizebuf:=objreadline.sizebuf+SIZEBUF
+      pos:=NewR(objreadline.sizebuf)
+      AstrCopy(pos,objreadline.buf,ALL)
+      Dispose(objreadline.buf)
+      objreadline.buf:=pos
+    ENDIF
+    pos:=StrLen(objreadline.buf)
+    IF (pos:=Read(objreadline.fh,objreadline.buf+pos,objreadline.sizebuf-pos))=0
+      objreadline.line:=&#x27;\0&#x27;
+      RETURN FALSE
+    ENDIF
+    IF pos&lt;0 THEN Raise(&quot;dos&quot;)
+    objreadline.line:=objreadline.buf
+    objreadline.s:=objreadline.buf
+    JUMP l
+  ELSE
+    objreadline.s:=objreadline.line+pos
+    pos:=objreadline.s
+    pos[]++:=0
+    objreadline.s:=pos
+  ENDIF
+ENDPROC TRUE
+
+EXPORT PROC endreadline(o:PTR TO objreadline)
+  Dispose(o.buf)
+  END o
+ENDPROC
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

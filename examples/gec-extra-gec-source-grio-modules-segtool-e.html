@@ -1,0 +1,183 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>segtool.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-gec-extra.html">GEC-extra</a> &rsaquo; segtool.e</div><h1>File: <code>segtool.e</code></h1><p class="meta">157 lines · project <a href="../examples/pkg-gec-extra.html"><code>GEC-extra</code></a></p><p class="pathctx">GEC-extra/GEC/source/Grio/modules/segtool.e</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/dosextens.html">dos/dosextens</a></li><li><a href="../modules/skipwhite.html">other/skipwhite</a></li></ul></div><h2>Source</h2><pre class="code">
+OPT MODULE
+OPT REG=5
+OPT OSVERSION=36
+
+
+MODULE &#x27;dos/dosextens&#x27;,&#x27;dos/dos&#x27;,&#x27;dos/rdargs&#x27;
+
+MODULE &#x27;other/skipwhite&#x27;
+
+
+
+OBJECT path
+  next:LONG
+  lock:LONG
+ENDOBJECT
+
+
+
+
+
+EXPORT OBJECT segtool PRIVATE
+stack  : LONG
+resseg : LONG
+segl   : LONG
+name   : LONG
+ENDOBJECT
+
+
+
+
+PROC find(name) OF segtool
+
+DEF dir , cli:PTR TO commandlineinterface , segl
+DEF path:PTR TO path , seg:PTR TO segment
+
+
+segl := seg :=NIL
+
+IF (cli := Cli())
+
+   self.stack := Shl(cli.defaultstack,2)
+
+   self.name := name
+
+   IF (segl:=LoadSeg(name))=NIL
+
+      IF (name = FilePart(name) )
+
+         Forbid()
+         IF (seg:=FindSegment(name,0,1))
+            IF (0 &lt;= seg.uc)
+               segl:=seg.seg
+               seg.uc:=seg.uc+1
+            ELSE
+               IF (-2 = seg.uc)
+                  segl:=seg.seg
+               ELSE
+                  seg:=NIL
+               ENDIF
+            ENDIF
+         ENDIF
+         Permit()
+
+         IF segl=NIL
+            path:=Shl(cli.commanddir,2)
+            WHILE segl=NIL
+                EXIT path=NIL
+                dir:=CurrentDir(path.lock)
+                segl:=LoadSeg(name)
+                CurrentDir(dir)
+                path:=Shl(path.next,2)
+            ENDWHILE
+         ENDIF
+
+         IF segl=NIL
+            IF (dir:=Lock(&#x27;C:&#x27;,SHARED_LOCK))
+               dir:=CurrentDir(dir)
+               segl:=LoadSeg(name)
+               UnLock(CurrentDir(dir))
+            ENDIF
+         ENDIF
+
+      ENDIF
+
+   ENDIF
+
+ENDIF
+
+self.resseg := seg
+
+self.segl   := segl
+
+
+ENDPROC segl
+
+
+
+
+PROC free() OF segtool
+
+DEF seg:PTR TO segment
+
+   IF (seg:=self.resseg)
+      Forbid()
+      IF (seg.uc &gt; 0) THEN seg.uc:=seg.uc-1
+      Permit()
+   ELSE
+      IF self.segl THEN UnLoadSeg(self.segl)
+   ENDIF
+
+ENDPROC
+
+
+
+PROC run(argline) OF segtool
+
+DEF pos,in,out,buf[512]:ARRAY,cs:csource
+
+  IF self.segl
+     in:=out:=0
+     IF (pos:=InStr(argline,&#x27;&lt;&#x27;,0)) &gt; -1
+        in:=skipWhite(argline+pos+1)
+        IF &quot;&gt;&quot;=in[] THEN in:=out:=skipWhite(in+1)
+        StrLen(in)
+        MOVEA.L  cs,A0
+        MOVE.L   in,(A0)+  /* csource.buffer */
+        MOVE.L   D0,(A0)+  /* csource.length */
+        CLR.L    (A0)      /* csource.curchr */
+        ReadItem(buf,512,cs)
+        AstrCopy(argline+pos,in+cs.curchr)
+        in:=Open(buf,OLDFILE)
+     ENDIF
+     IF out=NIL
+        IF (pos:=InStr(argline,&#x27;&gt;&#x27;)) &gt; -1
+           out:=skipWhite(argline+pos+1)
+           StrLen(out)
+           MOVEA.L  cs,A0
+           MOVE.L   out,(A0)+ /* csource.buffer */
+           MOVE.L   D0,(A0)+  /* csource.length */
+           CLR.L    (A0)      /* csource.curchr */
+           ReadItem(buf,512,cs)
+           AstrCopy(argline+pos,out+cs.curchr)
+        ENDIF
+     ENDIF
+     IF out THEN out:=Open(buf,NEWFILE)
+     SetProgramName(self.name)
+     IF in  THEN in :=SelectInput(in)
+     IF out THEN out:=SelectOutput(out)
+     RunCommand(self.segl,self.stack,argline,StrLen(argline))
+     IF in  THEN Close(SelectInput(in))
+     IF out THEN Close(SelectOutput(out))
+  ENDIF
+
+ENDPROC
+
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

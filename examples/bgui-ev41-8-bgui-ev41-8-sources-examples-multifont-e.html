@@ -1,0 +1,210 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>MultiFont.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-bgui-ev41-8.html">BGUI_Ev41_8</a> &rsaquo; MultiFont.e</div><h1>File: <code>MultiFont.e</code></h1><p class="meta">184 lines · project <a href="../examples/pkg-bgui-ev41-8.html"><code>BGUI_Ev41_8</code></a></p><p class="pathctx">BGUI_Ev41_8/bgui_ev41_8/sources/examples/MultiFont.e</p><p class="prose">* MULTIFONT.E * * (C) Copyright 1996 Marco Talamelli. * All Rights Reserved. * * Modified by Dominique Dutoit to use more <a href="../modules/common.html">common</a> <a href="../modules/fonts.html">fonts</a> (times and helvetica). * Updated on 11-Aug-96</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/bgui.html">libraries/bgui</a></li></ul></div><h2>Source</h2><pre class="code">/*
+ *  MULTIFONT.E
+ *
+ *  (C) Copyright 1996 Marco Talamelli.
+ *      All Rights Reserved.
+ *
+ *  Modified by Dominique Dutoit to use more common fonts (times and helvetica).
+ *  Updated on 11-Aug-96
+ */
+
+OPT OSVERSION=37
+OPT PREPROCESS
+
+MODULE  &#x27;libraries/bgui&#x27;,
+        &#x27;libraries/bguim&#x27;,
+        &#x27;libraries/gadtools&#x27;,
+        &#x27;bgui&#x27;,
+        &#x27;diskfont&#x27;,
+        &#x27;tools/boopsi&#x27;,
+        &#x27;utility/tagitem&#x27;,
+        &#x27;intuition/screens&#x27;,
+        &#x27;intuition/intuition&#x27;,
+        &#x27;intuition/classes&#x27;,
+        &#x27;graphics/text&#x27;,
+        &#x27;intuition/classusr&#x27;,
+        &#x27;intuition/gadgetclass&#x27;
+
+CONST   ID_QUIT=1
+
+PROC main()
+
+    DEF button:PTR TO textfont,info1:PTR TO textfont,info2:PTR TO textfont,
+        window:PTR TO window,
+        wo_window, go_quit,
+        signal, rc,
+        running = TRUE
+
+    /*
+    **      Open the library.
+    **/
+    IF bguibase := OpenLibrary( &#x27;bgui.library&#x27;, BGUIVERSION )
+
+        /*
+         *  We need this one to open the fonts.
+         */
+        IF diskfontbase := OpenLibrary( &#x27;diskfont.library&#x27;, 36 )
+            /*
+             *  We open the fonts ourselves since BGUI
+             *  opens all fonts with OpenFont() which
+             *  means that they have to be resident
+             *  in memory.
+             */
+            IF button := OpenDiskFont( [ &#x27;helvetica.font&#x27;, 13, FS_NORMAL, FPF_DISKFONT ]:textattr )
+                IF info1 := OpenDiskFont( [ &#x27;times.font&#x27;, 15, FS_NORMAL, FPF_DISKFONT ]:textattr )
+                    IF info2 := OpenDiskFont( [ &#x27;helvetica.font&#x27;, 24,  FS_NORMAL, FPF_DISKFONT ]:textattr )
+                        /*
+                         *  Create the window object.
+                         */
+                        wo_window := WindowObject,
+                            WINDOW_Title,           &#x27;Multi-Font Demo&#x27;,
+                            WINDOW_AutoAspect,      TRUE,
+                            WINDOW_LockHeight,      TRUE,
+                            WINDOW_RMBTrap,         TRUE,
+                            WINDOW_AutoKeyLabel,    TRUE,
+                            WINDOW_MasterGroup,
+                                VGroupObject, HOffset( 4 ), VOffset( 4 ), Spacing( 4 ), GROUP_BackFill, SHINE_RASTER,
+                                    StartMember,
+                                        VGroupObject, HOffset( 4 ), VOffset( 4 ), Spacing( 2 ),
+                                            FRM_Type,       FRTYPE_BUTTON,
+                                            FRM_Recessed,       TRUE,
+                                            StartMember,
+                                                InfoObject,
+                                                    INFO_TextFormat,    &#x27;\ec\ed8MultiFont&#x27;,
+                                                    INFO_HorizOffset,   0,
+                                                    INFO_VertOffset,    0,
+                                                    INFO_FixTextWidth,  TRUE,
+                                                    INFO_MinLines,      1,
+                                                    BT_TextAttr,        [ &#x27;helvetica.font&#x27;, 24, FS_NORMAL, FPF_DISKFONT ]:textattr,
+                                                EndObject,
+                                            EndMember,
+                                            StartMember,
+                                                SeperatorObject,SEP_Horiz,TRUE,EndObject, FixMinHeight,
+                                            EndMember,
+
+                                            StartMember,
+                                                InfoObject,
+                                                    INFO_TextFormat,    &#x27;\ecThis demo shows you how you\ncan use different fonts inside a\nsingle window.&#x27;,
+                                                    INFO_HorizOffset,   0,
+                                                    INFO_VertOffset,    0,
+                                                    INFO_FixTextWidth,  TRUE,
+                                                    INFO_MinLines,      3,
+                                                    BT_TextAttr,        [ &#x27;helvetica.font&#x27;, 13,  FS_NORMAL, FPF_DISKFONT ]:textattr,
+                                                EndObject,
+                                            EndMember,
+
+                                        EndObject,
+                                    EndMember,
+                                    StartMember,
+                                        HGroupObject,
+                                            VarSpace( 50 ),
+
+                                            StartMember,
+                                                go_quit := ButtonObject,
+                                                    LAB_Label,  &#x27;_Quit&#x27;,
+                                                    LAB_Underscore, &quot;_&quot;,
+                                                    ButtonFrame,
+                                                    GA_ID,      ID_QUIT,
+                                                    BT_TextAttr,    [ &#x27;times.font&#x27;, 15, FS_NORMAL, FPF_DISKFONT ]:textattr,
+                                                EndObject,
+                                            EndMember,
+                                            VarSpace( 50 ),
+                                        EndObject, FixMinHeight,
+                                    EndMember,
+                                EndObject,
+                        EndObject
+
+                        /*
+                         *  Object created OK?
+                         */
+                        IF wo_window
+                            /*
+                             *  try to open the window.
+                             */
+                            IF window := WindowOpen( wo_window )
+                                /*
+                                 *  Obtain it&#x27;s wait mask.
+                                 */
+                                GetAttr( WINDOW_SigMask, wo_window, {signal} )
+                                /*
+                                 *  Event loop...
+                                 */
+                                WHILE running = TRUE
+                                    Wait( signal )
+                                    /*
+                                     *  Handle events.
+                                     */
+                                    WHILE ( rc := HandleEvent( wo_window )) &lt;&gt; WMHI_NOMORE
+                                        /*
+                                         *  Evaluate return code.
+                                         */
+                                        SELECT rc
+
+                                            CASE    WMHI_CLOSEWINDOW
+                                                running := FALSE
+                                            CASE    ID_QUIT
+                                                running := FALSE
+                                        ENDSELECT
+                                    ENDWHILE
+                                ENDWHILE
+                            ELSE
+                                WriteF(&#x27;Could not open the window\n&#x27;)
+                            ENDIF
+                            /*
+                             *  Disposing of the window object will
+                             *  also close the window if it is
+                             *  already opened and it will dispose of
+                             *  all objects attached to it.
+                             */
+                            DisposeObject( wo_window )
+                        ELSE
+                            WriteF(&#x27;Could not create the window object\n&#x27;)
+                        ENDIF
+                        CloseFont( info2 )
+                    ELSE
+                        WriteF(&#x27;Could not open helvetica.font, 24\n&#x27;)
+                    ENDIF
+                    CloseFont( info1 )
+                ELSE
+                    WriteF(&#x27;Could not open times.font, 15\n&#x27;)
+                ENDIF
+                CloseFont( button )
+            ELSE
+                WriteF(&#x27;Could not open helvetica.font, 13\n&#x27;)
+            ENDIF
+            CloseLibrary( diskfontbase )
+        ELSE
+            WriteF(&#x27;Could not open diskfont.library\n&#x27;)
+        ENDIF
+        CloseLibrary( bguibase )
+    ELSE
+        WriteF(&#x27;Could not open the bgui.library\n&#x27;)
+    ENDIF
+ENDPROC
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

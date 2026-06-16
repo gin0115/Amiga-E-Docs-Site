@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>exec.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-aepd31.html">AEPD31</a> &rsaquo; exec.e</div><h1>File: <code>exec.e</code></h1><p class="meta">82 lines · project <a href="../examples/pkg-aepd31.html"><code>AEPD31</code></a></p><p class="pathctx">AEPD31/EPD31/Programme/exec/exec.e</p><h2>Source</h2><pre class="code">ve a wbmessage? */
+  msgp:=wbmessage         /* get a copy of the address */
+  IF msgp.replyport = NIL /* this is a message I sent myself?  */
+    FreeMem(msgp,40)      /* free up the memory, it holds nothing useful */
+    wbmessage:=NIL        /* don&#x27;t ReplyMsg to this message */
+  ENDIF
+  msgp:=NIL
+ ENDIF
+ IF wbmessage = NIL /* we wern&#x27;t started from the workbench */
+  /* see if I was launched from a CLI/Shell */
+  IF (cli:=Shl(trkproc.cli,2))  		/* convert trkproc.cli from BPTR to APTR */
+    seglist:=cli.module 				/* get shell/cli provided seglist for my code */
+    IF (defaultstacksize:=cli.defaultstack) = 0 THEN defaultstacksize:=4000
+    /* get memory for the fake workbench startup message */
+    IF (msgp:=AllocMem(40,MEMF_PUBLIC OR MEMF_CLEAR)) = 0
+      WriteF(&#x27;AllocMem(fakemsg) failed\n&#x27;)
+      CleanUp(20)
+    ENDIF
+    /* fireup my clone */
+    IF (msgport:=CreateProc(procname,0,seglist,defaultstacksize)) = 0
+      WriteF(&#x27;Error in CreateProc\n&#x27;)
+      FreeMem(msgp,40)
+      CleanUp(20)
+    ENDIF
+    /* the E compiler generates startup code by which, by this time,
+    ** my created process has checked his task.cli, has determined that
+    ** it is zero and has foolishly decided that since he wasn&#x27;t started
+    ** from a cli/shell, he therefore must have be started from the
+    ** workbench. He is now waiting on his message port for the arrival
+    ** of the workbench startup message, which ordinarily would never
+    ** be sent since he is actually a process started by neither by
+    ** a CLI/Shell or workbench but rather via the CreateProc call a few
+    ** lines back. It looks like if I want him to get on with some useful
+    ** work that I will have to send him a fake workbench startup message.
+    */
+    /* make sure my code doesn&#x27;t go away just because I do */
+    cli.module:=NIL					/* my created proc is using my code */
+    /* prepare the fake workbench startup message */
+    node:=msgp.ln
+    node.type:=NT_MESSAGE 			/* keep exec happy */
+    PutMsg(msgport,msgp)  			/* wake him (me???) up */
+    CleanUp(0)            			/* go away, I&#x27;m done  (or am I?) */
+  ENDIF 							/* launched from a CLI/Shell */
+  tsk:=trkproc.task
+  node:=tsk.ln
+  IF StrCmp(node.name,procname,ALL) /* who am I anyway? */
+    /* Add my seglist to my tc_mementry so it will be freed when I quit */
+    seglist:=Shl(trkproc.seglist,2) /* convert from BPTR to APTR */
+    seglist:=Shl(seglist[3],2) 		/* the first 3 are DOS-private */
+    lastseglist:=seglist
+    sz:=SIZEOF ml
+    count:=0
+    REPEAT
+      sz:=sz+SIZEOF me
+      INC count
+    UNTIL (seglist:=Shl(seglist[0],2)) = 0
+    /* get space for a memlist correct number of MemEntries */
+    IF (mlp:=AllocMem(sz,MEMF_PUBLIC OR MEMF_CLEAR)) = 0 THEN CleanUp(21)
+    mlp.ml_numentries:=count
+    mement:=mlp.mem_entry  				/* point to first mem_entry substructure */
+    seglist:=lastseglist
+    WHILE seglist
+      seglist:=seglist-4    			/* back up to size word of the seglist entry */
+      mement.addr:=seglist              /* my code hunk&#x27;s address */
+      mement.length:=seglist[0]         /* my code hunk&#x27;s size */
+      IF (seglist:=Shl(seglist[1],2))   /* address of next code hunk */
+        mement:=mement+SIZEOF me        /* point to next mem_entry */
+      ENDIF
+    ENDWHILE
+    node:=mlp.ml_node
+    tsk:=trkproc.task
+    mlp:=tsk.mementry 					/* &lt;---- my tc_mementry  */
+    AddTail(mlp,node) 					/* tack my memlist onto the end of the tc_mementry */
+  ENDIF 								/* myname is &#x27;E_TrackDisplay © 1993&#x27; */
+ ENDIF									/* not launched from workbench */
+ENDPROC
+  ‹696 bytes of embedded binary/non-text data elided›
+  ‹24 bytes of embedded binary/non-text data elided›
+  ‹212 bytes of embedded binary/non-text data elided›
+  ‹31 bytes of embedded binary/non-text data elided›
+  ‹47 bytes of embedded binary/non-text data elided›
+  ‹1033 bytes of embedded binary/non-text data elided›</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

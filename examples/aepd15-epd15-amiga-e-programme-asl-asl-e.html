@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ASL.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-aepd15.html">AEPD15</a> &rsaquo; ASL.e</div><h1>File: <code>ASL.e</code></h1><p class="meta">77 lines · project <a href="../examples/pkg-aepd15.html"><code>AEPD15</code></a></p><p class="pathctx">AEPD15/EPD15/Amiga_E-Programme/ASL/ASL.e</p><p class="prose">ASL REQUESTER aufruf mit Anzeige des letzt eingestellten * Directorys und Filenamens * In Drawer das Directory und in Filename das File * das angezeigt werden soll uebergeben (Global) . * * Als modus wird LOAD oder <a href="../modules/window.html#const-save">SAVE</a> (CONST) uebergeben , beeinflusst die Anzeige * des Requesters farblich und beim </p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/asl.html">libraries/asl</a></li></ul></div><h2>Source</h2><pre class="code">/* ASL REQUESTER aufruf mit Anzeige des letzt eingestellten 
+*  Directorys und Filenamens
+*  In Drawer das Directory und in Filename das File
+*  das angezeigt werden soll uebergeben (Global) .
+*
+*  Als modus wird LOAD oder SAVE (CONST) uebergeben , beeinflusst die Anzeige
+*  des Requesters farblich und beim Doppelclick !!
+*  titelzeile = Anzeige im ASL_REQUESTER_BALKEN  (STRING)
+*  window = das dazu gehoerige Window z.b. (project0wnd)
+*  pattern = &#x27;#?(.info)&#x27;
+* (es werden z.b. nur Files mit dem Sufix &quot;.info&quot; angezeigt)
+*
+*  holefilenamen(LOAD,&#x27;Source_Code Einstellen !!&#x27;,project0wnd,&#x27;#?(.e)&#x27;)
+*
+*/
+ 
+MODULE &#x27;libraries/asl&#x27;,&#x27;asl&#x27;
+ 
+DEF drawer[255]:STRING,
+    filename[80]:STRING,
+    zusammen[255]:STRING
+ 
+ENUM LOAD,SAVE
+    /* BEISPIEL */
+ 
+PROC main()
+ 
+DEF count=5  /* Anzahl der Test&#x27;s */
+    WriteF(&#x27;Es geht los \n\n&#x27;)
+      WHILE (count&lt;&gt;0)
+/*
+(SAVE) REQUESTER ist nun SCHWARZ und es geht nicht einfach 
+mit einem Doppelclick raus , (NIL) wir haben kein Window
+&#x27;#?(.info)&#x27;  es werden nur Files mit diesem Sufix angezeigt
+**** Probier mal ein bischen rum !!  ****
+*/
+        holefilenamen(LOAD,&#x27;BEISPIEL&#x27;,NIL,&#x27;#?(.info)&#x27;)
+        WriteF(&#x27;DRAWER = &quot;\s&quot; , FILENAME = &quot;\s&quot; \n&#x27;,drawer,filename)
+        StringF(zusammen,&#x27;\s\s&#x27;,drawer,filename)
+        WriteF(&#x27;Beide = &quot;\s&quot; \n&#x27;,zusammen)
+        DEC count
+      ENDWHILE
+ENDPROC
+    /********************************************************/
+ 
+PROC holefilenamen(modus,titelzeile,window,pattern)
+ 
+DEF flags=0,c[2]:STRING
+ 
+DEF req:PTR TO filerequester
+    IF (modus = SAVE) THEN flags:=FILF_SAVE
+      IF aslbase:=OpenLibrary(&#x27;asl.library&#x27;,37)
+          IF req:=AllocAslRequest(ASL_FILEREQUEST,NIL)
+              IF AslRequest(req,[ASL_DIR,drawer,ASL_FILE,filename,ASL_HAIL,titelzeile,ASL_FUNCFLAGS,flags,ASL_WINDOW,window,
+                ASL_HEIGHT,200,ASL_PATTERN,pattern,NIL])
+                StringF(filename,&#x27;\s&#x27;,req.file)
+                StringF(drawer,&#x27;\s&#x27;,req.drawer)
+                MidStr(c,drawer,((StrLen(drawer))-1),1)
+                  IF (StrCmp(c,&#x27;:&#x27;,1)) OR (StrCmp(c,&#x27;/&#x27;,1))
+/*      StringF(drawer,&#x27;\s&#x27;,drawer)  letztes Zeichen ist Colum
+**      oder Slash drawer bleibt so {diese Zeile ist uebrig :-) }*/
+                  ELSE
+/*letztes Zeichen war kein Colum oder Slash
+, dann fuegen wir ein Slash ein */
+                    StringF(drawer,&#x27;\s/&#x27;,drawer)
+                  ENDIF
+              ENDIF
+            FreeAslRequest(req)
+          ELSE
+            EasyRequestArgs(0,[20,0,0,&#x27;Kann Filerequester nicht oeffnen !&#x27;,&#x27; O.K.&#x27;],0,0)
+          ENDIF
+        CloseLibrary(aslbase)
+      ELSE
+        EasyRequestArgs(0,[20,0,0,&#x27;Kann Asl.library nicht oeffnen !&#x27;,&#x27; O.K.&#x27;],0,0)
+      ENDIF
+ENDPROC 
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

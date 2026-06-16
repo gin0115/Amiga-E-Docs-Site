@@ -1,0 +1,182 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>3Dview.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-aepd13.html">AEPD13</a> &rsaquo; 3Dview.e</div><h1>File: <code>3Dview.e</code></h1><p class="meta">156 lines · project <a href="../examples/pkg-aepd13.html"><code>AEPD13</code></a></p><p class="pathctx">AEPD13/EPD13/Amiga_E-Programme/3DView/3Dview.e</p><p class="prose">******************************************************************************* * &lt;&lt; <a href="../modules/opal.html#const-auto">AUTO</a> HEADER XDME &gt;&gt; ******************************************************************************** ED &quot;EDG&quot; EC &quot;EC -e&quot; PREPRO &quot;EPP -t&quot; SOURCE &quot;3Dview.e&quot; EPPDEST &quot;3Dview_EPP.e&quot; EXEC &quot;3DView&quot; ISOURCE &quot;3Dview.i&quot; HSOU</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/3dview.html">3dview</a></li><li><a href="../modules/lists.html">exec/lists</a></li><li><a href="../modules/gadtools.html">gadtools</a></li><li><a href="../modules/icon.html">icon</a></li><li><a href="../modules/gadgetclass.html">intuition/gadgetclass</a></li><li><a href="../modules/intuition.html">intuition/intuition</a></li><li><a href="../modules/mathtrans.html">mathtrans</a></li><li><a href="../modules/reqtools.html">reqtools</a></li></ul></div><h2>Source</h2><pre class="code">/********************************************************************************
+ * &lt;&lt; AUTO HEADER XDME &gt;&gt;
+ ********************************************************************************
+ ED             &quot;EDG&quot;
+ EC             &quot;EC -e&quot;
+ PREPRO         &quot;EPP -t&quot;
+ SOURCE         &quot;3Dview.e&quot;
+ EPPDEST        &quot;3Dview_EPP.e&quot;
+ EXEC           &quot;3DView&quot;
+ ISOURCE        &quot;3Dview.i&quot;
+ HSOURCE        &quot; &quot;
+ ERROREC        &quot; &quot;
+ ERROREPP       &quot; &quot;
+ VERSION        &quot;0&quot;
+ REVISION       &quot;6&quot;
+ NAMEPRG        &quot;3DView&quot;
+ NAMEAUTHOR     &quot;NasGûl&quot;
+ ********************************************************************************
+ * HISTORY :
+ - v0.1 Imagine/Cyber v2.0/Sculpt (rotation/zoom). (04/02/94)
+ - v0.2 Vertex v1.62a et v1.73.1f/start_cli et start_wb. (07/02/94)
+ - v0.3 3Dpro v1.10 Final. (12/02/94)
+ - v0.4 Cyber v1.0. (modification de 3Dview.m &lt;ID_3D3D&gt; &lt;TYPE_OLDCYBER&gt; &lt;TYPE_NEWCYBER&gt;)
+        Ajout palette (Fond gris/trait noir ou Fond noir/trait blanc (15/02/94).
+ - v0.5 Ajout des commandes L (load) A (ajouter objet) M (multi-load) (16/02/94).
+ - v0.6 Ajout de la fonction F10 (informations sur les objets).
+        l&#x27;interface a été faite avec GadToolBox et convertit avec Gui2E.
+        (modification de 3Dview.m Ajout de object3d.bounded (true ou false))
+        La routine readimaginefile() ne charge plus que les objets ayant des points (17/02/94).
+ *******************************************************************************/
+OPT LARGE
+ENUM ER_NONE,ER_INCONNU,ER_NOFICHIER,ER_NOMEM,ER_OPEN,OK_FICHIER,
+     ER_INTUITIONLIB,ER_GADTOOLSLIB,ER_GFXLIB,ER_REQTOOLSLIB,
+     ER_SIG,ER_WINDOW,ER_SCREEN,ER_LOCKSCREEN,ER_VISUAL,ER_CONTEXT,ER_GADGET,
+     ER_BADARGS,ER_ICONLIB,ER_MATHTRANSLIB
+RAISE ER_NOMEM IF New()=NIL
+MODULE &#x27;intuition/intuition&#x27;
+MODULE &#x27;gadtools&#x27;,&#x27;libraries/gadtools&#x27;
+MODULE &#x27;reqtools&#x27;,&#x27;libraries/reqtools&#x27;
+MODULE &#x27;icon&#x27;,&#x27;workbench/workbench&#x27;
+MODULE &#x27;mathtrans&#x27;
+MODULE &#x27;intuition/gadgetclass&#x27;,&#x27;intuition/screens&#x27;,&#x27;graphics/text&#x27;,&#x27;graphics/displayinfo&#x27;
+MODULE &#x27;exec/lists&#x27;,&#x27;exec/nodes&#x27;,&#x27;utility/tagitem&#x27;,&#x27;dos/dosextens&#x27;,&#x27;workbench/startup&#x27;,&#x27;exec/ports&#x27;
+MODULE &#x27;3Dview&#x27;,&#x27;MHeader&#x27;
+/* DEFINITION GENERALES (fenêtre de vue)*/
+DEF view_screen:PTR TO screen,
+    view_window:PTR TO window,
+    view_type,view_infos,
+    sig=-1,type_scr
+/* DEFINITIONS GENERALES (fenêtre info) */
+    DEF wininfo_visual=NIL,
+        wininfo_window:PTR TO window,
+        wininfo_glist=NIL,
+        wininfo_type,wininfo_infos
+    /** GADGETLABELS **/
+    DEF g_num,g_nbrspts,g_nbrsfaces,g_datafaces,g_datapts,g_objcx,g_objcy,g_objcz,g_objminx,g_objmaxx,g_objminy,g_objmaxy,g_objminz,g_objmaxz,g_listobj,g_objselected,g_objtype,g_objbounded
+    DEF texte,g
+    DEF data_objtype[20]:LIST
+    /***************************/
+    DEF wininfo_mes:PTR TO intuimessage
+    DEF wininfo_g:PTR TO gadget
+    /**************************/
+    DEF wintattr
+DEF fichier_source[256]:STRING
+DEF my_database:PTR TO database3d,list_obj[500]:LIST
+DEF minx=NIL,maxx=NIL,miny=NIL,maxy=NIL,minz=NIL,maxz=NIL,echelle=0.1,plan=PLAN_XOY
+DEF base_cx=NIL,base_cy=NIL,base_cz=NIL,signe_x=1,signe_y=1,signe_z=1,angle_rotation=10.0
+DEF format=NIL,centre_x=NIL,centre_y=NIL
+DEF tattr
+DEF base_lock,task
+DEF palette[4]:ARRAY OF INT
+DEF default_dir[256]:STRING
+DEF new_liste:PTR TO lh
+DEF data_boundedbox[36]:LIST
+DEF viewwindow_sig
+PMODULE &#x27;3D_InitRemApp&#x27;
+PMODULE &#x27;3D_AllRequester&#x27;
+PMODULE &#x27;3D_InfoWindow&#x27;
+PMODULE &#x27;3D_InOutObj&#x27;
+PMODULE &#x27;3D_ActionBase&#x27;
+PMODULE &#x27;3D_ViewWindow&#x27;
+PMODULE &#x27;Pmodules:Plist&#x27;
+PROC main() HANDLE /*&quot;main()&quot;*/
+/********************************************************************************
+ * Para         : NONE
+ * Return       : NONE
+ * Description  : Main Proc.
+ *******************************************************************************/
+    DEF test_main
+    tattr:=[&#x27;topaz.font&#x27;,9,0,0]:textattr
+    wintattr:=[&#x27;topaz.font&#x27;,8,0,0]:textattr
+    data_objtype:=[&#x27;Imagine&#x27;,&#x27;Cyber v1.0&#x27;,&#x27;Cyber v2.0&#x27;,&#x27;Sculpt&#x27;,
+                   &#x27;Vertex &lt; v 1.62a&#x27;,&#x27;Vertex &gt; v 1.73.f&#x27;,&#x27;3Dpro&#x27;,&#x27;LightWave&#x27;]
+    data_boundedbox:=[0,2,1,0,3,2,3,6,2,3,7,6,7,5,6,7,4,5,4,0,1,4,1,5,1,2,6,1,6,5,4,7,3,4,3,0]
+    do_ReadHeader({prg_banner})
+    StrCopy(fichier_source,arg,ALL)
+    new_liste:=New(SIZEOF lh)
+    new_liste.tail:=0
+    new_liste.head:=new_liste.tail
+    new_liste.tailpred:=new_liste.head
+    new_liste.type:=0
+    new_liste.pad:=0
+    my_database:=New(SIZEOF database3d)
+    my_database.nbrsobjs:=0
+    my_database.totalpts:=0
+    my_database.totalfaces:=0
+    my_database.firstobj:=list_obj[0]
+    task:=FindTask(0)
+    IF (test_main:=open_lib())&lt;&gt;ER_NONE THEN Raise(test_main)
+    IF wbmessage&lt;&gt;NIL
+        IF (test_main:=start_from_wb())&lt;&gt;ER_NONE THEN Raise(test_main)
+    ELSE
+        IF (test_main:=start_from_cli())&lt;&gt;ER_NONE THEN Raise(test_main)
+    ENDIF
+    IF (test_main:=readfile())&lt;&gt;OK_FICHIER THEN Raise(test_main)
+    IF (test_main:=open_interface())&lt;&gt;ER_NONE THEN Raise(test_main)
+    rebuildminmax()
+    draw_base()
+    REPEAT
+        wait4message()
+    UNTIL view_type=IDCMP_CLOSEWINDOW
+    Raise(ER_NONE)
+EXCEPT
+    CurrentDir(base_lock)
+    cleanupbase()
+    IF new_liste THEN Dispose(new_liste)
+    IF tattr THEN Dispose(tattr)
+    IF wintattr THEN Dispose(wintattr)
+    IF data_objtype THEN Dispose(data_objtype)
+    IF data_boundedbox THEN Dispose(data_boundedbox)
+    close_interface()
+    close_lib()
+    SELECT exception
+        CASE ER_INCONNU;   WriteF(&#x27;type de fichier inconnu.\n&#x27;)
+        CASE ER_NOFICHIER; WriteF(&#x27;le fichier \s est introuvable.\n&#x27;)
+        CASE ER_NOMEM;     WriteF(&#x27;Pas assez de mémoire.\n&#x27;)
+        CASE ER_OPEN;      WriteF(&#x27;Impossible d\aouvrir le fichier.\n&#x27;)
+        CASE ER_INTUITIONLIB; WriteF(&#x27;Intuition.library ?\n&#x27;)
+        CASE ER_GADTOOLSLIB;  WriteF(&#x27;GadTools.library ?\n&#x27;)
+        CASE ER_ICONLIB;      WriteF(&#x27;Icon.library ?\n&#x27;)
+        CASE ER_GFXLIB;       WriteF(&#x27;Graphics.library ?\n&#x27;)
+        CASE ER_REQTOOLSLIB;  WriteF(&#x27;ReqTools.library ?\n&#x27;)
+        CASE ER_MATHTRANSLIB; WriteF(&#x27;MathTrans.library ?\n&#x27;)
+        CASE ER_SIG;          WriteF(&#x27;Erreur Signal.\n&#x27;)
+        CASE ER_SCREEN;       WriteF(&#x27;Erreur Screen.\n&#x27;)
+        CASE ER_WINDOW;       WriteF(&#x27;Erreur Window.\n&#x27;)
+        CASE ER_BADARGS;      WriteF(&#x27;Mauvais Arguments.\n&#x27;)
+        DEFAULT;              NOP
+    ENDSELECT
+ENDPROC
+prg_banner:
+INCBIN &#x27;3Dview.header&#x27;
+
+
+
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

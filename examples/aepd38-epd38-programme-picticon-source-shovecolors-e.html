@@ -1,0 +1,232 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ShoveColors.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-aepd38.html">AEPD38</a> &rsaquo; ShoveColors.e</div><h1>File: <code>ShoveColors.e</code></h1><p class="meta">206 lines · project <a href="../examples/pkg-aepd38.html"><code>AEPD38</code></a></p><p class="pathctx">AEPD38/EPD38/Programme/Picticon/Source/ShoveColors.e</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/memory.html">exec/memory</a></li></ul></div><h2>Source</h2><pre class="code">MODULE &#x27;exec/memory&#x27;,
+			 &#x27;intuition/intuition&#x27;,&#x27;intuition/screens&#x27;,&#x27;intuition/gadgetclass&#x27;,
+			 &#x27;intuition/screens&#x27;,
+			 &#x27;graphics/rastport&#x27;,&#x27;graphics/gfx&#x27;,&#x27;graphics/text&#x27;,
+			 &#x27;graphics/view&#x27;,
+			 &#x27;libraries/iffparse&#x27;,&#x27;iffparse&#x27;,
+			 &#x27;dos/dos&#x27;,&#x27;dos/dosextens&#x27;,&#x27;dos/dosasl&#x27;,&#x27;exec/tasks&#x27;
+
+	OBJECT bitmapheader
+		w:INT;h:INT;x:INT;y:INT
+		depth:CHAR;masking:CHAR
+		compression:CHAR;pad1:CHAR;transparentcolor:INT
+		xaspect:CHAR;yaspect:CHAR;pagewidth:INT;pageheight:INT
+	ENDOBJECT
+	DEF source[250]:STRING
+	DEF argarray[11]:LIST
+	DEF	iff=NIL:PTR TO iffhandle
+	DEF cn=NIL:PTR TO contextnode
+	DEF	ierror,rlen
+	DEF	des=NIL:PTR TO rastport
+	DEF bmhd=NIL:PTR TO bitmapheader
+	DEF sp=NIL:PTR TO storedproperty
+	DEF planedata[10]:LIST
+	DEF widthbytes,pokeplane,body,origbody,numbytes
+	DEF ditz,dang,dumb,dope
+	DEF destrgb[260]:LIST
+	DEF vp=NIL:PTR TO viewport
+	DEF cm,clipx,clipy
+	DEF depth,iffdepth,nc,nci,scratch
+	DEF rdarg
+	DEF viewport=NIL:PTR TO viewport
+	DEF scr=NIL:PTR TO screen
+	DEF bitmap=NIL:PTR TO bitmap
+	DEF quiet=FALSE
+	DEF lock[260]:LIST
+	DEF lockmode=0 /* 0 means don&#x27;t lock unless in palette*/
+	DEF force=0	/* 0 means don&#x27;t override already locked pens! */
+PROC main() HANDLE
+	IF KickVersion(39)=NIL
+		WriteF(&#x27;\nGet OS3.x (maybe a nice A1200?)\n&#x27;)
+		CleanUp(21)
+	ENDIF
+
+	iffparsebase:=OpenLibrary(&#x27;iffparse.library&#x27;,39)
+
+	rdarg:=ReadArgs(&#x27;FILE/A,QUIET=Q/S,FORCE=F/S,LOCKALL=LA/S&#x27;,argarray,0)
+	IF rdarg&gt;0
+		IF argarray[0]&lt;&gt;NIL
+			StrCopy(source,argarray[0],ALL)
+		ENDIF
+		IF argarray[1]&lt;&gt;NIL
+			quiet:=TRUE
+		ENDIF
+		IF argarray[2]&lt;&gt;NIL
+			force:=TRUE
+		ENDIF
+		IF argarray[3]&lt;&gt;NIL
+			lockmode:=TRUE
+		ENDIF
+		FreeArgs(rdarg)
+	ELSE
+		Raise(1)
+	ENDIF
+	IF (scr := LockPubScreen(NIL)) = NIL
+		Raise(1)
+	ELSE
+		bitmap:=scr.bitmap
+		viewport:=scr.viewport
+		depth:=bitmap.depth
+		cm:=viewport.colormap
+	ENDIF
+
+	iff:=AllocIFF()
+	
+	iff.stream:=Open(source,MODE_OLDFILE)
+	IF (iff.stream)
+		InitIFFasDOS(iff)
+	ELSE
+		Raise(1)
+	ENDIF
+
+	ierror:=OpenIFF(iff,IFFF_READ)
+	ierror:=PropChunk(iff,&quot;ILBM&quot;,&quot;LOCK&quot;)
+	ierror:=PropChunk(iff,&quot;ILBM&quot;,&quot;CMAP&quot;)
+	ierror:=StopOnExit(iff,&quot;ILBM&quot;,&quot;FORM&quot;)
+	ierror:=ParseIFF(iff,IFFPARSE_SCAN)
+
+	IF(sp:=FindProp(iff,&quot;ILBM&quot;,&quot;LOCK&quot;))
+		body:=sp.data
+		FOR scratch:=0 TO (sp.size-1)
+			ditz:=Char(body++)
+			IF lockmode=0
+				lockpen(scratch,ditz)
+			ELSE
+				lockpen(scratch,1)
+			ENDIF
+		ENDFOR
+	ENDIF
+	IF(sp:=FindProp(iff,&quot;ILBM&quot;,&quot;CMAP&quot;))
+		body:=sp.data
+		FOR scratch:=0 TO (sp.size/3)-1
+			ditz:=Char(body++)
+			dang:=Char(body++)
+			dumb:=Char(body++)
+			IF (scratch&lt;(Shl(1,depth)))
+				IF lock[scratch]=FALSE
+					setrgb32(viewport,scratch,ditz,dang,dumb)
+				ENDIF
+				IF force
+					setrgb32(viewport,scratch,ditz,dang,dumb)
+				ENDIF
+			ENDIF
+		ENDFOR
+	ELSE
+		Raise(1)
+	ENDIF
+	Raise(0)
+EXCEPT
+	IF scr THEN UnlockPubScreen(0,scr)
+	IF (iff)
+		CloseIFF(iff)
+		IF (iff.stream) THEN Close(iff.stream)
+		FreeIFF(iff)
+	ENDIF
+	IF iffparsebase THEN CloseLibrary(iffparsebase)
+	IF ((exception) AND (quiet=FALSE)) THEN WriteF(&#x27;ShoveColors Failed.\n&#x27;)
+ENDPROC
+
+PROC getrgb32(cm,fc,nc,tab)
+	DEF ret
+	MOVE.L cm,A0
+	MOVE.L fc,D0
+	MOVE.L nc,D1
+	MOVE.L tab,A1
+	MOVE.L gfxbase,A6
+	JSR    -$384(A6)
+	MOVE.L D0,ret
+ENDPROC ret
+
+PROC setrgb32(vp,pen,red,green,blue)
+	MOVE.L vp,A0
+  MOVE.L pen,D0
+  MOVE.L red,D1
+  SWAP   D1
+  LSL.L  #8,D1
+  MOVE.L green,D2
+  SWAP   D2
+  LSL.L  #8,D2
+  MOVE.L blue,D3
+  SWAP   D3
+  LSL.L  #8,D3
+  MOVE.L gfxbase,A6
+  JSR    -$354(A6)
+ENDPROC
+
+PROC obtainpen(cm,n,r,g,b,f)
+	DEF ret
+	MOVE.L gfxbase,A6
+	MOVE.L n,D0
+  MOVE.L r,D1
+  SWAP   D1
+  LSL.L  #8,D1
+  MOVE.L g,D2
+  SWAP   D2
+  LSL.L  #8,D2
+  MOVE.L b,D3
+  SWAP   D3
+  LSL.L  #8,D3
+	MOVE.L cm,A0
+	MOVE.L f,D4
+	JSR    -$3BA(A6)
+	MOVE.L D0,ret
+ENDPROC ret
+
+PROC releasepen(cm,n)
+	MOVE.L cm,A0
+	MOVE.L n,D0
+	MOVE.L gfxbase,A6
+	JSR    -$3B4(A6)
+ENDPROC
+
+PROC lockpen(pn,mode)
+
+	DEF cmtable,red,green,blue,dummy
+
+	cmtable:=[0,0,0,0,0,0]:LONG
+	getrgb32(cm,pn,1,cmtable)
+	red:=Char(cmtable)
+	green:=Char(cmtable+4)
+	blue:=Char(cmtable+8)
+
+	dummy:=obtainpen(cm,pn,red,green,blue,0)
+
+	IF dummy&lt;0
+		lock[pn]:=TRUE /* Pen was unavailable, so DON&#x27;T release/change! */
+	ELSE
+		IF (mode=0) /* Was able to lock, but it needs to be *free* */
+			releasepen(cm,pn)
+		ENDIF
+		lock[pn]:=FALSE
+	ENDIF
+ENDPROC
+
+versionstring:
+CHAR &#x27;\0$VER: shovecolors 0.3 (4.7.94)\0&#x27;
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

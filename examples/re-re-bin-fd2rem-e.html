@@ -1,0 +1,154 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>fd2rem.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-re.html">RE</a> &rsaquo; fd2rem.e</div><h1>File: <code>fd2rem.e</code></h1><p class="meta">128 lines · project <a href="../examples/pkg-re.html"><code>RE</code></a></p><p class="pathctx">RE/RE/bin/fd2rem.e</p><p class="prose">fd2dm.d (C) Marco Antoniazzi 31-01-04 ** fd2rem.e (C) Marco Antoniazzi 04-01-08</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/dos.html">dos/dos</a></li></ul></div><h2>Source</h2><pre class="code">/* fd2dm.d (C)  Marco Antoniazzi 31-01-04 
+** fd2rem.e (C)  Marco Antoniazzi 04-01-08
+*/
+MODULE  &#x27;dos/dos&#x27;,&#x27;exec/memory&#x27;
+-&gt;ParseLeft(&#x27;abcdefgh&#x27;,dststring,&#x27;ef&#x27;) =&gt; dststring=&#x27;abcd&#x27;
+#define ParseLeftAdv(a,d,s) d:=a ; IF (p:=InStr(a,s))&gt;0 THEN PutByte(d+p,0) ELSE IF p=0 THEN p:=1 ELSE p:=-StrLen(s) ; a +=p+StrLen(s)
+#define ParseLeftC(a,d,s) StrCopy(d,a,InStr(a,s))
+#define ParseRight(a,s,d) d:=a ; IF (p:=InStr(a,s))&gt;=0 THEN d += p+StrLen(s) ELSE d +=StrLen(a)
+#define Right(s,l) s+StrLen(s)-l
+-&gt;translate(regs,&#x27;/&#x27;,&#x27;,&#x27;) from &#x27;a0/d0&#x27; to &#x27;a0,d0&#x27;
+#define translate(s,a,b) WHILE UByte(s++) DO IF UByte(s)=a THEN PutByte(s,b)
+#define ReadLN(m,line) ParseLeftAdv(m,line,&#x27;\n&#x27;)
+
+ENUM ERR_NONE=0,ERR_ARGS,ERR_SRC,ERR_DST,ERR_MEM
+
+PROC main() HANDLE
+  DEF myargs:PTR TO LONG,rdargs,template=&#x27;SOURCE/A&#x27;
+  DEF srcfile,dstfile,src=0,dst=0,buf=0,l,p
+  DEF str,dest=0,line=0:PTR TO CHAR
+
+  myargs:=[0]
+  IFN rdargs:=ReadArgs(template,myargs,0) THEN Raise(ERR_ARGS)
+  srcfile:=myargs[]
+
+  IFN dest:=AllocVec(StrLen(myargs[]),MEMF_PUBLIC | MEMF_CLEAR) THEN Raise(ERR_MEM)
+  dstfile:=dest
+  /* keep only first name */
+  ParseLeftC(srcfile,dstfile,&#x27;.&#x27;)
+  ParseLeftC(srcfile,dstfile,&#x27;_lib&#x27;)
+  /* add new extension */
+  StrAdd(dstfile,&#x27;.m&#x27;)
+  IFN src:=Open(myargs[],OLDFILE) THEN Raise(ERR_SRC)
+  IFN buf:=AllocVec(l:=FileLength(myargs[]),MEMF_PUBLIC | MEMF_CLEAR) THEN Raise(ERR_MEM)
+  Read(src,buf,l)
+  IFN dst:=Open(dstfile,NEWFILE) THEN Raise(ERR_DST)
+  
+  DEF len,priv=FALSE,offset=0,ppc=FALSE,mem,lastarg=0
+  DEF key=0,base=0,etc=0,func=0,args=0,regs=0
+  
+  mem:=buf
+  l +=mem
+  WHILE mem&lt;l
+    ReadLN(mem,line)
+  
+    IF line[]&lt;&gt;&quot;*&quot;
+      ParseRight(line,&#x27;##&#x27;,etc)
+  
+      IFN UByte(etc)
+  
+        IF priv=FALSE
+          -&gt; parse var line func&#x27;(&#x27;args&#x27;)(&#x27;regs&#x27;)&#x27;
+          ParseLeftAdv(line,func,&#x27;(&#x27;)
+          ParseLeftAdv(line,args,&#x27;)(&#x27;)
+          ParseLeftAdv(line,regs,&#x27;)&#x27;)
+          str:=regs -&gt;store address
+          translate(str,&quot;/&quot;,&quot;,&quot;)
+          -&gt;see if tagitens are used (and avoid intuition_lib.fd exceptions)
+          IF (StrCmp(Right(func,1),&#x27;A&#x27;)) AND Not(StrCmp(Right(func,3),&#x27;DMA&#x27;))
+            lastarg:=TRUE ; len:=1
+          ELSEIF (StrCmp(Right(func,4),&#x27;Args&#x27;))     ; lastarg:=TRUE ; len:=4
+          ELSEIF (StrCmp(Right(func,7),&#x27;TagList&#x27;))  ; lastarg:=TRUE ; len:=0
+          ELSEIF (StrCmp(Right(args,7),&#x27;taglist&#x27;))  ; lastarg:=TRUE ; len:=-1
+          ENDIF
+
+          IF lastarg THEN lastarg:=&#x27;:PTR TO LONG&#x27;
+          IF ppc
+            IF StrCmp(args,&#x27;)()&#x27;) THEN args:=0 -&gt;if there are no args use a null string
+            VFPrintF(dst,&#x27;    \s(\s\s)=-\d,\n&#x27;,[func,args,lastarg,offset])
+          ELSE
+            VFPrintF(dst,&#x27;    \s(\s\s)=-\d,\n&#x27;,[func,regs,lastarg,offset])
+            IF lastarg
+              IF len&gt;=0
+                PutByte(Right(func,len),0) -&gt;shorten string (remove last &#x27;A&#x27; or &#x27;Args&#x27;)
+                -&gt;replace TagList with Tags
+                IF StrCmp(Right(func,7),&#x27;TagList&#x27;) THEN StrCopy(Right(func,4),&#x27;s&#x27;)
+                VFPrintF(dst,&#x27;    \s(\s:LIST OF LONG)=-\d,\n&#x27;,[func,regs,offset])
+              ENDIF
+            ENDIF
+          ENDIF
+
+          lastarg:=0
+        ENDIF
+
+        offset +=6
+      ELSE
+        -&gt; parse var etc key&#x27; &#x27;args
+        ParseLeftAdv(etc,key,&#x27; &#x27;) ; args:=etc
+        IF StrCmp(key,&#x27;base&#x27;)
+          ParseRight(args,&#x27;_&#x27;,base)
+          VFPrintF(dst,&#x27;LIBRARY \s\n&#x27;,[base])
+        ELSEIF StrCmp(key,&#x27;bias&#x27;)     ; offset :=Val(args)
+        ELSEIF StrCmp(key,&#x27;shadow&#x27;)   ; offset -=6
+        ELSEIF StrCmp(key,&#x27;public&#x27;)   ; priv   :=FALSE
+        ELSEIF StrCmp(key,&#x27;private&#x27;)  ; priv   :=TRUE
+        ELSEIF StrCmp(key,&#x27;abi&#x27;)
+          ppc :=IF StrCmpNC(args,&#x27;M68K&#x27;) THEN FALSE ELSE TRUE
+          VFPrintF(dst,&#x27;\s,\n&#x27;,[UpperStr(args)])
+        ELSEIF StrCmp(key,&#x27;end&#x27;)      ; Raise(ERR_NONE)
+        ENDIF
+      ENDIF
+  
+    ENDIF
+
+  ENDWHILE
+
+EXCEPT DO
+
+  IF dst
+    -&gt; remove the last comma
+    Seek(dst,-2,OFFSET_END)
+    Write(dst,&#x27;\n&#x27;,1)
+    Close(dst)
+  ENDIF
+
+  FreeVec(buf)
+  Close(src)
+  FreeVec(dest)
+  FreeArgs(rdargs)
+
+  SELECT exception
+    CASE ERR_MEM  ; PrintF(&#x27;Not enough memory available\n&#x27;)
+    CASE ERR_ARGS ; PrintF(&#x27;Usage: fd2rem \s\n&#x27;,template)
+    CASE ERR_SRC  ; PrintFault(IOErr(),srcfile)
+    CASE ERR_DST  ; PrintFault(IOErr(),dstfile)
+  ENDSELECT
+
+ENDPROC
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

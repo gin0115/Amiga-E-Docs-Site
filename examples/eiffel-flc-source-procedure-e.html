@@ -1,0 +1,233 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>procedure.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-eiffel.html">eiffel</a> &rsaquo; procedure.e</div><h1>File: <code>procedure.e</code></h1><p class="meta">207 lines · project <a href="../examples/pkg-eiffel.html"><code>eiffel</code></a></p><p class="pathctx">eiffel/flc/source/procedure.e</p><p class="prose">Copyright © 1995, Guichard Damien.</p><h2>Source</h2><pre class="code">
+-&gt; Copyright © 1995, Guichard Damien.
+
+-&gt; Eiffel procedures
+
+-&gt; Procedures have their own arguments and local variables.
+
+-&gt; TO DO :
+-&gt;   more stuff for obsolete routines
+-&gt;   redefinition to a variable attribute
+-&gt;   preconditions
+-&gt;   postconditions
+-&gt;   once routines
+-&gt;   external routines
+
+OPT MODULE
+
+MODULE &#x27;*strings&#x27;,&#x27;*entity_tree&#x27;
+MODULE &#x27;*ame&#x27;
+MODULE &#x27;*class&#x27;,&#x27;*feature&#x27;,&#x27;*local&#x27;,&#x27;*argument&#x27;
+
+DEF local_count
+DEF locals:PTR TO entity_tree
+
+ENUM NOT_CREATOR,CREATOR
+
+EXPORT OBJECT procedure OF feature
+PUBLIC
+  arguments:PTR TO argument
+PRIVATE
+  frozen:CHAR
+  deferred:CHAR
+  creator:CHAR
+  creation_client:PTR TO class
+  count:INT
+ENDOBJECT
+
+-&gt; Set count of the feature
+PROC set_count(count) OF procedure
+  self.count:=count
+ENDPROC
+
+-&gt; Freeze this feature.
+PROC freeze() OF procedure
+  self.frozen:=TRUE
+ENDPROC
+
+-&gt; Defer this feature.
+PROC defer() OF procedure
+  self.deferred:=TRUE
+ENDPROC
+
+-&gt; Is procedure deferred?
+PROC is_deferred() OF procedure
+ENDPROC self.deferred
+
+-&gt; Turn this procedure into a creator
+PROC as_creator(class:PTR TO class,client) OF procedure
+  DEF other:PTR TO procedure
+  IF self.class=class
+    self.creator:=TRUE
+    self.creation_client:=client
+  ELSE
+    NEW other
+    other.name:=self.name
+    other.client:=self.client
+    other.type:=self.type
+    other.arguments:=self.arguments
+    other.frozen:=self.frozen
+    other.creator:=TRUE
+    other.creation_client:=client
+    other.count:=self.count
+    class.add_feature(other)
+  ENDIF
+ENDPROC
+
+-&gt; Is this procedure a creator?
+PROC is_creator(class:PTR TO class,client:PTR TO class) OF procedure
+  IF self.class&lt;&gt;class THEN RETURN FALSE
+  IF self.creator=FALSE THEN RETURN FALSE
+ENDPROC client.is_heir_of(self.creation_client)
+
+-&gt; Is feature frozen?
+PROC is_frozen() OF procedure IS self.frozen
+
+-&gt; Is feature a routine?
+PROC is_routine() OF procedure IS TRUE
+
+-&gt; Is feature a procedure?
+PROC is_procedure() OF procedure IS TRUE
+
+-&gt; Feature value access mode
+PROC access() OF procedure IS M_NONE
+
+-&gt; Vector for routine call
+PROC vector() OF procedure IS self.count
+
+-&gt; Add procedure arguments.
+PROC add_arguments(arguments:PTR TO argument) OF procedure
+  IF locals=NIL THEN NEW locals
+  self.arguments:=arguments
+ENDPROC
+
+-&gt; Find an argument.
+PROC find_argument(name) OF procedure
+ENDPROC IF self.arguments THEN self.arguments.find(name) ELSE NIL
+
+
+-&gt; Add a local.
+PROC add_local(local:PTR TO local) OF procedure
+  INC local_count
+  local.set_count(local_count)
+  locals.add(local)
+ENDPROC
+
+-&gt; Find a local.
+PROC find_local(name) OF procedure
+ENDPROC locals.find(name)
+
+-&gt; Local entities.
+PROC local_entities() OF procedure
+ENDPROC local_count
+
+-&gt; Wipe out locals.
+PROC wipe_out_locals() OF procedure
+  local_count:=0
+  IF locals THEN locals.wipe_out()
+ENDPROC
+
+-&gt; Make a copy renamed with &#x27;name&#x27;
+PROC rename(name) OF procedure
+  DEF other:PTR TO procedure
+  other:=self.copy()
+  other.name:=clone(name)
+  other.client:=self.client
+  other.type:=self.type
+  other.arguments:=self.arguments
+  other.frozen:=self.frozen
+  other.deferred:=self.deferred
+  other.count:=self.count
+ENDPROC other
+
+-&gt; Make a copy exported to &#x27;client&#x27;
+PROC new_exports(client) OF procedure
+  DEF other:PTR TO procedure
+  other:=self.copy()
+  other.name:=self.name
+  other.client:=client
+  other.type:=self.type
+  other.arguments:=self.arguments
+  other.frozen:=self.frozen
+  other.deferred:=self.deferred
+  other.count:=self.count
+ENDPROC other
+
+-&gt; Make an undefined copy.
+PROC undefine() OF procedure
+  DEF other:PTR TO procedure
+  other:=self.copy()
+  other.name:=self.name
+  other.client:=self.client
+  other.type:=self.type
+  other.arguments:=self.arguments
+  other.frozen:=self.frozen
+  other.deferred:=TRUE
+  other.count:=self.count
+ENDPROC other
+
+-&gt; Make a copy redefined with &#x27;client&#x27;,&#x27;arguments&#x27;,&#x27;type&#x27;
+PROC redefine(client,arguments,type) OF procedure
+  DEF other:PTR TO procedure
+  other:=self.copy()
+  other.name:=self.name
+  other.client:=client
+  other.type:=type
+  other.arguments:=arguments
+  other.count:=self.count
+ENDPROC other
+
+-&gt; Is signature conform to procedure signature
+PROC is_conform(arguments:PTR TO argument,type:PTR TO class) OF procedure
+  DEF p:PTR TO argument
+  DEF q:PTR TO argument
+  DEF result:PTR TO class
+  p:=arguments
+  q:=self.arguments
+  WHILE TRUE
+    EXIT p=NIL
+    EXIT q=NIL
+    result:=p.type.base()
+    IF result.is_heir_of(q.type.base())=FALSE THEN RETURN FALSE
+    p:=p.next
+    q:=q.next
+  ENDWHILE
+  IF p THEN RETURN FALSE
+  IF q THEN RETURN FALSE
+  IF type=NIL THEN RETURN self.type=NIL
+  IF self.type=NIL THEN RETURN FALSE
+  result:=type.base()
+ENDPROC result.is_heir_of(self.type.base())
+
+-&gt; Make a procedure.
+PROC copy() OF procedure
+  DEF other:PTR TO procedure
+ENDPROC NEW other
+
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

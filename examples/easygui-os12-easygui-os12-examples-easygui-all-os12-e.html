@@ -1,0 +1,419 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>all_os12.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-easygui-os12.html">EasyGUI_OS12</a> &rsaquo; all_os12.e</div><h1>File: <code>all_os12.e</code></h1><p class="meta">393 lines · project <a href="../examples/pkg-easygui-os12.html"><code>EasyGUI_OS12</code></a></p><p class="pathctx">EasyGUI_OS12/easygui_os12/examples/easygui/all_os12.e</p><p class="prose">Test GUI&#x27;s gathered in one program.</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/easygui.html">tools/easygui</a></li><li><a href="../modules/easygui-os12.html">tools/easygui_os12</a></li><li><a href="../modules/exceptions.html">tools/exceptions</a></li></ul></div><h2>Source</h2><pre class="code">-&gt; Test GUI&#x27;s gathered in one program.
+
+OPT PREPROCESS
+
+-&gt; RST: Added conditional EASY_OS12 support
+#define EASY_OS12
+
+#ifdef EASY_OS12
+  OPT LARGE
+  MODULE &#x27;tools/easygui_os12&#x27;
+#endif
+#ifndef EASY_OS12
+  OPT OSVERSION=37
+  MODULE &#x27;tools/easygui&#x27;
+#endif
+
+MODULE &#x27;tools/exceptions&#x27;, &#x27;libraries/gadtools&#x27;
+
+DEF gh
+
+DEF havefonts=FALSE, havescreenmode=FALSE, havefile=FALSE, havesearch=FALSE,
+    havesearch2=FALSE, haveamosaic=FALSE, havedb=FALSE, havedm=FALSE,
+    havetiny=FALSE, havemessy=FALSE
+
+DEF s[50]:STRING
+
+PROC main() HANDLE
+  DEF mh=NIL:PTR TO multihandle
+  StrCopy(s,&#x27;bla&#x27;)
+  mh:=multiinit()
+  addmultiA(mh,&#x27;EasyGUI Tests&#x27;,
+    [EQROWS,
+      [BUTTON,{fonts},&#x27;Fonts&#x27;],
+      [BUTTON,{screenmode},&#x27;ScreenMode&#x27;],
+      [BUTTON,{file},&#x27;File Requester&#x27;],
+      [BUTTON,{search},&#x27;Search Requester&#x27;],
+      [BUTTON,{search2},&#x27;Search Requester 2&#x27;],
+      [BUTTON,{amosaic},&#x27;Amosaic&#x27;],
+      [BUTTON,{db},&#x27;DataBase&#x27;],
+      [BUTTON,{dm},&#x27;DiskMaster&#x27;],
+      [BUTTON,{tiny},&#x27;Tiny Test&#x27;],
+      [BUTTON,{messy},&#x27;Messy Test&#x27;]
+    ],
+    [EG_CLOSE,{quit}, NIL]
+  )
+  REPEAT
+    WriteF(&#x27;result=\d\n&#x27;,multiloop(mh))
+  UNTIL mh.opencount=0
+EXCEPT DO
+  cleanmulti(mh)
+  report_exception()
+ENDPROC
+
+PROC quit(mh,info) IS multiforall({gh},mh,`cleangui(gh))
+
+PROC havenot(var:PTR TO LONG)
+  var[]:=FALSE
+ENDPROC
+
+PROC fonts(x:PTR TO guihandle)
+  IF havefonts=FALSE
+    havefonts:=TRUE
+    addmultiA(x.mh, &#x27;Font Preferences&#x27;,
+      [EQROWS,
+        [TEXT,&#x27;Selected Fonts&#x27;,NIL,FALSE,3],
+        [BEVELR,
+          [EQROWS,
+            [TEXT,&#x27;xentiny 8&#x27;,&#x27;Workbench Icon Text:&#x27;,FALSE,3],
+            [TEXT,&#x27;end 10&#x27;,&#x27;System Default Text:&#x27;,FALSE,3],
+            [TEXT,&#x27;except 12&#x27;,&#x27;Screen text:&#x27;,FALSE,3]
+          ]
+        ],
+        [SBUTTON,0,&#x27;Select Workbench Icon Text...&#x27;],
+        [SBUTTON,0,&#x27;Select System Default Text...&#x27;],
+        [SBUTTON,0,&#x27;Select Screen text...&#x27;],
+        [BAR],
+        [COLS,
+          [BUTTON,0,&#x27;Save&#x27;],
+          [SPACEH],
+          [BUTTON,0,&#x27;Use&#x27;],
+          [SPACEH],
+          [BUTTON,0,&#x27;Cancel&#x27;]
+        ]
+      ],
+      [EG_CLEAN,{havenot}, EG_INFO,{havefonts}, NIL]
+    )
+  ENDIF
+ENDPROC
+
+PROC screenmode(x:PTR TO guihandle)
+  IF havescreenmode=FALSE
+    havescreenmode:=TRUE
+    addmultiA(x.mh,&#x27;ScreenMode Preferences&#x27;,
+      [EQROWS,
+        [COLS,
+          [EQROWS,
+            [LISTV,0,&#x27;Display Mode&#x27;,10,4,NIL,TRUE,0,0],
+            [COLS,
+              [EQROWS,[INTEGER,0,&#x27;Width:&#x27;,640,5],[INTEGER,0,&#x27;Height:&#x27;,512,5]],
+              [ROWS,[CHECK,0,&#x27;Default&#x27;,TRUE,FALSE],[CHECK,0,&#x27;Default&#x27;,TRUE,FALSE]]
+            ],
+            [SLIDE,0,&#x27;Colors:&#x27;,FALSE,1,8,3,5,&#x27;&#x27;],
+            [CHECK,0,&#x27;AutoScroll:&#x27;,TRUE,TRUE]
+          ],
+          -&gt;[BAR],
+          [BEVELR,
+            [EQROWS,
+              [TEXT,&#x27;688x539&#x27;,&#x27;Visible Size:&#x27;,FALSE,3],
+              [TEXT,&#x27;640x200&#x27;,&#x27;Minimum Size:&#x27;,FALSE,3],
+              [TEXT,&#x27;16368x16384&#x27;,&#x27;Maximum Size:&#x27;,FALSE,3],
+              [TEXT,&#x27;256&#x27;,&#x27;Maximum Colors:&#x27;,FALSE,3],
+              [SPACE]
+            ]
+          ]
+        ],
+        [BAR],
+        [COLS,
+          [BUTTON,0,&#x27;Save&#x27;],
+          [SPACEH],
+          [BUTTON,0,&#x27;Use&#x27;],
+          [SPACEH],
+          [BUTTON,0,&#x27;Cancel&#x27;]
+        ]
+      ],
+      [EG_CLEAN,{havenot}, EG_INFO,{havescreenmode}, NIL]
+    )
+  ENDIF
+ENDPROC
+
+PROC file(x:PTR TO guihandle)
+  IF havefile=FALSE
+    havefile:=TRUE
+    addmultiA(x.mh,&#x27;Select a file:&#x27;,
+      [EQROWS,
+        [LISTV,0,NIL,1,5,NIL,0,NIL,0],
+        [STR,{fr},&#x27;Pattern&#x27;,s,200,5],
+        [STR,{fr},&#x27;Drawer&#x27;,s,200,5],
+        [STR,{fr},&#x27;File&#x27;,s,200,5],
+        [COLS,
+          [BUTTON,1,&#x27;Ok&#x27;],
+          [SPACEH],
+          [BUTTON,2,&#x27;Disks&#x27;],
+          [SPACEH],
+          [BUTTON,3,&#x27;Parent&#x27;],
+          [SPACEH],
+          [BUTTON,0,&#x27;Cancel&#x27;]
+        ]
+      ],
+      [EG_CLEAN,{havenot}, EG_INFO,{havefile}, NIL]
+    )
+  ENDIF
+ENDPROC
+
+PROC fr(a,b) IS WriteF(&#x27;fr: \s\n&#x27;,b)
+
+PROC search(x:PTR TO guihandle)
+  IF havesearch=FALSE
+    havesearch:=TRUE
+    addmultiA(x.mh,&#x27;Enter Search/Replace text:&#x27;,
+      [ROWS,
+        [ROWS,                                          -&gt; ROWS
+          [EQROWS,
+            [STR,{find},&#x27;Locate&#x27;,s,10,10],
+            [STR,{repl},&#x27;Replace&#x27;,s,10,10]
+          ],
+          [COLS,                                                -&gt; COLS
+            [CHECK,{case},&#x27;Ignore case&#x27;,TRUE,FALSE],
+            [CHECK,{word},&#x27;Whole words only&#x27;,FALSE,FALSE],
+            [CHECK,{forw},&#x27;Search forward&#x27;,TRUE,FALSE]
+          ]
+        ],
+        [BAR],
+        [EQCOLS,
+          [BUTTON,1,&#x27;Search&#x27;],
+          [SPACEH],
+          [BUTTON,2,&#x27;Replace&#x27;],
+          [SPACEH],
+          [BUTTON,0,&#x27;Cancel&#x27;]
+        ]
+      ],
+      [EG_CLEAN,{havenot}, EG_INFO,{havesearch}, NIL]
+    )
+  ENDIF
+ENDPROC
+
+PROC find(x,y) IS WriteF(&#x27;Find=&quot;\s&quot;!\n&#x27;,y)
+PROC repl(x,y) IS WriteF(&#x27;Repl=&quot;\s&quot;!\n&#x27;,y)
+PROC case(x,y) IS WriteF(&#x27;Case=\d!\n&#x27;,y)
+PROC word(x,y) IS WriteF(&#x27;Word=\d!\n&#x27;,y)
+PROC forw(x,y) IS WriteF(&#x27;Forw=\d!\n&#x27;,y)
+
+PROC search2(x:PTR TO guihandle)
+  IF havesearch2=FALSE
+    havesearch2:=TRUE
+    addmultiA(x.mh,&#x27;Enter Search/Replace text:&#x27;,
+      [ROWS,
+        [COLS,                                          -&gt; ROWS
+          [EQROWS,
+            [STR,{find},&#x27;Locate&#x27;,s,10,10],
+            [STR,{repl},&#x27;Replace&#x27;,s,10,10]
+          ],
+          [EQROWS,                                              -&gt; COLS
+            [CHECK,{case},&#x27;Ignore case&#x27;,TRUE,FALSE],
+            [CHECK,{word},&#x27;Whole words only&#x27;,FALSE,FALSE],
+            [CHECK,{forw},&#x27;Search forward&#x27;,TRUE,FALSE]
+          ]
+        ],
+        [BAR],
+        [EQCOLS,
+          [BUTTON,1,&#x27;Search&#x27;],
+          [SPACEH],
+          [BUTTON,2,&#x27;Replace&#x27;],
+          [SPACEH],
+          [BUTTON,0,&#x27;Cancel&#x27;]
+        ]
+      ],
+      [EG_CLEAN,{havenot}, EG_INFO,{havesearch2}, NIL]
+    )
+  ENDIF
+ENDPROC
+
+PROC amosaic(x:PTR TO guihandle)
+  IF haveamosaic=FALSE
+    haveamosaic:=TRUE
+    addmultiA(x.mh,&#x27;AMosaic&#x27;,
+      [EQROWS,
+        [TEXT,&#x27;Wouter&#x27;&#x27;s WWW page&#x27;,&#x27;Title:&#x27;,TRUE,3],
+        [TEXT,&#x27;file://localhost/...&#x27;,&#x27;URL:&#x27;,TRUE,3],
+        [COLS,
+          [SBUTTON,0,&#x27;Back&#x27;],
+          [SBUTTON,0,&#x27;Forward&#x27;],
+          [SBUTTON,0,&#x27;Home&#x27;],
+          [SBUTTON,0,&#x27;Open&#x27;],
+          [SBUTTON,0,&#x27;Reload&#x27;],
+          [SBUTTON,0,&#x27;Quit&#x27;]
+        ],
+        [COLS,
+          [BEVELR,
+            [SPACE]
+          ],
+          [SCROLL,0,TRUE,10,0,2,10]
+        ],
+        [TEXT,&#x27;file://localhost/...&#x27;,NIL,FALSE,3]
+      ],
+      [EG_CLEAN,{havenot}, EG_INFO,{haveamosaic}, NIL]
+    )
+  ENDIF
+ENDPROC
+
+PROC db(x:PTR TO guihandle)
+  IF havedb=FALSE
+    havedb:=TRUE
+    addmultiA(x.mh,&#x27;EasyBase v0.1&#x27;,
+      [ROWS,
+        [LISTV,0,NIL,5,4,NIL,0,NIL,0],
+        [COLS,
+          [BUTTON,0,&#x27;New&#x27;],
+          [BUTTON,{fields},&#x27;Fields&#x27;,x.mh],
+          [BUTTON,0,&#x27;Load&#x27;],
+          [BUTTON,0,&#x27;Save&#x27;]]],
+      [EG_CLEAN,{havenot}, EG_INFO,{havedb}, NIL])
+  ENDIF
+ENDPROC
+
+PROC fields(mh,i) HANDLE
+  multiforall({gh},mh,`blockwin(gh))
+  easyguiA(&#x27;Edit Fields&#x27;,
+    [ROWS,
+      [LISTV,0,NIL,5,3,NIL,0,NIL,0],
+      [COLS,
+        [BUTTON,{addfield},&#x27;Add&#x27;],
+        [BUTTON,0,&#x27;Delete&#x27;],
+        [BUTTON,0,&#x27;Change&#x27;]]])
+EXCEPT DO
+  multiforall({gh},mh,`unblockwin(gh))
+  ReThrow()
+ENDPROC
+
+PROC editfield(gh) HANDLE
+  blockwin(gh)
+  easyguiA(&#x27;Field Characteristics&#x27;,
+    [ROWS,
+      [EQROWS,
+        [STR,0,&#x27;fieldname&#x27;,s,200,10],
+        [INTEGER,0,&#x27;fieldlength&#x27;,40,10]],
+      [BUTTON,0,&#x27;Ok&#x27;]])
+EXCEPT DO
+  unblockwin(gh)
+  ReThrow()
+ENDPROC
+
+PROC addfield(i) IS editfield(i)
+
+PROC dm(x:PTR TO guihandle)
+  IF havedm=FALSE
+    havedm:=TRUE
+    addmultiA(x.mh,&#x27;E FileManager v0.1&#x27;,
+      [ROWS,
+        [COLS,
+          [ROWS,
+            [LISTV,0,NIL,1,10,NIL,0,NIL,0],
+            [STR,0,&#x27;&#x27;,s,200,5]
+          ],
+          [EQROWS,
+            [BUTTON,1,&#x27;DF0:&#x27;],
+            [BUTTON,1,&#x27;DF1:&#x27;],
+            [BUTTON,1,&#x27;Ram:&#x27;],
+            [BUTTON,1,&#x27;System:&#x27;],
+            [BUTTON,1,&#x27;Work:&#x27;],
+            [BUTTON,1,&#x27;E:&#x27;],
+            [SPACEV]
+          ],
+          [ROWS,
+            [LISTV,0,NIL,1,5,NIL,0,NIL,0],
+            [STR,0,&#x27;&#x27;,s,200,5]
+          ]
+        ],
+        [COLS,
+          [EQROWS,[SBUTTON,1,&#x27;Parent&#x27;],[SBUTTON,1,&#x27;All&#x27;]],
+          [EQROWS,[SBUTTON,1,&#x27;Copy&#x27;],[SBUTTON,1,&#x27;Clear&#x27;]],
+          [EQROWS,[SBUTTON,1,&#x27;Move&#x27;],[SBUTTON,1,&#x27;Toggle&#x27;]],
+          [EQROWS,[SBUTTON,1,&#x27;Rename&#x27;],[SBUTTON,1,&#x27;Size&#x27;]],
+          [EQROWS,[SBUTTON,1,&#x27;Delete&#x27;],[SBUTTON,1,&#x27;View&#x27;]],
+          [EQROWS,[SBUTTON,1,&#x27;MakeDir&#x27;],[SBUTTON,0,&#x27;Config&#x27;]]
+        ]
+      ],
+      [EG_CLEAN,{havenot}, EG_INFO,{havedm}, NIL]
+    )
+  ENDIF
+ENDPROC
+
+PROC tiny(x:PTR TO guihandle)
+  IF havetiny=FALSE
+    havetiny:=TRUE
+    addmultiA(x.mh,&#x27;um..&#x27;,[SBUTTON,0,&#x27;blerk&#x27;],
+             [EG_CLEAN,{havenot}, EG_INFO,{havetiny}, NIL])
+  ENDIF
+ENDPROC
+
+PROC messy(x:PTR TO guihandle)
+  IF havemessy=FALSE
+    havemessy:=TRUE
+    addmultiA(x.mh,&#x27;test-gui&#x27;,
+      [ROWS,
+        [COLS,
+          [BEVEL,
+            [ROWS,
+              [BUTTON,{um},&#x27;Um,...&#x27;],
+              [MX,{v},NIL,[&#x27;One&#x27;,&#x27;Two&#x27;,&#x27;Three&#x27;,NIL],FALSE,1],
+              [BUTTON,{pom},&#x27;PomPomPom&#x27;],
+              [CHECK,{v},&#x27;check this out!&#x27;,TRUE,FALSE],
+              [STR,{v},&#x27;input&#x27;,s,50,3],
+              [LISTV,{v},NIL,2,5,NIL,FALSE,0,0]
+            ]
+          ],
+          [BEVEL,
+            [EQROWS,
+              [STR,{v},&#x27;input&#x27;,s,50,4],
+              [INTEGER,{v},&#x27;int:&#x27;,5,3],
+              [SLIDE,{v},&#x27;tata:     &#x27;,FALSE,0,999,20,2,&#x27;%3ld&#x27;],
+              [TEXT,&#x27;bla&#x27;,&#x27;text:&#x27;,FALSE,5],
+              [NUM,123,&#x27;num:&#x27;,TRUE,5],
+              [PALETTE,{v},&#x27;kleur:&#x27;,3,5,2,0],
+              [CYCLE,{v},&#x27;choose:&#x27;,[&#x27;Yep&#x27;,&#x27;Nope&#x27;,NIL],1],
+              [SCROLL,{v},FALSE,10,0,2,2]
+            ]
+          ]
+        ],
+        [BAR],
+        [EQCOLS,
+          [BUTTON,1,&#x27;Save&#x27;],
+          [BUTTON,2,&#x27;Use&#x27;],
+          [BUTTON,0,&#x27;Cancel&#x27;]
+        ]
+      ],
+      [EG_CLEAN,{havenot}, EG_INFO,{havemessy},
+       EG_MENU,[NM_TITLE,0,&#x27;Project&#x27;,0,  0,0,0,
+                 NM_ITEM,0,&#x27;Load&#x27;,   &#x27;l&#x27;,0,0,{um},
+                 NM_ITEM,0,&#x27;Save&#x27;,   &#x27;s&#x27;,0,0,{um},
+                 NM_ITEM,0,&#x27;Bla -&gt;&#x27;, 0,  0,0,0,
+                  NM_SUB,0,&#x27;aaargh&#x27;, &#x27;a&#x27;,0,0,1,
+                  NM_SUB,0,&#x27;hmmm&#x27;,   &#x27;h&#x27;,0,0,2,
+                 NM_ITEM,0,&#x27;Quit&#x27;,   &#x27;q&#x27;,0,0,0,
+                0,0,0,0,0,0,0]:newmenu,
+       NIL]
+    )
+  ENDIF
+ENDPROC
+
+PROC um(x) IS WriteF(&#x27;um!\n&#x27;)
+PROC pom(x) IS WriteF(&#x27;pom!\n&#x27;)
+PROC v(x,y) IS WriteF(&#x27;v=\d!\n&#x27;,y)
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

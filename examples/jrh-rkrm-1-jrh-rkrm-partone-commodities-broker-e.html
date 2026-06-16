@@ -1,0 +1,140 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>broker.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-jrh-rkrm-1.html">JRH-RKRM-1</a> &rsaquo; broker.e</div><h1>File: <code>broker.e</code></h1><p class="meta">114 lines · project <a href="../examples/pkg-jrh-rkrm-1.html"><code>JRH-RKRM-1</code></a></p><p class="pathctx">JRH-RKRM-1/JRH-RKRM-PartOne/Commodities/broker.e</p><p class="prose">broker.e - Simple skeletal example of opening a broker.</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/commodities.html">commodities</a></li></ul></div><h2>Source</h2><pre class="code">-&gt; broker.e - Simple skeletal example of opening a broker.
+
+MODULE &#x27;commodities&#x27;,
+       &#x27;dos/dos&#x27;,
+       &#x27;exec/libraries&#x27;,
+       &#x27;exec/ports&#x27;,
+       &#x27;libraries/commodities&#x27;
+
+ENUM ERR_NONE, ERR_ARG, ERR_BRKR, ERR_CXERR, ERR_LIB, ERR_PORT
+
+RAISE ERR_BRKR IF CxBroker()=NIL,
+      ERR_LIB  IF OpenLibrary()=NIL,
+      ERR_PORT IF CreateMsgPort()=NIL
+    
+DEF broker=NIL, broker_mp=NIL:PTR TO mp, cxsigflag
+  
+PROC main() HANDLE
+  DEF msg
+  -&gt; Before bothering with anything else, open the library
+  cxbase:=OpenLibrary(&#x27;commodities.library&#x27;, 37)
+  -&gt; Commodities talks to a Commodities application through an Exec Message
+  -&gt; port, which the application provides
+  broker_mp:=CreateMsgPort()
+
+  -&gt; The commodities.library function CxBroker() adds a broker to the master
+  -&gt; list.  It takes two arguments, a pointer to a NewBroker structure and a
+  -&gt; pointer to a LONG.  The NewBroker structure contains information to set
+  -&gt; up the broker.  If the second argument is not NIL, CxBroker will fill it
+  -&gt; in with an error code.
+  broker:=CxBroker(
+           [NB_VERSION,   -&gt; Version of the NewBroker object
+            0,  -&gt; E-Note: pad byte
+           &#x27;RKM broker&#x27;,  -&gt; Name: commodities uses for this commodity
+           &#x27;Broker&#x27;,      -&gt; Title of commodity that appears in CXExchange
+           &#x27;A simple example of a broker&#x27;,  -&gt; Description
+            0,  -&gt; Unique: tells CX not to launch a commodity with the same name
+            0,  -&gt; Flags: tells CX if this commodity has a window
+            0,  -&gt; Pri: this commodity&#x27;s priority
+            0,  -&gt; E-Note: pad byte
+            broker_mp, -&gt; Port: mp CX talks to
+            0   -&gt; ReservedChannel: reserved for later use
+           ]:newbroker, NIL)
+  cxsigflag:=Shl(1, broker_mp.sigbit)
+
+  -&gt; After it&#x27;s set up correctly, the broker has to be activated
+  ActivateCxObj(broker, TRUE)
+
+  -&gt; The main processing loop
+  processMsg()
+
+EXCEPT DO
+  -&gt; It&#x27;s time to clean up.  Start by removing the broker from the Commodities
+  -&gt; master list.  The DeleteCxObjAll() function will take care of removing a
+  -&gt; CxObject and all those connected to it from the Commodities network
+  IF broker THEN DeleteCxObj(broker)
+  IF broker_mp
+    -&gt; Empty the port of CxMsgs
+    WHILE msg:=GetMsg(broker_mp) DO ReplyMsg(msg)
+    DeleteMsgPort(broker_mp) -&gt; E-Note: C version incorrectly uses DeletePort()
+  ENDIF
+  IF cxbase THEN CloseLibrary(cxbase)
+  SELECT exception
+  CASE ERR_BRKR;  WriteF(&#x27;Error: Could not create broker\n&#x27;)
+  CASE ERR_CXERR; WriteF(&#x27;Error: Could not activate broker\n&#x27;)
+  CASE ERR_LIB;   WriteF(&#x27;Error: Could not open commodities.library\n&#x27;)
+  CASE ERR_PORT;  WriteF(&#x27;Error: Could not create message port\n&#x27;)
+  ENDSELECT
+ENDPROC
+
+PROC processMsg()
+  DEF msg, sigrcvd, msgid, msgtype, done=FALSE
+  REPEAT
+    -&gt; Wait for something to happen
+    sigrcvd:=Wait(SIGBREAKF_CTRL_C OR cxsigflag)
+
+    -&gt; Process any messages
+    WHILE msg:=GetMsg(broker_mp)
+      -&gt; Extract any necessary information from the CxMessage and return it
+      msgid:=CxMsgID(msg)
+      msgtype:=CxMsgType(msg)
+      ReplyMsg(msg)
+
+      SELECT msgtype
+      CASE CXM_IEVENT
+        -&gt; Shouldn&#x27;t get any of these in this example
+      CASE CXM_COMMAND
+        -&gt; Commodities has sent a command
+        WriteF(&#x27;A command: &#x27;)
+        SELECT msgid
+        CASE CXCMD_DISABLE
+          WriteF(&#x27;CXCMD_DISABLE\n&#x27;)
+          -&gt; The user clicked CX Exchange disable gadget, better disable
+          ActivateCxObj(broker, FALSE)
+        CASE CXCMD_ENABLE
+          -&gt; User clicked enable gadget
+          WriteF(&#x27;CXCMD_ENABLE\n&#x27;)
+          ActivateCxObj(broker, TRUE)
+        CASE CXCMD_KILL
+          -&gt; User clicked kill gadget, better quit
+          WriteF(&#x27;CXCMD_KILL\n&#x27;)
+          done:=TRUE
+        ENDSELECT
+      DEFAULT
+        WriteF(&#x27;Unknown msgtype\n&#x27;)
+      ENDSELECT
+    ENDWHILE
+    -&gt; Test to see if user tried to break
+    IF sigrcvd AND SIGBREAKF_CTRL_C
+      done:=TRUE
+      WriteF(&#x27;CTRL C signal break\n&#x27;)
+    ENDIF
+  UNTIL done
+ENDPROC
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

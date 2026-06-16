@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>lexStream.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-framework.html">framework</a> &rsaquo; lexStream.e</div><h1>File: <code>lexStream.e</code></h1><p class="meta">81 lines · project <a href="../examples/pkg-framework.html"><code>framework</code></a></p><p class="pathctx">framework/fw/lexStream.e</p><p class="prose">lexStream is a lexical analyser for interpreters/compilers.</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/any.html">fw/any</a></li></ul></div><h2>Source</h2><pre class="code">
+-&gt; lexStream is a lexical analyser for interpreters/compilers.
+
+-&gt; Copyright © Guichard Damien 01/04/1996
+
+OPT MODULE
+OPT EXPORT
+
+MODULE &#x27;fw/any&#x27;,&#x27;fw/token&#x27;
+
+-&gt; lexical tokens and reserved words.
+DEF lexTokens:PTR TO token
+
+OBJECT lexStream OF any
+  last:INT               -&gt; last lexical token
+  value:LONG             -&gt; numeral value
+  ident:PTR TO CHAR      -&gt; current identifier
+  line:INT               -&gt; current line
+  pos:PTR TO CHAR        -&gt; current position in text
+  text:PTR TO CHAR       -&gt; source text
+  storedLine:INT         -&gt; stored line
+  storedPos:INT          -&gt; stored position
+  storedLast:INT         -&gt; stored lexical token
+ENDOBJECT
+
+-&gt; Spell all lexical tokens for the analyser.
+PROC spellTokenSet(tokenList:PTR TO LONG) OF lexStream
+  DEF tok:PTR TO token
+  DEF start
+  start:=tokenList[]++
+  lexTokens:=NEW tok.newToken(tokenList[]++,start++)
+  WHILE tokenList[]
+    lexTokens.add(NEW tok.newToken(tokenList[]++,start++))
+  ENDWHILE
+ENDPROC
+
+-&gt; Set source file to be scanned.
+-&gt; Lexical tokens should not be longer than 40 characters.
+PROC attachStream(fileName:PTR TO CHAR) OF lexStream HANDLE
+  DEF handle=NIL,length
+  IF self.text THEN self.detachStream()
+  length:=FileLength(fileName)
+  IF (handle:=Open(fileName,OLDFILE))=NIL THEN Raise(&quot;OPEN&quot;)
+  self.text:=NewR(length+2)
+  IF Read(handle,self.text,length)&lt;length THEN Raise(&quot;IN&quot;)
+  self.text[length]:=&quot;\0&quot;
+  self.pos:=self.text
+  self.line:=1
+  self.ident:=String(40)
+  self.read()
+EXCEPT DO
+  IF handle THEN Close(handle)
+  ReThrow()
+ENDPROC
+
+-&gt; Detach source file scanned.
+-&gt; MUST be preceded by an &#x27;attachStream()&#x27; call.
+PROC detachStream() OF lexStream
+  Dispose(self.text)
+  self.text:=NIL
+ENDPROC
+
+-&gt; Read next lexical token from the text.
+-&gt; Update line, pos, last, value, ident.
+PROC read() OF lexStream IS EMPTY
+
+-&gt; Store text position.
+PROC store() OF lexStream
+  self.storedLine:=self.line
+  self.storedPos:=self.pos-self.text
+  self.storedLast:=self.last
+ENDPROC
+
+-&gt; Restore text position.
+PROC restore() OF lexStream
+  self.line:=self.storedLine
+  self.pos :=self.text+self.storedPos
+  self.last:=self.storedLast
+ENDPROC
+
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

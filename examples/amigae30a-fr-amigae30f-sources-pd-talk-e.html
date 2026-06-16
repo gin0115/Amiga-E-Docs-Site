@@ -1,0 +1,179 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Talk.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-amigae30a-fr.html">amigae30a_fr</a> &rsaquo; Talk.e</div><h1>File: <code>Talk.e</code></h1><p class="meta">153 lines · project <a href="../examples/pkg-amigae30a-fr.html"><code>amigae30a_fr</code></a></p><p class="pathctx">amigae30a_fr/AmigaE30f/Sources/Pd/Talk.e</p><p class="prose">Talk V1.0 - par Rob Verver in 1992</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/translator.html">translator</a></li></ul></div><h2>Source</h2><pre class="code">/* Talk V1.0 - par Rob Verver in 1992                                      */
+/* Traduction : Olivier ANH (BUGSS)                                        */
+/*                                                                         */
+/* Avec ces commandes shell, vous pourrez faire dire n&#x27;importe quel texte  */
+/* avec le nouveau narrator.device de l&#x27;OS 2.0. Si une valeur donnée est   */
+/* hors norme, la valeur correcte sera affichée. Voyez le manuel de l&#x27;Amiga*/
+/* pour plus de renseignements.                                            */
+/*                                                                         */
+/* Améliorations possible :                                                */
+/*   Capacité de dire des chaines phonétiques                              */
+/*   Entrée par l&#x27;entrée standard (STDIN) pour les pipes                   */
+/*   Fichier de préférences en ASCII, contrôlant tous les paramètres       */
+/*   Les codes d&#x27;échappement modifie en partie le texte                    */
+
+OPT OSVERSION=37
+
+MODULE &#x27;Translator&#x27;, &#x27;devices/narrator&#x27;, &#x27;dos/dos&#x27;, &#x27;exec/memory&#x27;, &#x27;exec/io&#x27;
+
+CONST AUDIOCHANSIZE=4
+ENUM NONE, ERR_DOS, ERR_MEM, ERR_FILE, ERR_DEVICE, ERR_TRANS, ERR_INVALID
+
+OBJECT arglist
+  file, rate, pitch, robotic, female, volume, enthusiasm, perturb, f1adj,
+  f2adj, f3adj, a1adj, a2adj, a3adj, articulate, centralize, centphon, avbias,
+  afbias, priority
+ENDOBJECT
+
+DEF template, args: arglist, phonebuf=NIL, rdargs=NIL, file=NIL, msgport=NIL,
+    filebuf=NIL, ioreq: PTR TO ndi, audiochan: PTR TO CHAR, valid=TRUE,
+    length, phonebufsize
+
+PROC main () HANDLE
+  audiochan := [3, 5, 10, 12]:CHAR
+
+  /* analyse les options de la ligne de commande */
+  args := [NIL, [DEFRATE], [DEFPITCH], 0, 0, [DEFVOL], [DEFF0ENTHUS],
+          [DEFF0PERT], [0], [0], [0], [0], [0], [0], [DEFARTIC],
+          [DEFCENTRAL], NIL, [0], [0], [25]]: arglist
+  template := &#x27;FILE,RATE/K/N,PITCH/K/N,ROBOTIC/S,FEMALE/S,VOLUME/K/N,&#x27; +
+              &#x27;ENTHUSIASM/K/N,PERTURB/K/N,F1ADJ/K/N,F2ADJ/K/N,F3ADJ/K/N,&#x27; +
+              &#x27;A1ADJ/K/N,A2ADJ/K/N,A3ADJ/K/N,ARTICULATE/K/N,CENTRALIZE/K/N,&#x27; +
+              &#x27;CENTPHON/K,AVBIAS/K/N,AFBIAS/K/N,PRIORITY/K/N&#x27;
+  rdargs := ReadArgs (template, args, NIL)
+  IF rdargs=NIL THEN Raise (ERR_DOS)
+
+  /* ouvre la bibliothèque translator.library */
+  translatorbase := OpenLibrary (&#x27;translator.library&#x27;, 37)
+  IF translatorbase=NIL THEN Raise (ERR_TRANS)
+
+  /* ouvre le fichier d&#x27;enntrée */
+  file := Open (args.file, MODE_OLDFILE)
+  IF file=NIL THEN Raise (ERR_FILE)
+  length := FileLength (args.file)           /* !!! ascii, pas fh */
+  IF length&lt;1 THEN Raise (ERR_FILE)
+
+  /* alloue le buffer d&#x27;entrée */
+  filebuf := AllocVec (length, MEMF_PUBLIC)
+  IF filebuf=NIL THEN Raise (ERR_MEM)
+
+  /* alloue le buffer pour les chaines de caractères phonétiques */
+  phonebufsize := Shl (length, 1)
+  phonebuf := AllocVec (phonebufsize, MEMF_PUBLIC)
+  IF phonebuf=NIL THEN Raise (ERR_MEM)
+
+  /* ouvre le narrator.device */
+  msgport := CreateMsgPort ()
+  IF msgport=NIL THEN Raise (ERR_DEVICE)
+  ioreq := CreateIORequest (msgport, SIZEOF ndi)
+  IF ioreq=NIL THEN Raise (ERR_DEVICE)
+  ioreq.flags := NDF_NEWIORB
+  IF OpenDevice (&#x27;narrator.device&#x27;, 0, ioreq, NIL)&lt;&gt;NIL THEN Raise (ERR_DEVICE)
+
+  /* vérifie la validité des valeurs */
+  checkVal (Long (args.rate), MINRATE, MAXRATE, &#x27;Mauvais rate&#x27;)
+  checkVal (Long (args.pitch), MINPITCH, MAXPITCH, &#x27;Mauvais pitch&#x27;)
+  checkVal (Long (args.volume), MINVOL, MAXVOL, &#x27;Mauvais volume&#x27;)
+  checkVal (Long (args.centralize), MINCENT, MAXCENT, &#x27;Mauvaise centralisation&#x27;)
+  IF valid=FALSE THEN Raise (ERR_INVALID)
+
+  ioreq.chmasks := audiochan
+  ioreq.nummasks := AUDIOCHANSIZE
+
+  /* init values */
+  ioreq.rate := Long (args.rate)
+  ioreq.pitch := Long (args.pitch)
+  ioreq.volume := Long (args.volume)
+  ioreq.f0enthusiasm := Long (args.enthusiasm)
+  ioreq.f0perturb := Long (args.perturb)
+  ioreq.f1adj := Long (args.f1adj)
+  ioreq.f2adj := Long (args.f2adj)
+  ioreq.f3adj := Long (args.f3adj)
+  ioreq.a1adj := Long (args.a1adj)
+  ioreq.a2adj := Long (args.a2adj)
+  ioreq.a3adj := Long (args.a3adj)
+  ioreq.articulate := Long (args.articulate)
+  ioreq.centralize := Long (args.centralize)
+  ioreq.centphon := Long (args.centphon)
+  ioreq.avbias := Long (args.avbias)
+  ioreq.afbias := Long (args.afbias)
+  ioreq.priority := Long (args.priority)
+  IF args.robotic&lt;&gt;NIL THEN ioreq.mode := ROBOTICF0 ELSE ioreq.mode := MANUALF0
+  IF args.female&lt;&gt;NIL THEN ioreq.sex := FEMALE
+
+  process ()
+
+  Raise (0)
+EXCEPT
+  SELECT exception
+    CASE ERR_DOS;     PrintFault (IoErr(), &#x27;Erreur&#x27;)
+    CASE ERR_MEM;     PutStr (&#x27;Erreur: Pas assez de mémoire\n&#x27;)
+    CASE ERR_FILE;    PutStr (&#x27;Erreur: Ne peut ouvrir le fichier\n&#x27;)
+    CASE ERR_DEVICE;  PutStr (&#x27;Erreur: Ne peut ouvrir le narrator.device\n&#x27;)
+    CASE ERR_TRANS;   PutStr (&#x27;Erreur: Ne peut ouvrir la translator.library V37\n&#x27;)
+    CASE ERR_INVALID; PutStr (&#x27;Erreur: Mauvais paramètres\n&#x27;)
+  ENDSELECT
+
+  IF ioreq&lt;&gt;NIL THEN CloseDevice (ioreq) BUT DeleteIORequest (ioreq)
+  IF translatorbase&lt;&gt;NIL THEN CloseLibrary (translatorbase)
+  IF rdargs&lt;&gt;NIL THEN FreeArgs (rdargs)
+  IF phonebuf&lt;&gt;NIL THEN FreeVec (phonebuf)
+  IF filebuf&lt;&gt;NIL THEN FreeVec (filebuf)
+  IF file&lt;&gt;NIL THEN Close (file)
+  IF msgport&lt;&gt;NIL THEN DeleteMsgPort (msgport)
+  IF exception THEN CleanUp (10)
+ENDPROC
+
+PROC checkVal (val, min, max, str)
+  IF val&lt;min OR (val&gt;max)
+    Vprintf (&#x27;%s: de bonnes valeurs sont entre %ld et %ld\n&#x27;, [str, min, max])
+    valid := FALSE
+  ENDIF
+ENDPROC
+
+PROC process ()
+  DEF readlen          /* !!!! était égal à globvar */
+
+  readlen := Read (file, filebuf, length)
+  IF readlen&lt;&gt;length THEN Raise (ERR_FILE)
+
+  Translate (filebuf, length, phonebuf, phonebufsize)
+  /* WriteF (&#x27;Chaines phonétique :\s\n&#x27;, phonebuf) */
+  speakBuffer (phonebuf, StrLen (phonebuf))
+ENDPROC
+
+PROC speakBuffer (buffer, length)
+  DEF ior:PTR TO iostd
+  ior := ioreq
+  ior.command := CMD_WRITE
+  ior.data := buffer
+  ior.length := length
+  DoIO (ioreq)
+ENDPROC
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

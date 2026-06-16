@@ -1,0 +1,614 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>viewmodule.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-ecx-2-3-1-src.html">ECX_2.3.1-src</a> &rsaquo; viewmodule.e</div><h1>File: <code>viewmodule.e</code></h1><p class="meta">588 lines · project <a href="../examples/pkg-ecx-2-3-1-src.html"><code>ECX_2.3.1-src</code></a></p><p class="pathctx">ECX_2.3.1-src/ecx-2.3.1-src/viewmodule.e</p><p class="prose">ViewModule.e by Leif Salomonsson is Copyright (c) 2003-2008</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/dos.html">dos/dos</a></li></ul></div><h2>Source</h2><pre class="code">/* ViewModule.e by Leif Salomonsson is Copyright (c) 2003-2008 */
+/* Released under ECX TOOLS LICENSE, see ECXTOOLSLICENSE.TXT */
+
+
+
+MODULE &#x27;*binary&#x27;
+MODULE &#x27;dos/dos&#x27;
+
+-&gt; v44: now prepends filename with &quot;ecxmodules:&quot; if it cannot be opened.
+-&gt; v45: compiled with fixed bin2   &#x27;
+-&gt; v47: now displays class methods too.
+-&gt; v48: vector args for libfuncs supported.
+-&gt; v50: supports new types in objects
+-&gt; 1.9: valstr() didnt handle the value $80000000 right, fixed.
+-&gt; Mar 2007: 1.10: now prints out OS if defined. see moduleheader.oschars. FU:this=suck
+-&gt; May 2007: 1.11: now checks mod.modsize to match with flen.
+-&gt; May 2007: 1.11: now checks mod.modversion to be atleast 1.
+-&gt; May 2008: 1.12: added support for static labels
+-&gt; Jul 2008: 1.13: now soesnt show globals if using ___ prefix, unless DEBUG.
+-&gt; Sep 2008: 1.14: now prints out head.osid in human format
+-&gt; Nov 2008: 1.15: now gives clue about static method
+-&gt; Mar 2009: 1.16: removed stupid /* */ stuff.
+-&gt; Sep 2009: 1.17: support for new modstatic
+-&gt; Feb 2011: 1.18: increased space for offset
+
+PROC main() HANDLE
+   DEF fh=NIL, str[256]:STRING, rdargs=NIL, args[2]:ARRAY OF LONG
+   DEF fib:fileinfoblock, flen, fbuf, filename[300]:STRING
+   DEF a, b, c, lptr:PTR TO LONG, e
+   DEF head:PTR TO moduleheader
+   DEF strtable
+   DEF info:PTR TO modinfo
+   DEF proc:PTR TO modproc
+   DEF object:PTR TO modobject
+   DEF class:PTR TO modclass
+   DEF libi:PTR TO modlibi
+   DEF lfunc:PTR TO modlfunc
+   DEF macro:PTR TO modmacro
+   DEF param:PTR TO modarg
+   DEF member:PTR TO modmember
+   DEF method:PTR TO modproc
+   DEF submod:PTR TO modmodule
+   DEF modref:PTR TO modref
+   DEF vd:PTR TO vardbg
+   DEF debug=FALSE
+   DEF lparam:PTR TO lfuncarg
+
+
+   /* read agrs */
+   rdargs := ReadArgs(&#x27;MODULE/A, DUMMY/M&#x27;,
+                      args, NIL)
+
+   IF rdargs = NIL THEN Raise(&quot;ARGS&quot;)
+
+   IF args[1]
+      IF StrCmp(Long(args[1]), &#x27;DEBUG&#x27;, STRLEN) THEN debug:=TRUE
+   ENDIF
+
+
+   StrCopy(str, args[])
+
+   IF StrCmp(str+EstrLen(str)-2, &#x27;.m&#x27;) = FALSE THEN StrAdd(str, &#x27;.m&#x27;)
+   StrCopy(filename, str)
+
+   fh := Open(filename, OLDFILE)
+   IF fh = NIL
+      StrCopy(str, &#x27;ECXMODULES:&#x27;)
+      StrAdd(str, filename)
+      StrCopy(filename, str)
+      fh := Open(filename, OLDFILE)
+      IF fh = NIL THEN Raise(&quot;OPEN&quot;)
+   ENDIF
+
+   PrintF(&#x27;ViewModule 1.17 by LS 2003-09 -&gt; \q\s\q\n\n&#x27;, filename)
+
+   ExamineFH(fh, fib)
+   flen := fib.size
+   fbuf := NewR(flen+4)
+   Read(fh, fbuf, flen)
+   head := fbuf
+
+   IF head.identification &lt;&gt; &quot;ECXM&quot; THEN Raise(&quot;FORM&quot;)
+
+   IF head.modversion &lt; 1 THEN Raise(&quot;TOLD&quot;)  -&gt; 1.11
+
+   IF head.modsize &lt;&gt; flen THEN Raise(&quot;SIZE&quot;) -&gt; 1.11
+
+   IF head.codeinfo
+      IF head.cpu = CPU_NONE
+         -&gt; do nothing
+      ELSEIF head.cpu = CPU_PPC
+         PrintF(&#x27;CPU: PowerPC \n\n&#x27;)
+      ELSEIF head.cpu = CPU_M68
+         PrintF(&#x27;CPU: M68020+FPU \n\n&#x27;)
+      ELSE
+         PrintF(&#x27;CPU: ??? (\d) \n\n&#x27;, head.cpu)
+      ENDIF
+   ENDIF
+
+   -&gt; 2.00
+   IF head.osid THEN PrintF(&#x27;Operating System: \s \n\n&#x27;, ListItem([&#x27;&#x27;,
+                                                                        &#x27;AmigaOS&#x27;,
+                                                                        &#x27;AmigaOS4&#x27;,
+                                                                        &#x27;MorphOS&#x27;,
+                                                                        &#x27;AROS&#x27;,
+                                                                        &#x27;Linux&#x27;,
+                                                                        &#x27;???&#x27;], head.osid))
+
+   IF head.osversion THEN PrintF(&#x27;OS Version: \d \n\n&#x27;, head.osversion)
+
+   info := head + head.strtabinfo
+   strtable := info + SIZEOF modinfo
+
+   info := head.libiinfo
+   IF info
+      info := info + head
+      libi := info + SIZEOF modinfo
+      IF debug THEN WriteF(&#x27;[@ OFFSET $\h]\n&#x27;, libi-head)
+      c := info.count + 1
+      WHILE c--
+         PrintF(&#x27;LIBRARY \s\n&#x27;, libi.basename + strtable)
+         lfunc := libi + SIZEOF modlibi
+         FOR a := 0 TO libi.nroflfuncs-1
+            PrintF(&#x27;   \s(&#x27;, lfunc.name + strtable)
+            lparam := lfunc + SIZEOF modlfunc
+            FOR b := 0 TO lfunc.nrofargs-1
+               IF lfunc.type = 0
+                  PrintF(&#x27;\c\d&#x27;, IF lparam.rtype = 0 THEN &quot;D&quot; ELSE &quot;A&quot;, lparam.rnum)
+               ELSEIF lfunc.type = 1
+                  IF     lparam.rtype = PPCARGRTYPE_RX
+                     PrintF(&#x27;R\d&#x27;, lparam.rnum)
+                  ELSEIF lparam.rtype = PPCARGRTYPE_STACKRX
+                     PrintF(&#x27;S\d&#x27;, lparam.rnum)
+                  ELSEIF lparam.rtype = PPCARGRTYPE_FX
+                     PrintF(&#x27;F\d&#x27;, lparam.rnum)
+                  ELSEIF lparam.rtype = PPCARGRTYPE_VX
+                     PrintF(&#x27;V\d&#x27;, lparam.rnum)
+                  ELSEIF lparam.rtype = PPCARGRTYPE_RX2
+                     PrintF(&#x27;R\d+R\d&#x27;, lparam.rnum, lparam.rnum+1)
+                  ELSEIF lparam.rtype = PPCARGRTYPE_STACKRX2
+                     PrintF(&#x27;S\d+S\d&#x27;, lparam.rnum, lparam.rnum+4)
+                  ELSE
+                     PrintF(&#x27;&lt;\d&gt;\d&#x27;, lparam.rtype, lparam.rnum)
+                  ENDIF
+               ENDIF
+               lparam++
+               IF b &lt; (lfunc.nrofargs-1) THEN PrintF(&#x27;,&#x27;)
+            ENDFOR
+            IF lfunc.flags AND LFFLAG_VARARGS -&gt; 2.0
+               PrintF(&#x27;,...&#x27;)
+            ENDIF
+            PrintF(&#x27;)&#x27;)
+            IF lfunc.basernum
+               IF lfunc.type = 0
+               ELSE
+                  IF lfunc.basertype = 0
+                     PrintF(&#x27; [R\d]&#x27;,  lfunc.basernum)
+                  ELSE
+                     PrintF(&#x27; [S\d]&#x27;,  lfunc.basernum)
+                  ENDIF
+               ENDIF
+            ENDIF
+            IF lfunc.type = 1 THEN PrintF(&#x27; = \s&#x27;, ListItem([&#x27;R3&#x27;,&#x27;F1&#x27;,&#x27;V2&#x27;,&#x27;R3+R4&#x27;], lfunc.return))
+            PrintF(&#x27; @ \d \n&#x27;, lfunc.baseofs)
+            lfunc := lfunc + lfunc.totalsize
+         ENDFOR
+         PrintF(&#x27;ENDLIBRARY\n\n&#x27;)
+         libi := libi + libi.totalsize
+      ENDWHILE
+   ENDIF
+
+   info := head.xrefginfo
+   IF info
+      a := FALSE
+      info := info + head
+      c := info.count + 1
+      modref := info + SIZEOF modinfo
+      IF debug THEN WriteF(&#x27;[@ OFFSET $\h]\n&#x27;, modref-head)
+      WHILE c--
+         IF (StrCmp(modref.name + strtable, &#x27;___&#x27;, STRLEN) = FALSE) OR (debug &lt;&gt; FALSE)
+            IF a = FALSE
+               PrintF(&#x27;DEF&#x27;)
+               a := TRUE
+            ELSE
+               PrintF(&#x27;   &#x27;)
+            ENDIF
+            PrintF(&#x27; \s (x\d)&#x27;, modref.name + strtable, modref.numrefs)
+            IF c = 1 THEN PrintF(&#x27;\n&#x27;) ELSE PrintF(&#x27;,\n&#x27;)
+         ENDIF
+         modref := modref + SIZEOF modref + Mul(modref.numrefs,4)
+      ENDWHILE
+      PrintF(&#x27;\n&#x27;)
+   ENDIF
+
+   info := head.procinfo
+   IF info
+      info := info + head
+      proc := info + SIZEOF modinfo
+      IF debug THEN WriteF(&#x27;[@ PROCOFFSET $\h]\n&#x27;, proc-head)
+      c := info.count + 1
+      WHILE c--
+         IF debug
+            WriteF(&#x27;[@ CODEOFFSET $\h]\n&#x27;, proc.offset)
+         ENDIF
+         IF proc.totalsize = SIZEOF modlabel -&gt; label ?
+            PrintF(&#x27;\s:&#x27;, proc.name + strtable)
+            PrintF(&#x27;\n&#x27;)
+         ELSEIF proc.totalsize = SIZEOF modstatic
+            PrintF(&#x27;\s []:&#x27;, proc.name + strtable)
+            a := proc::modstatic.statesize
+            SELECT a
+            CASE 1      ; a := [&#x27;CHAR&#x27;,&#x27;BYTE&#x27;,&#x27;ERR&#x27;]
+            CASE 2      ; a := [&#x27;WORD&#x27;,&#x27;INT&#x27;,&#x27;ERR&#x27;]
+            CASE 4      ; a := [&#x27;ULONG&#x27;,&#x27;LONG&#x27;,&#x27;FLOAT&#x27;]
+            CASE 8      ; a := [&#x27;UWIDE&#x27;,&#x27;WIDE&#x27;,&#x27;DOUBLE&#x27;]
+            CASE 255    ; a := [proc::modstatic.statobj + strtable,&#x27;ERR&#x27;,&#x27;ERR&#x27;]
+            DEFAULT     ; a := NIL
+            ENDSELECT
+            e := proc::modstatic.statflags
+            PrintF(IF a THEN &#x27;\s /* SIZEOF = \d */\n&#x27; ELSE &#x27;??? /* SIZEOF = \d */\n&#x27;, ListItem(a,
+               IF e AND MEMBF_FLOAT THEN 2 ELSE IF e AND MEMBF_SIGNED THEN 1 ELSE 0),
+               proc::modstatic.sizeof)
+         /*
+         ELSEIF proc.totalsize = SIZEOF oldmodstatic
+            PrintF(&#x27;\s []:&#x27;, proc.name + strtable)
+            a := proc::oldmodstatic.statesize
+            SELECT a
+            CASE 1      ; a := [&#x27;CHAR&#x27;,&#x27;BYTE&#x27;,&#x27;ERR&#x27;]
+            CASE 2      ; a := [&#x27;WORD&#x27;,&#x27;INT&#x27;,&#x27;ERR&#x27;]
+            CASE 4      ; a := [&#x27;ULONG&#x27;,&#x27;LONG&#x27;,&#x27;FLOAT&#x27;]
+            CASE 8      ; a := [&#x27;UWIDE&#x27;,&#x27;WIDE&#x27;,&#x27;DOUBLE&#x27;]
+            CASE 255    ; a := [proc::oldmodstatic.statobj + strtable,&#x27;ERR&#x27;,&#x27;ERR&#x27;]
+            DEFAULT     ; a := NIL
+            ENDSELECT
+            e := proc::oldmodstatic.statflags
+            PrintF(IF a THEN &#x27;\s\n&#x27; ELSE &#x27;???&#x27;, ListItem(a,
+               IF e AND MEMBF_FLOAT THEN 2 ELSE IF e AND MEMBF_SIGNED THEN 1 ELSE 0))
+         */
+         ELSE
+            PrintF(&#x27;PROC \s(&#x27;, proc.name + strtable)
+            param := proc + SIZEOF modproc
+            FOR b := 0 TO proc.nrofargs-1
+               PrintF(&#x27;\s&#x27;, param.name + strtable)
+               IF b &gt;= (proc.nrofargs-proc.nrofdefaults)
+                  PrintF(&#x27;=\s&#x27;, valstr(param.defval, str))
+               ENDIF
+               IF debug THEN PrintF(&#x27;:\d|\d&#x27;, param.rtype, param.rnum)
+               IF b &lt; (proc.nrofargs-1) THEN PrintF(&#x27;,&#x27;)
+               param++
+            ENDFOR
+            PrintF(&#x27;)\n&#x27;)
+         ENDIF
+         IF c = 1 THEN PrintF(&#x27;\n&#x27;)
+         proc := proc + proc.totalsize
+      ENDWHILE
+   ENDIF
+
+   info := head.objectinfo
+   IF info
+      info := info + head
+      object := info + SIZEOF modinfo
+      IF debug THEN WriteF(&#x27;[@ OFFSET $\h]\n&#x27;, object-head)
+      c := info.count + 1
+      WHILE c--
+         PrintF(&#x27;(----) OBJECT \s\n&#x27;, object.name + strtable)
+         IF debug THEN PrintF(&#x27;flags=$\h\n&#x27;, object.flags)
+         member := object + SIZEOF modobject
+         a := object.nrofmembers + 1
+         WHILE a--
+            PrintF(&#x27;(\r\d[6])    \s\s\n&#x27;,
+                   member.offset,
+                   member.name + strtable,
+                   IF info.misc = 1 THEN
+                   typestr50(member.size, member.esize, member.numes, member.object, member.flags, strtable, str) ELSE
+                   typestr(member.size, member.esize, member.numes, member.object, member.flags, strtable, str))
+            member++
+         ENDWHILE
+         class := member
+         method := member
+         a := object.nrofmethods + 1
+         IF a &gt; 1 THEN method := class + SIZEOF modclass
+         WHILE a--
+            IF method.name
+               PrintF(&#x27;(   \c)    \s (&#x27;,
+                  IF method.flags AND PROCF_CLMETH THEN &quot;*&quot; ELSE &quot; &quot;,
+                  method.name + strtable)
+               param := method + SIZEOF modproc
+               FOR b := 0 TO method.nrofargs-1
+                  PrintF(&#x27;\s&#x27;, param.name + strtable)
+                  IF b &gt;= (method.nrofargs-method.nrofdefaults)
+                     PrintF(&#x27;=\s&#x27;, valstr(param.defval, str))
+                  ENDIF
+                  IF b &lt; (method.nrofargs-1) THEN PrintF(&#x27;,&#x27;)
+                  param++
+               ENDFOR
+               PrintF(&#x27;)&#x27;)
+               IF debug
+                  PrintF(&#x27; codeofs=\d, indx=\d&#x27;,
+                  method.offset, object.nrofmethods - a)
+               ENDIF
+               PrintF(&#x27;\n&#x27;)
+               method := param
+            ELSE
+               method := method + SIZEOF modproc
+            ENDIF
+         ENDWHILE
+         IF (debug&lt;&gt;NIL) AND object.nrofmethods
+            PrintF(&#x27;classofs=\d, destindx=\d, offset=\d\n&#x27;,
+            class.classofs, class.destofs, class.offset)
+         ENDIF
+         PrintF(&#x27;(----) ENDOBJECT /* SIZEOF = \d */\n\n&#x27;, object.sizeof)
+         object := object + object.totalsize
+      ENDWHILE
+   ENDIF
+
+   info := head.constinfo
+   IF info
+      info := info + head
+      lptr := info + SIZEOF modinfo
+      IF debug THEN WriteF(&#x27;[@ OFFSET $\h]\n&#x27;, lptr-head)
+      b := info.count + 1
+      WHILE b--
+         PrintF(IF b = info.count THEN &#x27;CONST &#x27; ELSE &#x27;      &#x27;)
+         PrintF(&#x27;\s = \s&#x27;, lptr[]++ + strtable, valstr(lptr[]++, str))
+         IF b &gt; 1 THEN PrintF(&#x27;,\n&#x27;)
+      ENDWHILE
+      PrintF(&#x27;\n\n&#x27;)
+   ENDIF
+
+   info := head.debuginfo
+   IF info &lt;&gt; 0 AND debug
+      info := info + head
+      PrintF(&#x27;DEBUG\n&#x27;)
+      vd := info + SIZEOF modinfo
+      WriteF(&#x27;[@ OFFSET $\h]\n&#x27;, vd-head)
+      c := info.count + 1
+      WHILE c--
+         PrintF(&#x27;   \s&#x27;, vd.name + strtable)
+         IF vd.inproc
+            PrintF(&#x27; in PROC \s&#x27;, vd.inproc + strtable)
+         ENDIF
+         IF vd.ofobject
+            PrintF(&#x27; OF \s &#x27;, vd.ofobject + strtable)
+         ENDIF
+         PrintF(&#x27; IS \s,&#x27;, typestr50(vd.varsize, vd.varesize, 0, vd.varobject, vd.varflags, strtable,str))
+         PrintF(&#x27;\d,\d\n&#x27;, vd.varreg,vd.varofs)
+         vd++
+      ENDWHILE
+      PrintF(&#x27;\n&#x27;)
+   ENDIF
+
+   info := head.macroinfo
+   IF info
+      info := info + head
+      macro := info + SIZEOF modinfo
+      IF debug THEN WriteF(&#x27;[@ OFFSET $\h]\n&#x27;, macro-head)
+      c := info.count + 1
+      WHILE c--
+         IF macro.type = 0
+            PrintF(&#x27;#define \s&#x27;, macro.name + strtable)
+            lptr := macro + SIZEOF modmacro
+         ELSEIF Odd(macro.type)
+            PrintF(&#x27;#define \s&#x27;+&#x27;(&#x27;, macro.name + strtable)
+            lptr := macro + SIZEOF modmacro
+            FOR a := 0 TO macro.nrofargs-1
+               PrintF(&#x27;\s&#x27;, lptr[]++ + strtable)
+               IF a &lt; (macro.nrofargs-1) THEN PrintF(&#x27;,&#x27;)
+            ENDFOR
+            IF macro.type = 3 THEN PrintF(&#x27;,...&#x27;)
+            PrintF(&#x27;)&#x27;)
+         ELSEIF macro.type = 2
+            PrintF(&#x27;MACRO \s \s&#x27;, macro.name + strtable,
+               IF macro.nrofargs THEN StringF(str, &#x27;/\d&#x27;, macro.nrofargs) ELSE &#x27;&#x27;)
+            lptr := macro + SIZEOF modmacro
+         ENDIF
+         macro := macro + macro.totalsize
+         IF debug THEN PrintF(&#x27; \s&#x27;, lptr) -&gt; body
+         IF c &gt; 1 THEN PrintF(&#x27;\n&#x27;) ELSE PrintF(&#x27;\n\n&#x27;)
+      ENDWHILE
+   ENDIF
+
+   info := head.moduleinfo
+   IF info
+      info := info + head
+      submod := info + SIZEOF modinfo
+      IF debug THEN WriteF(&#x27;[@ OFFSET $\h]\n&#x27;, submod-head)
+      c := info.count + 1
+      WHILE c--
+         PrintF(&#x27;Code from module \q\s\s\q used:\n&#x27;, IF submod.name &lt; 0 THEN &#x27;*&#x27; ELSE &#x27;&#x27;,
+                                                  Abs(submod.name) + strtable)
+         modref := submod + SIZEOF modmodule
+         a := submod.numsymbs + 1
+         WHILE a--
+            IF modref.ltype = LTYPE_PROC
+               PrintF(&#x27;   \s/\d (x\d)\n&#x27;, modref.name + strtable, modref.info, modref.numrefs)
+            ELSEIF modref.ltype = LTYPE_LAB
+               PrintF(&#x27;   \s: (x\d)\n&#x27;, modref.name + strtable, modref.numrefs)
+            ELSEIF modref.ltype = LTYPE_CLASS
+               PrintF(&#x27;   OBJECT \s (x\d)\n&#x27;, modref.name + strtable, modref.numrefs)
+            ELSE
+               PrintF(&#x27;   ???\n&#x27;)
+            ENDIF
+            IF debug
+               lptr := modref + SIZEOF modref
+               b := modref.numrefs+1
+               WHILE b--
+                  PrintF(&#x27;      \d, $\h\n&#x27;, Shr(lptr[], 24) AND $FF, lptr[] AND $FFFFFF)
+                  lptr++
+               ENDWHILE
+            ENDIF
+            modref := modref + SIZEOF modref + Mul(modref.numrefs, 4)
+         ENDWHILE
+         submod := submod + submod.totalsize
+         IF c &gt; 1 THEN PrintF(&#x27;\n&#x27;)
+      ENDWHILE
+      PrintF(&#x27;\n&#x27;)
+   ENDIF
+
+   IF head.codeinfo OR
+      head.datainfo OR
+      head.globinfo OR
+      head.relocinfo OR
+      head.lineinfo OR
+      head.debuginfo OR
+      (head.globinitinfo&lt;&gt;NIL AND (head.headsize &gt;=160))
+
+      PrintF(&#x27;Module contains:\n&#x27;)
+      info := head.codeinfo
+      IF info
+         info := info + head
+         PrintF(&#x27;   \d bytes code\n&#x27;, Mul(info.count,4))
+      ENDIF
+      info := head.datainfo
+      IF info
+         info := info + head
+         PrintF(&#x27;   \d bytes data\n&#x27;, Mul(info.count,4))
+      ENDIF
+      info := head.globinfo
+      IF info
+         info := info + head
+         PrintF(&#x27;   \d private globals (\d bytes)\n&#x27;, info.count, info.misc)
+      ENDIF
+      info := head.relocinfo
+      IF info
+         info := info + head
+         PrintF(&#x27;   \d relocations\n&#x27;, info.count)
+      ENDIF
+      info := head.lineinfo
+      IF info
+         info := info + head
+         PrintF(&#x27;   \d bytes linedebug\n&#x27;, Mul(info.count,8))
+      ENDIF
+      info := head.debuginfo
+      IF info
+         info := info + head
+         PrintF(&#x27;   \d bytes vardebug\n&#x27;, Mul(info.count,SIZEOF vardbg))
+      ENDIF
+      info := head.globinitinfo
+      IF info
+         info := info + head
+         PrintF(&#x27;   \d bytes private global arrays\n&#x27;, Mul(info.count,4))
+      ENDIF
+
+      PrintF(&#x27;\n&#x27;)
+   ENDIF
+
+
+   PrintF(&#x27;\n&#x27;)
+
+EXCEPT DO
+
+   IF fh THEN Close(fh)
+   IF rdargs THEN FreeArgs(rdargs)
+   SELECT exception
+   CASE &quot;MEM&quot;  ; PrintF(&#x27;Error: out of memory.\n&#x27;)
+   CASE &quot;FORM&quot; ; PrintF(&#x27;Error: not an ecx module.\n&#x27;)
+   CASE &quot;ARGS&quot; ; PrintF(&#x27;Error: bad arguments.\n&#x27;)
+   CASE &quot;OPEN&quot; ; PrintF(&#x27;Error: could not open file.\n&#x27;)
+   CASE &quot;TOLD&quot; ; PrintF(&#x27;Error: module is too old.\n&#x27;)
+   CASE &quot;SIZE&quot; ; PrintF(&#x27;Error: module is corrupt (wrong modsize).\n&#x27;)
+   CASE NIL
+   DEFAULT     ; PrintF(&#x27;Error: unknown.\n&#x27;)
+   ENDSELECT
+
+ENDPROC exception
+
+
+
+PROC valstr(val, str)
+   IF val = $80000000  -&gt; this value actually gets smaller than 255 when Abs():ed.
+      StringF(str, &#x27;$\h&#x27;, val)
+   ELSEIF Abs(val) &gt; 255
+      StringF(str, &#x27;$\h&#x27;, val)
+   ELSE
+      StringF(str, &#x27;\d&#x27;, val)
+   ENDIF
+ENDPROC str
+
+
+PROC typestr(size, esize, numes, object, flags, strtable, str)
+   SELECT size
+   CASE 0
+      SELECT esize
+      CASE 1   ; StringF(str, &#x27;[\d]:ARRAY OF CHAR&#x27;, numes)
+      CASE 2   ; StringF(str, &#x27;[\d]:ARRAY OF INT&#x27;, numes)
+      CASE 4   ; StringF(str, &#x27;[\d]:ARRAY OF LONG&#x27;, numes)
+      CASE 8   ; IF flags AND MEMBF_FLOAT
+               ;    StringF(str, &#x27;[\d]:ARRAY OF DOUBLE&#x27;, numes)
+               ; ELSE
+               ;    StringF(str, &#x27;[\d]:ARRAY OF QUAD&#x27;, numes)
+               ; ENDIF
+      CASE 255 ; IF numes = 1
+               ;    StringF(str, &#x27;:\s&#x27;, object + strtable)
+               ; ELSE
+               ;    StringF(str, &#x27;[\d]:ARRAY OF \s&#x27;, numes, object + strtable)
+               ; ENDIF
+      ENDSELECT
+   CASE 1 ; StringF(str, &#x27;:CHAR&#x27;)
+   CASE 2 ; StringF(str, &#x27;:INT&#x27;)
+   CASE 4
+      SELECT esize
+      CASE 0   ;  StringF(str, &#x27;:LONG&#x27;)
+      CASE 1   ; StringF(str, &#x27;:PTR TO CHAR&#x27;)
+      CASE 2   ; StringF(str, &#x27;:PTR TO INT&#x27;)
+      CASE 4   ; StringF(str, &#x27;:PTR TO LONG&#x27;)
+      CASE 8   ; IF flags AND MEMBF_FLOAT
+               ;    StringF(str, &#x27;:PTR TO DOUBLE&#x27;)
+               ; ELSE
+               ;    StringF(str, &#x27;:PTR TO QUAD&#x27;)
+               ; ENDIF
+      CASE 16  ; StringF(str, &#x27;:PTR TO VECTOR&#x27;)
+      CASE 255 ; StringF(str, &#x27;:PTR TO \s&#x27;, object + strtable)
+      ENDSELECT
+   CASE 8
+      IF flags AND MEMBF_FLOAT
+         StringF(str, &#x27;:DOUBLE&#x27;)
+      ELSE
+         StringF(str, &#x27;:QUAD&#x27;)
+      ENDIF
+   ENDSELECT
+ENDPROC str
+
+-&gt; v50. new FLOAT,WORD,BYTE,WIDE,VECTOR support added.
+PROC typestr50(size, esize, numes, object, flags, strtable, str)
+   SELECT size
+   CASE 0
+      StringF(str, &#x27;[\d]:ARRAY OF &#x27;, numes)
+      SELECT esize
+      CASE 1   ; StrAdd(str, IF flags AND MEMBF_SIGNED THEN &#x27;BYTE&#x27; ELSE &#x27;CHAR&#x27;)
+      CASE 2   ; StrAdd(str, IF flags AND MEMBF_SIGNED THEN &#x27;INT&#x27; ELSE &#x27;WORD&#x27;)
+      CASE 4   ; StrAdd(str, IF flags AND MEMBF_FLOAT THEN &#x27;FLOAT&#x27; ELSE
+                              (IF flags AND MEMBF_SIGNED THEN &#x27;LONG&#x27; ELSE &#x27;ULONG&#x27;))
+      CASE 8   ; StrAdd(str, IF flags AND MEMBF_FLOAT THEN &#x27;DOUBLE&#x27; ELSE &#x27;WIDE&#x27;)
+      CASE 16  ; StrAdd(str, &#x27;VECTOR&#x27;)
+      CASE 255 ; IF numes &lt;&gt; 1
+               ;    StrAdd(str, object + strtable)
+               ; ELSE
+               ;    StringF(str, &#x27;:\s&#x27;, object + strtable)
+               ; ENDIF
+      ENDSELECT
+   CASE 1 ; StrCopy(str, IF flags AND MEMBF_SIGNED THEN &#x27;:BYTE&#x27; ELSE &#x27;:CHAR&#x27;)
+   CASE 2 ; StrCopy(str, IF flags AND MEMBF_SIGNED THEN &#x27;:INT&#x27; ELSE &#x27;:WORD&#x27;)
+   CASE 4
+      SELECT esize
+      CASE 0   ; StrCopy(str, IF flags AND MEMBF_SIGNED THEN &#x27;:LONG&#x27; ELSE
+                              (IF flags AND MEMBF_FLOAT THEN &#x27;:FLOAT&#x27; ELSE &#x27;:ULONG&#x27;))
+      CASE 1   ; StringF(str, &#x27;:PTR TO \s&#x27;, IF flags AND MEMBF_SIGNED THEN &#x27;BYTE&#x27; ELSE &#x27;CHAR&#x27;)
+      CASE 2   ; StringF(str, &#x27;:PTR TO \s&#x27;, IF flags AND MEMBF_SIGNED THEN &#x27;INT&#x27; ELSE &#x27;WORD&#x27;)
+      CASE 4   ; StringF(str, &#x27;:PTR TO \s&#x27;, IF flags AND MEMBF_SIGNED THEN &#x27;LONG&#x27; ELSE
+                              (IF flags AND MEMBF_FLOAT THEN &#x27;FLOAT&#x27; ELSE &#x27;ULONG&#x27;))
+      CASE 8   ; StringF(str, &#x27;:PTR TO \s&#x27;, IF flags AND MEMBF_FLOAT THEN &#x27;DOUBLE&#x27; ELSE &#x27;WIDE&#x27;)
+      CASE 16  ; StrCopy(str, &#x27;:PTR TO VECTOR&#x27;)
+      CASE 255 ; StringF(str, &#x27;:PTR TO \s&#x27;, object + strtable)
+      ENDSELECT
+   CASE 8
+      StrCopy(str, IF flags AND MEMBF_FLOAT THEN &#x27;:DOUBLE&#x27; ELSE &#x27;:WIDE&#x27;)
+   CASE 16
+      StrCopy(str, &#x27;:VECTOR&#x27;)
+      SELECT esize
+      CASE 4   ; StrAdd(str, IF flags AND MEMBF_FLOAT THEN &#x27; OF FLOAT&#x27; ELSE &#x27; OF LONG&#x27;)
+      CASE 2   ; StrAdd(str, IF flags AND MEMBF_SIGNED THEN &#x27; OF BYTE&#x27; ELSE &#x27; OF CHAR&#x27;)
+      CASE 1   ; StrAdd(str, IF flags AND MEMBF_SIGNED THEN &#x27; OF INT&#x27; ELSE &#x27; OF WORD&#x27;)
+      ENDSELECT
+   ENDSELECT
+ENDPROC str
+
+
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

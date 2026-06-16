@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ProcIdx.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-procidx.html">ProcIdx</a> &rsaquo; ProcIdx.e</div><h1>File: <code>ProcIdx.e</code></h1><p class="meta">76 lines · project <a href="../examples/pkg-procidx.html"><code>ProcIdx</code></a></p><p class="pathctx">ProcIdx/ProcIdx/ProcIdx.e</p><p class="prose">Procedure Index v1.0 2/5/96 J. Tierney Usage: ProcIdx [FROM] &lt;file&gt; [TO &lt;file&gt;] - Output defaults to the <a href="../modules/current.html">current</a> CON:</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/dos.html">dos/dos</a></li></ul></div><h2>Source</h2><pre class="code">/*  Procedure Index v1.0
+     2/5/96  J. Tierney
+
+  Usage: ProcIdx [FROM] &lt;file&gt; [TO &lt;file&gt;]
+    - Output defaults to the current CON:
+*/
+
+MODULE &#x27;dos/dos&#x27;,
+       &#x27;exec/libraries&#x27;
+
+CONST MAXSTRLEN = 256
+
+ENUM OK=0, ER_ARGS, ER_SRC, ER_DST,
+     RA_SRC=0, RA_DEST, RA_COUNT
+
+RAISE ER_ARGS IF ReadArgs() = NIL
+
+PROC main() HANDLE
+  DEF rc=RETURN_OK, rdargs=NIL, opts:PTR TO LONG,
+      dest, fhs=NIL, fhd=NIL, dlib:PTR TO lib,
+      fbuf[MAXSTRLEN]:ARRAY OF CHAR, fbuflen, outstr[80]:STRING,
+      linecnt=1, proccnt=0, l, so, eo
+
+  NEW opts[RA_COUNT]
+  rdargs:=ReadArgs(&#x27;FROM/A,TO/K&#x27;, opts, NIL)
+  dest:=IF opts[RA_DEST] THEN opts[RA_DEST] ELSE &#x27;CONSOLE:&#x27;
+
+  fhs:=Open(opts[RA_SRC], MODE_OLDFILE)
+  IF fhs = NIL THEN Raise(ER_SRC)
+  fhd:=Open(dest, MODE_NEWFILE)
+  IF fhd = NIL THEN Raise(ER_DST)
+
+  dlib:=dosbase
+  fbuflen:=IF dlib &lt; 39 THEN MAXSTRLEN - 1 ELSE MAXSTRLEN
+
+  WHILE Fgets(fhs, fbuf, fbuflen)
+    l:=StrLen(fbuf)
+    IF l &gt; 7
+      FOR so:=0 TO l DO EXIT fbuf[so] &lt;&gt; 32
+      IF StrCmp(fbuf + so, &#x27;PROC &#x27;, 5)
+        eo:=InStr(fbuf, &#x27;(&#x27;)
+        StrCopy(outstr, fbuf + so + 5, eo - so - 5)
+        StringF(outstr, &#x27;\l\s[30]\r\d[4]\n&#x27;, outstr, linecnt)
+        IF Fputs(fhd, outstr) THEN Raise(ER_DST)
+        INC proccnt
+      ENDIF
+    ENDIF
+    INC linecnt
+  ENDWHILE
+
+  StringF(outstr, &#x27;\nProcedures:  \d\n&#x27;, proccnt)
+  IF Fputs(fhd, outstr) THEN Raise(ER_DST)
+
+  EXCEPT DO
+    IF fhd THEN Close(fhd)
+    IF fhs THEN Close(fhs)
+    IF rdargs THEN FreeArgs(rdargs)
+    IF exception
+      SELECT exception
+        CASE ER_ARGS
+          so:=&#x27;- Bad Args.&#x27;
+        CASE ER_SRC
+          so:=&#x27;opening/reading source file.&#x27;
+        CASE ER_DST
+          so:=&#x27;opening/writing destination file.&#x27;
+        CASE &quot;MEM&quot;
+          so:=&#x27;allocating memory.&#x27;
+      ENDSELECT
+      WriteF(&#x27;Error \s\n&#x27;, so)
+      rc:=RETURN_ERROR
+    ENDIF
+ENDPROC rc
+
+CHAR &#x27;$VER: ProcIdx 1.0 (5.2.96) by J. Tierney&#x27;, 0
+
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>fvfind.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-frontier-src.html">FRONTIER-Src</a> &rsaquo; fvfind.e</div><h1>File: <code>fvfind.e</code></h1><p class="meta">91 lines · project <a href="../examples/pkg-frontier-src.html"><code>FRONTIER-Src</code></a></p><p class="pathctx">FRONTIER-Src/FRONTIER-Src/fvfind.e</p><p class="prose">---------------------------------------------------------------- * * Project : Filevirus Library * * Program : fvfind.e * * E-Author : Mathias Grundler &lt;turrican@starbase.inka.de&gt; * * C-Author : Bjorn Reese &lt;breese@imada.ou.dk&gt; * * Short : <a href="../modules/example.html">Example</a> of a simple virus detector that uses <a href="../modules/unpack.html">unpack</a>.<a href="../modules/library.html">library</a> </p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/dos.html">dos/dos</a></li><li><a href="../modules/doshunks.html">dos/doshunks</a></li><li><a href="../modules/dostags.html">dos/dostags</a></li><li><a href="../modules/memory.html">exec/memory</a></li><li><a href="../modules/filevirus.html">filevirus</a></li><li><a href="../modules/filevirus.html">libraries/filevirus</a></li><li><a href="../modules/unpack.html">libraries/unpack</a></li><li><a href="../modules/unpack.html">unpack</a></li></ul></div><h2>Source</h2><pre class="code">/* ----------------------------------------------------------------
+ *
+ *  Project  : Filevirus Library
+ *
+ *  Program  : fvfind.e
+ *
+ *  E-Author : Mathias Grundler &lt;turrican@starbase.inka.de&gt;
+ *
+ *  C-Author : Bjorn Reese &lt;breese@imada.ou.dk&gt;
+ *
+ *  Short    : Example of a simple virus detector that uses unpack.library
+ *             Compile with &quot;ec fvfind.e&quot;
+ *
+ * ---------------------------------------------------------------- */
+MODULE  &#x27;exec/memory&#x27;
+MODULE  &#x27;dos/dos&#x27;
+MODULE  &#x27;dos/doshunks&#x27;
+MODULE  &#x27;dos/dostags&#x27;
+MODULE  &#x27;unpack&#x27;
+MODULE  &#x27;libraries/unpack&#x27;
+MODULE  &#x27;filevirus&#x27;
+MODULE  &#x27;libraries/filevirus&#x27;
+
+/* ---------------------------------------------------------------- */
+
+PROC scanner(p:PTR TO filevirusnode,pu:PTR TO unpackinfo)
+
+ p.fv_Buffer    := pu.decrunchadr
+  p.fv_BufferLen := pu.decrunchlen
+
+   WriteF(&#x27;File: &quot;\s&quot; &#x27;, pu.filename)
+
+    IF (FvCheckFile(p)=0)
+     IF (p.fv_FileInfection &lt;&gt; NIL)
+      WriteF(&#x27;*** virus &quot;\s&quot; found\n&#x27;, (p.fv_FileInfection.fi_VirusName))
+     ELSE
+      WriteF(&#x27;clean\n&#x27;)
+     ENDIF
+    ELSE
+    WriteF(&#x27;error \d\n&#x27;, p.fv_Status)
+   ENDIF
+ENDPROC
+
+/* ---------------------------------------------------------------- */
+
+PROC unpackscanner(p:PTR TO filevirusnode, fname)
+ DEF pu:PTR TO unpackinfo
+
+  IF (unpackbase:=OpenLibrary(&#x27;unpack.library&#x27;, 39) )
+   IF (pu:=UpAllocCInfo())
+  WriteF(&#x27;arg=\s - name=\s\n&#x27;,arg,fname)
+    pu.filename := fname
+    pu.path     := &#x27;TEMP:&#x27; /* must be unique as all files here will be deleted */
+    pu.jump     := {scanner}
+    pu.trackjump:= {scanner}
+    pu.userdata := p
+    pu.flag     := 1 AND UFB_DELETE
+
+     IF (UpDetermineFile(pu, fname))
+      WriteF(&#x27;Cruncher: \s\n&#x27;, pu.crunchername)
+       UpUnpack(pu)
+     ELSE
+      IF (UpLoadFile(pu))
+       scanner(p, pu)
+        UpFreeFile(pu)
+      ENDIF
+      UpFreeCInfo(pu);
+     ENDIF
+   ENDIF
+   CloseLibrary(unpackbase);
+  ENDIF
+ENDPROC
+
+/* ---------------------------------------------------------------- */
+
+PROC main()
+ DEF p:PTR TO filevirusnode
+
+  IF (filevirusbase:=OpenLibrary(&#x27;filevirus.library&#x27;, 0) )
+   IF (p:=FvAllocNode())
+    unpackscanner(p, arg)
+     FvFreeNode(p)
+   ELSE
+    WriteF(&#x27;FvAllocNode() failed\n&#x27;)
+   ENDIF
+   CloseLibrary(filevirusbase)
+  ELSE
+  WriteF(&#x27;Cannot open &quot;filevirus.library&quot;\n&#x27;)
+ ENDIF
+ENDPROC
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

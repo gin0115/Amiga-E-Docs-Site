@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>stc_crunch.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-aepd41.html">AEPD41</a> &rsaquo; stc_crunch.e</div><h1>File: <code>stc_crunch.e</code></h1><p class="meta">91 lines · project <a href="../examples/pkg-aepd41.html"><code>AEPD41</code></a></p><p class="pathctx">AEPD41/EPD41/Programme/Crunch/stc_crunch.e</p><p class="prose">* Program: StC_Crunch * Author: Sebastian (Bluebird) Erbert * Datum: April &#x27;96 * Version: 0.1 * Compiler: EC V3.2e * Anforderungen: - &#x27;StC.<a href="../modules/library.html">library</a>&#x27; Version 3 * - 2MB Ram und OS2.04 empfohlen * * Inhalt: - das Program packt das angegebene File als * Datafile mit den Packroutinen der StC.li- * brary u</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/stc.html">stc</a></li></ul></div><h2>Source</h2><pre class="code">/*
+ *  Program:  StC_Crunch
+ *  Author:   Sebastian (Bluebird) Erbert
+ *  Datum:    April &#x27;96
+ *  Version:  0.1
+ *  Compiler: EC V3.2e
+ *  Anforderungen:  - &#x27;StC.library&#x27; Version 3
+ *                  - 2MB Ram und OS2.04 empfohlen
+ *
+ *  Inhalt:   - das Program packt das angegebene File als
+ *              Datafile mit den Packroutinen der StC.li-
+ *              brary und sichert die gepackten Daten un-
+ *              ter dem angegebenen Namen (plus der Exten-
+ *              sion &#x27;stc&#x27; wieder ab)
+ *            - das Program soll eigentlich nur die Benutzung
+ *              der StC.library veranschaulichen, damit man
+ *              die Libraryfunktionen leichter in eigenen
+ *              Programmen benutzen kann
+*/
+
+
+MODULE  &#x27;stc&#x27;,&#x27;libraries/stc&#x27;,&#x27;dos/dos&#x27;
+
+DEF   filehandle,                         /* Filehandle */
+      filesize,                           /* Filegröße */
+      crunbuffer,                         /* Puffer zum Packen nötig */
+      filebuffer,                         /* Adresse der Filedaten */
+      crunlen,                            /* gepackte Dateilänge */
+      filename[108]: STRING               /* Filename */
+
+PROC main()
+
+IF stcbase:=OpenLibrary(&#x27;stc.library&#x27;,STCVERSION)
+
+
+
+ WriteF(&#x27;Enter Filename: &#x27;);
+ ReadStr(stdout,filename);                            /* Filename lesen */
+
+ filebuffer:=StcNewAllocFileBuffer(64,filename);      /* Dateipuffer anfordern */
+ IF filebuffer=NIL
+  WriteF(&#x27;Error allocating FileBuffer !\n&#x27;);
+  CleanUp(0);
+ ENDIF
+
+ filesize:=StcLoadFileBuffer(filebuffer);             /* Datei laden */
+ IF filesize=0
+  WriteF(&#x27;Error while Loading File !\n&#x27;);
+  CleanUp(0);
+ ENDIF
+ crunbuffer:=StcAllocBuffer(S404);                    /* Puffer zum Packen anfordern */
+ IF crunbuffer=NIL
+  WriteF(&#x27;No Mem !\n&#x27;);
+  CleanUp(0);
+ ENDIF
+ WriteF(&#x27;Crunching...\n&#x27;);                            /* Packvorgang starten */
+ crunlen:=StcCrunchDataTags([CDDESTINATION,filebuffer,   /* Zeiger auf Datei */
+                             CDLENGTH,filesize,          /* deren Länge */
+                             CDABORTFLAGS,CDABORTNIL,    /* kein Abbruch */
+                             CDOUTPUTFLAGS,CDOUTPUTNIL,  /* kein Ausgabe */
+                             CDDISTBITS,CDDIST16K,       /* Distanz 16K */
+                             CDBUFFER,crunbuffer,        /* Zeiger auf zusätzlichen Puffer */
+                             0]);
+ IF crunlen=0                                         /* wenn crunlen=0 dann ist Fehler aufgetreten */
+  WriteF(&#x27;Error while Crunching !\n&#x27;);
+  CleanUp(0);
+ ENDIF
+ WriteF(&#x27;Src_Size: \d\n&#x27;,filesize);                   /* ursprüngliche Größe */
+ WriteF(&#x27;Dst_Size: \d\n&#x27;,crunlen);                    /* neue Größe */
+ StrAdd(filename,&#x27;.stc&#x27;);
+ filehandle:=Open(filename,MODE_NEWFILE);
+ WriteF(&#x27;Saving...\n&#x27;);
+ IF Write(filehandle,filebuffer,crunlen)&lt;&gt;crunlen     /* gepackte Datei speichern */
+  WriteF(&#x27;Error while Writing !\n&#x27;);
+  CleanUp(0);                                         /* bei Fehler Ende */
+ ENDIF
+ IF Close(filehandle)=DOSFALSE
+  WriteF(&#x27;Error while Closing File !\n&#x27;);
+  CleanUp(0);
+ ENDIF
+ IF crunbuffer&lt;&gt;NIL THEN StcFreeBuffer(crunbuffer);   /* alle Puffer wieder freigeben */
+ IF filebuffer&lt;&gt;NIL THEN StcFreeFileBuffer(filebuffer);
+ WriteF(&#x27;Done.\n&#x27;);
+ CloseLibrary(stcbase);                               /* Lib schließen */
+ELSE
+ WriteF(&#x27;Could not open stc.library\n&#x27;);
+ENDIF
+
+ENDPROC
+
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

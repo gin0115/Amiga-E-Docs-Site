@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>newmem-test2.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-frontier-src.html">FRONTIER-Src</a> &rsaquo; newmem-test2.e</div><h1>File: <code>newmem-test2.e</code></h1><p class="meta">57 lines · project <a href="../examples/pkg-frontier-src.html"><code>FRONTIER-Src</code></a></p><p class="pathctx">FRONTIER-Src/FRONTIER-Src/newmem-test2.e</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/newmem-dbg.html">classes/newmem_dbg</a></li><li><a href="../modules/memory.html">exec/memory</a></li></ul></div><h2>Source</h2><pre class="code">MODULE  &#x27;exec/memory&#x27;                           /* Allgemeine Konstanten zum Memoryhandling     */
+MODULE  &#x27;classes/newmem_dbg&#x27;                    /* Das newmem-Modul... (Debug-Variante!)        */
+
+DEF     newmemlist=NIL                          /* Variable (LONG) für den PTR auf die liste    */
+
+PROC main() HANDLE                              /* Das Hauptprogramm (mit Handlerdefinition!)   */
+ DEF    mem1=NIL,                               /* PTR auf den 1 Block - wird nicht freigegeben */
+        mem2=NIL,                               /* PTR auf den 2 Block - wird doppelt freigeg.  */
+        mem3=NIL,                               /* PTR auf den 3 Block - wird zuviel freigeg.   */
+        mem4=NIL                                /* PTR auf den 4 Block - wird teilweise freig.  */
+ WriteF(&#x27;Starting + Allocating...(DEBUG-Mode)\n\n&#x27;)     /* Start-Nachricht...                   */
+
+  newmemlist:=initNewMem()                      /* Hier wird die Liste initialisiert (!!!)      */
+
+   mem1:=newAllocMem(1024,MEMF_ANY,newmemlist)  /* Speicher anfordern...                        */
+
+    mem2:=newAllocVec(1024,MEMF_ANY,newmemlist) /* Speicher anfordern (2)                       */
+
+     mem3:=AllocMem(1024,MEMF_ANY)              /* Speicher anfordern (3) mittels EXEC-Funktion */
+
+      newAddMem(mem3,1024,newmemlist)           /* EXEC-Mem. in NewMem wandeln und hinzufügen   */
+
+       mem4:=AllocVec(1024,MEMF_ANY)            /* Speicher anfordern (4) mittels EXEC-Funktion */
+ 
+        newAddVec(mem4,newmemlist)              /* EXEC-Mem. in NewMem wandeln und hinzufügen   */
+
+         WriteF(&#x27;Testing...\n\n&#x27;)               /* testMeldung ausgeben                         */
+
+          IF newValid(mem1+2048,newmemlist)     /* Ist die Adresse gültig (2 kb über dem Start) */
+           WriteF(&#x27;Die Adresse ist gültig ?!\n&#x27;)/* Darf NICHT sein (denn 1 kb Overrun!)         */
+          ELSE                                  /* Wenn sie NICHT gültig ist                    */
+           WriteF(&#x27;Die Adresse ist NICHT gültig!\n&#x27;)    /* Meldung ausgeben!                    */
+          ENDIF                                 /* Ende der Abfrage                             */
+
+           WriteF(&#x27;Now freeing...\n\n&#x27;)         /* hier die aktivitäten des Programmes...       */
+
+      mem4:=newFreePart(mem4,512,newmemlist)    /* die Hälfte des Speichers freigeben...        */
+-&gt;    ^^^^PTR z.neuen Block ;^^^ Die hälfte Freigeben... (normalerweise ist dann der Rest verloren!)
+     newFreeMem(mem3,2048,newmemlist)           /* Speicher wieder freigeben.(Falsche Größe!)   */
+-&gt;                   ^^^^ Führt normalerweise zu einem Absturtz!
+    newFreeVec(mem2,newmemlist)                 /* Speicher wieder freigeben                    */
+
+   newFreeVec(mem2,newmemlist)                  /* Speicher wieder freigeben (DOPPELT!!!!)      */
+
+-&gt; ^ mem1 wird NICHT freigegeben (der Speicher ist nun normalerweise verloren!)
+
+EXCEPT DO                                       /* Exception-Handling (Wird immer durchlaufen!) */
+WriteF(&#x27;\nFreeing all allocated Memory...(EXCEPT DO)\n\n&#x27;)      /* Meldung zum Exceptionhandling*/
+ freeNewMem(newmemlist)                         /* Den ganzen Speicher freigeben!               */
+  IF exception                                  /* Wenn eine Exception vorliegt...              */
+   SELECT exception                             /* Diese analysieren...                         */
+
+   ENDSELECT                                    /* ende der Exceptionauswertung                 */
+  ENDIF                                         /* Ende der Exceptionabfrage                    */
+ CleanUp(exception)                             /* Mit der Exception als Returncode aufhören... */
+ENDPROC
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

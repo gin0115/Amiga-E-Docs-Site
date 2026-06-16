@@ -1,0 +1,219 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>EList.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-portable.html">PortablE</a> &rsaquo; EList.e</div><h1>File: <code>EList.e</code></h1><p class="meta">193 lines · project <a href="../examples/pkg-portable.html"><code>PortablE</code></a></p><p class="pathctx">PortablE/PortablE/PEmodules/PE/CPP/EList.e</p><p class="prose">PE/CPP/EList.e 14-10-11 A re-implementation of AmigaE&#x27;s E-list functions. By Christopher S Handley: 27-07-06 - Started coding it for PortablE. 30-07-06 - Completed. 14-08-06 - Updated to use the ILIST type. 07-01-08 - Fixed DisposeList() bug. 18-08-09 - Rewrote to store everything in it&#x27;s <a href="../modules/array.html">array</a>, rat</p><h2>Source</h2><pre class="code">/* PE/CPP/EList.e 14-10-11
+   A re-implementation of AmigaE&#x27;s E-list functions.
+   
+   By Christopher S Handley:
+   27-07-06 - Started coding it for PortablE.
+   30-07-06 - Completed.
+   14-08-06 - Updated to use the ILIST type.
+   07-01-08 - Fixed DisposeList() bug.
+   18-08-09 - Rewrote to store everything in it&#x27;s array, rather than using an object as a header.
+   06-02-11 - Added PrintL() &amp; StringFL() functions (limited to lists of up to 8 items).
+   25-05-11 - Improved PrintL() &amp; StringFL() to handle lists of up to 20 items.
+   14-10-11 - Fixed a potential threading issue.
+*/
+OPT INLINE, POINTER
+OPT NATIVE
+MODULE &#x27;target/PE/base&#x27;, &#x27;PE/CPP/EString&#x27;
+
+/* Emulated procedures:
+NewList(maxLen) RETURNS list:LIST
+DisposeList(list:LIST) RETURNS NILL
+ListCopy(list: LIST, other:ILIST, len=ALL) RETURNS list:LIST
+ListAdd( list: LIST, other:ILIST, len=ALL) RETURNS list:LIST
+ListCmp( list:ILIST, other:ILIST, len=ALL) RETURNS match:BOOL
+ListMax( list: LIST) RETURNS max:VALUE
+ListLen( list:ILIST) RETURNS len:VALUE
+ListItem(list:ILIST, index) RETURNS value
+SetList( list: LIST, newLen)
+
+PrintL(fmtString:ARRAY OF CHAR, args=NILL:ILIST)
+*/
+
+PRIVATE
+
+CONST INDEX_LENGTH = -1
+CONST INDEX_SIZE   = -2
+
+CONST ITEM_SIZE = SIZEOF VALUE
+CONST HEADER_SIZE   = 2			-&gt;PortablE is hard-coded to use a value of 2 for static ILISTs
+CONST HEADER_OFFSET = HEADER_SIZE * ITEM_SIZE
+
+PUBLIC
+
+PROC InitList(array:ARRAY OF VALUE, maxLen) RETURNS list:LIST
+	list := array + HEADER_OFFSET !!ARRAY!!LIST
+	list[INDEX_LENGTH] := 0
+	list[INDEX_SIZE]   := maxLen
+ENDPROC
+
+PROC NewList(maxLen) RETURNS list:LIST
+	-&gt;use check
+	IF maxLen &lt; 0 THEN Throw(&quot;EPU&quot;, &#x27;EList; NewList(); maxLen&lt;0&#x27;)
+	
+	-&gt;allocate e-list
+	list := FastNew(maxLen + HEADER_SIZE * ITEM_SIZE, TRUE) + HEADER_OFFSET !!ARRAY!!LIST		-&gt;noClear=TRUE
+	
+	-&gt;init
+	list[INDEX_LENGTH] := 0
+	list[INDEX_SIZE]   := maxLen
+ENDPROC
+
+PROC DisposeList(list:LIST)
+	IF list THEN FastDispose(list - HEADER_OFFSET, -999)	-&gt;could use &quot;list[INDEX_SIZE] + HEADER_SIZE * ITEM_SIZE&quot; instead of -999
+ENDPROC NILL
+
+PROC ListCopy(list:LIST, other:ILIST, len=ALL)
+	-&gt;use check
+	IF  list = NILL THEN Throw(&quot;EPU&quot;, &#x27;EList; ListCopy(); list=NILL&#x27;)
+	IF other = NILL THEN Throw(&quot;EPU&quot;, &#x27;EList; ListCopy(); other=NILL&#x27;)
+	IF (len &lt; 0) AND (len &lt;&gt; ALL) THEN Throw(&quot;EPU&quot;, &#x27;EList; ListCopy(); len&lt;0&#x27;)
+	
+	-&gt;empty e-list before appending to it
+	list[INDEX_LENGTH] := 0
+	ListAdd(list, other, len)
+ENDPROC list
+
+PROC ListAdd(list:LIST, other:ILIST, len=ALL)
+	DEF readIndex, maxReadIndex
+	DEF writeIndex, maxWriteIndex
+	
+	-&gt;use check
+	IF  list = NILL THEN Throw(&quot;EPU&quot;, &#x27;EList; ListAdd(); list=NILL&#x27;)
+	IF other = NILL THEN Throw(&quot;EPU&quot;, &#x27;EList; ListAdd(); other=NILL&#x27;)
+	IF (len &lt; 0) AND (len &lt;&gt; ALL) THEN Throw(&quot;EPU&quot;, &#x27;EList; ListAdd(); len&lt;0&#x27;)
+	
+	-&gt;calc end of list reading from &amp; writing to
+	maxReadIndex  := IF len=ALL THEN other[INDEX_SIZE] ELSE Min(len, other[INDEX_SIZE])
+	maxWriteIndex := list[INDEX_SIZE]
+	
+	-&gt;copy all characters that will fit
+	readIndex  := 0
+	writeIndex := list[INDEX_LENGTH]		-&gt;start writing past end of list
+	WHILE (writeIndex &lt; maxWriteIndex) AND (readIndex &lt; maxReadIndex)
+		list[writeIndex] := other[readIndex]
+		
+		writeIndex++
+		readIndex++
+	ENDWHILE
+	
+	-&gt;update list&#x27;s stored length
+	list[INDEX_LENGTH] := writeIndex
+ENDPROC list
+
+PROC ListCmp(list:ILIST, other:ILIST, len=ALL) RETURNS match:BOOL
+	DEF index, maxIndex
+	
+	-&gt;use check
+	IF  list = NILL THEN Throw(&quot;EPU&quot;, &#x27;EList; ListCmp(); list=NILL&#x27;)
+	IF other = NILL THEN Throw(&quot;EPU&quot;, &#x27;EList; ListCmp(); other=NILL&#x27;)
+	IF (len &lt; 0) AND (len &lt;&gt; ALL) THEN Throw(&quot;EPU&quot;, &#x27;EList; ListCmp(); len&lt;0&#x27;)
+	
+	IF list[INDEX_LENGTH] &lt;&gt; other[INDEX_LENGTH]
+		match := FALSE
+	ELSE
+		-&gt;calc where should stop comparison
+		maxIndex := Min(list[INDEX_SIZE], other[INDEX_SIZE])
+		IF len &lt;&gt; ALL THEN maxIndex := Min(len, maxIndex)
+		
+		-&gt;compare all characters
+		match := TRUE
+		index := 0
+		WHILE index &lt; maxIndex
+			IF list[index] &lt;&gt; other[index] THEN match := FALSE
+			
+			index++
+		ENDWHILE IF match = FALSE
+	ENDIF
+ENDPROC
+
+PROC ListMax(list:LIST) RETURNS max
+	-&gt;use check
+	IF list = NILL THEN Throw(&quot;EPU&quot;, &#x27;EList; ListMax(); list=NILL&#x27;)
+	
+	max := list[INDEX_SIZE]
+ENDPROC
+
+PROC ListLen(list:ILIST) RETURNS len
+	-&gt;use check
+	IF list = NILL THEN Throw(&quot;EPU&quot;, &#x27;EList; ListLen(); list=NILL&#x27;)
+	
+	len := list[INDEX_LENGTH]
+ENDPROC
+
+PROC ListItem(list:ILIST, index) RETURNS value
+	-&gt;use check
+	IF list = NILL THEN Throw(&quot;EPU&quot;, &#x27;EList; ListLen(); list=NILL&#x27;)
+	
+	-&gt;additional use check
+	IF (index &lt; 0) OR (index &gt;= list[INDEX_LENGTH]) THEN Throw(&quot;EPU&quot;, &#x27;EList; ListLen(); index exceeds list bounds&#x27;)
+	
+	value := list[index]
+ENDPROC
+
+PROC SetList(list:LIST, newLen)
+	-&gt;use check
+	IF list = NILL THEN Throw(&quot;EPU&quot;, &#x27;EList; SetList(); list=NILL&#x27;)
+	IF newLen &lt; 0  THEN Throw(&quot;EPU&quot;, &#x27;EList; SetList(); newLen&lt;0&#x27;)
+	
+	-&gt;additional use check
+	IF newLen &gt; list[INDEX_SIZE] THEN Throw(&quot;EPU&quot;, &#x27;EList; SetList(); newLen exceeds list size&#x27;)
+	
+	-&gt;set length
+	list[INDEX_LENGTH] := newLen
+ENDPROC
+
+
+PROC PrintL(fmtString:ARRAY OF CHAR, args=NILL:ILIST) REPLACEMENT
+	DEF alen
+	alen := IF args THEN ListLen(args) ELSE 0
+	IF alen &gt; 20 THEN Throw(&quot;EPU&quot;, &#x27;PrintL(); args has too many items&#x27;)
+	NATIVE {printf(} fmtString {,} IF alen &gt;= 1 THEN args[0] ELSE 0 {,} IF alen &gt;= 2 THEN args[1] ELSE 0 {,} IF alen &gt;= 3 THEN args[2] ELSE 0 {,} IF alen &gt;= 4 THEN args[3] ELSE 0 {,} IF alen &gt;= 5 THEN args[4] ELSE 0 {,} IF alen &gt;= 6 THEN args[5] ELSE 0 {,} IF alen &gt;= 7 THEN args[6] ELSE 0 {,} IF alen &gt;= 8 THEN args[7] ELSE 0 {,} IF alen &gt;= 9 THEN args[8] ELSE 0 {,} IF alen &gt;= 10 THEN args[9] ELSE 0 {,} IF alen &gt;= 11 THEN args[10] ELSE 0 {,} IF alen &gt;= 12 THEN args[11] ELSE 0 {,} IF alen &gt;= 13 THEN args[12] ELSE 0 {,} IF alen &gt;= 14 THEN args[13] ELSE 0 {,} IF alen &gt;= 15 THEN args[14] ELSE 0 {,} IF alen &gt;= 16 THEN args[15] ELSE 0 {,} IF alen &gt;= 17 THEN args[16] ELSE 0 {,} IF alen &gt;= 18 THEN args[17] ELSE 0 {,} IF alen &gt;= 19 THEN args[18] ELSE 0 {,} IF alen &gt;= 20 THEN args[19] ELSE 0 {)} ENDNATIVE
+ENDPROC
+
+PROC StringFL(eString:STRING, fmtString:ARRAY OF CHAR, args=NILL:ILIST) REPLACEMENT
+	DEF alen, len
+	alen := IF args THEN ListLen(args) ELSE 0
+	IF alen &gt; 20 THEN Throw(&quot;EPU&quot;, &#x27;StringFL(); args has too many items&#x27;)
+	eString := StringF2(eString, fmtString, IF alen &gt;= 1 THEN args[0] ELSE 0, IF alen &gt;= 2 THEN args[1] ELSE 0, IF alen &gt;= 3 THEN args[2] ELSE 0, IF alen &gt;= 4 THEN args[3] ELSE 0, IF alen &gt;= 5 THEN args[4] ELSE 0, IF alen &gt;= 6 THEN args[5] ELSE 0, IF alen &gt;= 7 THEN args[6] ELSE 0, IF alen &gt;= 8 THEN args[7] ELSE 0, IF alen &gt;= 9 THEN args[8] ELSE 0, IF alen &gt;= 10 THEN args[9] ELSE 0, IF alen &gt;= 11 THEN args[10] ELSE 0, IF alen &gt;= 12 THEN args[11] ELSE 0, IF alen &gt;= 13 THEN args[12] ELSE 0, IF alen &gt;= 14 THEN args[13] ELSE 0, IF alen &gt;= 15 THEN args[14] ELSE 0, IF alen &gt;= 16 THEN args[15] ELSE 0, IF alen &gt;= 17 THEN args[16] ELSE 0, IF alen &gt;= 18 THEN args[17] ELSE 0, IF alen &gt;= 19 THEN args[18] ELSE 0, IF alen &gt;= 20 THEN args[19] ELSE 0, ADDRESSOF len)
+ENDPROC eString, len
+
+PRIVATE
+PROC StringF2(eString:STRING, fmtString:ARRAY OF CHAR, arg1=0, arg2=0, arg3=0, arg4=0, arg5=0, arg6=0, arg7=0, arg8=0, arg9=0, arg10=0, arg11=0, arg12=0, arg13=0, arg14=0, arg15=0, arg16=0, arg17=0, arg18=0, arg19=0, arg20=0, returnLen=NILA:ARRAY OF VALUE)
+-&gt;REPLACEMENT
+	DEF max, len
+	
+	max := StrMax(eString)
+	len := NATIVE {snprintf(} eString {,} max+1 {,} fmtString {,} arg1 {,} arg2 {,} arg3 {,} arg4 {,} arg5 {,} arg6 {,} arg7 {,} arg8 {,} arg9 {,} arg10 {,} arg11 {,} arg12 {,} arg13 {,} arg14 {,} arg15 {,} arg16 {,} arg17 {,} arg18 {,} arg19 {,} arg20 {)} ENDNATIVE !!VALUE
+	len := Min(len, max)
+	SetStr(eString, len)
+FINALLY
+	IF returnLen THEN returnLen[0] := len
+ENDPROC eString -&gt;, len
+PUBLIC
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

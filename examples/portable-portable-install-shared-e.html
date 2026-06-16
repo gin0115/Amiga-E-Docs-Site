@@ -1,0 +1,1301 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Install_shared.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-portable.html">PortablE</a> &rsaquo; Install_shared.e</div><h1>File: <code>Install_shared.e</code></h1><p class="meta">1275 lines · project <a href="../examples/pkg-portable.html"><code>PortablE</code></a></p><p class="pathctx">PortablE/PortablE/Install_shared.e</p><p class="prose">Install_shared.e This contains code shared by all versions of the installer.</p><h2>Source</h2><pre class="code">/* Install_shared.e
+	This contains code shared by all versions of the installer.
+*/
+
+OPT PREPROCESS, NATIVE
+MODULE &#x27;std/pShell&#x27;, &#x27;std/cPath&#x27;, &#x27;CSH/pFileList&#x27;, &#x27;CSH/pString&#x27;, &#x27;CSH/pGeneral&#x27;
+MODULE &#x27;CSH/cMegaList_STRING&#x27;
+MODULE &#x27;*DeleteModuleCache&#x27;
+
+#ifdef pe_TargetOS_Windows
+	#define pe_TargetOS_POSIX
+#endif
+#ifdef pe_TargetOS_Linux
+	#define pe_TargetOS_POSIX
+#endif
+#ifndef pe_TargetOS_POSIX
+	#define pe_TargetOS_Amiga
+#endif
+
+CONST BUFSIZE = 256
+
+DEF testMode=FALSE:BOOL
+
+PROC install()
+	DEF newModulesFolder:OWNS STRING, newSettingsPath:OWNS STRING, newExeFolder:OWNS STRING
+	DEF simpleMode:BOOL, testModeIgnore:BOOL
+	DEF file:OWNS PTR TO cMegaList_STRING, cursor:OWNS PTR TO cMegaCursor_STRING
+	DEF yes:BOOL, tempPath:ARRAY OF CHAR, tempString:OWNS STRING, tempString2:OWNS STRING, tempString3:OWNS STRING
+	DEF previousExecutables:BOOL, previousPEmodules:BOOL, badPEmodules:BOOL
+	DEF prevExeFolder:OWNS STRING, changedExeFolder:BOOL, parentOfModulesFolder:OWNS STRING
+	DEF mustBeInCmdPath:ARRAY OF CHAR, line:OWNS STRING
+	DEF success:BOOL, successExecutables:BOOL, successPEmodules:BOOL
+	
+	#ifdef pe_TargetOS_Amiga
+		DEF gccIncludePath:ARRAY OF CHAR, srcIncludePath:ARRAY OF CHAR, unarcPath:ARRAY OF CHAR, successIncludes:BOOL
+	#endif
+	
+	Print(&#x27;Welcome to PortablE\&#x27;s basic installer.\n&#x27;)
+	
+	-&gt;check source folders exist
+	IF ExistsPath(&#x27;Executables/&#x27;) = FALSE THEN Throw(&quot;ERR&quot;, &#x27;The source &quot;Executables&quot; folder does not exist&#x27;)
+	IF ExistsPath(&#x27;PEmodules/&#x27;)   = FALSE THEN Throw(&quot;ERR&quot;, &#x27;The source &quot;PEmodules&quot; folder does not exist&#x27;)
+	
+	IF ExistsPath(&#x27;PEmodules/PE/&#x27;) = FALSE
+		testMode := TRUE
+		Print(&#x27;\nWARNING: Test mode enabled!\n\n&#x27;)
+		
+		testModeIgnore := getYesNoAnswer(&#x27;TEST MODE\nDo you want to ignore the existing installation&#x27;)
+	ELSE
+		testModeIgnore := FALSE
+	ENDIF
+	
+	-&gt;determine location of installation settings
+	#ifdef pe_TargetOS_Windows
+		IF ExistsPath(tempPath := &#x27;C:/ProgramData/&#x27;)
+		ELSE IF ExistsPath(tempPath := &#x27;C:/Users/All Users/&#x27;)
+		ELSE IF ExistsPath(tempPath := &#x27;C:/Documents and Settings/All Users/&#x27;)
+		ELSE
+			tempPath := &#x27;C:/&#x27;
+		ENDIF
+	#endif
+	#ifdef pe_TargetOS_Linux
+		tempPath := &#x27;HOME:/.config/&#x27;
+		IF NOT ExistsPath(tempPath) THEN CreateDirs(tempPath)
+	#endif
+	#ifdef pe_TargetOS_Amiga
+		tempPath := &#x27;EnvArc:/&#x27;
+	#endif
+	
+	newSettingsPath := StrJoin(tempPath, &#x27;PortablE_Installation&#x27;)
+	
+	-&gt;read any previous installation settings
+	IF file := readLines(newSettingsPath, /*returnNILforNoFile*/ TRUE)
+		cursor := file.infoStart().clone()
+		newExeFolder := readLine(file, cursor)
+		END file, cursor
+		
+	#ifdef pe_TargetOS_AROS
+		IF InvalidDirPath(newExeFolder)
+			-&gt;work-around Icaros v1.4.0 having a corrupt settings file
+			tempString := PASS newExeFolder
+			newExeFolder := ImportDirPath(tempString)
+			END tempString
+		ENDIF
+	ENDIF
+	IF NOT ExistsPath(newSettingsPath)
+		-&gt;work around Icaros v1.3.? &amp; earlier missing the installation settings for the pre-installed PortablE
+		 IF ExistsPath(&#x27;PEmodules:/&#x27;)
+		 	newExeFolder := NEW &#x27;Extras:/Development/PortablE/&#x27;
+		 	IF NOT ExistsPath(newExeFolder) THEN END newExeFolder
+		 ENDIF
+	#endif
+	ENDIF
+	
+	-&gt;ask about Simple mode
+	simpleMode := getYesNoAnswer(&#x27;Do you want to use Simple Installation mode&#x27;)
+	
+	-&gt;determine sensible default paths
+	IF testModeIgnore THEN END newExeFolder
+	IF newExeFolder = NILS
+		-&gt;(no previous installation settings)
+		#ifdef pe_TargetOS_Windows
+			newExeFolder := NEW &#x27;C:/PortablE/bin/&#x27;
+		#endif
+		#ifdef pe_TargetOS_Linux
+			newExeFolder := NEW &#x27;HOME:/.local/bin/&#x27;
+			IF NOT ExistsPath(newExeFolder) THEN CreateDirs(newExeFolder)
+		#endif
+		#ifdef pe_TargetOS_Amiga
+			newExeFolder := NEW &#x27;C:/&#x27;
+		#endif
+		
+		previousExecutables := FALSE
+	ELSE
+		prevExeFolder := StrJoin(newExeFolder)
+		
+		previousExecutables := TRUE
+	ENDIF
+	
+	previousPEmodules := ExistsPath(&#x27;PEmodules:/&#x27;)
+	IF testModeIgnore THEN previousPEmodules := FALSE
+	badPEmodules := FALSE
+	IF previousPEmodules
+		-&gt;check for a previous bad installation (as we did not always enforce a PEmodules folder)
+		tempString := ExpandPath(&#x27;PEmodules:/&#x27;)
+		IF StrCmpPath(FindName(tempString), &#x27;PEmodules/&#x27;) = FALSE
+			badPEmodules := TRUE
+			showInfo(&#x27;Your OLD installation did not store modules in a PEmodules folder, so they will be moved.&#x27;)
+		ENDIF
+		END tempString
+	ENDIF
+	IF previousPEmodules
+		-&gt;extract existing assignment
+		newModulesFolder := ExpandPath(&#x27;PEmodules:/&#x27;)
+	ELSE
+		-&gt;(no previous installation)
+		END newModulesFolder
+		#ifdef pe_TargetOS_Windows
+			newModulesFolder := NEW &#x27;C:/PortablE/PEmodules/&#x27;
+		#endif
+		#ifdef pe_TargetOS_Linux
+			newModulesFolder := NEW &#x27;HOME:/.portable/PEmodules/&#x27;
+		#endif
+		#ifdef pe_TargetOS_Amiga
+			IF ExistsPath(tempPath := &#x27;Work:/&#x27;)
+			ELSE IF ExistsPath(tempPath := &#x27;Data:/&#x27;)
+			ELSE IF ExistsPath(tempPath := &#x27;HD1:/&#x27;)
+			ELSE IF ExistsPath(tempPath := &#x27;HD2:/&#x27;)
+			ELSE IF ExistsPath(tempPath := &#x27;HD0:/&#x27;)
+			ELSE IF ExistsPath(tempPath := &#x27;Sys:/&#x27;)
+			ELSE
+				tempPath := &#x27;RAM:/&#x27;
+			ENDIF
+			
+			newModulesFolder := StrJoin(tempPath, IF simpleMode THEN &#x27;PortablE/&#x27; ELSE NILA, &#x27;PEmodules/&#x27;)
+		#endif
+	ENDIF
+	
+	-&gt;query user about destination paths
+	#ifdef pe_TargetOS_POSIX
+		mustBeInCmdPath := &#x27;&#x27;
+	#else
+		mustBeInCmdPath := IF simpleMode THEN &#x27;&#x27; ELSE &#x27; (must be in command path)&#x27;
+	#endif
+	
+	parentOfModulesFolder := ExtractSubPath(newModulesFolder)
+	IF previousPEmodules = FALSE -&gt;AND NOT badPEmodules
+		-&gt;(no previous PEmodules installed)
+		yes := getYesNoAnswer(&#x27;Destination for PEmodules folder is &quot;\s&quot;.\nIs this destination OK&#x27;, [tempString := ExportPath(parentOfModulesFolder)]) ; END tempString
+		IF NOT yes
+			tempString := getFolder(&#x27;Which folder do you want to put PEmodules in?&#x27;, parentOfModulesFolder)
+			IF tempString = NILS THEN Raise(&quot;BRK&quot;)
+			END parentOfModulesFolder
+			parentOfModulesFolder := PASS tempString
+		ENDIF
+	ELSE
+		-&gt;(PEmodules already exists)
+		IF badPEmodules
+			yes := FALSE
+			
+		ELSE IF simpleMode
+			yes := TRUE
+		ELSE
+			yes := getYesNoAnswer(&#x27;PEmodules is currently inside folder &quot;\s&quot;.\nIs this location OK&#x27;, [tempString := ExportPath(parentOfModulesFolder)]) ; END tempString
+		ENDIF
+		
+		IF yes = FALSE
+			IF badPEmodules = FALSE
+				REPEAT
+					END tempString
+					
+					tempString := getFolder(&#x27;Which folder do you want to move PEmodules to?&#x27;, parentOfModulesFolder)
+					IF tempString = NILS THEN Raise(&quot;BRK&quot;)
+				UNTIL StrCmpPath(tempString, parentOfModulesFolder) = FALSE	-&gt;reject the user not changing the folder
+			ELSE
+				tempString := getFolder(&#x27;Which folder do you want to put PEmodules in?&#x27;, newModulesFolder)
+				IF tempString = NILS THEN Raise(&quot;BRK&quot;)
+			ENDIF
+			END parentOfModulesFolder
+			parentOfModulesFolder := PASS tempString
+			
+			tempString := StrJoin(parentOfModulesFolder, &#x27;PEmodules/&#x27;)
+			yes := getYesNoAnswer(&#x27;OK to move PEmodules from &quot;\s&quot; to &quot;\s&quot;&#x27;, [tempString2 := ExportPath(newModulesFolder), tempString3 := ExportPath(tempString)]) ; END tempString2, tempString3
+			IF NOT yes THEN Raise(&quot;BRK&quot;)
+			
+			Print(&#x27;Moving modules, please wait...\n&#x27;)
+			IF testMode = FALSE
+				DeleteModuleCache(newModulesFolder, FALSE)	-&gt;verbose=FALSE
+			ELSE
+				Print(&#x27;TEST MODE skipped DeleteModuleCache(&quot;\s&quot;, \d)\n&#x27;, newModulesFolder, FALSE)
+			ENDIF
+			#ifdef pe_TargetOS_Amiga
+				-&gt;remove existing assignment, so folder can be deleted if necessary
+				IF testMode = FALSE
+					executeCommand(&#x27;Assign PEmodules:&#x27;)
+				ELSE
+					Print(&#x27;TEST MODE skipped executeCommand(&quot;Assign PEmodules:&quot;)\n&#x27;)
+				ENDIF
+			#endif
+			IF testMode = FALSE
+				IF moveDir(tempString, newModulesFolder, /*safe*/ badPEmodules) = FALSE
+					showInfo(&#x27;Moving failed, so aborting installation.\n&#x27;)
+					Raise(&quot;BRK&quot;)
+				ENDIF
+				#ifdef pe_TargetOS_AROS
+					-&gt;work-around Icaros&#x27;s PEmodules folder assignment not being in S:User-StartUp, such that it will still (briefly) try to assign to the old PEmodules folder &amp; print an error message if it is not there
+					createDir(newModulesFolder)
+				#endif
+			ELSE
+				Print(&#x27;TEST MODE skipped moveDir(&quot;\s&quot;, &quot;\s&quot;, \d)\n&#x27;, tempString, newModulesFolder, badPEmodules)
+			ENDIF
+			
+			-&gt;change assignment
+			IF testMode = FALSE
+				IF addOrChangeAssignment(tempString) = FALSE
+					showInfo(&#x27;Changing assignment failed, so aborting installation.\n&#x27;)
+					Raise(&quot;BRK&quot;)
+				ENDIF
+			ELSE
+				Print(&#x27;TEST MODE skipped addOrChangeAssignment(&quot;\s&quot;)\n&#x27;, tempString)
+			ENDIF
+			END tempString
+		ENDIF
+	ENDIF
+	END newModulesFolder
+	newModulesFolder := StrJoin(parentOfModulesFolder, &#x27;PEmodules/&#x27;)
+	
+	IF simpleMode = FALSE
+		REPEAT
+			yes := getYesNoAnswer(&#x27;Destination for executables is &quot;\s&quot;\s.\nIs this destination folder OK&#x27;, [tempString := ExportPath(newExeFolder), mustBeInCmdPath]) ; END tempString
+			IF NOT yes
+				tempString := getFolder(&#x27;Where should the executables be put?&#x27;, newExeFolder) ; END newExeFolder
+				newExeFolder := PASS tempString
+				IF newExeFolder = NILS THEN Raise(&quot;BRK&quot;)
+			ENDIF
+		UNTIL yes
+	ENDIF
+	
+	yes := getYesNoAnswer(&#x27;&#x27; + 
+		&#x27;Your installation choices are:\n&#x27; +
+		&#x27;Destination for modules is &quot;\s&quot;.\n&#x27; +
+		&#x27;Destination for executables is &quot;\s&quot;\s.\n&#x27; +
+		&#x27;\n&#x27; +
+		&#x27;Is it OK to proceed with installation&#x27;, [tempString := ExportPath(newModulesFolder), tempString2 := ExportPath(newExeFolder), mustBeInCmdPath]) ; END tempString, tempString2
+	IF NOT yes THEN Raise(&quot;BRK&quot;)
+	
+	-&gt;record installation settings
+	DeletePath(newSettingsPath)
+	NEW file.new()
+	file.infoPastEnd().beforeInsert(file.makeNode(StrJoin(newExeFolder)))
+	writeLines(newSettingsPath, file)
+	END file
+	
+	
+	-&gt;perform installation
+	Print(&#x27;\n&#x27;)
+	success := TRUE
+	
+	tempPath := NILA
+	#ifdef pe_TargetOS_Windows
+		tempPath := &#x27;Executables/Windows/&#x27;
+	#endif
+	#ifdef pe_TargetOS_Linux
+		tempPath := &#x27;Executables/Linux/&#x27;
+	#endif
+	#ifdef pe_TargetOS_AmigaOS3
+		tempPath := &#x27;Executables/AmigaOS3/&#x27;
+	#endif
+	#ifdef pe_TargetOS_AmigaOS4
+		tempPath := &#x27;Executables/AmigaOS4/&#x27;
+	#endif
+	#ifdef pe_TargetOS_AROS
+		tempPath := &#x27;Executables/AROS/&#x27;
+	#endif
+	#ifdef pe_TargetOS_MorphOS
+		tempPath := &#x27;Executables/MorphOS/&#x27;
+	#endif
+	IF tempPath = NILA THEN Throw(&quot;ERR&quot;, &#x27;Unknown TargetOS for executables&#x27;)
+	
+	Print(&#x27;Copying executables...\n&#x27;)
+	success := success AND (successExecutables := copyDir(newExeFolder, tempPath))
+
+	IF prevExeFolder
+		changedExeFolder := NOT StrCmpPath(prevExeFolder, newExeFolder)
+	ELSE
+		changedExeFolder := TRUE
+	ENDIF
+	
+	#ifdef pe_TargetOS_POSIX
+		success := updateCmdPath(success, successExecutables, changedExeFolder, newExeFolder, prevExeFolder)
+	#else
+		setFlagsInDir(newExeFolder, FIBF_EXECUTE)
+		
+		tempString := StrJoin(newExeFolder, &#x27;PE-EC&#x27;)	-&gt;only exists for OS3 &amp; OS4
+		setFlagsOnFile(tempString, FIBF_SCRIPT) ; END tempString
+	#endif
+	
+	IF ExistsPath(newModulesFolder)
+		Print(&#x27;Deleting module cache, please wait...\n&#x27;)
+		IF testMode = FALSE
+			DeleteModuleCache(newModulesFolder, FALSE)	-&gt;verbose=FALSE
+		ELSE
+			Print(&#x27;TEST MODE skipped DeleteModuleCache(&quot;\s&quot;, \d)\n&#x27;, newModulesFolder, FALSE)
+		ENDIF
+	ENDIF
+	
+	Print(&#x27;Copying PEmodules, please wait...\n&#x27;)
+	success := success AND (successPEmodules := copyDir(newModulesFolder, &#x27;PEmodules/&#x27;))
+	
+	IF previousPEmodules = FALSE
+		-&gt;(no previous PEmodules installed)
+		IF successPEmodules = FALSE
+			Print(&#x27;No PEmodules: assignment was attempted, due to the above PEmodule problems.\n&#x27;)
+			
+		ELSE IF testMode
+			Print(&#x27;TEST MODE skipped making a PEmodules: assignment.\n&#x27;)
+		ELSE
+			IF addOrChangeAssignment(newModulesFolder) = FALSE THEN success := FALSE
+		ENDIF
+	ENDIF
+	
+	-&gt;IF previousPEmodules
+		Print(&#x27;Checking for obsolete modules, please wait...\n&#x27;)
+		obsoleteModulesCheck(newModulesFolder, &#x27;PEmodules/&#x27;)
+	-&gt;ENDIF
+	
+	#ifdef pe_TargetOS_Amiga
+		-&gt;(not Windows or Linux, therefore must be AmigaOS4, OS3, AROS, or MorphOS)
+		#ifdef pe_TargetOS_AmigaOS4
+			srcIncludePath := &#x27;useful_C_stuff/GCC_includes_AmigaOS4.lha&#x27;
+			gccIncludePath := &#x27;SDK:&#x27;
+		#endif
+		#ifdef pe_TargetOS_AmigaOS3
+			srcIncludePath := &#x27;useful_C_stuff/GCC_includes_AmigaOS3.lha&#x27;
+			gccIncludePath := &#x27;gg:usr/include&#x27;
+		#endif
+		#ifdef pe_TargetOS_AROS
+			srcIncludePath := &#x27;useful_C_stuff/GCC_includes_AROS.lha&#x27;
+			gccIncludePath := &#x27;Development:C/include&#x27;
+		#endif
+		#ifdef pe_TargetOS_MorphOS
+			srcIncludePath := &#x27;useful_C_stuff/GCC_includes_MorphOS.lha&#x27;
+			gccIncludePath := &#x27;SDK:gg&#x27;
+		#endif
+		
+		tempString  := ImportDirPath(gccIncludePath)
+		tempString2 := ExtractDevice(tempString)
+		IF successIncludes := ExistsPath(tempString2) THEN createDir(tempString)
+		END tempString, tempString2
+		
+		IF successIncludes
+			successIncludes := getYesNoAnswer(&#x27;About to install the necessary C header files to &quot;\s/&quot;.\nIs this OK&#x27;, [gccIncludePath])
+			IF successIncludes
+				#ifdef pe_TargetOS_AmigaOS4
+					IF ExistsPath(&#x27;Sys:/Utilities/UnArc&#x27;)
+						unarcPath := &#x27;Sys:Utilities/UnArc&#x27;
+					ELSE
+						unarcPath := &#x27;AppDir:UnArc&#x27;
+					ENDIF
+					line := StrJoin(unarcPath, &#x27; &#x27;, srcIncludePath,&#x27; TO &quot;&#x27;, gccIncludePath, &#x27;&quot; AUTO&#x27;)
+				#endif
+				#ifdef pe_TargetOS_AmigaOS3
+					unarcPath := &#x27;Executables/LhA_68k&#x27;
+					line := StrJoin(unarcPath, &#x27; -a -F -n -N x &#x27;, srcIncludePath,&#x27; &quot;&#x27;, gccIncludePath, &#x27;/&quot;&#x27;)
+				#endif
+				#ifdef pe_TargetOS_AROS
+					unarcPath := &#x27;LhA&#x27;
+					line := StrJoin(unarcPath, &#x27; xfw=&#x27;, gccIncludePath, &#x27;/ &#x27;, srcIncludePath)
+				#endif
+				#ifdef pe_TargetOS_MorphOS
+					unarcPath := &#x27;LhA&#x27;
+					line := StrJoin(unarcPath, &#x27; -a -F -n -N x &#x27;, srcIncludePath,&#x27;  &quot;&#x27;, gccIncludePath, &#x27;/&quot;&#x27;)
+				#endif
+				
+				IF successIncludes := executeCommand(line)
+					Print(&#x27;Installed the necessary C header files.\n&#x27;)
+				ELSE
+					Print(&#x27;WARNING: Could not install the necessary C header files.\n&#x27;)
+				ENDIF
+				END line
+			ENDIF
+		ELSE
+			Print(&#x27;\nGCC does not seem to be installed, so the necessary C header files could not be installed.\n&#x27;)
+		ENDIF
+		
+		IF successIncludes = FALSE
+			Print(&#x27;\nNOTE: To install the necessary C header files, you will need to extract &quot;\s&quot; to &quot;\s&quot;.\n&#x27;, srcIncludePath, gccIncludePath)
+		ENDIF
+	#endif
+	
+	-&gt;ensure Script flag set, whether we copy Examples or leave it to the user
+	#ifdef pe_TargetOS_Amiga
+		IF setFlagsOnFile(tempPath := &#x27;Examples/Amiga/JasonHulance/JH_5_Recursion.run&#x27;, FIBF_SCRIPT) = FALSE THEN Print(&#x27;WARNING: Failed to set Script flag on &quot;\s&quot;.\n&#x27;, tempString := ExportPath(tempPath)) ; END tempString
+		-&gt;&#x27;Examples/Amiga_DEMO/Compile_demo&#x27;, FIBF_SCRIPT
+		-&gt;&#x27;Examples/Amiga_DEMO/demo_OUTPUT&#x27;,  FIBF_EXECUTE
+	#endif
+	
+	-&gt;offer to copy documentation &amp; examples
+	#ifdef pe_TargetOS_Linux
+		IF InStr(parentOfModulesFolder, &#x27;/.&#x27;)
+			-&gt;(folder is hidden) which may prevent Flatpak &amp; Snap web browsers from opening the HTML documentation, etc
+			END parentOfModulesFolder
+			parentOfModulesFolder := NEW &#x27;HOME:/Documents/PortablE/&#x27;
+		ENDIF
+	#endif
+	yes := getYesNoAnswer(&#x27;Do you want to copy the Docs &amp; Examples folders to &quot;\s&quot;&#x27;, [tempString := ExportPath(parentOfModulesFolder)]) ; END tempString
+	IF yes
+		tempString := StrJoin(parentOfModulesFolder, &#x27;Docs/&#x27;)
+		createDir(tempString, /*forceIcon*/ TRUE)
+		copyDir(  tempString, &#x27;Docs/&#x27; #ifdef pe_TargetOS_POSIX , &#x27;.info&#x27;, TRUE #endif) ; END tempString
+		
+		tempString := StrJoin(parentOfModulesFolder, &#x27;Examples/&#x27;)
+		/*
+		yes := getYesNoAnswer(&#x27;Do you want to delete any obsolete Examples from the folder &quot;\s&quot;&#x27;, [tempString2 := ExportPath(parentOfModulesFolder)]) ; END tempString2
+		IF yes THEN DeleteDirPath(tempString)
+		*/
+		createDir(tempString, /*forceIcon*/ TRUE)
+		copyDir(  tempString, &#x27;Examples/&#x27; #ifdef pe_TargetOS_POSIX , &#x27;.info&#x27;, TRUE #endif) ; END tempString
+	ELSE
+		Print(&#x27;\nDon\&#x27;t forget to copy &quot;Docs&quot; &amp; &quot;Examples&quot; somewhere!\n&#x27;)
+	ENDIF
+	
+	-&gt;print final line(s) without a blank line at the bottom
+	IF success = FALSE
+		Print(&#x27;\nWARNING: Installation was not entirely successful.\nPlease try again.&#x27;)
+	ELSE
+		Print(&#x27;\nInstallation successful!&#x27;)
+	ENDIF
+	PrintFlush()
+FINALLY
+	END newModulesFolder, newSettingsPath, newExeFolder
+	END file, cursor, tempString, tempString2, tempString3
+	END prevExeFolder, parentOfModulesFolder
+	END line
+ENDPROC
+
+#ifdef pe_TargetOS_Linux
+PROC updateCmdPath(success:BOOL, successExecutables:BOOL, changedExeFolder:BOOL, newExeFolder:STRING, prevExeFolder:NULL STRING)
+	DEF hostNewExePath:OWNS STRING, hostPrevExePath:OWNS STRING
+	DEF envPathStr:OWNS STRING, envPathList:OWNS PTR TO cMegaList_STRING, cursor:OWNS PTR TO cMegaCursor_STRING
+	DEF exportCmd:OWNS STRING, appendCmd:OWNS STRING
+	
+	hostNewExePath  := ExportPath( newExeFolder)
+	hostPrevExePath := ExportPath(prevExeFolder)	-&gt;# this is not currently used, but could be used to find &amp; remove the previously-added &#x27;export&#x27; line
+	
+	-&gt;read current env path
+	envPathStr := readEnvPath()
+	
+	-&gt;parse env path into list, excluding duplicates
+	envPathList, cursor := parsePathIntoList(envPathStr)
+	
+	-&gt;check if executable folder is already in the env path
+	IF envPathStr
+		changedExeFolder := NOT findInEnvPathList(envPathList, cursor, hostNewExePath)
+	ELSE
+		-&gt;(use supplied changedExeFolder as &#x27;best guess&#x27;)
+	ENDIF
+	
+	IF changedExeFolder
+		IF successExecutables = FALSE
+			Print(&#x27;Did not try adding executables folder to command path, due to the above executable problems.\n&#x27;)
+		ELSE
+			exportCmd := StrJoin(&#x27;export PATH=&quot;&#x27;, hostNewExePath, &#x27;:$PATH&quot;&#x27;)
+			appendCmd := StrJoin(&#x27;echo \&#x27;&#x27;, exportCmd, &#x27;\&#x27; &gt;&gt;~/.bashrc&#x27;)
+			
+			IF executeCommand(appendCmd)
+				Print(&#x27;Added executables folder to command path.\n&#x27;)
+				executeCommand(exportCmd)
+			ELSE
+				success := FALSE
+				Print(&#x27;WARNING: Could not add executables folder to command path.\n&#x27;)
+			ENDIF
+		ENDIF
+	ENDIF
+FINALLY
+	END hostNewExePath, hostPrevExePath
+	END envPathStr, envPathList, cursor
+	END exportCmd, appendCmd
+ENDPROC success
+#endif
+#ifdef pe_TargetOS_Windows
+PROC updateCmdPath(success:BOOL, successExecutables:BOOL, changedExeFolder:BOOL, newExeFolder:STRING, prevExeFolder:NULL STRING)
+	DEF hostNewExePath:OWNS STRING, hostPrevExePath:OWNS STRING
+	DEF line:OWNS STRING, fileList:OWNS PTR TO cMegaList_STRING, envPathStr:OWNS STRING
+	DEF envPathList:OWNS PTR TO cMegaList_STRING, cursor:OWNS PTR TO cMegaCursor_STRING, newLen
+	DEF setxPath:ARRAY OF CHAR, tempString:OWNS STRING
+	
+	hostNewExePath  := ExportPath( newExeFolder)
+	hostPrevExePath := ExportPath(prevExeFolder)
+	
+	-&gt;read current env path
+	envPathStr := readEnvPath()
+	
+	-&gt;parse env path into list, excluding duplicates (which should help keep it below the 1024 character limit of SETX)
+	envPathList, cursor, newLen := parsePathIntoList(envPathStr)
+	
+	-&gt;check if executable folder is already in the env path
+	IF envPathStr
+		changedExeFolder := NOT findInEnvPathList(envPathList, cursor, hostNewExePath)
+	ELSE
+		-&gt;(use supplied changedExeFolder as &#x27;best guess&#x27;)
+	ENDIF
+	
+	IF changedExeFolder
+		IF successExecutables = FALSE
+			Print(&#x27;Did not try adding executables folder to command path, due to the above executable problems.\n&#x27;)
+		ELSE
+			-&gt;save backup copy of old env path, just in case we screw up
+			setxPath := &#x27;BackupOfEnvPath.txt&#x27;	-&gt;reusing variable
+			IF NOT ExistsPath(setxPath)
+				IF testMode = FALSE
+					NEW fileList.new()
+					fileList.infoPastEnd().beforeInsert(fileList.makeNode(StrJoin(envPathStr)))
+					writeLines(setxPath, fileList)
+					END fileList
+				ELSE
+					Print(&#x27;TEST MODE skipped creating &quot;\s&quot;.\n&#x27;, setxPath)
+				ENDIF
+			ENDIF
+			
+			-&gt;remove old executable path
+			IF (envPathStr &lt;&gt; NILS) AND (prevExeFolder &lt;&gt; NILS)
+				-&gt;remove old executable folder
+				IF findInEnvPathList(envPathList, cursor, hostPrevExePath)
+					newLen := newLen - EstrLen(cursor.read()) - StrLen(&#x27;;&#x27;)
+					cursor.destroy()
+				ENDIF
+			ENDIF
+			
+			-&gt;add new executable path to end
+			envPathList.infoPastEnd().beforeInsert(envPathList.makeNode(StrJoin(hostNewExePath)))
+			newLen := newLen + EstrLen(hostNewExePath) + StrLen(&#x27;;&#x27;)
+			
+			-&gt;recombine modified list into new string
+			newLen := newLen - StrLen(&#x27;;&#x27;)
+			NEW tempString[Max(1,newLen)]
+			IF envPathList.infoIsEmpty() = FALSE
+				cursor.goto(envPathList.infoStart())
+				REPEAT
+					StrAdd(tempString, cursor.read())
+					StrAdd(tempString, &#x27;;&#x27;)
+				UNTIL cursor.next()
+			ENDIF
+			END envPathStr
+			envPathStr := PASS tempString
+			
+			-&gt;update env path
+			IF EstrLen(envPathStr) &lt;= 1024
+				-&gt;(path length is below SETX&#x27;s 1024 character limitation, so it won&#x27;t be truncated badly)
+				IF ExistsPath(&#x27;C:/Windows/System32/setx.exe&#x27;)
+					setxPath := &#x27;SETX&#x27;
+				ELSE
+					setxPath := &#x27;Executables\\SETX&#x27;
+				ENDIF
+				line := StrJoin(&#x27;Executables\\Elevate &#x27;, setxPath, &#x27; PATH &quot;&#x27;, envPathStr, &#x27;&quot; /m&#x27;)
+				IF executeCommand(line)
+					Print(&#x27;Added executables folder to command path.\n&#x27;)
+				ELSE
+					success := FALSE
+					Print(&#x27;WARNING: Could not add executables folder to command path.\n&#x27;)
+				ENDIF
+				END line
+				
+				-&gt;we cannot check to see if env path was updated, as it doesn&#x27;t affect us :(
+			ENDIF
+		ENDIF
+	ENDIF
+FINALLY
+	END hostNewExePath, hostPrevExePath
+	END line, fileList, envPathStr
+	END envPathList, cursor
+	END tempString
+ENDPROC success
+#endif
+
+#ifdef pe_TargetOS_POSIX
+PROC findInEnvPathList(envPathList:PTR TO cMegaList_STRING, cursor:PTR TO cMegaCursor_STRING, needle:STRING) RETURNS found:BOOL
+	found := FALSE
+	IF envPathList.infoIsEmpty() = FALSE
+		cursor.goto(envPathList.infoStart())
+		REPEAT
+			IF StrCmpPath(cursor.read(), needle) THEN RETURN TRUE
+		UNTIL cursor.next()
+	ENDIF
+ENDPROC
+
+PROC getenv(name:ARRAY OF CHAR) IS NATIVE {getenv(} name {)} ENDNATIVE !!ARRAY OF CHAR
+
+-&gt;NOTE: Returns NIL if fails to read the env path
+PROC readEnvPath() RETURNS envPathStr:OWNS STRING IS CopyStr(getenv(&#x27;PATH&#x27;))	-&gt;PATH needed for Linux, but it also works on Windows
+/* OBSOLETE:
+PROC readEnvPath() RETURNS envPathStr:OWNS STRING
+	DEF tempPath:OWNS STRING, line:OWNS STRING, fileList:OWNS PTR TO cMegaList_STRING
+	
+	tempPath := MakeUniquePath(/*file1dir2*/ 1, /*dirPath*/ &#x27;&#x27;, /*base*/ &#x27;temp&#x27;)
+	line := StrJoin(&#x27;Echo \%path\%&gt;&#x27;, tempPath)
+	ExecuteCommand(line)
+	IF fileList := readLines(tempPath, /*returnNILforNoFile*/ TRUE) THEN envPathStr := fileList.infoStart().write(NILS, /*returnOldData*/ TRUE)
+	DeletePath(tempPath)
+FINALLY
+	IF exception THEN END envPathStr
+	END tempPath, line, fileList
+ENDPROC
+*/
+
+-&gt;parse env path into list, excluding duplicates (which should help keep it below the 1024 character limit of SETX)
+PROC parsePathIntoList(envPathStr:NULL STRING) RETURNS envPathList:OWNS PTR TO cMegaList_STRING, cursor:OWNS PTR TO cMegaCursor_STRING, newLen
+	DEF pos, nextPos, separator:ARRAY OF CHAR, singlePath:OWNS STRING, tempString:OWNS STRING, alreadyPresent:BOOL
+	
+	separator := #ifdef pe_TargetOS_Windows &#x27;;&#x27; #else &#x27;:&#x27; #endif
+	
+	NEW envPathList.new()
+	cursor := envPathList.infoStart().clone()
+	IF envPathStr
+		newLen := 0
+		pos := 0
+		WHILE pos &lt; EstrLen(envPathStr)
+			-&gt;extract next path
+			nextPos := InStr(envPathStr, separator, pos)
+			IF nextPos = -1 THEN nextPos := EstrLen(envPathStr)
+			NEW singlePath[Max(1,nextPos-pos)]
+			StrCopy(singlePath, envPathStr, nextPos-pos, pos)
+			
+			#ifdef pe_TargetOS_Windows
+				-&gt;try cleaning-up path, by removing any spurious &#x27;%&#x27; (happened several times to me, seemingly due to Windows Live Messenger)
+				IF tempString := translateStr(singlePath, [&#x27;\%&#x27;,&#x27;&#x27;, NILA]:ARRAY_OF_CHAR, EstrLen(singlePath), /*noChangeReturnNILS*/ TRUE)
+					END singlePath
+					singlePath := PASS tempString
+				ENDIF
+			#endif
+			
+			-&gt;see if path already present in list
+			alreadyPresent := FALSE
+			IF envPathList.infoIsEmpty() = FALSE
+				cursor.goto(envPathList.infoStart())
+				WHILE alreadyPresent = FALSE
+					IF StrCmpPath(singlePath, cursor.read()) THEN alreadyPresent := TRUE
+				ENDWHILE IF cursor.next()
+			ENDIF
+			
+			-&gt;add path to list (if not already present)
+			IF alreadyPresent = FALSE
+				newLen := newLen + EstrLen(singlePath) + StrLen(separator)
+				envPathList.infoPastEnd().beforeInsert(envPathList.makeNode(PASS singlePath))
+			ENDIF
+			
+			pos := nextPos + 1
+		ENDWHILE
+	ELSE
+		-&gt;(safe fall-back)
+		envPathList.infoPastEnd().beforeInsert(envPathList.makeNode(NEW &#x27;\%path\%&#x27;))
+		newLen := EstrLen(envPathList.infoStart().read()) + StrLen(separator)
+	ENDIF
+FINALLY
+	IF exception THEN END envPathList, cursor
+	END singlePath, tempString
+ENDPROC
+PRIVATE
+TYPE ARRAY_OF_CHAR IS ARRAY OF CHAR
+PUBLIC
+#endif
+
+
+PROC waitForEnter()
+	DEF input[1]:STRING
+	ReadStr(stdin, input)
+ENDPROC
+
+PROC getFolder(request:ARRAY OF CHAR, defaultFolder=NILA:ARRAY OF CHAR) RETURNS folder:OWNS STRING PROTOTYPE IS EMPTY
+
+PROC getYesNoAnswer(question:ARRAY OF CHAR, questionParams=NILL:ILIST) RETURNS yes:BOOL PROTOTYPE IS EMPTY
+
+PROC showInfo(info:ARRAY OF CHAR, infoParams=NILL:ILIST) PROTOTYPE IS EMPTY
+
+
+PROC getAnswer(question:ARRAY OF CHAR, validAnswers:ARRAY OF CHAR, questionParams=NILL:ILIST) RETURNS answer:CHAR
+	DEF input[10]:STRING, chara[2]:ARRAY OF CHAR, upperValidAnswers:STRING
+	
+	-&gt;ensure all valid answers are uppercase
+	upperValidAnswers := StrJoin(validAnswers)
+	UpperStr(upperValidAnswers)
+	
+	-&gt;loop until answer is valid
+	REPEAT
+		-&gt;loop until answer is not empty
+		REPEAT
+			PrintL(question, questionParams)
+			PrintFlush()
+			ReadStr(stdin, input)
+			SetStr(input, Max(0, EstrLen(input) - 1))	-&gt;strip LF
+		UNTIL EstrLen(input) &gt; 0
+		
+		-&gt;get first character of answer &amp; ensure it is uppercase
+		answer := input[0]
+		IF (answer &gt;= &quot;a&quot;) AND (answer &lt;= &quot;z&quot;) THEN answer := answer + &quot;A&quot; - &quot;a&quot;
+		
+		-&gt;compare answer to the valid ones
+		chara[0] := answer
+		chara[1] := 0
+	UNTIL InStr(validAnswers, chara) &lt;&gt; -1
+FINALLY
+	END upperValidAnswers
+ENDPROC
+
+/*****************************/
+
+PROC readLine(fileList:PTR TO cMegaList_STRING, cursor:PTR TO cMegaCursor_STRING) RETURNS line:OWNS STRING
+	IF cursor.isOnSameNodeAs(fileList.infoPastEnd()) = FALSE
+		line := StrJoin(cursor.read())
+		cursor.next()
+	ELSE
+		line := NILS
+	ENDIF
+ENDPROC
+
+PROC appendLine(fileList:PTR TO cMegaList_STRING, line:OWNS STRING)
+	fileList.infoPastEnd().beforeInsert(fileList.makeNode(PASS line))
+ENDPROC
+
+-&gt;searches forward from the current cursor position, halting at the end of the list if no match is found
+PROC find(needle:ARRAY OF CHAR, fileList:PTR TO cMegaList_STRING, cursor:PTR TO cMegaCursor_STRING, onlyCompareStartOfString=FALSE:BOOL) RETURNS found:BOOL
+	DEF stop:BOOL, len
+	
+	len := IF onlyCompareStartOfString THEN StrLen(needle) ELSE ALL
+	
+	found := FALSE
+	IF fileList.infoIsEmpty() = FALSE
+		stop := FALSE
+		REPEAT
+			IF StrCmpPath(needle, cursor.read(), len)	-&gt;# technically this isn&#x27;t always a path comparison, but it&#x27;s probably fine...
+				found := TRUE
+			ELSE
+				stop := cursor.next()
+			ENDIF
+		UNTIL found OR stop
+	ENDIF
+ENDPROC
+
+/*****************************/
+
+PROC executeCommand(command:ARRAY OF CHAR) RETURNS executed:BOOL
+	IF testMode
+		Print(&#x27;TEST MODE skipped executeCommand(&quot;\s&quot;)\n&#x27;, command)
+		RETURN TRUE
+	ENDIF
+	
+	executed := ExecuteCommand(command)
+ENDPROC
+
+PROC copyFile(toPath:ARRAY OF CHAR, fromPath:ARRAY OF CHAR) RETURNS success:BOOL
+	DEF from:OWNS PTR TO cFile, to:OWNS PTR TO cFile
+	NEW from.new()
+	
+	IF testMode
+		Print(&#x27;TEST MODE skipped copyFile(&quot;\s&quot;, &quot;\s&quot;)\n&#x27;, toPath, fromPath)
+		RETURN TRUE
+	ENDIF
+	
+	IF success := from.open(fromPath, TRUE)	-&gt;readOnly=TRUE
+		IF to := from.makeCopy(toPath)
+			to.close()
+		ELSE
+			success := FALSE
+		ENDIF
+		from.close()
+	ENDIF
+FINALLY
+	END from, to
+ENDPROC
+
+-&gt;create directory, with any number of non-existant parent directories
+PROC createDir(dirPath:ARRAY OF CHAR, forceIcon=FALSE:BOOL) RETURNS success:BOOL
+	DEF subPath:OWNS STRING, dir:OWNS PTR TO cHostDir
+	#ifdef pe_TargetOS_Amiga
+	DEF info:OWNS STRING, createIcon:BOOL
+	#endif
+	
+	IF testMode
+		Print(&#x27;TEST MODE skipped createDir(&quot;\s&quot;)\n&#x27;, dirPath)
+		RETURN TRUE
+	ENDIF
+	
+	subPath := ExtractSubPath(dirPath)
+	IF EstrLen(subPath) &gt; 0
+		IF ExistsPath(subPath) = FALSE
+			createDir(subPath, /*forceIcon*/ FALSE)
+		ENDIF
+	ENDIF
+	END subPath
+	
+	NEW dir.new()
+	IF success := dir.open(dirPath) THEN dir.close()
+	
+	#ifdef pe_TargetOS_Amiga
+		IF success
+			-&gt;see if should add an icon to the new folder
+			IF forceIcon
+				createIcon := TRUE
+			ELSE
+				subPath := ExtractSubPath(dirPath)
+				IF EstrLen(subPath) &lt;= 1
+					-&gt;(dirPath is a volume or assignment) so giving it an icon makes no sense
+					createIcon := FALSE
+				ELSE
+					SetStr(subPath, EstrLen(subPath) - 1)	-&gt;strip trailing /
+					IF subPath[EstrLen(subPath)-1] = &quot;:&quot;
+						-&gt;(dirPath is immediately inside a volume) so it should have an icon, as it will be user-visible
+						createIcon := TRUE
+					ELSE
+						-&gt;(dirPath is inside a folder) so if parent folder has an icon, then give this folder an icon too
+						info := StrJoin(subPath, &#x27;.info&#x27;)
+						createIcon := ExistsPath(info)
+						END info
+					ENDIF
+				ENDIF
+				END subPath
+			ENDIF
+			
+			-&gt;add icon to the folder
+			IF createIcon
+				-&gt;give this folder an icon
+				NEW info[StrLen(dirPath) - 1 + StrLen(&#x27;.info&#x27;)]
+				StrCopy(info, dirPath, StrLen(dirPath) - 1)		-&gt;strip trailing /
+				IF EstrLen(info) &lt;= 1
+					Print(&#x27;NOTE: Prevented installer createIcon bug for createDir(dirPath=&quot;\s&quot;, forceIcon=\d).  Please report this!\n&#x27;, dirPath, forceIcon)
+					
+				ELSE IF info[EstrLen(info)-1] = &quot;:&quot;
+					Print(&#x27;NOTE: Prevented installer createIcon bug for createDir(dirPath=&quot;\s&quot;, forceIcon=\d).  Please report this!\n&#x27;, dirPath, forceIcon)
+				ELSE
+					StrAdd( info, &#x27;.info&#x27;)
+					copyFile(info, &#x27;Env:/Sys/def_drawer.info&#x27;)
+				ENDIF
+				END info
+			ENDIF
+		ENDIF
+	#endif
+	forceIcon := forceIcon	-&gt;dummy
+FINALLY
+	END subPath, dir
+	#ifdef pe_TargetOS_Amiga
+	END info
+	#endif
+ENDPROC
+
+/*****************************/
+
+PROC moveDir(toPath:ARRAY OF CHAR, fromPath:ARRAY OF CHAR, safe:BOOL) RETURNS success:BOOL
+	DEF dir:OWNS PTR TO cDir, toSubPath:OWNS STRING, fromInfo:OWNS STRING
+	DEF toIsInsideFrom:BOOL, path:STRING, deleteCursor:OWNS PTR TO cMegaCursor_STRING
+	
+	success := FALSE
+	
+	toIsInsideFrom := StrCmpPath(toPath, fromPath, StrLen(fromPath))
+	IF safe = FALSE
+		-&gt;prevent trying to move folder inside itself
+		IF toIsInsideFrom THEN RETURN
+	ENDIF
+	
+	-&gt;try to move the folder
+	IF toIsInsideFrom = FALSE
+		NEW dir.new()
+		IF dir.open(fromPath)
+			toSubPath := ExtractSubPath(toPath)
+			IF dir.setSubPath(toSubPath)
+				IF dir.setName(FindName(toPath))
+					success := TRUE
+				ELSE
+					-&gt;undo partial change
+					END toSubPath
+					toSubPath := ExtractSubPath(fromPath)
+					dir.setSubPath(toSubPath)
+				ENDIF
+			ENDIF
+			dir.close()
+		ENDIF
+	ENDIF
+	
+	-&gt;if moving failed then try copying
+	IF success = FALSE
+		IF success := copyDir(toPath, fromPath, IF safe THEN &#x27;.e&#x27; ELSE NILA)
+			-&gt;(copying succeeded) so delete originals
+			IF safe = FALSE
+				DeleteDirPath(fromPath)
+			ELSE
+				-&gt;recursively delete all files ending in .e (since they were all copied successfully)
+				deleteFileExtension := &#x27;.e&#x27; ; deleteFileExtensionLen := StrLen(deleteFileExtension)
+				deleteAvoidDir := toPath    ; deleteAvoidDirLen := StrLen(deleteAvoidDir)
+				NEW deleteDirList.new()
+				RecurseDir(fromPath, funcDeleteFile, funcDeleteDir)
+				
+				-&gt;now try to (reverse) delete all dirs (which will only be deleted if they are truely empty)
+				deleteCursor := deleteDirList.infoPastEnd().clone(MC_PREV)
+				deleteCursor.prev()
+				WHILE deleteDirList.infoIsEmpty() = FALSE
+					path := deleteCursor.read()
+					DeletePath(path)
+					
+					deleteCursor.destroy()
+				ENDWHILE
+			ENDIF
+		ENDIF
+	ENDIF
+	
+	-&gt;delete old folder&#x27;s icon
+	IF ExistsPath(fromPath) = FALSE
+		-&gt;(moving was successful) so delete it&#x27;s icon too
+		NEW fromInfo[StrLen(fromPath) - 1 + StrLen(&#x27;.info&#x27;)]
+		StrCopy(fromInfo, fromPath, StrLen(fromPath) - 1)		-&gt;strip trailing /
+		StrAdd( fromInfo, &#x27;.info&#x27;)
+		IF ExistsPath(fromInfo)
+			DeletePath(fromInfo)
+			createDir(toPath, /*forceIcon*/ TRUE)	-&gt;create an icon for the new folder
+		ENDIF
+	ENDIF
+FINALLY
+	IF exception = &quot;BRK&quot; THEN exception := 0	-&gt;user pressed Ctrl-C
+	END deleteDirList
+	
+	END dir, toSubPath, fromInfo
+ENDPROC
+
+DEF deleteFileExtension:ARRAY OF CHAR, deleteFileExtensionLen
+DEF deleteAvoidDir:ARRAY OF CHAR, deleteAvoidDirLen
+DEF deleteDirList:OWNS PTR TO cMegaList_STRING
+
+FUNC funcDeleteFile(path:STRING) OF funcRecurseFile
+	IF StrCmpPath(path, deleteFileExtension, ALL, EstrLen(path) - deleteFileExtensionLen)
+		DeletePath(path)
+	ENDIF
+ENDFUNC
+
+FUNC funcDeleteDir(path:STRING) OF funcRecurseDir RETURNS scanDir:BOOL
+	scanDir := TRUE
+	
+	IF deleteAvoidDir
+		-&gt;avoid deleting files inside the given folder
+		IF StrCmpPath(path, deleteAvoidDir, deleteAvoidDirLen) THEN scanDir := FALSE
+	ENDIF
+	
+	IF scanDir
+		-&gt;(files in dir will be deleted) so add dir to deletion list
+		deleteDirList.infoPastEnd().beforeInsert(deleteDirList.makeNode(StrJoin(path)))
+	ENDIF
+ENDFUNC
+
+/*****************************/
+
+-&gt;NOTE: Does not copy *directory* attributes or extra.
+-&gt;NOTE: Automatically handles copying a folder inside itself.
+PROC copyDir(toPath:ARRAY OF CHAR, fromPath:ARRAY OF CHAR, withFileExtension=NILA:ARRAY OF CHAR, avoidFileExtension=FALSE:BOOL) RETURNS success:BOOL
+	success := TRUE
+	
+	IF testMode
+		Print(&#x27;TEST MODE skipped copyDir(&quot;\s&quot;, &quot;\s&quot;, &quot;\s&quot;)\n&#x27;, toPath, fromPath, withFileExtension)
+		RETURN
+	ENDIF
+	
+	-&gt;ensure the destination exists
+	createDir(toPath)
+	
+	-&gt;perform recursive copy
+	copyFromBase    := fromPath
+	copyToBase      :=   toPath
+	copyWithFileExt := withFileExtension
+	copyAvoidFileExt:= avoidFileExtension
+	copyFromBaseLen    := StrLen(copyFromBase)
+	copyToBaseLen      := StrLen(copyToBase)
+	copyWithFileExtLen := IF copyWithFileExt THEN StrLen(copyWithFileExt) ELSE 0
+	copyAvoidLoop := StrCmpPath(toPath, fromPath, StrLen(fromPath))	-&gt;check if the target is inside the source
+	
+	NEW copyDir.new()
+	copySuccess := TRUE
+	RecurseDir(fromPath, funcCopyFileDir, funcCopyFileDir)
+	success := copySuccess
+FINALLY
+	END copyDir
+ENDPROC
+
+DEF copyFromBase:ARRAY OF CHAR, copyToBase:ARRAY OF CHAR, copyWithFileExt:ARRAY OF CHAR, copyAvoidFileExt:BOOL
+DEF copyFromBaseLen,            copyToBaseLen,            copyWithFileExtLen
+DEF copyAvoidLoop:BOOL
+DEF copyDir:OWNS PTR TO cHostDir
+DEF copySuccess:BOOL
+
+FUNC funcCopyFileDir(fromPath:STRING) OF funcRecurseDir RETURNS scanDir:BOOL
+	DEF toPath:OWNS STRING, copyFile:BOOL
+	
+	-&gt;construct toPath using fromPath
+	NEW toPath[EstrLen(fromPath) - copyFromBaseLen + copyToBaseLen]
+	StrCopy(toPath, copyToBase)
+	StrAdd( toPath, fromPath, ALL, copyFromBaseLen)
+	
+	-&gt;do action relevant to file/dir
+	scanDir := TRUE
+	IF FastIsDir(fromPath)
+		IF copyAvoidLoop
+			-&gt;don&#x27;t scan folder if it is inside the target
+			scanDir := NOT StrCmpPath(fromPath, copyToBase, copyToBaseLen)
+		ENDIF
+		IF scanDir
+			IF copyDir.open(toPath) THEN copyDir.close() ELSE copySuccess := FALSE
+		ENDIF
+	ELSE
+		IF copyWithFileExt = NILA
+			copyFile := TRUE
+		ELSE
+			copyFile := StrCmpPath(fromPath, copyWithFileExt, ALL, EstrLen(fromPath) - StrLen(copyWithFileExt))
+			IF copyAvoidFileExt THEN copyFile := NOT copyFile
+		ENDIF
+		
+		IF copyFile
+			DeletePath(toPath)
+			IF copyFile(toPath, fromPath) = FALSE
+				Print(&#x27;WARNING: Failed to copy &quot;\s&quot; to &quot;\s&quot;.\n&#x27;, fromPath, toPath)
+				copySuccess := FALSE
+			ENDIF
+		ENDIF
+	ENDIF
+FINALLY
+	END toPath
+ENDFUNC
+
+/*****************************/
+
+#ifdef pe_TargetOS_Amiga
+ENUM FIBB_DELETE=0, FIBB_EXECUTE, FIBB_WRITE, FIBB_READ, FIBB_ARCHIVE, FIBB_PURE, FIBB_SCRIPT -&gt;, FIBB_HOLD
+-&gt;CONST FIBF_HOLD    = 1 SHL FIBB_HOLD
+CONST FIBF_SCRIPT  = 1 SHL FIBB_SCRIPT
+CONST FIBF_PURE    = 1 SHL FIBB_PURE
+CONST FIBF_ARCHIVE = 1 SHL FIBB_ARCHIVE
+CONST FIBF_READ    = 1 SHL FIBB_READ
+CONST FIBF_WRITE   = 1 SHL FIBB_WRITE
+CONST FIBF_EXECUTE = 1 SHL FIBB_EXECUTE
+CONST FIBF_DELETE  = 1 SHL FIBB_DELETE
+
+CONST FIBF_INVERTED = FIBF_READ OR FIBF_WRITE OR FIBF_EXECUTE OR FIBF_DELETE
+
+-&gt;Set specified Amiga flags on given file
+PROC setFlagsOnFile(path:ARRAY OF CHAR, flags) RETURNS success:BOOL
+	DEF file:OWNS PTR TO cHostFile, attr
+	NEW file.new()
+	IF file.open(path) = FALSE THEN RETURN FALSE
+	attr := file.queryExtra(&quot;ATTR&quot;)
+	success := file.changeExtra(&quot;ATTR&quot;, attr XOR FIBF_INVERTED OR flags XOR FIBF_INVERTED)
+	file.close()
+FINALLY
+	END file
+ENDPROC
+
+-&gt;Set specified Amiga flags on all files in a folder (recursively)
+PROC setFlagsInDir(path:ARRAY OF CHAR, flags) RETURNS success:BOOL
+	success := TRUE
+	
+	IF testMode
+		Print(&#x27;TEST MODE skipped setFlagsInDir(&quot;\s&quot;, \d)\n&#x27;, path, flags)
+		RETURN
+	ENDIF
+	
+	setFlags := flags
+	
+	NEW setFlagsFile.new()
+	setFlagsSuccess := TRUE
+	RecurseDir(path, funcSetAttrFile)
+	success := setFlagsSuccess
+FINALLY
+	END setFlagsFile
+ENDPROC
+
+DEF setFlags
+DEF setFlagsFile:OWNS PTR TO cHostFile
+DEF setFlagsSuccess:BOOL
+
+FUNC funcSetAttrFile(path:STRING) OF funcRecurseFile
+	DEF attr
+	
+	IF setFlagsFile.open(path) = FALSE
+		setFlagsSuccess := FALSE
+		RETURN
+	ENDIF
+	
+	attr := setFlagsFile.queryExtra(&quot;ATTR&quot;)
+	IF setFlagsFile.changeExtra(&quot;ATTR&quot;, attr XOR FIBF_INVERTED OR setFlags XOR FIBF_INVERTED) = FALSE THEN setFlagsSuccess := FALSE
+	setFlagsFile.close()
+ENDFUNC
+#endif
+
+/*****************************/
+
+PROC addOrChangeAssignment(newModulesFolder:STRING) RETURNS success:BOOL
+	DEF tempPath:ARRAY OF CHAR, tempString:OWNS STRING
+	DEF file:OWNS PTR TO cMegaList_STRING, cursor:OWNS PTR TO cMegaCursor_STRING, cursor2:OWNS PTR TO cMegaCursor_STRING
+	DEF line:OWNS STRING
+	
+	success := TRUE
+	
+	#ifdef pe_TargetOS_POSIX
+		-&gt;(OS is Windows/Linux) so append PEmodules: assigment to assignment file
+		#ifdef pe_TargetOS_Windows
+			IF ExistsPath(tempPath := &#x27;C:/Assignments.txt&#x27;) AND NOT ExistsPath(&#x27;C:/PortablE/Assignments.txt&#x27;)
+				-&gt;(very old location exists) so use that, to avoid confusion
+			ELSE IF ExistsPath(tempPath := &#x27;C:/PortablE/Assignments.txt&#x27;) AND NOT ExistsPath(&#x27;HOME:/Assignments.txt&#x27;)
+				-&gt;(old location exists) so use that, to avoid confusion
+				
+			ELSE IF ExistsPath(tempPath := &#x27;HOME:/Assignments.txt&#x27;)
+				-&gt;(default new location)
+			ELSE IF ExistsPath(tempPath := &#x27;C:/PortablE/Assignments.txt&#x27;)
+				-&gt;(default old location)
+			ELSE IF ExistsPath(tempPath := &#x27;C:/Assignments.txt&#x27;)
+				-&gt;(fall-back location, since C:/PortablE/ does not seem to exist)
+			ELSE
+				-&gt;(no suitable file exists) so create one
+				-&gt;tempPath := NILA
+				IF ExistsPath(&#x27;HOME:/&#x27;)
+					tempPath := &#x27;HOME:/Assignments.txt&#x27;
+				ELSE IF CreateDirs(&#x27;C:/PortablE/&#x27;)
+					tempPath := &#x27;C:/PortablE/Assignments.txt&#x27;
+				ELSE
+					tempPath := &#x27;C:/Assignments.txt&#x27;
+				ENDIF
+			ENDIF
+		#else
+			tempPath := &#x27;HOME:/.portable/Assignments.txt&#x27;
+			CreateDirs(tempPath, /*ignoreName*/ TRUE)
+		#endif
+		IF tempPath = NILA THEN Throw(&quot;BUG&quot;, &#x27;addOrChangeAssignment(); tempPath=NILA&#x27;)
+		
+		file := readLines(tempPath)
+		cursor := file.infoStart().clone()
+		
+		line := StrJoin(&#x27;PEmodules:  &#x27;, tempString := ExportPath(newModulesFolder)) ; END tempString
+		
+		IF find(&#x27;PEmodules:&#x27;, file, cursor, /*onlyCompareStartOfString*/ TRUE) = FALSE
+			-&gt;(no existing assignment) so add it
+			appendLine(file, PASS line)
+		ELSE
+			-&gt;(assignment already exists) so replace it
+			cursor.write(PASS line)
+		ENDIF
+		
+		IF writeLines(tempPath, file)
+			Print(&#x27;Added PEmodules: assignment to &quot;\s&quot;.\n&#x27;, tempString := ExportPath(tempPath)) ; END tempString
+		ELSE
+			Print(&#x27;WARNING: Could not add PEmodules: assignment to &quot;\s&quot;.\n&#x27;, tempString := ExportPath(tempPath)) ; END tempString
+			success := FALSE
+		ENDIF
+		END file, cursor
+	#else
+		-&gt;(OS is Amiga) so append/modify PEmodules: assignment in User-Startup
+		tempPath := &#x27;S:/User-Startup&#x27;
+		file := readLines(tempPath, /*returnNILforNoFile*/ TRUE)
+		IF file = NIL THEN NEW file.new()
+		cursor := file.infoStart().clone()
+		
+		line := StrJoin(&#x27;Assign PEmodules: &quot;&#x27;, tempString := ExportPath(newModulesFolder), &#x27;&quot;&#x27;) ; END tempString
+		executeCommand(line)	-&gt;also perform assignment
+		
+		IF find(&#x27;;BEGIN PortablE&#x27;, file, cursor) = FALSE
+			-&gt;(no PE assignments) so add them
+			appendLine(file, NEW &#x27;&#x27;)
+			appendLine(file, NEW &#x27;&#x27;)
+			appendLine(file, NEW &#x27;;BEGIN PortablE&#x27;)
+			appendLine(file, PASS line)
+			appendLine(file, NEW &#x27;;END PortablE&#x27;)
+		ELSE
+			-&gt;(PE assignments already exist) so modify them
+			cursor2 := cursor.clone()
+			IF find(&#x27;;END PortablE&#x27;, file, cursor2)
+				-&gt;remove existing assignments, leaving cursor2 after where should insert
+				cursor.next()
+				cursor.destroy(cursor2)
+			ELSE
+				-&gt;handle illegal statement as best can, by leaving cursor2 after (best guess) where should insert
+				cursor2.next()
+				Print(&#x27;WARNING: &quot;;END PortablE&quot; is missing from &quot;\s&quot;.&#x27;, tempString := ExportPath(tempPath)) ; END tempString
+			ENDIF
+			-&gt;(cursor2 after where should insert)
+			cursor2.beforeInsert(file.makeNode(PASS line))
+			END cursor2
+		ENDIF
+		
+		IF writeLines(tempPath, file)
+			Print(&#x27;Added PEmodules: assignment to &quot;\s&quot;.\n&#x27;, tempString := ExportPath(tempPath)) ; END tempString
+		ELSE
+			Print(&#x27;WARNING: Could not add PEmodules: assignment to &quot;\s&quot;.\n&#x27;, tempString := ExportPath(tempPath)) ; END tempString
+			success := FALSE
+		ENDIF
+		END file, cursor
+	#endif
+FINALLY
+	END tempString
+	END file, cursor, cursor2
+	END line
+ENDPROC
+
+/*****************************/
+
+PROC obsoleteModulesCheck(targetPEmodules:ARRAY OF CHAR, sourcePEmodules:ARRAY OF CHAR)
+	DEF file:OWNS PTR TO cMegaList_STRING, cursor:OWNS PTR TO cMegaCursor_STRING, listOfOldModules:ARRAY OF CHAR
+	DEF oldPath:OWNS STRING, sourcePath:OWNS STRING, targetPath:OWNS STRING, hostTargetPath:OWNS STRING
+	DEF dirsToDelete:OWNS STRING
+	
+	IF testMode
+		Print(&#x27;TEST MODE skipped obsoleteModulesCheck(&quot;\s&quot;, &quot;\s&quot;)\n&#x27;, targetPEmodules, sourcePEmodules)
+		RETURN
+	ENDIF
+	
+	listOfOldModules := &#x27;Installer_ListOfOldFiles&#x27;
+	
+	IF ExistsPath(listOfOldModules) = FALSE
+		Print(&#x27;ERROR: Unable to delete obsolete modules, as &quot;\s&quot; did not exist.\n&#x27;, listOfOldModules)
+		RETURN
+	ENDIF
+	file := readLines(listOfOldModules, /*returnNILforNoFile*/ TRUE)
+	IF file = NIL THEN NEW file.new()
+	
+	-&gt;delete all obsolete files, but delay deletion of obsolete dirs until later
+	cursor := file.infoStart().clone()
+	WHILE oldPath := readLine(file, cursor)
+		sourcePath := StrJoin(sourcePEmodules, oldPath)
+		targetPath := StrJoin(targetPEmodules, oldPath)
+		
+		IF ExistsPath(targetPath) AND NOT ExistsPath(sourcePath)
+			-&gt;(old file/dir exist in target but not source) so file/dir is obsolete &amp; should be deleted
+			IF FastIsFile(targetPath)
+				-&gt;(obsolete path is a file) so delete file immediately
+				hostTargetPath := ExportPath(targetPath)
+				IF DeletePath(targetPath) THEN Print(&#x27;Deleted  obsolete file &quot;\s&quot;.\n&#x27;, hostTargetPath) ELSE Print(&#x27;Deleting obsolete file &quot;\s&quot; FAILED.\n&#x27;, hostTargetPath)
+				END hostTargetPath
+			ELSE
+				-&gt;(obsolete path is a dir) where deletion must be delayed until all it&#x27;s old contents has been deleted
+				Link(targetPath, PASS dirsToDelete)
+				dirsToDelete := PASS targetPath
+			ENDIF
+		ENDIF
+		
+		END oldPath, sourcePath, targetPath
+	ENDWHILE
+	
+	-&gt;delete obsolete dirs
+	WHILE dirsToDelete
+		targetPath := PASS dirsToDelete
+		dirsToDelete := Next(targetPath)
+		
+		hostTargetPath := ExportPath(targetPath)
+		IF DeletePath(targetPath) THEN Print(&#x27;Deleted  obsolete dir &quot;\s&quot;.\n&#x27;, hostTargetPath) ELSE Print(&#x27;Deleting obsolete dir &quot;\s&quot; FAILED.\n&#x27;, hostTargetPath)
+		END hostTargetPath
+	ENDWHILE
+FINALLY
+	END file, cursor
+	END oldPath, sourcePath, targetPath, hostTargetPath
+	END dirsToDelete
+ENDPROC
+
+/*****************************/
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

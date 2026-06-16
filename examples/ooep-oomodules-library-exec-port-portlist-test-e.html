@@ -1,0 +1,336 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>test.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-ooep.html">OOEP</a> &rsaquo; test.e</div><h1>File: <code>test.e</code></h1><p class="meta">310 lines · project <a href="../examples/pkg-ooep.html"><code>OOEP</code></a></p><p class="pathctx">OOEP/oomodules/library/exec/port/portList/test.e</p><p class="prose">Old program that builds a frame for own programs that use more than one <a href="../modules/window.html">window</a>. Created back in 1993 where 2.1b was the available version of EC :) The REPEAT...UNTIL loop in the *huge* main proc shows the usage of portList and port procs. es, the program looks ugly. I just browsed through my sources</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/intuition.html">intuition/intuition</a></li></ul></div><h2>Source</h2><pre class="code">/*
+
+Old program that builds a frame for own programs that use more than one
+window.
+
+Created back in 1993 where 2.1b was the available version of EC :)
+
+The REPEAT...UNTIL loop in the *huge* main proc shows the usage of portList
+and port procs.
+
+es, the program looks ugly. I just browsed through my sources looking for
+a program that works with multiple windows and that was easy to modify...
+
+*/
+
+/*
+ * Windowgrundgerüst.e
+ *
+ * Ein kleines Proggy, das ein Haupt- und Nebenfenster öffnet und in das
+ * Hauptfenster ein Menü hängt. Samt Abfrage der Inputevents. Flagge für
+ * gedrückte linke Maustaste. IntuiMessage wird kopiert in
+ * ·meineintmessage· und dann sofort zurückgegeben. Bei Betätigung des
+ * Close-Gadgets werden im Hafen liegende Nachrichten abgeholt, jedoch
+ * nicht bearbeitet.
+ *
+ * V1.3 von Gregor Goldbach. &#x27;Placed in the Public Domain.&#x27;
+ * compilierbar mit v2.1b/v3.0a/v3.0b
+ */
+
+
+MODULE &#x27;intuition/intuition&#x27;,&#x27;intuition/screens&#x27;,&#x27;gadtools&#x27;,
+        &#x27;libraries/gadtools&#x27;, &#x27;graphics/text&#x27;,&#x27;exec/ports&#x27;,&#x27;graphics/scale&#x27;,
+        &#x27;graphics/rastport&#x27;,&#x27;graphics/gfx&#x27;,&#x27;exec/memory&#x27;, &#x27;exec/nodes&#x27;,
+        &#x27;exec/lists&#x27;,
+
+        &#x27;oomodules/library/exec/port/portList&#x27;,
+        &#x27;oomodules/library/exec/port&#x27;
+
+
+ENUM FEHLER_NOGADTOOLS,FEHLER_NOVISUAL,FEHLER_NOMENUS, FEHLER_GADGET, FEHLER_CONTEXT
+
+DEF hauptwin:PTR TO window, /* Hauptfenster */
+    nebenwin:PTR TO window, /* Nebenfenster */
+    uport:PTR TO mp,        /* UserPort: für Signal */
+    pscreen:PTR TO screen,  /* für LockPubScreen() */
+    lmbdown=FALSE,          /* Flagge: gesetzt, wenn linke Maustaste gedrückt */
+    intmsg:PTR TO intuimessage, /* von GetMsg() */
+    meineintmessage:PTR TO intuimessage, /* Kopie der intmsg */
+    zahl1,zahl2,
+    zkette_x[80]:STRING, adresse_x,
+
+    vinfo=NIL,              /* VisualInfo, muß 0 sein */
+    menu=NIL,               /* für LayoutMenus(), muß 0 sein */
+
+    listv:PTR TO LONG,
+    gadgetliste=NIL,
+    g:PTR TO gadget
+
+PROC main() HANDLE
+
+DEF meineklasse,meincode,x,y,x2,y2,laufvar,
+
+  ports:PTR TO portList,
+  port:PTR TO port,
+  portKey
+
+  NEW ports.new()
+
+  IF(meineintmessage := AllocMem(SIZEOF intuimessage, MEMF_CLEAR OR MEMF_PUBLIC))=NIL
+    WriteF(&#x27;Kein Speicher (\d Bytes) für Kopie der intuimessage!\n&#x27;, SIZEOF intuimessage)
+    CleanUp(20)
+  ENDIF
+
+  gadtoolsbase := OpenLibrary(&#x27;gadtools.library&#x27;, 37)
+  IF gadtoolsbase=NIL THEN Raise(FEHLER_NOGADTOOLS+4)
+
+  pscreen := LockPubScreen(NIL)
+  IF(vinfo := GetVisualInfoA(pscreen, NIL)) = NIL THEN Raise(FEHLER_NOVISUAL)
+  IF(g:=CreateContext( {gadgetliste} ))=NIL THEN Raise(FEHLER_CONTEXT)
+
+  listv:=[0,0,0,0]; listv[0]:=listv+4; listv[2]:=listv /* listenheader?*/
+  AddTail(listv,[0,0,0,0,&#x27;eins&#x27;]:ln)
+  AddTail(listv,[0,0,0,0,&#x27;zwei&#x27;]:ln)
+  AddTail(listv,[0,0,0,0,&#x27;drei&#x27;]:ln)
+  AddTail(listv,[0,0,0,0,&#x27;vier&#x27;]:ln)
+  AddTail(listv,[0,0,0,0,&#x27;fünf&#x27;]:ln)
+
+  IF (g:=CreateGadgetA(LISTVIEW_KIND,g,
+    [8,4,155,40,NIL,NIL,2,0,vinfo,0]:newgadget,
+    [GTLV_LABELS,listv,
+     GTLV_SHOWSELECTED,0,
+     0,0]))=NIL THEN Raise(FEHLER_GADGET)
+
+  hauptwin := OpenWindowTagList(NIL,
+  [WA_TITLE,&#x27;Hauptfenster&#x27;,
+   WA_IDCMP,IDCMP_RAWKEY OR IDCMP_CLOSEWINDOW OR IDCMP_MOUSEMOVE OR IDCMP_GADGETUP OR IDCMP_GADGETDOWN OR IDCMP_MOUSEBUTTONS OR IDCMP_MENUPICK OR IDCMP_REFRESHWINDOW,
+   WA_FLAGS,WFLG_ACTIVATE+WFLG_CLOSEGADGET,
+   WA_GADGETS, gadgetliste,
+   WA_INNERHEIGHT,120, WA_DEPTHGADGET, TRUE,
+   WA_DRAGBAR, TRUE,
+   WA_REPORTMOUSE,TRUE,WA_GIMMEZEROZERO,TRUE,NIL])
+
+  Gt_RefreshWindow(hauptwin,NIL)
+
+  SetAPen(hauptwin.rport,1)
+  SetBPen(hauptwin.rport,0)
+  SetDrMd(hauptwin.rport,RP_JAM2)
+
+  nebenwin := OpenWindowTagList(NIL,
+  [WA_TITLE,&#x27;Nebenfenster&#x27;,WA_IDCMP,IDCMP_RAWKEY+IDCMP_CLOSEWINDOW+IDCMP_MOUSEMOVE+IDCMP_GADGETUP+IDCMP_MOUSEBUTTONS+IDCMP_MENUPICK OR IDCMP_REFRESHWINDOW,
+   WA_FLAGS,WFLG_ACTIVATE+WFLG_CLOSEGADGET,
+    WA_TOP,120,
+   WA_INNERHEIGHT,60,WA_DEPTHGADGET,TRUE,
+   WA_DRAGBAR, TRUE,
+   WA_REPORTMOUSE,TRUE,WA_GIMMEZEROZERO,TRUE,NIL])
+
+
+ /*
+  * Add port to the list and use window pointers as keys. We get the
+  * according key when a message arrives at that port.
+  */
+
+  ports.add(hauptwin.userport, hauptwin)
+  ports.add(nebenwin.userport, nebenwin)
+
+
+
+  REPEAT
+
+   /*
+    * Get message, port key and port from the list.
+    */
+
+    intmsg, portKey, port := ports.waitAndGet(&quot;gadt&quot;)
+
+
+   /*
+    * Check portKey for matching window pointer
+    */
+
+    IF(portKey = hauptwin)
+      REPEAT
+
+        kopiere_intmessage(intmsg,meineintmessage)
+
+        port.replyMsg(&quot;gadt&quot;)
+
+        meineklasse := meineintmessage.class
+        meincode := meineintmessage.code
+
+        SELECT meineklasse
+          CASE IDCMP_CLOSEWINDOW
+           /*
+            * Nach Betätigung des Close-Gadgets werden alle eingelaufenen
+            * Nachrichten entfernt.
+            */
+            WHILE(intmsg := port.getMsg(&quot;gadt&quot;)) DO port.replyMsg(&quot;gadt&quot;)
+
+          CASE IDCMP_MENUPICK
+            handle_menus(meincode)
+          CASE IDCMP_MOUSEBUTTONS
+            IF meincode = 104
+              lmbdown:=TRUE
+              tete(hauptwin,&#x27;Hi! and Welcome&#x27;, 12,10,40,10)
+              tete(hauptwin,&#x27;The Amiga E Encyclopedia&#x27;, 12,20,40,10)
+
+            ELSEIF meincode = 232
+              lmbdown:=FALSE
+            ENDIF
+          CASE IDCMP_GADGETUP
+            StringF(zkette_x, &#x27;Eintrag Nummer \d.&#x27;, meincode)
+            Move(hauptwin.rport, 100, 100)
+            Text(hauptwin.rport, zkette_x, StrLen(zkette_x))
+
+          CASE IDCMP_REFRESHWINDOW
+            Gt_BeginRefresh(hauptwin)
+            Gt_EndRefresh(hauptwin, TRUE)
+
+        ENDSELECT
+      UNTIL (intmsg := port.getMsg(&quot;gadt&quot;)=NIL)
+
+    ELSEIF(portKey = nebenwin)
+
+     /*
+      * Here we have the more &#x27;traditional&#x27; way of message processing.
+      */
+
+      WHILE(intmsg := Gt_GetIMsg(nebenwin.userport))
+        kopiere_intmessage(intmsg,meineintmessage)
+        Gt_ReplyIMsg(intmsg)
+
+        meineklasse := meineintmessage.class
+        meincode := meineintmessage.code
+
+        SELECT meineklasse
+          CASE IDCMP_CLOSEWINDOW
+           /*
+            * Nach Betätigung des Close-Gadgets werden alle eingelaufenen
+            * Nachrichten entfernt.
+            */
+            WHILE(intmsg := GetMsg(hauptwin.userport)) DO ReplyMsg(intmsg)
+
+          CASE IDCMP_MOUSEBUTTONS
+            IF meincode = 104
+              lmbdown:=TRUE
+
+            ELSEIF meincode = 232
+              lmbdown:=FALSE
+            ENDIF
+
+          CASE IDCMP_REFRESHWINDOW
+            Gt_BeginRefresh(hauptwin)
+            Gt_EndRefresh(hauptwin, TRUE)
+
+        ENDSELECT
+      ENDWHILE
+    ENDIF
+
+  UNTIL ((meineklasse=IDCMP_CLOSEWINDOW) AND (portKey AND hauptwin))
+
+  ClearMenuStrip(hauptwin)
+  FreeMenus(menu)
+  CloseWindow(hauptwin)
+  IF nebenwin THEN CloseWindow(nebenwin)
+  IF gadgetliste THEN FreeGadgets(gadgetliste)
+  FreeVisualInfo(vinfo)
+  UnlockPubScreen(NIL,pscreen)
+  IF gadtoolsbase THEN CloseLibrary(gadtoolsbase)
+  FreeMem(meineintmessage, SIZEOF intuimessage)
+  WriteF(&#x27;Einen schönen Tag noch!\n&#x27;)
+  CleanUp(0)
+EXCEPT
+  IF hauptwin THEN ClearMenuStrip(hauptwin)
+  IF menu THEN FreeMenus(menu)
+  IF vinfo THEN FreeVisualInfo(vinfo)
+  IF(hauptwin) THEN CloseWindow(hauptwin)
+  IF nebenwin THEN CloseWindow(nebenwin)
+  IF gadgetliste THEN FreeGadgets(gadgetliste)
+  IF gadtoolsbase THEN CloseLibrary(gadtoolsbase)
+  WriteF(&#x27;Fehler Nummer \d\n&#x27;,exception)
+  CleanUp(20)
+
+ENDPROC
+
+
+PROC handle_menus(code)
+DEF titel,item,subitem,gadnummer,zkette[50]:STRING,fenster:PTR TO window,
+    laufvar
+
+  titel := (code AND %11111) /* Bits 0-4 */
+  item := ((code/32) AND %111111) /* Bits 5-11 */
+  subitem := ((code/2048) AND %11111) /* Bits 11-15 */
+
+  IF (code &lt; 65535)
+    SELECT titel
+      CASE 1
+        SELECT item
+          CASE 0
+            NOP
+          CASE 1
+            NOP
+          CASE 2
+            NOP
+          CASE 3
+            NOP
+        ENDSELECT
+    ENDSELECT
+  ENDIF
+ENDPROC
+
+
+PROC kopiere_intmessage(i1,i2)
+/* kopiert die inhalte von i1 nach i2 */
+DEF int1:PTR TO intuimessage,int2:PTR TO intuimessage
+
+  int1 := i1
+  int2 := i2
+
+/*
+  int2.execmessage := int1.execmessage
+*/
+  int2.class := int1.class
+  int2.code := int1.code
+  int2.class := int1.class
+  int2.qualifier := int1.qualifier
+  int2.iaddress := int1.iaddress
+  int2.mousex := int1.mousex
+  int2.mousey := int1.mousey
+  int2.seconds := int1.seconds
+  int2.micros := int1.micros
+  int2.idcmpwindow := int1.idcmpwindow
+  int2.speciallink := int1.speciallink
+
+ENDPROC
+
+PROC tete(win:PTR TO window, zkette, x_start,y_start, x_end,y_end)
+DEF zaehler
+
+  FOR zaehler := x_start TO x_end
+    Move(win.rport,zaehler,y_start)
+    SetAPen(win.rport,1)
+    Text(win.rport,zkette, StrLen(zkette))
+    WaitTOF()
+    SetAPen(win.rport,0)
+    Text(win.rport,zkette, StrLen(zkette))
+  ENDFOR
+
+ENDPROC
+
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

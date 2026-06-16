@@ -1,0 +1,193 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>simplebitfield.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-kyz-obj.html">kyz_obj</a> &rsaquo; simplebitfield.e</div><h1>File: <code>simplebitfield.e</code></h1><p class="meta">167 lines · project <a href="../examples/pkg-kyz-obj.html"><code>kyz_obj</code></a></p><p class="pathctx">kyz_obj/simplebitfield.e</p><h2>Source</h2><pre class="code">OPT MODULE
+
+ENUM B_SET, B_CLR, B_TST, B_MAX
+
+/****** simplebitfield.m/--overview-- **************************************
+*
+*   PURPOSE
+*	To provide a simple bitfield.
+*
+*   OVERVIEW
+*	Implements  the  same  concepts  as  bitfield.m,  but a great many
+*	services  are  removed  or simplified, for applications where only
+*	the simple get/set/clear functionality of a bitfield is needed.
+*
+*   SEE ALSO
+*	bitfield.m
+*
+****************************************************************************
+*
+*
+*/
+
+EXPORT OBJECT simplebitfield PRIVATE
+  data	-&gt; PTR to data storing the bitfield
+  size	-&gt; size (in bytes) of this data
+ENDOBJECT
+
+
+/****** simplebitfield.m/new *******************************************
+*
+*   NAME
+*	simplebitfield.new() -- Constructor.
+*
+*   SYNOPSIS
+*	new(max)
+*
+*   FUNCTION
+*	Initialises  an  instance  of the bitfield class. Raises exception
+*	&quot;MEM&quot;  if it cannot allocate enough memory for the required number
+*	of bits. All bits are initially cleared.
+*
+*   INPUT
+*	max   - the  maximum integer value that will be represented in the
+*	        field. Must be positive. The minimum will be 0.
+*
+*   SEE ALSO
+*	end(), clearfield()
+*
+****************************************************************************
+*
+*
+*/
+
+EXPORT PROC new(max) OF simplebitfield 
+  self.size := Shr(max + 7, 3)
+  self.data := NewR(self.size)
+ENDPROC
+
+/****** simplebitfield.m/end *******************************************
+*
+*   NAME
+*	simplebitfield.end() -- Destructor.
+*
+*   SYNOPSIS
+*	end()
+*
+*   FUNCTION
+*	Frees resources used by an instance of the bitfield class.
+*
+*   SEE ALSO
+*	new()
+*
+****************************************************************************
+*
+*
+*/
+
+EXPORT PROC end() OF simplebitfield IS Dispose(self.data)
+
+
+/****** simplebitfield.m/clearfield *******************************************
+*
+*   NAME
+*	simplebitfield.clearfield() -- clear all bits.
+*
+*   SYNOPSIS
+*	clear()
+*
+*   FUNCTION
+*	Clears all bits in the bitfield to boolean FALSE.
+*
+****************************************************************************
+*
+*
+*/
+
+EXPORT PROC clearfield() OF simplebitfield
+  DEF mem, end
+  mem := self.data
+  end := mem + self.size
+  WHILE mem &lt; end DO mem[]++ := 0
+ENDPROC
+
+
+/****** simplebitfield.m/bit_operations *******************************************
+*
+*   NAME
+*	simplebitfield.set() -- set an individual bit.
+*	simplebitfield.clear() -- clear an individual bit.
+*	simplebitfield.test() -- test an individual bit.
+*
+*   SYNOPSIS
+*	state := set(bit)
+*	state := clear(bit)
+*	state := test(bit)
+*
+*   FUNCTION
+*	Will  test,  then perform an operation on an individual bit in the
+*	bitfield:
+*
+*	set()    will set the bit to boolean TRUE.
+*	clear()  will clear the bit to boolean FALSE.
+*	test()   will perform no altering operation on the bit.
+*
+*	The  bit  specified  must  not lie outwith the range stored by the
+*	bitfield, otherwise innocent data _will_ be corrupted.
+*
+*   INPUTS
+*	bit   - the bit to perform an operation on.
+*
+*   RESULT
+*	state - the  previous  state  of  the bit before the operation was
+*	        performed on it, either TRUE or FALSE.
+*
+****************************************************************************
+*
+*
+*/
+
+EXPORT PROC set(bit)   OF simplebitfield IS bitop(B_SET, self, bit)
+EXPORT PROC clear(bit) OF simplebitfield IS bitop(B_CLR, self, bit)
+EXPORT PROC test(bit)  OF simplebitfield IS bitop(B_TST, self, bit)
+
+PROC bitop(op, self:PTR TO simplebitfield, bit)
+  DEF offset:REG, realbit:REG, data
+
+  data := self.data
+
+  offset := Shr(bit AND -32, 3)
+  realbit := bit AND 31
+
+	MOVE.L	data, A0
+	ADDA.L	offset, A0
+	MOVEQ	#0,D0
+
+  SELECT B_MAX OF op
+  CASE B_SET;	BSET.L realbit,(A0)
+  CASE B_CLR;	BCLR.L realbit,(A0)
+  CASE B_TST;	BTST.L realbit,(A0)
+  ENDSELECT
+
+	BEQ.S notset
+
+  RETURN TRUE
+notset:
+ENDPROC FALSE
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

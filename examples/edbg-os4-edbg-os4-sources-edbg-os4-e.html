@@ -1,0 +1,1470 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>edbg.os4.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-edbg-os4.html">EDBG-OS4</a> &rsaquo; edbg.os4.e</div><h1>File: <code>edbg.os4.e</code></h1><p class="meta">1444 lines · project <a href="../examples/pkg-edbg-os4.html"><code>EDBG-OS4</code></a></p><p class="pathctx">EDBG-OS4/EDBG-OS4/Sources/edbg.os4.e</p><p class="prose">Yes! A real E debugger!</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/clonescreen.html">tools/clonescreen</a></li></ul></div><h2>Source</h2><pre class="code">-&gt; Yes! A real E debugger!
+
+-&gt; Special OS4 version: See line 900. Major changes in eexe module.
+
+OPT OSVERSION=37, LARGE
+
+MODULE &#x27;tools/clonescreen&#x27;, &#x27;tools/macros&#x27;, &#x27;tools/arexx&#x27;,
+       &#x27;tools/EasyGUI&#x27;, &#x27;tools/constructors&#x27;, &#x27;tools/exceptions&#x27;,
+       &#x27;tools/iterators&#x27;,
+       &#x27;*eexe_os4&#x27;, &#x27;class/sc&#x27;, &#x27;*sctext&#x27;, &#x27;*schex&#x27;, &#x27;*screg&#x27;, &#x27;other/sendexplorer&#x27;,
+       &#x27;dos/dostags&#x27;, &#x27;exec/lists&#x27;, &#x27;exec/nodes&#x27;,
+       &#x27;gadtools&#x27;, &#x27;libraries/gadtools&#x27;,
+       &#x27;intuition/intuition&#x27;, &#x27;intuition/screens&#x27;, &#x27;intuition/gadgetclass&#x27;,
+       &#x27;graphics/text&#x27;, &#x27;graphics/rastport&#x27;,
+       &#x27;rexx/storage&#x27;, &#x27;rexxsyslib&#x27;
+
+OBJECT dbgwin
+  next:PTR TO dbgwin,type
+ENDOBJECT
+
+OBJECT srcwin OF dbgwin
+  scwin:PTR TO scrolltext,src:PTR TO e_source
+ENDOBJECT
+
+OBJECT memwin OF dbgwin
+  scwin:PTR TO scrollhex,addr
+ENDOBJECT
+
+OBJECT regwin OF dbgwin
+  scwin:PTR TO scrollreg
+ENDOBJECT
+
+OBJECT varwin OF dbgwin
+  scwin:PTR TO scrolltext
+ENDOBJECT
+
+OBJECT wvar OF ln
+  v:PTR TO CHAR
+ENDOBJECT
+
+CONST RXSTR_SIZE=250
+
+DEF exe=NIL:PTR TO e_exe,frame:PTR TO stackframe,
+    oscr=NIL,scr=NIL:PTR TO screen,font=NIL:PTR TO textfont,depth,xsize,ysize,
+    title,doabout=TRUE,dorefresh=TRUE,dosavewindowpos=TRUE,dosavevars=TRUE,argstring[100]:STRING,
+    dwins=NIL:PTR TO dbgwin,numsrc=0,wrapsrc=FALSE,maxsrcs=0,stackwin=NIL:PTR TO memwin,
+    vwin=NIL:PTR TO varwin,varlist=NIL:PTR TO LONG,vars:PTR TO lh,
+    rwin=NIL:PTR TO regwin,
+    visual=NIL,menu=NIL,whatstep,evgh=NIL:PTR TO guihandle,
+    followgh=NIL:PTR TO guihandle,followspeed=30,repeatcount=0,repeatover=TRUE,
+    toolwin=NIL:PTR TO window,toolgads=NIL:PTR TO LONG,
+    currentwin:PTR TO srcwin,    -&gt; active intuition
+    activewin:PTR TO srcwin,   -&gt; where (pc) is
+    lastsec=0,lastmic=0,findstr[100]:STRING,offstr[12]:STRING,
+    ocon=NIL,reqtitle,oldi,oldo,
+    first_step_done=FALSE,unreachablea7,
+    srcport=NIL,rexxport=NIL,rexxname,startExp=FALSE,oldvy=-1,
+    fx=0,fy=0,fxs=0,fys=0,explorer[RXSTR_SIZE]:STRING,pubname[100]:STRING,
+    rxs1[RXSTR_SIZE]:STRING,rxs2[RXSTR_SIZE]:STRING,rxs3[RXSTR_SIZE]:STRING
+
+ENUM STEP_NONE,STEP_IN,STEP_OVER,STEP_RUN,STEP_THROW,STEP_FOLLOW
+
+CONST MAX_WATCH=250, MAX_WLINE=100
+
+RAISE &quot;MEM&quot; IF String()=NIL
+
+PROC main() HANDLE
+  DEF options:PTR TO LONG,rdargs=NIL,exename[100]:STRING,e:PTR TO dbgwin,
+      pubconname[200]:STRING, i
+  title:=&#x27;EDBG v3.3a, The E Debugger! © 1994-1997 Wouter (and Jason)&#x27;
+  reqtitle:=&#x27;EDBG&#x27;
+  vars:=newlist()
+  options:=[0,0,0]
+  IF rdargs:=ReadArgs(&#x27;EXECUTABLE/A,PUBSCREEN/K,ARG/K&#x27;,options,NIL)
+    StrCopy(exename,options[0])
+    IF options[2] THEN StrCopy(argstring,options[2])
+    IF options[1]
+      StrCopy(pubname,options[1])
+      IF scr:=LockPubScreen(pubname) THEN font:=scr.rastport::rastport.font
+    ENDIF
+    FreeArgs(rdargs)
+  ELSE
+    Raise(&quot;ARGS&quot;)
+  ENDIF
+  WriteF(&#x27;\s.\nLoading &quot;\s&quot;...\n&#x27;,title,exename)
+  NEW exe.load(exename)
+  IF scr=NIL
+    StrCopy(pubname,&#x27;EDBG&#x27;)
+    IF options[1] THEN StrAdd(pubname,options[1])
+    scr,font:=openclonescreen(&#x27;Workbench&#x27;,title,2,pubname)
+    oscr:=scr
+    PubScreenStatus(scr,0)       -&gt; TEMP!!
+  ENDIF
+  rexxname:=IF oscr THEN pubname ELSE &#x27;EDBG&#x27;
+  depth,xsize,ysize:=getcloneinfo(scr)
+  IF (gadtoolsbase:=OpenLibrary(&#x27;gadtools.library&#x27;,37))=NIL THEN Raise(&quot;GT&quot;)
+  IF (visual:=GetVisualInfoA(scr,NIL))=NIL THEN Raise(&quot;MENU&quot;)
+  createmenus()
+  createtoolbar()
+  IF (srcport:=CreateMsgPort())=NIL THEN Raise(&quot;PORT&quot;)
+  rexxport:=rx_OpenPort(rexxname)
+  StrCopy(pubconname,&#x27;CON:0/900/640/50/Standard Input and Output:/SCREEN &#x27;)
+  StrAdd(pubconname,pubname)
+  IF ocon:=Open(pubconname,NEWFILE)
+    oldi:=SelectInput(ocon)
+    oldo:=SelectOutput(ocon)
+  ELSE
+    Throw(&quot;OPEN&quot;,&#x27;CON:&#x27;)
+  ENDIF
+  exe.edebug({step},argstring)
+EXCEPT DO
+  IF followgh OR repeatcount THEN Delay(6) BUT request1(&#x27;Program completed execution&#x27;,&#x27;_OK&#x27;,&quot;o&quot;)
+  IF startExp
+    quitExplorer()
+    FOR i:=1 TO 20
+    EXIT isExplorerRunning()=FALSE
+      Delay(6)
+    ENDFOR
+  ENDIF
+  removefollow()
+  WHILE dwins
+    e:=dwins
+    dwins:=dwins.next
+    END e
+  ENDWHILE
+  IF ocon
+    SelectInput(oldi)
+    SelectOutput(oldo)
+    Close(ocon)
+  ENDIF
+  rx_ClosePort(rexxport)
+  rexxport:=NIL
+  IF srcport THEN DeleteMsgPort(srcport)
+  deletetoolbar()      -&gt; no request()s after this
+  IF menu THEN FreeMenus(menu)
+  IF visual THEN FreeVisualInfo(visual)
+  IF gadtoolsbase THEN CloseLibrary(gadtoolsbase)
+  IF oscr
+    IF closeclonescreen(oscr,font)=FALSE
+      Delay(20)
+      WHILE closeclonescreen(oscr,font)=FALSE
+        request1(&#x27;Please close other windows on this screen!&#x27;,&#x27;_OK&#x27;,&quot;o&quot;)
+      ENDWHILE
+    ENDIF
+  ELSEIF scr
+    UnlockPubScreen(NIL,scr)
+  ENDIF
+  END exe
+  SELECT exception
+    CASE &quot;MEM&quot;;  WriteF(&#x27;Aaargh! no mem!\n&#x27;)
+    CASE &quot;ARGS&quot;; WriteF(&#x27;Bad Args! (try &quot;edbg ?&quot;)\n&#x27;)
+    CASE &quot;OPEN&quot;; WriteF(&#x27;Failed to open &quot;\s&quot;.\n&#x27;,exceptioninfo)
+    CASE &quot;IN&quot;;   WriteF(&#x27;Problems while reading file.\n&#x27;)
+    CASE &quot;eexe&quot;; WriteF(&#x27;Not a valid E executable\n&#x27;)
+    CASE &quot;eexd&quot;; WriteF(&#x27;Try compiling with &quot;EC DEBUG&quot; first\n&#x27;)
+    CASE &quot;SCR&quot;;  WriteF(&#x27;no screen!\n&#x27;)
+    CASE &quot;GT&quot;;   WriteF(&#x27;no &quot;gadtools.library&quot;!\n&#x27;)
+    CASE &quot;MENU&quot;; WriteF(&#x27;no menus!\n&#x27;)
+    CASE &quot;WIN&quot;;  WriteF(&#x27;no window!\n&#x27;)
+    CASE &quot;DOUB&quot;; WriteF(&#x27;port with same name already exists! (another EDBG running?)\n&#x27;)
+    CASE &quot;SIG&quot;;  WriteF(&#x27;could not allocate signal!\n&#x27;)
+    DEFAULT; report_exception()
+  ENDSELECT
+ENDPROC
+
+PROC createmenus()
+  IF (menu:=CreateMenusA([
+    1,0,&#x27;Project&#x27;,0,0,0,0,
+      2,0,&#x27;About...&#x27;,            0 ,0,0,0,
+      2,0,&#x27;Settings...&#x27;,        &#x27;P&#x27;,0,0,0,
+      2,0,&#x27;Save Settings&#x27;,      &#x27;W&#x27;,0,0,0,
+      2,0,&#x27;Quit&#x27;,               &#x27;Q&#x27;,0,0,0,
+    1,0,&#x27;Windows&#x27;,0,0,0,0,
+      2,0,&#x27;Source&#x27;,             &#x27;S&#x27;,0,0,0,
+      2,0,&#x27;Registers&#x27;,          &#x27;D&#x27;,0,0,0,
+      2,0,&#x27;Memory&#x27;,             &#x27;M&#x27;,0,0,0,
+      2,0,&#x27;Stack&#x27;,              &#x27;T&#x27;,0,0,0,
+      2,0,&#x27;Variables&#x27;,          &#x27;X&#x27;,0,0,0,
+    1,0,&#x27;Debug&#x27;,0,0,0,0,
+      2,0,&#x27;Step In (left)&#x27;,     &#x27;I&#x27;,0,0,0,
+      2,0,&#x27;Step Over (down)&#x27;,   &#x27;O&#x27;,0,0,0,
+      2,0,&#x27;Step Follow&#x27;,         0 ,0,0,0,
+      2,0,&#x27;Repeat Step&#x27;,         0 ,0,0,0,
+      2,0,&#x27;Watch Variable&#x27;,      0 ,0,0,0,
+      2,0,&#x27;Set Breakpoint&#x27;,      0 ,0,0,0,
+      2,0,&#x27;Memory Breakpoint&#x27;,  &#x27;B&#x27;,0,0,0,
+      2,0,&#x27;Clear Breakpoints&#x27;,  &#x27;C&#x27;,0,0,0,
+      2,0,&#x27;Run upto Breakpoint&#x27;,&#x27;R&#x27;,0,0,0,
+      2,0,&#x27;Raise Exception&#x27;,    &#x27;E&#x27;,0,0,0,
+    1,0,&#x27;Tools&#x27;,0,0,0,0,
+      2,0,&#x27;Eval E Expression&#x27;,  &#x27;K&#x27;,0,0,0,
+      2,0,&#x27;Modify Variable&#x27;,     0 ,0,0,0,
+      2,0,&#x27;Refresh Views&#x27;,      &#x27;V&#x27;,0,0,0,
+      2,0,&#x27;Find in Source&#x27;,     &#x27;F&#x27;,0,0,0,
+      2,0,&#x27;Locate Offset&#x27;,      &#x27;L&#x27;,0,0,0,
+    1,0,&#x27;Rexx&#x27;,0,0,0,0,
+      2,0,&#x27;Execute script 1&#x27;,    0 ,0,0,0,
+      2,0,&#x27;Execute script 2&#x27;,    0 ,0,0,0,
+      2,0,&#x27;Execute script 3&#x27;,    0 ,0,0,0,
+    0,0,0,0,0,0,0]:newmenu,NIL))=NIL THEN Raise(&quot;MENU&quot;)
+  IF LayoutMenusA(menu,visual,[GTMN_NEWLOOKMENUS,TRUE,NIL])=FALSE THEN Raise(&quot;MENU&quot;)
+ENDPROC
+
+/*-----------------------------------------------------------------------*/
+
+ENUM T_SRC,T_MEM,T_STACK,T_REG,T_VAR
+
+PROC message() OF dbgwin
+  IF self.next THEN self.next.message()
+ENDPROC
+
+PROC refresh() OF dbgwin
+  IF self.next THEN self.next.refresh()
+ENDPROC
+
+PROC end() OF dbgwin
+  DEF x:PTR TO dbgwin
+  IF (x:=dwins)=self
+    dwins:=self.next
+  ELSE
+    WHILE x.next
+    EXIT x.next=self
+      x:=x.next
+    ENDWHILE
+    IF x.next THEN x.next:=self.next
+  ENDIF
+ENDPROC
+
+/*----------------------------------------------------------------------*/
+
+PROC srcwin(src:PTR TO e_source) OF srcwin
+  DEF x:PTR TO scrolltext,a
+  self.next:=dwins
+  dwins:=self
+  self.type:=T_SRC
+  self.src:=src
+  self.scwin:=NEW x.settext(src.lines(),120)
+  IF (fx&gt;=xsize) OR (fy&gt;=ysize) OR (fxs&gt;=xsize) OR (fys&gt;=ysize) OR (fxs&lt;40) OR (fys&lt;20)
+    a:=(numsrc+1)*(font.ysize+3)+IF wrapsrc THEN 5 ELSE 0
+    IF maxsrcs=0
+      IF ysize-a&lt;(10*font.ysize)
+        maxsrcs:=numsrc
+        numsrc:=0
+        wrapsrc:=TRUE
+        a:=font.ysize+3+5
+      ENDIF
+    ENDIF
+    fx:=numsrc*10+49+IF wrapsrc THEN 5 ELSE 0
+    fy:=a
+    fxs:=500
+    fys:=Min(ysize-a,400)
+  ENDIF
+  x.open(src.name(),fx,fy,fxs,fys,scr,IDCMP_MENUPICK OR IDCMP_MOUSEBUTTONS OR IDCMP_RAWKEY,{handlesrc},srcport,self)
+  IF SetMenuStrip(x.window,menu)=FALSE THEN Raise(&quot;MENU&quot;)
+  IF (numsrc++&gt;=maxsrcs) AND maxsrcs
+    numsrc:=0
+    wrapsrc:=(wrapsrc=FALSE)
+  ENDIF
+  fx:=fy:=fxs:=fys:=0
+ENDPROC
+
+PROC end() OF srcwin
+  DEF sc:PTR TO scrolltext
+  sc:=self.scwin
+  IF sc.window THEN ClearMenuStrip(sc.window)
+  END sc
+  SUPER self.end()
+  IF 0&gt;numsrc-- THEN numsrc:=maxsrcs
+ENDPROC
+
+/*----------------------------------------------------------------------*/
+
+PROC memwin(addr,type) OF memwin
+  DEF x:PTR TO scrollhex,a
+  self.next:=dwins
+  dwins:=self
+  self.type:=type
+  self.addr:=addr
+  IF type=T_STACK THEN stackwin:=self
+  self.scwin:=NEW x.setmem(addr)
+  a:=40*font.xsize+20
+  x.open(IF type=T_MEM THEN &#x27;Memory View&#x27; ELSE &#x27;Stack View&#x27;,
+         xsize-a,font.ysize+3,a,ysize/3,scr,IDCMP_MENUPICK,{handlesrc})
+  IF SetMenuStrip(x.window,menu)=FALSE THEN Raise(&quot;MENU&quot;)
+ENDPROC
+
+PROC message() OF memwin
+  self.scwin.setmem(self.addr)
+  IF self.next THEN self.next.message()
+  IF self.scwin.handle() THEN END self
+ENDPROC
+
+PROC refresh() OF memwin
+  self.scwin.setmem(self.addr)
+  self.scwin.refreshwindow()
+  IF self.next THEN self.next.refresh()
+ENDPROC
+
+PROC end() OF memwin
+  DEF sc:PTR TO scrolltext
+  sc:=self.scwin
+  IF self.type=T_STACK THEN stackwin:=NIL
+  IF sc.window THEN ClearMenuStrip(sc.window)
+  END sc
+  SUPER self.end()
+ENDPROC
+
+/*----------------------------------------------------------------------*/
+
+PROC regwin() OF regwin
+  DEF x:PTR TO scrollreg,a
+  self.next:=dwins
+  dwins:=self
+  self.type:=T_REG
+  self.scwin:=NEW x.scrollreg(frame)
+  a:=13*font.xsize+20
+  x.open(&#x27;Register View&#x27;,xsize-a,font.ysize+3,a,ysize/2,scr,IDCMP_MENUPICK,{handlesrc})
+  IF SetMenuStrip(x.window,menu)=FALSE THEN Raise(&quot;MENU&quot;)
+  rwin:=self
+ENDPROC
+
+PROC message() OF regwin
+  IF self.next THEN self.next.message()
+  IF self.scwin.handle() THEN END self
+ENDPROC
+
+PROC refresh() OF regwin
+  self.scwin.refreshreg(frame)
+  IF self.next THEN self.next.refresh()
+ENDPROC
+
+PROC end() OF regwin
+  DEF sc:PTR TO scrolltext
+  rwin:=NIL
+  sc:=self.scwin
+  IF sc.window THEN ClearMenuStrip(sc.window)
+  END sc
+  SUPER self.end()
+ENDPROC
+
+/*----------------------------------------------------------------------*/
+
+PROC varwin() OF varwin
+  DEF x:PTR TO scrolltext
+  self.next:=dwins
+  dwins:=self
+  self.type:=T_VAR
+  IF varlist=NIL THEN IF (varlist:=List(MAX_WATCH))=NIL THEN Raise(&quot;MEM&quot;)
+  constructvars()
+  self.scwin:=NEW x.settext(varlist,MAX_WLINE)
+  IF (fx&gt;=xsize) OR (fy&gt;=ysize) OR (fxs&gt;=xsize) OR (fys&gt;=ysize) OR (fxs&lt;40) OR (fys&lt;20)
+    fx:=xsize/8
+    fy:=ysize/2
+    fxs:=xsize-(xsize/4)
+    fys:=ysize/4
+  ENDIF
+  x.open(&#x27;Variable View&#x27;,fx,fy,fxs,fys,scr,IDCMP_MENUPICK OR IDCMP_MOUSEBUTTONS OR IDCMP_RAWKEY,{handlevar})
+  IF SetMenuStrip(x.window,menu)=FALSE THEN Raise(&quot;MENU&quot;)
+  vwin:=self
+  fx:=fy:=fxs:=fys:=0
+ENDPROC
+
+PROC message() OF varwin
+  IF self.next THEN self.next.message()
+  IF self.scwin.handle() THEN END self
+ENDPROC
+
+PROC refresh() OF varwin
+  varrefresh(self)
+  IF self.next THEN self.next.refresh()
+ENDPROC
+
+PROC varrefresh(win:PTR TO varwin)
+  constructvars()
+  win.scwin.settext(varlist,MAX_WLINE)
+  win.scwin.refreshwindow()
+ENDPROC
+
+PROC end() OF varwin
+  DEF sc:PTR TO scrolltext
+  vwin:=NIL
+  sc:=self.scwin
+  IF sc.window THEN ClearMenuStrip(sc.window)
+  END sc
+  SUPER self.end()
+ENDPROC
+
+PROC actionvar(y)
+  DEF wv:PTR TO wvar,n=0,s[100]:STRING,v,vptr,type,r
+  wv:=vars.head
+  WHILE wv.succ
+    v,vptr,type:=getvarval(wv.v)
+    IF type
+      IF y=n++
+        StringF(s,&#x27;Variable &quot;\s&quot; selected.&#x27;,wv.v)
+        r:=request3(s,&#x27;_Remove&#x27;,&#x27;_Modify&#x27;,&#x27;_Cancel&#x27;,&quot;r&quot;,&quot;m&quot;,&quot;c&quot;)
+        IF r=1
+          Remove(wv)
+          varrefresh(vwin)
+        ELSEIF r=2
+          StringF(s, IF (v&gt;4096) OR (v&lt;-4096) THEN &#x27;$\h&#x27; ELSE &#x27;\d&#x27;, v)
+          r:=easyguiA(reqtitle,
+            [ROWS,
+              [TEXT,&#x27;New contents of variable?&#x27;,NIL,FALSE,3],
+              [STR,1,&#x27;_Value:&#x27;,s,100,10,0,0,&quot;v&quot;],
+              [COLS,[TEXT,&#x27;(Examples: 0,$0,var,{var})&#x27;,NIL,FALSE,3],[BUTTON,{ehelp},&#x27;_Help&#x27;,0,&quot;h&quot;]],
+              [BAR],
+              [COLS,
+                [BUTTON,1,&#x27;_OK&#x27;,0,&quot;o&quot;],
+                [SPACEH],
+                [BUTTON,0,&#x27;_Cancel&#x27;,0,&quot;c&quot;]
+              ]
+            ],
+            [EG_SCRN,scr,NIL])
+          IF r=1
+            r,v:=extval(s)
+            IF r
+              SELECT 8 OF type
+                CASE 3 TO 7
+                  frame.regs[type]:=v
+                CASE 1,2
+                  ^vptr:=v
+              ENDSELECT
+              varrefresh(vwin)
+            ENDIF
+          ENDIF
+        ENDIF
+        RETURN
+      ENDIF
+    ENDIF
+    wv:=wv.succ
+  ENDWHILE
+ENDPROC
+
+PROC addvar(var,shift=FALSE)
+  DEF wv:PTR TO wvar
+  IF openvarwin()
+    IF shift THEN getvarval(var,TRUE)
+    IF findtracedvar(var)
+      fastrequest(&#x27;You&#x27;&#x27;re already watching this variable&#x27;)
+    ELSE
+      AddTail(vars,NEW wv)
+      wv.v:=StrCopy(String(EstrLen(var)),var)
+      wv.name:=String(MAX_WLINE)
+      IF wv.name=NIL THEN Raise(&quot;MEM&quot;)
+      varrefresh(vwin)
+    ENDIF
+  ENDIF
+ENDPROC
+
+PROC addval(s,v)
+  DEF vl:PTR TO LONG,a,c,t[20]:STRING
+  IF TypeOfMem(v)
+    vl:=v
+    StrAdd(s,&#x27; [&#x27;)
+-&gt;    FOR a:=1 TO 4 DO StrAdd(s,StringF(t,&#x27;\z\h[8] &#x27;,vl[]++))
+    StrAdd(s,&#x27; \q&#x27;)
+-&gt;    FOR a:=1 TO 16 DO (c:=v[]++) BUT StrAdd(s,IF (c&gt;32) AND (c&lt;127) THEN [c,0]:CHAR ELSE &#x27;.&#x27;)
+    StrAdd(s,&#x27;\q]&#x27;)
+  ENDIF
+ENDPROC
+
+PROC findtracedvar(n)
+  DEF wv:PTR TO wvar
+  wv:=vars.head
+  WHILE wv.succ
+    IF StrCmp(n,wv.v) THEN RETURN wv
+    wv:=wv.succ
+  ENDWHILE
+ENDPROC NIL
+
+PROC constructvars()
+  DEF wv:PTR TO wvar,num=0,v,vptr,type,t[30]:STRING
+  wv:=vars.head
+  WHILE wv.succ
+    v,vptr,type:=getvarval(wv.v)
+    IF type
+      StrCopy(wv.name,wv.v)
+      StrAdd(wv.name,StringF(t,IF (v&gt;-1000) AND (v&lt;1000) THEN &#x27; = \d  &#x27; ELSE &#x27; = $\h  &#x27;,v))
+      SELECT 8 OF type
+        CASE 3 TO 7
+          StrAdd(wv.name,StringF(t,&#x27;(local reg D\d)&#x27;,type))
+        CASE 1,2
+          StrAdd(wv.name,StringF(t,&#x27;(\s at $\z\h[8])&#x27;,IF type=2 THEN &#x27;global&#x27; ELSE &#x27;local&#x27;,vptr))
+      ENDSELECT
+      addval(wv.name,v)
+      varlist[num++]:=wv.name
+    ENDIF
+  EXIT num=MAX_WATCH
+    wv:=wv.succ
+  ENDWHILE
+  SetList(varlist,num)
+ENDPROC
+
+/*-------------------------------------------------------------------*/
+
+PROC showsrcwin(src:PTR TO e_source,i=NIL)
+  DEF w:PTR TO srcwin,n:PTR TO srcwin,sc:PTR TO scrolltext
+  w:=dwins
+  WHILE IF w THEN (IF w.type=T_SRC THEN w.src&lt;&gt;src ELSE w) ELSE w DO w:=w.next
+  IF w=NIL
+    NEW n.srcwin(src)
+  ELSE
+    n:=w
+    IF fxs
+      ChangeWindowBox(n.scwin.window,fx,fy,fxs,fys)
+      fx:=fy:=fxs:=fys:=0
+    ENDIF
+  ENDIF
+  sc:=n.scwin
+  IF i
+    sc.active(i)
+    activewin:=n
+  ENDIF
+  IF w THEN WindowToFront(sc.window)
+ENDPROC
+
+PROC quit()
+  DEF a
+  a:=request3(&#x27;Sure to leave the debugged program halfway?&#x27;,&#x27;_Quit&#x27;,&#x27;_Run&#x27;,&#x27;_Oops!&#x27;,&quot;q&quot;,&quot;r&quot;,&quot;o&quot;)
+  IF a=1
+    Raise()
+  ELSEIF a=2
+    whatstep:=STEP_RUN
+  ENDIF
+ENDPROC
+
+PROC newmem()
+  DEF w:PTR TO memwin,a
+  IF (a:=getmem())&lt;&gt;-1 THEN NEW w.memwin(a,T_MEM)
+ENDPROC
+
+PROC newreg() IS IF rwin THEN WindowToFront(rwin.scwin.window) ELSE NEW rwin.regwin()
+PROC openstackwin() IS IF stackwin=NIL THEN NEW stackwin.memwin(frame.stack,T_STACK) ELSE WindowToFront(stackwin.scwin.window)
+PROC openvarwin() IS IF vwin THEN (WindowToFront(vwin.scwin.window) BUT TRUE) ELSE NEW vwin.varwin()
+PROC dum(p,q) IS EMPTY
+PROC modifyvar() IS request13(&#x27;You can modify a variable&#x27;,&#x27;by clicking on it&#x27;,&#x27;in the variable view&#x27;,&#x27;_Great!&#x27;,&quot;g&quot;)
+PROC watchvar() IS request13(&#x27;You can watch a variable&#x27;,&#x27;by double-clicking on it&#x27;,&#x27;in a source-window&#x27;,&#x27;_Great!&#x27;,&quot;g&quot;)
+PROC breakpoint() IS request13(&#x27;You can set a breakpoint&#x27;,&#x27;by double-clicking on a line&#x27;,&#x27;in a source-window&#x27;,&#x27;_Great!&#x27;,&quot;g&quot;)
+
+PROC breakpointvar()
+  DEF m
+  IF (m:=getmem())&lt;&gt;-1 THEN setmembreak(m)
+ENDPROC
+
+PROC clearbreakpoints()
+  setbreak(NIL)
+  setmembreak(NIL)
+ENDPROC
+
+PROC raiseexception()
+  DEF e[20]:STRING,ei[20]:STRING,ev,eiv,n
+  StrCopy(e,&#x27;&quot;HALT&quot;&#x27;)
+  StrCopy(ei,&#x27;0&#x27;)
+  LOOP
+    IF easyguiA(reqtitle,
+      [EQROWS,
+        [TEXT,&#x27;Enter exception values:&#x27;,NIL,FALSE,3],
+        [STR,{dum},&#x27;_exception:&#x27;,e,100,5,0,0,&quot;e&quot;],
+        [STR,{dum},&#x27;e_xceptioninfo:&#x27;,ei,100,5,0,0,&quot;x&quot;],
+        [COLS,[TEXT,&#x27;(Examples: 0,$0,var,{var})&#x27;,NIL,FALSE,3],[BUTTON,{ehelp},&#x27;_Help&#x27;,0,&quot;h&quot;]],
+        [BAR],
+        [COLS,
+          [BUTTON,1,&#x27;_OK&#x27;,0,&quot;o&quot;],
+          [SPACEH],
+          [BUTTON,0,&#x27;_Cancel&#x27;,0,&quot;c&quot;]
+        ]
+      ],
+      [EG_SCRN,scr,NIL])
+      n,ev:=extval(e)
+      IF n
+        n,eiv:=extval(ei)
+        IF n
+          setthrow(ev,eiv)
+          whatstep:=STEP_THROW
+          RETURN
+        ENDIF
+      ENDIF
+      request1(&#x27;Illegal value(s)&#x27;,&#x27;_Sorry&#x27;,&quot;s&quot;)
+    ELSE
+      RETURN
+    ENDIF
+  ENDLOOP
+ENDPROC
+
+PROC repeatstep()
+  DEF str[20]:STRING,n
+  StrCopy(str,&#x27;1&#x27;)
+  LOOP
+    IF easyguiA(reqtitle,
+      [EQROWS,
+        [TEXT,&#x27;Enter number and type of steps:&#x27;,NIL,FALSE,3],
+        [COLS,
+          [STR,{dum},&#x27;_Steps:&#x27;,str,100,5,0,0,&quot;s&quot;],
+          [CHECK,{mrepeattype},&#x27;Step _Over?&#x27;,repeatover,TRUE,0,&quot;o&quot;]
+        ],
+        [COLS,[TEXT,&#x27;(Examples: 10,$2F,var,^var)&#x27;,NIL,FALSE,3],[BUTTON,{ehelp},&#x27;_Help&#x27;,0,&quot;h&quot;]],
+        [BAR],
+        [COLS,
+          [BUTTON,1,&#x27;_OK&#x27;,0,&quot;o&quot;],
+          [SPACEH],
+          [BUTTON,0,&#x27;_Cancel&#x27;,0,&quot;c&quot;]
+        ]
+      ],
+      [EG_SCRN,scr,NIL])
+      n,repeatcount:=extval(str)
+      IF n AND (repeatcount&gt;0)
+        repeatcount--
+        whatstep:=STEP_OVER
+        RETURN
+      ENDIF
+      request1(&#x27;Illegal value(s)&#x27;,&#x27;_Sorry&#x27;,&quot;s&quot;)
+    ELSE
+      RETURN
+    ENDIF
+  ENDLOOP
+ENDPROC
+
+PROC mrepeattype(p,x) IS repeatover:=x
+
+PROC evalexps()
+  DEF r,s[100]:STRING
+  easyguiA(reqtitle,
+    [EQROWS,
+      [TEXT,&#x27;Enter E Expression:&#x27;,NIL,FALSE,3],
+      [STR,{evexp},&#x27;_Exp:&#x27;,s,100,10,0,0,&quot;e&quot;],
+      r:=[TEXT,s,&#x27;Result:&#x27;,TRUE,1],
+      [COLS,[TEXT,&#x27;(Examples: 0,$0,var,{var})&#x27;,NIL,FALSE,3],[BUTTON,{ehelp},&#x27;_Help&#x27;,0,&quot;h&quot;]],
+      [BAR],
+      [COLS,[SPACEH],[BUTTON,0,&#x27;_OK&#x27;,0,&quot;o&quot;],[SPACEH]]
+    ],
+    [EG_INFO,r, EG_SCRN,scr, EG_GHVAR,{evgh}, NIL])
+ENDPROC
+
+PROC evexp(rgad,s)
+  DEF v,r,f[20]:STRING
+  r,v:=extval(s)
+  IF r
+    StringF(f,IF v&lt;10000 THEN &#x27;\d&#x27; ELSE &#x27;$\h&#x27;,v)
+  ELSE
+    StrCopy(f,&#x27;&#x27;)
+  ENDIF
+  settext(evgh,rgad,f)
+ENDPROC
+
+PROC ehelp(p)
+  easyguiA(reqtitle,
+    [ROWS,
+      [TEXT,&#x27;Values: 123, $ABC, %010101, &quot;FORM&quot;&#x27;,NIL,FALSE,3],
+      [TEXT,&#x27;Variables: a, {a}, ^a&#x27;,NIL,FALSE,3],
+      [TEXT,&#x27;Operators: +, -, *, /, ()&#x27;,NIL,FALSE,3],
+      [BAR],
+      [BUTTON,0,&#x27;_OK&#x27;,0,&quot;o&quot;]
+    ],
+    [EG_SCRN,scr,NIL])
+ENDPROC
+
+PROC search()
+  DEF lines:PTR TO LONG,n,max,st:PTR TO scrolltext
+  max:=n:=ListLen(lines:=currentwin.src.lines())
+  st:=currentwin.scwin
+  IF easyguiA(reqtitle,
+      [ROWS,
+        [TEXT,&#x27;Enter text to find (case sensitive)&#x27;,NIL,FALSE,3],
+        [STR,1,&#x27;_Text:&#x27;,findstr,100,10,0,0,&quot;t&quot;],
+        [BAR],
+        [COLS,
+          [BUTTON,1,&#x27;_Find&#x27;,0,&quot;f&quot;],
+          [SPACEH],
+          [BUTTON,0,&#x27;_Cancel&#x27;,0,&quot;c&quot;]
+        ]
+      ],
+      [EG_SCRN,scr,NIL])
+    WHILE n&gt;0
+      EXIT InStr(lines[],findstr,0)&lt;&gt;-1
+      lines++
+      n--
+    ENDWHILE
+-&gt;    IF n THEN st.settop(max-n) ELSE request1(&#x27;Could not find text&#x27;,&#x27;_Hmmm&#x27;,&quot;h&quot;)
+    IF n THEN st.active(max-n) ELSE request1(&#x27;Could not find text&#x27;,&#x27;_Hmmm&#x27;,&quot;h&quot;)
+  ENDIF
+ENDPROC
+
+PROC handlemenu(imsg:PTR TO intuimessage)
+  DEF c,menu,item,sub
+  c:=imsg.code
+  menu:=menunum(c)
+  item:=itemnum(c)
+  sub:=subnum(c)
+  SELECT menu
+    CASE 0
+      SELECT item
+        CASE 0; about()             -&gt; About
+        CASE 1; setprefs()          -&gt; Settings...
+        CASE 2; saveprefs()         -&gt; Save Settings
+        CASE 3; quit()              -&gt; Quit
+      ENDSELECT
+    CASE 1
+      SELECT item
+        CASE 0; choose_source()     -&gt; Source
+        CASE 1; newreg()            -&gt; Registers
+        CASE 2; newmem()            -&gt; Memory
+        CASE 3; openstackwin()      -&gt; Stack
+        CASE 4; openvarwin()        -&gt; Variables
+      ENDSELECT
+    CASE 2
+      SELECT item
+        CASE 0; whatstep:=STEP_IN   -&gt; Step In
+        CASE 1; whatstep:=STEP_OVER -&gt; Step Over
+        CASE 2; whatstep:=STEP_FOLLOW -&gt; Step Follow
+        CASE 3; repeatstep()        -&gt; Repeat Step
+        CASE 4; watchvar()          -&gt; Watch Variable
+        CASE 5; breakpoint()        -&gt; Set Breakpoint on Sourceline
+        CASE 6; breakpointvar()     -&gt; Set Breakpoint on Memory
+        CASE 7; clearbreakpoints()  -&gt; Clear all Breakpoints
+        CASE 8; whatstep:=STEP_RUN  -&gt; Run to Breakpoint
+        CASE 9; raiseexception()    -&gt; Raise Exception
+      ENDSELECT
+    CASE 3
+      SELECT item
+        CASE 0; evalexps()          -&gt; Eval E Expressions
+        CASE 1; modifyvar()         -&gt; Modify Variable
+        CASE 2; dwins.refresh()     -&gt; Refresh
+        CASE 3; search()            -&gt; Find in Source
+        CASE 4; offset()            -&gt; Locate Offset
+      ENDSELECT
+    CASE 4
+      SELECT item
+        CASE 0; exe_arexx_cmd(rxs1)
+        CASE 1; exe_arexx_cmd(rxs2)
+        CASE 2;  exe_arexx_cmd(rxs3)
+      ENDSELECT
+  ENDSELECT
+ENDPROC
+
+PROC offset()
+  DEF v,r,i
+  IF easyguiA(reqtitle,
+      [ROWS,
+        [TEXT,&#x27;Enter offset to locate&#x27;,NIL,FALSE,3],
+        [STR,1,&#x27;_Offset:&#x27;,offstr,12,10,0,0,&quot;o&quot;],
+        [BAR],
+        [COLS,
+          [BUTTON,1,&#x27;_Locate&#x27;,0,&quot;l&quot;],
+          [SPACEH],
+          [BUTTON,0,&#x27;_Cancel&#x27;,0,&quot;c&quot;]
+        ]
+      ],
+      [EG_SCRN,scr,NIL])
+    v,r:=Val(offstr)
+    IF r
+      v,r,i:=exe.findoffset(v)
+      IF v
+        showsrcwin(v,r)
+        IF i THEN Delay(6) BUT request13(&#x27;This might actually be an&#x27;,
+                                         &#x27;E internal function, such&#x27;,
+                                         &#x27;as Char() or WriteF()&#x27;,&#x27;_Oh&#x27;,&quot;o&quot;)
+      ELSE
+        request1(&#x27;No line for this offset&#x27;,&#x27;_Oh&#x27;,&quot;o&quot;)
+      ENDIF
+    ELSE
+      request1(&#x27;Bad offset&#x27;,&#x27;_Oh&#x27;,&quot;o&quot;)
+    ENDIF
+  ENDIF
+ENDPROC
+
+PROC handlekey(c)
+  IF c=77 THEN whatstep:=STEP_OVER ELSE IF c=78 THEN whatstep:=STEP_IN
+ENDPROC
+
+PROC handlesrc(data,imsg:PTR TO intuimessage)
+  DEF cl,vx,vy
+  IF data THEN currentwin:=data
+  IF (cl:=imsg.class)=IDCMP_MENUPICK
+    handlemenu(imsg)
+  ELSEIF cl=IDCMP_RAWKEY
+    handlekey(imsg.code)
+  ELSEIF cl=IDCMP_MOUSEBUTTONS
+    IF imsg.code=SELECTUP
+      IF DoubleClick(lastsec,lastmic,imsg.seconds,imsg.micros)
+        vx,vy:=currentwin.scwin.where(imsg.mousex,imsg.mousey)
+        IF vx&lt;&gt;-1 THEN dovar(vx,vy,imsg.qualifier)
+      ELSE
+        lastsec:=imsg.seconds
+        lastmic:=imsg.micros
+      ENDIF
+    ENDIF
+  ENDIF  
+ENDPROC
+
+PROC handlevar(imsg:PTR TO intuimessage)
+  DEF cl,vx,vy
+  IF (cl:=imsg.class)=IDCMP_MENUPICK
+    handlemenu(imsg)
+  ELSEIF cl=IDCMP_RAWKEY
+    handlekey(imsg.code)
+  ELSEIF cl=IDCMP_MOUSEBUTTONS
+    IF vwin
+      vx,vy:=vwin.scwin.where(imsg.mousex,imsg.mousey)
+      IF imsg.code=SELECTDOWN
+        oldvy:=vy
+      ELSEIF imsg.code=SELECTUP
+        IF (vx&lt;&gt;-1) AND (oldvy=vy) THEN actionvar(vy)
+        oldvy:=-1
+      ENDIF
+    ENDIF
+  ENDIF  
+ENDPROC
+
+PROC getvarval(var,send=FALSE)
+  DEF isglob,v,vptr,x,type=0,mess[256]:STRING,evar:PTR TO e_var
+  IF (x:=activewin.scwin.getactive())&lt;&gt;-1
+    evar,isglob:=activewin.src.findvar(var,activewin.src.findproc(x))
+    IF evar
+      IF type:=evar.regno
+        v:=frame.regs[type]
+        vptr:=0
+      ELSEIF evar.offs
+        v:=Long(vptr:=frame.regs[IF isglob THEN 12 ELSE 13]+evar.offs)
+        type:=IF isglob THEN 2 ELSE 1
+      ENDIF
+      IF send
+        x:=evar.type
+        StringF(mess,&#x27;[\s] \s&#x27;,IF isglob THEN &#x27;Global&#x27; ELSE &#x27;Local&#x27;, var)
+        IF x
+          StrAdd(mess,&#x27;:PTR TO &#x27;)
+          StrAdd(mess,x)
+        ENDIF
+        SelectOutput(NIL)
+        IF sendExplorer(v,x,NIL,mess,TRUE)=FALSE
+          IF runExplorer()=0
+            FOR send:=1 TO 20
+              Delay(6)
+            EXIT isExplorerRunning()
+            ENDFOR
+            IF send&lt;=20
+              sendExplorer(v,x,NIL,mess,TRUE)
+              startExp:=TRUE
+            ENDIF
+          ENDIF
+        ENDIF
+        SelectOutput(ocon)
+      ENDIF
+    ENDIF
+  ENDIF
+ENDPROC v,vptr,type
+
+PROC runExplorer()
+  DEF cmd[256]:STRING
+  StrCopy(cmd,IF explorer[] THEN explorer ELSE &#x27;explorer&#x27;)
+  IF pubname[]
+    StrAdd(cmd,&#x27; SCREEN=&quot;&#x27;)
+    StrAdd(cmd,pubname)
+    StrAdd(cmd,&#x27;&quot;&#x27;)
+  ENDIF
+ENDPROC SystemTagList(cmd,[SYS_ASYNCH,TRUE, SYS_INPUT,NIL, SYS_OUTPUT,NIL, NIL])
+
+PROC dovar(vx,vy,qual)
+  DEF var[50]:STRING,v,vptr,reg=0,bp:PTR TO INT,con
+  vy:=currentwin.src.locate(vx,vy,var)
+  IF var[] THEN v,vptr,reg:=getvarval(var)
+  IF reg
+    addvar(var,qual AND 3)
+  ELSEIF vy&gt;=0
+    v:=request3(&#x27;Put breakpoint here?&#x27;,&#x27;_OK&#x27;,&#x27;OK and _Run&#x27;,&#x27;_Cancel&#x27;,&quot;o&quot;,&quot;r&quot;,&quot;c&quot;)
+    IF v&gt;0
+      bp:=currentwin.src.findpc(vy,exe)
+      setbreak(bp)
+      con:=SetStdOut(ocon)
+      PrintF(&#x27;Breakpoint: $\h, Contents: \h[4] \h[4] \h[4]\n&#x27;,bp,bp[],bp[1],bp[2])
+      SetStdOut(con)
+      IF v&gt;1 THEN whatstep:=STEP_RUN
+    ENDIF
+  ENDIF
+ENDPROC
+
+PROC makefollow()
+  IF followgh=NIL
+    followgh:=guiinitA(&#x27;** EDBG ** Following Execution ** Close Me to Stop! **&#x27;,
+          [SPACEH],
+          [EG_LEFT,0, EG_TOP,0, EG_MAXW,TRUE, EG_SCRN,scr,
+           EG_WTYPE,WTYPE_NOSIZE, NIL])
+  ENDIF
+ENDPROC
+
+PROC removefollow()
+  IF followgh
+    cleangui(followgh)
+    followgh:=NIL
+  ENDIF
+ENDPROC
+
+PROC step(fr:PTR TO stackframe)
+  DEF pc,src,i
+  IF repeatcount
+    repeatcount--
+    IF repeatover
+      stepover(fr,fr.regs[13])
+    ELSE
+      stepover()
+    ENDIF
+  ELSE
+    frame:=fr
+    IF stackwin THEN stackwin.addr:=fr.stack
+
+    pc:=fr.returnpc-6              -&gt; Modification: Now substracts 6 instead of 2
+                         -&gt;         to make up for extra 32-bits.
+
+    src,i,pc:=exe.findline(pc)
+    IF src=NIL
+      removefollow()
+      request13(&#x27;Your program caused a guru!&#x27;,
+                &#x27;It may not be safe to continue running this program,&#x27;,
+                &#x27;you might even need to reboot!&#x27;,
+                &#x27;_Oops!&#x27;,&quot;o&quot;)
+      -&gt; Try it now with last known PC
+      src,i:=exe.findline(pc)
+    ENDIF
+    IF src THEN showsrcwin(src,i)
+    whatstep:=STEP_NONE
+    IF dorefresh THEN dwins.refresh()
+    IF followgh
+      WindowToFront(followgh.wnd)
+      ActivateWindow(followgh.wnd)
+      Delay(followspeed)
+      IF guimessage(followgh)&lt;0
+        stepover()
+      ELSE
+        removefollow()
+      ENDIF
+    ENDIF
+    IF followgh=NIL
+      IF first_step_done=FALSE
+        unreachablea7:=fr+100000     -&gt; imp! beyond main stack level
+        first_step_done:=TRUE
+        exe_arexx_cmd(&#x27;.edbg-startup.rexx&#x27;)
+        IF doabout THEN Delay(6) BUT about()
+      ENDIF
+      REPEAT
+        Wait(-1)
+        srcmessage()
+        IF dwins THEN dwins.message()
+        rexxmessage()
+        toolmessage()
+      UNTIL whatstep
+      SELECT whatstep
+        CASE STEP_IN;    stepover()
+        CASE STEP_OVER;  stepover(fr,fr.regs[13])
+        CASE STEP_RUN;   stepover(unreachablea7,unreachablea7)
+        CASE STEP_THROW; stepover(); RETURN TRUE
+        CASE STEP_FOLLOW
+          makefollow()
+          stepover()
+      ENDSELECT
+    ENDIF
+  ENDIF
+ENDPROC FALSE
+
+PROC srcmessage()
+  DEF s:PTR TO scrollwin, srcwin:PTR TO srcwin
+  WHILE s:=handleIDCMP(srcport)
+    srcwin:=s.data
+    END srcwin
+  ENDWHILE
+ENDPROC
+
+/*--------------------------------------------------------------------*/
+
+CONST TOOL_NUM=6,TOOL_ONEH=32,TOOL_W=37,TOOL_SP=2
+CONST TOOL_HEIGHT=TOOL_ONEH+TOOL_SP*TOOL_NUM-TOOL_SP
+CONST TOOL_SIZE=TOOL_HEIGHT*12
+
+PROC toolmessage()
+  DEF imsg:PTR TO intuimessage,cl
+  WHILE imsg:=GetMsg(toolwin.userport)
+    cl:=imsg.class
+    SELECT cl
+      CASE IDCMP_MENUPICK
+        handlemenu(imsg)
+      CASE IDCMP_GADGETUP
+        SELECT 7 OF imsg.iaddress::gadget.gadgetid
+          CASE 1; whatstep:=STEP_OVER
+          CASE 2; whatstep:=STEP_IN
+          CASE 3; newmem()
+          CASE 4; newreg()
+          CASE 5; openvarwin()
+          CASE 6; quit()
+        ENDSELECT
+    ENDSELECT
+    ReplyMsg(imsg)
+  ENDWHILE
+ENDPROC
+
+PROC createtoolbar()
+  DEF m,i,a,b=1,gads=NIL:PTR TO gadget,aw,ah,al,at,ab,ar,wpos
+  wpos:=font.ysize+scr.wbortop+1
+  al:=scr.wborleft+2
+  at:=wpos+2
+  ab:=scr.wborbottom+2
+  ar:=scr.wborright+2
+  aw:=al+ar+TOOL_W
+  ah:=at+ab+TOOL_HEIGHT
+  IF (toolgads:=List(TOOL_NUM))=NIL THEN Raise(&quot;MEM&quot;)
+  SetList(toolgads,TOOL_NUM)
+  CopyMem({tooldata},m:=NewM(TOOL_SIZE,2),TOOL_SIZE)
+  i:=[0,0,TOOL_W,TOOL_HEIGHT,2,m,%11,0,NIL]:image
+  MapList({a},toolgads,toolgads,
+      `gads:=NEW [gads,al,b-1*(TOOL_ONEH+TOOL_SP)+at,TOOL_W,TOOL_ONEH,
+                  GFLG_GADGHCOMP,GACT_RELVERIFY,GTYP_BOOLGADGET,
+                  NIL,NIL,NIL,0,NIL,b++,0]:gadget)
+  IF ForAll({a},toolgads,`a)=FALSE THEN Raise(&quot;MEM&quot;)
+  IF (toolwin:=OpenW(0,wpos,aw,Min(ah,ysize-wpos),
+    IDCMP_GADGETUP OR IDCMP_MENUPICK,
+    6 OR WFLG_NEWLOOKMENUS,&#x27;          Toolbar&#x27;,scr,15,gads))=NIL THEN Raise(&quot;WIN&quot;)
+  DrawImage(toolwin.rport,i,al,at)
+  IF SetMenuStrip(toolwin,menu)=FALSE THEN Raise(&quot;MENU&quot;)
+  RefreshWindowFrame(toolwin)
+  Dispose(m)
+ENDPROC
+
+PROC deletetoolbar()
+  IF toolwin THEN ClearMenuStrip(toolwin)
+  CloseW(toolwin)
+  toolwin:=NIL
+ENDPROC
+
+tooldata: INCBIN &#x27;pix/toolbar.raw&#x27;
+
+/*-----------------------------------------------------------------*/
+
+aboutdata: INCBIN &#x27;pix/about.raw&#x27;
+
+CONST ABOUT_SIZE=7872,ABOUT_HEIGHT=164,ABOUT_WIDTH=182
+
+PROC about()
+  DEF m,i,win=NIL:PTR TO window,aw,ah,al,at,ab,ar
+  al:=scr.wborleft+2
+  at:=font.ysize+scr.wbortop+1+2
+  ab:=scr.wborbottom+2
+  ar:=scr.wborright+2
+  aw:=al+ar+ABOUT_WIDTH
+  ah:=at+ab+ABOUT_HEIGHT
+  CopyMem({aboutdata},m:=NewM(ABOUT_SIZE,2),ABOUT_SIZE)
+  i:=[0,0,ABOUT_WIDTH,ABOUT_HEIGHT,2,m,%11,0,NIL]:image
+  IF win:=OpenW(xsize-ABOUT_WIDTH/2,ysize-ABOUT_HEIGHT/2,aw,ah,
+      IDCMP_CLOSEWINDOW OR IDCMP_RAWKEY OR IDCMP_MOUSEBUTTONS,$100E,&#x27;About...&#x27;,scr,15,NIL)
+    DrawImage(win.rport,i,al,at)
+    WaitIMessage(win)
+    CloseW(win)
+  ENDIF
+  Dispose(m)
+ENDPROC
+
+/*-----------------------------------------------------------------*/
+
+PROC fastrequest(message)
+  DEF window:PTR TO window,screen:PTR TO screen
+
+  window:=currentwin.scwin.window
+  screen:=window.wscreen
+  SetWindowTitles(window,TRUE,message)
+  WaitPort(window.userport)
+  SetWindowTitles(window,TRUE,title)
+ENDPROC
+
+PROC request1(body,gadget,key) IS easyguiA(reqtitle,[ROWS,[TEXT,body,NIL,FALSE,3],[BAR],[BUTTON,0,gadget,0,key]],[EG_SCRN,scr,NIL])
+PROC request13(b1,b2,b3,gadget,key) IS easyguiA(reqtitle,[ROWS,[TEXT,b1,NIL,FALSE,3],[TEXT,b2,NIL,FALSE,3],[TEXT,b3,NIL,FALSE,3],[BAR],[BUTTON,0,gadget,0,key]],[EG_SCRN,scr,NIL])
+PROC request3(body,g1,g2,g3,k1,k2,k3) IS easyguiA(reqtitle,[ROWS,[TEXT,body,NIL,FALSE,3],[BAR],[COLS,[BUTTON,1,g1,0,k1],[SPACEH],[BUTTON,2,g2,0,k2],[SPACEH],[BUTTON,0,g3,0,k3]]],[EG_SCRN,scr,NIL])
+
+PROC getmem()
+  DEF ok,s[100]:STRING,r,v,p
+  REPEAT
+    ok:=1
+    r:=easyguiA(reqtitle,
+      [ROWS,
+        [TEXT,&#x27;Which memory location?&#x27;,NIL,FALSE,3],
+        [STR,1,&#x27;_Addr:&#x27;,s,100,10,0,0,&quot;a&quot;],
+        [COLS,[TEXT,&#x27;(Examples: 0,$0,var,{var})&#x27;,NIL,FALSE,3],[BUTTON,{ehelp},&#x27;_Help&#x27;,0,&quot;h&quot;]],
+        [BAR],
+        [COLS,
+          [BUTTON,1,&#x27;_OK&#x27;,0,&quot;o&quot;],
+          [SPACEH],
+          [BUTTON,0,&#x27;_Cancel&#x27;,0,&quot;c&quot;]
+        ]
+      ],
+      [EG_SCRN,scr,NIL])
+    IF r
+      r,v:=extval(s)
+      IF r
+        IF TypeOfMem(v)=FALSE
+          ok:=request3(&#x27;Not a valid ram-address&#x27;,&#x27;_Do it anyway&#x27;,&#x27;_Oops&#x27;,&#x27;_Cancel&#x27;,&quot;d&quot;,&quot;o&quot;,&quot;c&quot;)
+        ENDIF
+      ELSE
+        ok:=2
+      ENDIF
+    ELSE
+      ok:=0
+    ENDIF
+  UNTIL ok&lt;2
+ENDPROC IF ok THEN v AND -2 ELSE -1
+
+PROC extval(s)
+  DEF v
+  s,v:=exp(s)
+  IF s=0 THEN request1(&#x27;Syntax Error in Expression&#x27;,&#x27;_Um&#x27;,&quot;u&quot;)
+ENDPROC s,v
+
+PROC exp(s)
+  DEF v=0,o,v2
+  s,v:=factor(s)
+  IF s
+    s:=whitesp(s)
+    WHILE o:=s[]++
+      IF o=&quot;)&quot; THEN RETURN s-1,v
+      s,v2:=factor(s)
+      IF s=0 THEN RETURN 0
+      SELECT o
+        CASE &quot;+&quot;; v:=v+v2
+        CASE &quot;-&quot;; v:=v-v2
+        CASE &quot;*&quot;; v:=Mul(v,v2)
+        CASE &quot;/&quot;; v:=Div(v,v2)
+        DEFAULT; RETURN request1(&#x27;Missing operator&#x27;,&#x27;_Oh&#x27;,&quot;o&quot;)
+      ENDSELECT
+      s:=whitesp(s)
+    ENDWHILE
+  ENDIF
+ENDPROC s,v
+
+PROC factor(s)
+  DEF v,r,c,a,neg=FALSE
+  v,r:=Val(s)
+  IF r
+    s:=s+r
+  ELSE
+    s:=whitesp(s)
+    IF s[]=&quot;-&quot;
+      s:=whitesp(s+1)
+      neg:=TRUE
+    ENDIF
+    IF s[]=&quot;\q&quot;
+      s++
+      a:=v:=0
+      WHILE (c:=s[]++)&lt;&gt;&quot;\q&quot;
+        EXIT a++=4
+        v:=Shl(v,8)+c
+      ENDWHILE
+      IF c&lt;&gt;&quot;\q&quot; THEN RETURN request1(&#x27;Missing &quot;&#x27;,&#x27;_Oh&#x27;,&quot;o&quot;)
+    ELSEIF s[]=&quot;{&quot;
+      s++
+      s:=whitesp(s)
+      s,r,v:=id(s,TRUE)
+      IF s
+        s:=whitesp(s)
+        IF s[]++&lt;&gt;&quot;}&quot; THEN RETURN request1(&#x27;Missing &quot;}&quot;&#x27;,&#x27;_Oh&#x27;,&quot;o&quot;)
+      ENDIF
+    ELSEIF s[]=&quot;^&quot;
+      s++
+      s:=whitesp(s)
+      s,v:=id(s)
+      v:=^v
+    ELSEIF s[]=&quot;(&quot;
+      s++
+      s,v:=exp(s)
+      IF s THEN IF s[]++&lt;&gt;&quot;)&quot; THEN RETURN request1(&#x27;Missing &quot;)&quot;&#x27;,&#x27;_Oh&#x27;,&quot;o&quot;)
+    ELSE
+      s,v:=id(s)
+    ENDIF
+  ENDIF
+ENDPROC s,IF neg THEN -v ELSE v
+
+PROC id(s,isaddr=FALSE)
+  DEF r,v,t,str[50]:STRING,c
+  WHILE (((c:=s[]++)&gt;=&quot;a&quot;) AND (c&lt;=&quot;z&quot;)) OR ((c&gt;=&quot;A&quot;) AND (c&lt;=&quot;Z&quot;)) OR (c=&quot;_&quot;) DO StrAdd(str,[c,0]:CHAR)
+  s--
+  IF str[]=0 THEN RETURN 0
+  v,r,t:=getvarval(str)
+  IF t=0 THEN RETURN request1(&#x27;Unknown var&#x27;,&#x27;_Oops&#x27;,&quot;o&quot;)
+  IF isaddr THEN IF t&gt;=3 THEN RETURN request13(&#x27;You can&#x27;&#x27;t take the address&#x27;,&#x27;of a register variable.&#x27;,&#x27;Recompile without OPTI/S or REG/K&#x27;,&#x27;_Sure&#x27;,&quot;s&quot;)
+ENDPROC s,v,r
+
+PROC whitesp(s)
+  WHILE s[]=&quot; &quot; DO s++
+ENDPROC s
+
+PROC setprefs()
+  easyguiA(&#x27;EDBG Preferences&#x27;,
+    [ROWS,
+      [EQROWS,
+        [CHECK,{mdoabout},&#x27;_Show &quot;About...&quot; on startup&#x27;,doabout,TRUE,0,&quot;s&quot;],
+        [CHECK,{mdorefresh},&#x27;_Refresh views each step&#x27;,dorefresh,TRUE,0,&quot;r&quot;],
+        [CHECK,{mdowins},&#x27;Save _current window positions&#x27;,dosavewindowpos,TRUE,0,&quot;c&quot;],
+        [CHECK,{mdovars},&#x27;Save _watched variable names&#x27;,dosavevars,TRUE,0,&quot;w&quot;]
+      ],
+      [SLIDE,{mspeed},&#x27;Follow Delay (0.1sec):    &#x27;,FALSE,0,30,followspeed/5,2,&#x27;%3ld&#x27;],
+      [BAR],
+      [EQROWS,
+        [STR,{dstr},&#x27;_Arexx script 1&#x27;,rxs1,RXSTR_SIZE,4,0,0,&quot;a&quot;],
+        [STR,{dstr},&#x27;Arexx script 2&#x27;,rxs2,RXSTR_SIZE,4],
+        [STR,{dstr},&#x27;Arexx script 3&#x27;,rxs3,RXSTR_SIZE,4]
+      ],
+      [BAR],
+      [STR,{dstr},&#x27;_Explorer&#x27;,explorer,RXSTR_SIZE,4,0,0,&quot;e&quot;],
+      [BAR],
+      [BUTTON,0,&#x27;_OK&#x27;,0,&quot;o&quot;]
+    ],
+    [EG_SCRN,scr,NIL])
+ENDPROC
+
+PROC mdoabout(p,x) IS doabout:=x
+PROC mdorefresh(p,x) IS dorefresh:=x
+PROC mdowins(p,x) IS dosavewindowpos:=x
+PROC mdovars(p,x) IS dosavevars:=x
+PROC dstr(p,q) IS EMPTY
+PROC mspeed(p,x) IS followspeed:=x*5
+
+PROC saveprefs()
+  DEF fh,ofh,dw:PTR TO dbgwin,wv:PTR TO wvar,win:PTR TO window
+  IF fh:=Open(&#x27;.edbg-startup.rexx&#x27;,NEWFILE)
+    ofh:=SetStdOut(fh)
+    WriteF(&#x27;/* generated by EDBG */\n\n/* address EDBG */\n\n&#x27;)
+    IF doabout=FALSE THEN WriteF(&#x27;&#x27;&#x27;noabout&#x27;&#x27;\n&#x27;)
+    IF dorefresh=FALSE THEN WriteF(&#x27;&#x27;&#x27;norefresh&#x27;&#x27;\n&#x27;)
+    IF dosavewindowpos
+      dw:=dwins
+      WHILE dw
+        IF dw.type=T_VAR
+          win:=dw::varwin.scwin.window
+          WriteF(&#x27;&#x27;&#x27;variables \d \d \d \d&#x27;&#x27;\n&#x27;,win.leftedge,win.topedge,win.width,win.height)
+        ELSEIF dw.type=T_MEM
+          WriteF(&#x27;&#x27;&#x27;memory \d&#x27;&#x27;\n&#x27;,dw::memwin.addr)
+        ELSEIF dw.type=T_SRC
+          win:=dw::srcwin.scwin.window
+          WriteF(&#x27;&#x27;&#x27;srcwindow \s \d \d \d \d&#x27;&#x27;\n&#x27;,dw::srcwin.src.name(),win.leftedge,win.topedge,win.width,win.height)
+        ENDIF
+        dw:=dw.next
+      ENDWHILE
+    ENDIF
+    IF dosavevars
+      IF vars.tailpred&lt;&gt;vars
+        WriteF(&#x27;&#x27;&#x27;watch&#x27;)
+        iterate_exec_list({wv},vars,`WriteF(&#x27; \s&#x27;,wv.v))
+        WriteF(&#x27;&#x27;&#x27;\n&#x27;)
+      ENDIF
+    ENDIF
+    IF explorer[] THEN WriteF(&#x27;&#x27;&#x27;explorer \s&#x27;&#x27;\n&#x27;,explorer)
+    IF rxs1[] THEN WriteF(&#x27;&#x27;&#x27;rexx 1 \s&#x27;&#x27;\n&#x27;,rxs1)
+    IF rxs2[] THEN WriteF(&#x27;&#x27;&#x27;rexx 2 \s&#x27;&#x27;\n&#x27;,rxs2)
+    IF rxs3[] THEN WriteF(&#x27;&#x27;&#x27;rexx 3 \s&#x27;&#x27;\n&#x27;,rxs3)
+    SetStdOut(ofh)
+    Close(fh)
+  ELSE
+    request1(&#x27;Unable to write prefs&#x27;,&#x27;_Hmmm...&#x27;,&quot;h&quot;)
+  ENDIF
+ENDPROC
+
+PROC choose_source() HANDLE
+  DEF l,s:PTR TO e_source,a=0,num=-1
+  s:=exe.sources()
+  l:=newlist()
+  WHILE s
+    AddTail(l,newnode(NIL,s.name()))
+    s:=s.next()
+  ENDWHILE
+  easyguiA(reqtitle,
+    [EQROWS,
+       [LISTV,{sourcenum},&#x27;Select Source:&#x27;,12,5,l,FALSE,0,0],
+       [BAR],
+       [COLS,[SPACEH],[BUTTON,0,&#x27;_Cancel&#x27;,0,&quot;c&quot;],[SPACEH]]
+    ],
+    [EG_INFO,{num}, EG_SCRN,scr, NIL])
+EXCEPT DO
+  IF num&gt;=0
+    s:=exe.sources()
+    WHILE s
+      EXIT a++=num
+      s:=s.next()
+    ENDWHILE
+    IF s THEN showsrcwin(s)
+  ENDIF
+ENDPROC
+
+PROC sourcenum(i,n)
+  ^i:=n
+  Raise()
+ENDPROC
+
+PROC rexxmessage()
+  DEF mes,rexxstr
+  IF rexxport
+    WHILE TRUE
+      mes,rexxstr:=rx_GetMsg(rexxport)
+    EXIT mes=NIL
+      rexxcontinue(rexxstr,mes)
+    ENDWHILE
+  ENDIF
+ENDPROC
+
+PROC rexxcontinue(rexxstr,mes) HANDLE  -&gt; called from other spots too
+  DEF rc=0,rstr=NIL
+  rc,rstr:=processcmd(rexxstr)
+EXCEPT DO
+  rx_ReplyMsg(mes,rc,rstr)
+  ReThrow()
+ENDPROC
+
+PROC getword(s,dest)
+  DEF b,c
+  LOOP
+    SELECT 256 OF c:=s[]++
+      CASE 0; request1(&#x27;Argument to Arexx command expected&#x27;,&#x27;_Oh&#x27;,&quot;o&quot;); Raise()
+      CASE &quot; &quot;, &quot;\t&quot;
+      CASE 33 TO 255
+        b:=s-1
+        WHILE (s[]&gt;&quot; &quot;) AND (s[]&lt;=255) DO s++
+        StrCopy(dest,b,s-b)
+        WHILE (s[]=&quot; &quot;) OR (s[]=&quot;\t&quot;) DO s++
+        RETURN s
+      DEFAULT
+        request1(&#x27;Garbage in Arexx command&#x27;,&#x27;_Oh&#x27;,&quot;o&quot;); Raise()
+    ENDSELECT
+  ENDLOOP
+ENDPROC
+
+PROC getexp(s)
+  DEF v,dest[250]:STRING,sr
+  s:=getword(s,dest)
+  sr,v:=extval(dest)
+  IF sr=NIL THEN Raise()
+ENDPROC s,v
+
+PROC processcmd(s)
+  DEF rc=0,rstr=NIL,ts[250]:STRING,a,b,esrc=NIL:PTR TO e_source,w:PTR TO memwin,vptr,type
+  s:=getword(s,ts)
+  UpperStr(ts)
+  IF StrCmp(ts,&#x27;QUIT&#x27;)
+    quit()
+  ELSEIF StrCmp(ts,&#x27;RUN&#x27;)
+    whatstep:=STEP_RUN
+  ELSEIF StrCmp(ts,&#x27;MEMORY&#x27;)
+    s,a:=getexp(s)
+    NEW w.memwin(a,T_MEM)
+  ELSEIF StrCmp(ts,&#x27;EXPLORER&#x27;)
+    s:=getword(s,explorer)
+  ELSEIF StrCmp(ts,&#x27;REXX&#x27;)
+    s,a:=getexp(s)
+    IF a=1
+      s:=getword(s,rxs1)
+    ELSEIF a=2
+      s:=getword(s,rxs2)
+    ELSEIF a=3
+      s:=getword(s,rxs3)
+    ENDIF
+  ELSEIF StrCmp(ts,&#x27;VARIABLES&#x27;)
+    s,fx:=getexp(s)
+    s,fy:=getexp(s)
+    s,fxs:=getexp(s)
+    s,fys:=getexp(s)
+    openvarwin()
+  ELSEIF StrCmp(ts,&#x27;STEPIN&#x27;)
+    whatstep:=STEP_IN
+  ELSEIF StrCmp(ts,&#x27;STEPOVER&#x27;)
+    whatstep:=STEP_OVER
+  ELSEIF StrCmp(ts,&#x27;WATCH&#x27;)
+    WHILE s[]
+      s:=getword(s,ts)
+      addvar(ts)
+    ENDWHILE
+  ELSEIF StrCmp(ts,&#x27;BREAKPOINT&#x27;)
+    s,a:=getexp(s)
+    setbreak(currentwin.src.findpc(a,exe))
+  ELSEIF StrCmp(ts,&#x27;EVAL&#x27;)
+    s,rc:=getexp(s)
+  ELSEIF StrCmp(ts,&#x27;MEMORYBREAKPOINT&#x27;)
+    s,a:=getexp(s)
+    setmembreak(a)
+  ELSEIF StrCmp(ts,&#x27;RAISE&#x27;)
+    s,a:=getexp(s)
+    s,b:=getexp(s)
+    setthrow(a,b)
+    whatstep:=STEP_THROW
+  ELSEIF StrCmp(ts,&#x27;SRCWINDOW&#x27;)
+    s:=getword(s,ts)
+    s,fx:=getexp(s)
+    s,fy:=getexp(s)
+    s,fxs:=getexp(s)
+    s,fys:=getexp(s)
+    IF esrc:=exe.sources() THEN esrc:=esrc.findsrc(ts)
+    IF esrc THEN showsrcwin(esrc)
+  ELSEIF StrCmp(ts,&#x27;NOABOUT&#x27;)
+    doabout:=FALSE
+  ELSEIF StrCmp(ts,&#x27;NOREFRESH&#x27;)
+    dorefresh:=FALSE
+  ELSEIF StrCmp(ts,&#x27;ASSIGN&#x27;)
+    s:=getword(s,ts)
+    s,a:=getexp(s)
+    b,vptr,type:=getvarval(ts)
+    SELECT 8 OF type
+      CASE 3 TO 7
+        frame.regs[type]:=a
+      CASE 1,2
+        ^vptr:=a
+    ENDSELECT
+  ELSE
+    request13(&#x27;Unknown Arexx command:&#x27;,ts,&#x27;received&#x27;,&#x27;_Really?&#x27;,&quot;r&quot;)
+    s:=&#x27;&#x27;
+  ENDIF
+  IF s[] THEN request13(&#x27;Superfluous arguments:&#x27;,ts,&#x27;in Arexx command&#x27;,&#x27;_Really?&#x27;,&quot;r&quot;)
+ENDPROC rc,rstr
+
+PROC exe_arexx_cmd(cmdstr) HANDLE  -&gt; either a file name or a quoted string
+  DEF rexx,rmsg=NIL:PTR TO rexxmsg,rarg=NIL,forb,noreply=TRUE,rrmsg:PTR TO rexxmsg,cstr
+  rexxsysbase:=NIL
+  Forbid(); forb:=TRUE
+  IF (rexx:=FindPort(&#x27;REXX&#x27;))=NIL THEN Raise()
+  IF (rexxsysbase:=OpenLibrary(&#x27;rexxsyslib.library&#x27;,0))=NIL THEN Raise()
+  IF (rmsg:=CreateRexxMsg(rexxport,&#x27;rexx&#x27;,rexxname))=NIL THEN Raise()
+  IF (rarg:=CreateArgstring(cmdstr,StrLen(cmdstr)))=NIL THEN Raise()
+  rmsg.args[0]:=rarg
+  rmsg.action:=RXCOMM
+  PutMsg(rexx,rmsg)
+  Permit(); forb:=FALSE
+  WriteF(&#x27;executing script \s\n&#x27;,cmdstr)
+  WHILE noreply
+    Wait(-1)
+    WHILE TRUE
+      rrmsg,cstr:=rx_GetMsg(rexxport)
+    EXIT rrmsg=NIL
+      IF rrmsg::ln.type=NT_REPLYMSG
+        WriteF(&#x27;done with script \s\n&#x27;,cmdstr)
+        noreply:=FALSE
+      ELSE
+        rexxcontinue(cstr,rrmsg)
+      ENDIF
+    ENDWHILE
+  ENDWHILE
+EXCEPT DO
+  IF forb THEN Permit()
+  IF rarg THEN DeleteArgstring(rarg)
+  IF rmsg THEN DeleteRexxMsg(rmsg)
+  IF rexxsysbase THEN CloseLibrary(rexxsysbase)
+ENDPROC
+
+CHAR 0, &#x27;$VER: EDBG 3.3a&#x27;, 0, 0
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

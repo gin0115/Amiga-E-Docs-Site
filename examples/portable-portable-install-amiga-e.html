@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Install_Amiga.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-portable.html">PortablE</a> &rsaquo; Install_Amiga.e</div><h1>File: <code>Install_Amiga.e</code></h1><p class="meta">61 lines · project <a href="../examples/pkg-portable.html"><code>PortablE</code></a></p><p class="pathctx">PortablE/PortablE/Install_Amiga.e</p><p class="prose">Install_Amiga.e Amiga version of the installer; used for AmigaOS3, AmigaOS4, AROS &amp; MorphOS.</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/asl.html">libraries/asl</a></li></ul></div><h2>Source</h2><pre class="code">/* Install_Amiga.e
+	Amiga version of the installer; used for AmigaOS3, AmigaOS4, AROS &amp; MorphOS.
+*/
+MODULE &#x27;libraries/asl&#x27;
+MODULE &#x27;CSH/pGeneral&#x27;, &#x27;CSH/pAmiga_requesters&#x27;
+MODULE &#x27;std/cPath&#x27;, &#x27;std/pShell&#x27;
+MODULE &#x27;*Install_shared&#x27;
+
+PROC main() RETURNS ret
+	install()
+FINALLY
+	SELECT exception
+	CASE 0
+		ret := SHELL_RET_OK
+	CASE &quot;BRK&quot;
+		Print(&#x27;Cancelled by user\n&#x27;) 
+		ret := SHELL_RET_WARN
+	CASE &quot;ERR&quot;
+		IF exceptionInfo THEN PrintException()
+		ret := SHELL_RET_ERROR
+	CASE &quot;MEM&quot;
+		Print(&#x27;Ran out of memory\n&#x27;)
+		ret := SHELL_RET_FAIL
+	DEFAULT
+		PrintException()
+		ret := SHELL_RET_FAIL
+	ENDSELECT
+ENDPROC
+
+PROC getFolder(request:ARRAY OF CHAR, defaultFolder=NILA:ARRAY OF CHAR) RETURNS folder:OWNS STRING REPLACEMENT
+	DEF hostFolder:OWNS STRING, hostDefaultFolder:OWNS STRING
+	
+	-&gt;loop until answer folder exists, or user cancels
+	hostDefaultFolder := ExportPath(defaultFolder)
+	REPEAT
+		IF hostFolder := requestFile(hostDefaultFolder, NILA, NILA, request, FRF_DRAWERSONLY OR FRF_DOSAVEMODE)
+			-&gt;(user did not cancel) so check that folder exists
+			folder := ImportDirPath(hostFolder) ; END hostFolder
+			IF ExistsPath(folder) = FALSE
+				IF getYesNoAnswer(&#x27;The folder &quot;\s&quot; does not exist. Do you want to create it&#x27;, [hostFolder]) = FALSE THEN END folder
+			ENDIF
+		ENDIF
+	UNTIL (folder &lt;&gt; NILS) OR (hostFolder = NILS)
+FINALLY
+	END hostFolder, hostDefaultFolder
+ENDPROC
+
+PROC getYesNoAnswer(question:ARRAY OF CHAR, questionParams=NILL:ILIST) RETURNS yes:BOOL REPLACEMENT
+	DEF fullQ:OWNS STRING
+	
+	fullQ := StrJoin(question, &#x27;?&#x27;)
+	
+	yes := (requestChoice(&#x27;PortablE\&#x27;s installer&#x27;, fullQ, &#x27;Yes|No&#x27;, questionParams) &lt;&gt; 0)
+FINALLY
+	END fullQ
+ENDPROC
+
+PROC showInfo(info:ARRAY OF CHAR, infoParams=NILL:ILIST) REPLACEMENT
+	requestChoice(&#x27;PortablE\&#x27;s installer&#x27;, info, &#x27;OK&#x27;, infoParams)
+ENDPROC
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

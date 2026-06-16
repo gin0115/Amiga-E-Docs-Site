@@ -1,0 +1,235 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>FuelGaugeExample.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-evo.html">evo</a> &rsaquo; FuelGaugeExample.e</div><h1>File: <code>FuelGaugeExample.e</code></h1><p class="meta">209 lines · project <a href="../examples/pkg-evo.html"><code>evo</code></a></p><p class="pathctx">evo/Src/reaction_examples/FuelGaugeExample.e</p><p class="prose">Simple example of a <a href="../modules/fuelgauge.html">fuelgauge</a> <a href="../modules/button.html">button</a> V0.31 © by DMX 2001</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/dos.html">dos/dos</a></li></ul></div><h2>Source</h2><pre class="code">-&gt; Simple example of a fuelgauge button V0.31 © by DMX 2001
+
+  OPT PREPROCESS,OSVERSION=44
+
+CONST FUELGAUGE_LEVEL=$D0012003
+#ifndef EVO_3_5_0
+CONST TAG_DONE=0
+#endif
+
+MODULE &#x27;dos/dos&#x27;,&#x27;exec/ports&#x27;,&#x27;intuition/intuition&#x27;,&#x27;intuition/gadgetclass&#x27;,
+       &#x27;gadgets/layout&#x27;,&#x27;gadgets/fuelgauge&#x27;,&#x27;images/bevel&#x27;,&#x27;images/label&#x27;,&#x27;utility/tagitem&#x27;,
+       &#x27;classes/window&#x27;,&#x27;window&#x27;,&#x27;layout&#x27;,&#x27;fuelgauge&#x27;,&#x27;label&#x27;,&#x27;button&#x27;,&#x27;reaction/reaction_macros&#x27;,&#x27;amigalib/boopsi&#x27;
+
+CONST FMIN=0
+CONST FMAX=100
+
+ENUM GID_GAUGE=0, GID_DOWN, GID_UP, GID_QUIT, GID_LAST
+ENUM WID_MAIN=0, WID_LAST
+ENUM OID_MAIN=0, OID_LAST
+
+PROC main()
+
+  DEF appPort:PTR TO mp
+  DEF windows[WID_LAST]:ARRAY OF LONG
+  DEF gadgets[GID_LAST]:ARRAY OF LONG
+  DEF objects[OID_LAST]:ARRAY OF LONG
+  DEF i
+  DEF wait,signal,app,result
+  DEF code,done,r
+  DEF gg
+
+  openAll()
+  IF (appPort := CreateMsgPort())
+    PrintF(&#x27;AppPort = 0x\z\h[8]\n&#x27;, appPort) -&gt; Debug
+    objects[OID_MAIN]:=WindowObject,
+      WA_SCREENTITLE, &#x27;Reaction Example V0.31 by DMX © 2001&#x27;,
+      WA_TITLE, &#x27;Reaction FuelGauge Example&#x27;,
+      WA_ACTIVATE, TRUE,
+      WA_DEPTHGADGET, TRUE,
+      WA_DRAGBAR, TRUE,
+      WA_CLOSEGADGET, TRUE,
+      WA_SIZEGADGET, TRUE,
+      WINDOW_ICONIFYGADGET, TRUE,
+      WINDOW_ICONTITLE, &#x27;FuelGauge&#x27;,
+      WINDOW_APPPORT, appPort,
+      WINDOW_POSITION, WPOS_CENTERSCREEN,
+      WINDOW_PARENTGROUP, VGroupObject,
+        LAYOUT_SPACEOUTER, TRUE,
+        LAYOUT_DEFERLAYOUT, TRUE,
+        LAYOUT_ADDCHILD, gg:= FuelGaugeObject,
+          GA_ID, GID_GAUGE,
+          FUELGAUGE_ORIENTATION, FGORIENT_HORIZ,
+          FUELGAUGE_MIN, FMIN,
+          FUELGAUGE_MAX, FMAX,
+          FUELGAUGE_LEVEL, 0,
+          FUELGAUGE_PERCENT, TRUE,
+          FUELGAUGE_TICKSIZE, 5,
+          FUELGAUGE_TICKS, 10,
+          FUELGAUGE_SHORTTICKS, TRUE,
+        FuelGaugeEnd,
+        LAYOUT_ADDCHILD, VGroupObject, 
+          LAYOUT_BACKFILL, NIL,
+          LAYOUT_SPACEOUTER, TRUE,
+          LAYOUT_VERTALIGNMENT, LALIGN_CENTER,
+          LAYOUT_HORIZALIGNMENT, LALIGN_CENTER,
+          LAYOUT_BEVELSTYLE, BVS_FIELD,
+          LAYOUT_ADDIMAGE, LabelObject,
+            LABEL_TEXT, &#x27;The fuelgauge supports optional tickmarks as\n&#x27;,
+            LABEL_TEXT, &#x27;well as vertical and horizontal orientation.\n&#x27;,
+            LABEL_TEXT, &#x27; \n&#x27;,
+            LABEL_TEXT, &#x27;You can set the min/max range, as well as\n&#x27;,
+            LABEL_TEXT, &#x27;options such as varargs ascii display,\n&#x27;,
+            LABEL_TEXT, &#x27;percentage display, and custom pen selection.\n&#x27;,
+          LabelEnd,
+        LayoutEnd,
+        LAYOUT_ADDCHILD, HGroupObject,
+          LAYOUT_SPACEOUTER, FALSE,
+          LAYOUT_EVENSIZE, TRUE,
+          LAYOUT_ADDCHILD, ButtonObject,
+            GA_ID, GID_DOWN,
+            GA_RELVERIFY, TRUE,
+            GA_TEXT,&#x27;_Down&#x27;,
+          ButtonEnd,
+          LAYOUT_ADDCHILD, ButtonObject,
+            GA_ID, GID_UP,
+            GA_RELVERIFY, TRUE,
+            GA_TEXT,&#x27;_Up&#x27;,
+          ButtonEnd,
+          LAYOUT_ADDCHILD, ButtonObject,
+            GA_ID, GID_QUIT,
+            GA_RELVERIFY, TRUE,
+            GA_TEXT,&#x27;_Quit&#x27;,
+          ButtonEnd,
+      LayoutEnd,
+      CHILD_WEIGHTEDHEIGHT, 0,
+      EndGroup,
+    End
+
+    gadgets[GID_GAUGE]:=gg
+
+    IF (objects[OID_MAIN])
+      windows[WID_MAIN]:=RA_OpenWindow(objects[OID_MAIN])
+      IF (windows[WID_MAIN])
+        app:=(Shl(1,appPort.sigbit))
+        done:=0
+
+        GetAttr(WINDOW_SIGMASK, objects[OID_MAIN], {signal})
+        WHILE done=FALSE
+          wait := Wait(signal OR SIGBREAKF_CTRL_C OR app)
+          IF (wait AND SIGBREAKF_CTRL_C)
+            done := TRUE
+          ELSE
+            WHILE ((result := RA_HandleInput(objects[OID_MAIN], {code})) = WMHI_LASTMSG)=FALSE
+              r:=result AND WMHI_CLASSMASK
+              SELECT r
+                CASE WMHI_CLOSEWINDOW
+                  windows[WID_MAIN] := NIL
+                  done := TRUE
+                CASE WMHI_GADGETUP
+                  r:=result AND WMHI_GADGETMASK
+                  SELECT r
+                    CASE GID_DOWN
+                      SetAttrsA(objects[OID_MAIN], [WA_BUSYPOINTER, TRUE,TAG_DONE])
+                      FOR i := FMAX TO FMIN STEP -5
+                        SetGadgetAttrsA(gadgets[GID_GAUGE], windows[WID_MAIN], NIL, [FUELGAUGE_LEVEL, i, TAG_DONE])
+                        Delay(3)
+                      ENDFOR
+                      SetAttrsA(objects[OID_MAIN], [WA_BUSYPOINTER, FALSE,TAG_DONE])
+                    CASE GID_UP
+                      SetAttrsA(objects[OID_MAIN], [WA_BUSYPOINTER, TRUE,TAG_DONE])
+                      FOR i := FMIN TO FMAX STEP 5
+                        SetGadgetAttrsA(gadgets[GID_GAUGE], windows[WID_MAIN], NIL, [FUELGAUGE_LEVEL, i, TAG_DONE])
+                        Delay(3)
+                      ENDFOR
+                      SetAttrsA(objects[OID_MAIN], [WA_BUSYPOINTER, FALSE, TAG_DONE])
+                    CASE GID_QUIT
+                      done := TRUE
+                  ENDSELECT
+                CASE WMHI_ICONIFY
+                  RA_Iconify(objects[OID_MAIN])
+                  windows[WID_MAIN] := NIL
+                CASE WMHI_UNICONIFY
+                  windows[WID_MAIN] := RA_OpenWindow(objects[OID_MAIN])
+                  IF (windows[WID_MAIN])
+                    GetAttr(WINDOW_SIGMASK, objects[OID_MAIN], {signal})
+                  ELSE
+                    done := TRUE
+                  ENDIF
+              ENDSELECT
+            ENDWHILE
+          ENDIF
+        ENDWHILE
+      ELSE
+        PrintF(&#x27;Can&#x27;&#x27;t RA_OpenWindow()\n&#x27;) -&gt; Debug
+      ENDIF
+      DisposeObject(objects[OID_MAIN])
+    ELSE
+      PrintF(&#x27;Can&#x27;&#x27;t find objects[]\n&#x27;) -&gt; Debug
+-&gt;      PrintF(&#x27;Objects[] = 0x\z\h[8]\n&#x27;, objects) -&gt; Debug
+    ENDIF
+    DeleteMsgPort(appPort)
+  ELSE
+    PrintF(&#x27;Can&#x27;&#x27;t create MsgPort\n&#x27;) -&gt; Debug
+  ENDIF
+  closeAll(0)
+ENDPROC
+
+PROC openAll()
+  IF (windowbase := OpenLibrary(&#x27;window.class&#x27;, 44))=0
+    PrintF(&#x27;Can&#x27;&#x27;t open window.class\n&#x27;)
+    closeAll(10)
+  ENDIF
+  IF (layoutbase := OpenLibrary(&#x27;layout.gadget&#x27;, 44))=0
+    PrintF(&#x27;Can&#x27;&#x27;t open layout.gadget\n&#x27;)
+    closeAll(11)
+  ENDIF
+  IF (fuelgaugebase := OpenLibrary(&#x27;gadgets/fuelgauge.gadget&#x27;, 44))=0
+    PrintF(&#x27;Can&#x27;&#x27;t open fuelgauge.gadget\n&#x27;)
+    closeAll(12)
+  ENDIF
+  IF (buttonbase := OpenLibrary(&#x27;gadgets/button.gadget&#x27;, 44))=0
+    PrintF(&#x27;Can&#x27;&#x27;t open button.gadget\n&#x27;)
+    closeAll(13)
+  ENDIF
+  IF (labelbase := OpenLibrary(&#x27;images/label.image&#x27;, 44))=0
+    PrintF(&#x27;Can&#x27;&#x27;t open label.image\n&#x27;)
+    closeAll(14)
+  ENDIF
+ENDPROC
+
+PROC closeAll(number)
+  IF windowbase
+    CloseLibrary(windowbase)
+  ENDIF
+  IF layoutbase
+    CloseLibrary(layoutbase)
+  ENDIF
+  IF fuelgaugebase
+    CloseLibrary(fuelgaugebase)
+  ENDIF
+  IF buttonbase
+    CloseLibrary(buttonbase)
+  ENDIF
+  IF labelbase
+    CloseLibrary(labelbase)
+  ENDIF
+  Exit(number)
+ENDPROC
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

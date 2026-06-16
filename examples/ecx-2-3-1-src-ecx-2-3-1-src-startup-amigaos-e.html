@@ -1,0 +1,267 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>startup_amigaos.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-ecx-2-3-1-src.html">ECX_2.3.1-src</a> &rsaquo; startup_amigaos.e</div><h1>File: <code>startup_amigaos.e</code></h1><p class="meta">241 lines · project <a href="../examples/pkg-ecx-2-3-1-src.html"><code>ECX_2.3.1-src</code></a></p><p class="pathctx">ECX_2.3.1-src/ecx-2.3.1-src/startup_amigaos.e</p><p class="prose">Feb 2007</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/dos.html">dos/dos</a></li><li><a href="../modules/dosextens.html">dos/dosextens</a></li><li><a href="../modules/execbase.html">exec/execbase</a></li><li><a href="../modules/libraries.html">exec/libraries</a></li><li><a href="../modules/memory.html">exec/memory</a></li><li><a href="../modules/tasks.html">exec/tasks</a></li></ul></div><h2>Source</h2><pre class="code">
+
+-&gt; Feb 2007
+
+-&gt; Startupcode in E!
+-&gt; FINALLY..
+
+-&gt; NOTE: WE CAN NOT have inline lists..
+-&gt; Maybe this will change though..
+
+-&gt; October 2008: splitted out amigaos
+
+OPT MODULE, PREPROCESS
+
+-&gt;#define MINSTARTUP
+
+#ifdef DEBUG
+   #define DEBUGF(str,...) DebugF(str,...)
+#else
+   #define DEBUGF(str,...)
+#endif
+
+#define MEMFLAGS MEMF_CLEAR OR MEMF_PUBLIC
+
+   #define USE_SINGLE_LIBS 1
+   #ifdef MINSTARTUP
+      OPT MODNAME = &#x27;minstartup_amigaos&#x27;
+   #else
+      OPT MODNAME = &#x27;startup_amigaos&#x27;
+   #endif
+   OPT AMIGAOS
+   #define REG_ARG A0
+   #define REG_ARGLEN D0
+   #define GLOBREG A4
+   SAVEREGISTERS MACRO NOP
+   LOADREGISTERS MACRO NOP
+   SAVESTACKRETURN MACRO
+      MOVE.L A7, ___cleanupstack
+      MOVE.L A5, ___cleanupframe
+   ENDM
+   LOADSTACKRETURN MACRO
+      MOVE.L ___cleanupstack, A7
+      MOVE.L ___cleanupframe, A5
+   ENDM
+   #define LIBS_VERSION 39
+   MODULE &#x27;exec/tasks&#x27;
+   #define SHELLSTACKBOT process.task.splower
+   #define STACKREG A7
+   SETUPEXEC MACRO
+      execbase := Long(4)
+   ENDM
+
+MODULE &#x27;exec/execbase&#x27;
+MODULE &#x27;dos/dosextens&#x27;
+MODULE &#x27;dos/dos&#x27;
+MODULE &#x27;exec/memory&#x27;
+MODULE &#x27;*runtime&#x27;
+MODULE &#x27;exec/libraries&#x27;
+
+EXPORT ___startinfo:
+   LONG 0 -&gt; rwsize
+   LONG 0 -&gt; initofs
+   LONG 0 -&gt; stacksize
+   LONG 0 -&gt; mainofs
+   LONG 0 -&gt; osversion
+
+EXPORT PROC ___startup()
+   DEF _arg, _arglen, si:PTR TO startinfo, execbase:PTR TO execbase
+   DEF sss:stackswapstruct
+   DEF rwmem=NIL:PTR TO LONG, ifunc(PTR), mfunc(), r=20, stackmem=NIL
+   DEF mem:PTR TO memnode, next
+   DEF process:PTR TO process
+
+   SAVEREGISTERS
+
+   _arg := REG_ARG
+   _arglen := REG_ARGLEN
+
+   SETUPEXEC
+
+   si := {___startinfo}
+
+   -&gt; check osversion
+   IF si.osversion &gt; execbase.lib.version THEN JUMP endpart
+
+   rwmem := AllocVec(si.rwsize, MEMFLAGS)
+   IF rwmem = NIL THEN JUMP endpart
+
+   ifunc := si + si.initofs
+   DEBUGF(&#x27;startup: calling init $\h\n&#x27;, ifunc)
+
+   ifunc(rwmem)
+
+   /* WE NOW HAVE ACCESS TO globals ! */
+
+   DEBUGF(&#x27;startup: globreg=$\h\n&#x27;, GLOBREG)
+
+   ___initcode := ifunc -&gt; 1.10.0, save for stuff like newEnvironment()
+
+   ___rwdatasize := si.rwsize -&gt; 2.0
+
+   -&gt; we cannot reach global execbase as its defined locally, so we do it like this
+   PutLong(GLOBREG + OFFSETOF ___internalglobs.execbase, execbase)
+
+   ___rwdata := rwmem
+
+   process := FindTask(NIL)
+
+   DEBUGF(&#x27;startup: allocating stack \d bytes\n&#x27;, si.stacksize)
+
+   stackmem := AllocVec(si.stacksize, MEMFLAGS)
+   IF stackmem = NIL THEN JUMP endpart
+   ___stackbottom := stackmem
+   -&gt; init stack swap struct
+   sss.lower := ___stackbottom
+   sss.upper := ___stackbottom + si.stacksize
+   sss.pointer := sss.upper
+   ___stackswapstruct := sss  -&gt; fix
+   StackSwap(sss)
+
+
+   -&gt; create pool
+   ___mempool := CreatePool(NIL, 4096, 256)
+   IF ___mempool = NIL THEN JUMP endpart
+
+   DEBUGF(&#x27;startup: ___mempool = $\h\n&#x27;, ___mempool)
+
+#ifndef MINSTARTUP
+
+   -&gt; check for wbstartup, or arg
+   IF process.cli = NIL
+      WaitPort(process.msgport)
+      wbmessage := GetMsg(process.msgport)
+      arg := &#x27;&#x27;
+   ELSE -&gt; no wbstartup
+      arg := _arg
+      arg[_arglen-1] := NIL
+   ENDIF
+
+   DEBUGF(&#x27;startup: arg done\n&#x27;)
+
+   dosbase := OpenLibrary(&#x27;dos.library&#x27;, LIBS_VERSION)
+   intuitionbase := OpenLibrary(&#x27;intuition.library&#x27;, LIBS_VERSION)
+   gfxbase := OpenLibrary(&#x27;graphics.library&#x27;, LIBS_VERSION)
+
+   stdout := Output()
+   stdin := Input()
+
+   DEBUGF(&#x27;input output done\n&#x27;)
+
+
+#else /* MINSTARTUP */
+
+   arg := _arg
+
+#endif /* MINSTARTUP */
+
+   -&gt; keep using 37 as version for these  !
+   #ifdef USE_DOUBLE_LIBS
+      -&gt; ppc code uses double precision libs
+      ___mathieeedoubbasbase := OpenLibrary(&#x27;mathieeedoubbas.library&#x27;, 37)
+      ___mathieeedoubtransbase := OpenLibrary(&#x27;mathieeedoubtrans.library&#x27;, 37)
+   #endif
+
+   #ifdef USE_SINGLE_LIBS
+      -&gt; 68k code uses single precision libs
+      ___mathieeesingbasbase := OpenLibrary(&#x27;mathieeesingbas.library&#x27;, 37)
+      ___mathieeesingtransbase := OpenLibrary(&#x27;mathieeesingtrans.library&#x27;, 37)
+   #endif
+
+   SAVESTACKRETURN
+
+   ___exit68k := {exitcode}
+
+   mfunc := si + si.mainofs
+
+   DEBUGF(&#x27;startup: calling main $\h\n&#x27;, mfunc)
+
+   ___clireturnval := mfunc()
+
+exitcode:
+   LOADSTACKRETURN
+endpart:
+
+   StackSwap(___stackswapstruct)
+   FreeVec(stackmem)
+
+   IF rwmem
+
+      -&gt; free user memory [ New(), NewR(), NewM(), NEW, FastNew() ]
+      mem := ___memlist
+      WHILE mem
+         next := mem.next
+         FreeMem(mem, mem.size)
+         mem := next
+      ENDWHILE
+
+      IF ___mempool THEN DeletePool(___mempool)
+
+      #ifdef USE_SINGLE_LIBS
+         CloseLibrary(___mathieeesingbasbase)
+         CloseLibrary(___mathieeesingtransbase)
+      #endif
+
+      #ifdef USE_DOUBLE_LIBS
+         CloseLibrary(___mathieeedoubbasbase)
+         CloseLibrary(___mathieeedoubtransbase)
+      #endif
+
+#ifndef MINSTARTUP
+
+      IF conout
+         Read(conout,0,0) -&gt; what ?
+         Close(conout)
+      ENDIF
+
+      CloseLibrary(dosbase)
+      CloseLibrary(intuitionbase)
+      CloseLibrary(gfxbase)
+
+      IF wbmessage
+         Forbid() -&gt; we dont want to be unloadseged until we are done
+         ReplyMsg(wbmessage)
+      ENDIF
+
+#endif /* MINSTARTUP */
+
+      r := ___clireturnval
+
+      FreeVec(rwmem)
+
+      /* GLOBAL ENV IS NOW GONE */
+
+   ENDIF
+
+
+   LOADREGISTERS
+
+ENDPROC r
+
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

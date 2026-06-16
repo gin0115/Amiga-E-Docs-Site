@@ -1,0 +1,619 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Arrays.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-aepd36.html">AEPD36</a> &rsaquo; Arrays.e</div><h1>File: <code>Arrays.e</code></h1><p class="meta">593 lines · project <a href="../examples/pkg-aepd36.html"><code>AEPD36</code></a></p><p class="pathctx">AEPD36/EPD36/Programme/gideon/Module/Arrays.e</p><h2>Source</h2><pre class="code">t := FALSE     -&gt; Reihung besteht noch nicht 
+    self.unit    := arr_type  -&gt; Größe einer Zelle          
+    self.maxx    := arr_x     -&gt; Dimensionen der Reihung    
+    self.maxy    := arr_y
+
+    -&gt; Speicherverbrauch in Bytes
+    self.length  := arr_x*arr_y*arr_type
+
+    self.arr_CreateArray()    -&gt; Speicher wird sofort reserviert
+  
+  ENDIF
+
+ENDPROC
+
+
+PROC arr_InitArray(arr_x,arr_y,arr_z,arr_type) OF array3
+
+/* - wie `InitArray() OF array2&#x27; -- */
+
+  IF (arr_x &lt; 1) OR (arr_y &lt; 1) OR (arr_z &lt; 1) THEN RETURN
+
+  IF (arr_type = ARR_BYTE) OR 
+     (arr_type = ARR_INT)  OR
+     (arr_type = ARR_LONG) 
+
+    self.memory  := NIL       -&gt; kein Speicher alloziert   
+    self.protect := FALSE     -&gt; Reihung besteht noch nicht
+    self.unit    := arr_type  -&gt; Größe einer Zelle         
+    self.maxx    := arr_x     -&gt; Dimensionen der Reihung   
+    self.maxy    := arr_y
+    self.maxz    := arr_z
+
+    -&gt; Speicherverbrauch in Bytes
+    self.length  := arr_x * arr_y * arr_z * arr_type
+
+    self.arr_CreateArray()    -&gt; Speicher wird sofort reserviert
+
+  ENDIF
+
+ENDPROC
+
+
+PROC arr_InitArray(arr_anzahl) OF booleans
+DEF boo_temp,boo_ch
+
+  -&gt; Ein Feld muß mindestens vorhanden sein -- */
+  IF arr_anzahl &lt; 1 THEN RETURN
+ 
+  self.memory        := NIL
+  boo_temp,boo_ch    := Mod(arr_anzahl,8)  -&gt; ein Byte kann 8 Zellen fassen
+  IF boo_temp &gt; 0
+    boo_ch := boo_ch + 1             
+  ENDIF
+  self.length        := boo_ch
+  self.indices       := arr_anzahl
+  self.protect       := FALSE  
+
+  self.arr_CreateArray()  -&gt; Speicher wird reserviert
+
+ENDPROC
+
+
+PROC arr_InitArray() OF boolong
+  self.array := 0         -&gt; Alle Bits werden gelöscht
+ENDPROC
+
+
+-&gt; -- ---------------------------------------------------------------
+-&gt; -- Methoden zum Löschen der Inhalte:
+
+PROC arr_ClearArray(arr_cl=0) OF array2
+DEF arr_lauf1,arr_lauf2,arr_end1,arr_end2
+
+  IF self.arr_ArrayExist() = TRUE
+    arr_end1 := self.arr_MaxX() - 1
+    arr_end2 := self.arr_MaxY() - 1
+    FOR arr_lauf1 := 0 TO arr_end1
+      FOR arr_lauf2 := 0 TO arr_end2
+        self.arr_SetCell(arr_lauf1,arr_lauf2,arr_cl)
+      ENDFOR
+    ENDFOR
+  ENDIF
+
+ENDPROC
+
+
+PROC arr_ClearArray(arr_cl=0) OF array3
+DEF arr_lauf1,arr_lauf2,arr_lauf3,arr_end1,arr_end2,arr_end3
+
+  IF self.arr_ArrayExist() = TRUE
+    arr_end1 := self.arr_MaxX() - 1
+    arr_end2 := self.arr_MaxY() - 1
+    arr_end3 := self.arr_MaxZ() - 1
+    FOR arr_lauf1 := 0 TO arr_end1
+      FOR arr_lauf2 := 0 TO arr_end2
+        FOR arr_lauf3 := 0 TO arr_end3
+          self.arr_SetCell(arr_lauf1,arr_lauf2,arr_lauf3,arr_cl)
+        ENDFOR
+      ENDFOR
+    ENDFOR
+  ENDIF
+
+ENDPROC
+
+
+PROC arr_ClearArray(arr_boo=FALSE) OF booleans
+DEF arr_lauf1,arr_end1
+
+  IF self.arr_ArrayExist() = TRUE
+    arr_end1 := self.arr_MaxBools() - 1
+    FOR arr_lauf1 := 0 TO arr_end1
+      self.arr_SetCell(arr_lauf1,arr_boo)
+    ENDFOR
+  ENDIF
+
+ENDPROC
+
+
+PROC arr_ClearArray(arr_val=0) OF boolong
+  self.array := arr_val
+ENDPROC
+
+
+-&gt; -- ---------------------------------------------------------------
+-&gt; -- Methoden zur Speicherreservierung:
+
+PROC arr_CreateArray() OF array2
+
+/* -- Erstellt das entsprechende Feld und setzt im Erfolgsfalle -- *
+ * -- ein Schutzflag.                                           -- */
+
+  IF Not(self.arr_ArrayExist()) /* -- Array noch nicht kreiert -- */
+    self.memory  := AllocMem(self.length,MEMF_PUBLIC)
+    IF self.memory &lt;&gt; NIL       /* -- Speicher vorhanden       -- */
+      self.protect := TRUE      /* -- Schreibschutz            -- */
+    ENDIF
+  ENDIF
+
+ENDPROC
+
+
+PROC arr_CreateArray() OF array3
+
+/* -- wie `CreateArray() OF array2&#x27; -- */
+
+  IF Not(self.arr_ArrayExist()) /* -- Array noch nicht kreiert -- */
+    self.memory  := AllocMem(self.length,MEMF_PUBLIC)
+    IF self.memory &lt;&gt; NIL  /* -- Genug Speicher           -- */
+      self.protect := TRUE /* -- Schreibschutz            -- */
+    ENDIF
+  ENDIF
+
+ENDPROC
+
+
+PROC arr_CreateArray() OF booleans
+
+/* -- Die eindimensionale Reihung wird im Speicher aufgebaut -- */
+
+  IF Not(self.arr_ArrayExist())
+    self.memory    := AllocMem(self.length,MEMF_PUBLIC)
+    IF self.memory &lt;&gt; NIL    -&gt; wenn Speicher vorhanden,
+      self.protect := TRUE   -&gt; dann Schutzflag setzen
+    ENDIF
+  ENDIF
+
+ENDPROC
+
+
+-&gt; -- ---------------------------------------------------------------
+-&gt; -- Methoden zum Beschreiben der Zellen:
+
+PROC arr_SetCell(arr_x,arr_y,arr_value) OF array2
+
+/* -- Das Element auf Position `arr_x|arr_y&#x27; erhält den Wert `arr_value&#x27; -- */
+
+DEF arr_mem
+
+  IF self.arr_ArrayExist() = TRUE     -&gt; Is Speicher da ? 
+
+    -&gt; falls Irgendjemand Shit-Parameter benutzt
+    IF (arr_x &gt;= self.maxx) OR (arr_y &gt;= self.maxy) THEN RETURN FALSE
+    IF (arr_x &lt; 0) OR (arr_y &lt; 0) THEN RETURN FALSE
+
+    -&gt; Berechnung der Position im Speicher
+    arr_mem := arr_y * self.maxx + arr_x
+    arr_mem := arr_mem * self.unit + self.memory
+
+    -&gt; Der jeweilige Wert wird in der korrekten Größe geschrieben
+    IF self.unit = ARR_BYTE
+      PutChar(arr_mem,arr_value)
+    ELSEIF self.unit = ARR_INT
+      PutInt(arr_mem,arr_value)
+    ELSE
+      PutLong(arr_mem,arr_value)
+    ENDIF
+
+  ENDIF
+
+ENDPROC TRUE
+
+
+PROC arr_SetCell(arr_x,arr_y,arr_z,arr_value) OF array3
+
+/* -- wie `arr_SetCell() OF array2&#x27; mit dem Unterschied, daß -- *
+ * -- hier eine Koordinate für die 3.te Dimension angegeben  -- *
+ * -- wird:  `arr_x|arr_y|arr_z&#x27;.                            -- */
+
+DEF arr_mem
+
+  IF self.arr_ArrayExist() = TRUE
+
+    -&gt; Sicherheitskontrolle ;-)
+    IF (arr_x &gt;= self.maxx) OR 
+       (arr_y &gt;= self.maxy) OR
+       (arr_z &gt;= self.maxz) THEN RETURN FALSE
+    IF (arr_x &lt; 0) OR (arr_y &lt; 0) OR (arr_z &lt; 0) THEN RETURN FALSE
+
+    -&gt; Berechnung der Position im Speicher
+    arr_mem := arr_y * self.maxx + arr_x
+    arr_mem := arr_z * self.maxx * self.maxy + arr_mem
+    arr_mem := arr_mem * self.unit + self.memory
+
+    -&gt; Wert schreiben
+    IF self.unit = ARR_BYTE
+      PutChar(arr_mem,arr_value)
+    ELSEIF self.unit = ARR_INT
+      PutInt(arr_mem,arr_value)
+    ELSE
+      PutLong(arr_mem,arr_value)
+    ENDIF
+
+  ENDIF
+
+ENDPROC TRUE
+
+
+PROC arr_SetCell(arr_index,arr_val) OF booleans
+DEF arr_temp,arr_byte,arr_ch
+
+  -&gt; Auf die Parameter aufpassen
+  IF (arr_index &lt; 0) OR (arr_index &gt;= self.indices) THEN RETURN FALSE
+  IF Not(self.arr_ArrayExist()) THEN RETURN FALSE
+ 
+  arr_temp,arr_byte := Mod(arr_index,8)           -&gt; Position und Index
+  arr_ch            := Char(self.memory+arr_byte) -&gt; Byte lesen
+
+  MOVE.L                    D2,-(A7)   -&gt; D2: auf Stack retten
+  MOVE.L                arr_ch,D0      -&gt; D0: betreffendes Byte
+  MOVE.L              arr_temp,D1      -&gt; D1: Index des Bits
+  MOVE.L               arr_val,D2      -&gt; D2: Wert (TRUE|FALSE)
+  CMP.L             #$FFFFFFFF,D2      -&gt; wenn D2 = TRUE, dann
+  BNE.S                 arr_next0      -&gt; springe nicht und
+  BSET.L                    D1,D0      -&gt; setze Bit
+  BRA.S                 arr_next1      -&gt; ENDE
+
+arr_next0:
+  BCLR.L                    D1,D0      -&gt; andernfalls lösche Bit
+
+arr_next1:
+  MOVE.L                    D0,arr_ch  -&gt; Wert in die Variable 
+  MOVE.L                 (A7)+,D2      -&gt; D2: vom Stack restaurieren
+
+  PutChar(self.memory+arr_byte,arr_ch) -&gt; Byte zurückschreiben
+
+ENDPROC TRUE
+
+
+PROC arr_SetCell(arr_index,arr_val) OF boolong
+DEF arr_temp
+
+  IF (arr_index &lt; 0) OR (arr_index &gt; 31) THEN RETURN FALSE
+
+  arr_temp := self.array
+
+  MOVE.L                    D2,-(A7)     -&gt; D2: auf Stack retten
+  MOVE.L             arr_index,D1        -&gt; D1: Index des Elementes
+  MOVE.L              arr_temp,D0        -&gt; D0: betreffende Reihung
+  MOVE.L               arr_val,D2        -&gt; D2: Zu speichernder Wert
+  CMP.L             #$FFFFFFFF,D2        -&gt; wenn D2 = TRUE, dann
+  BNE.S                 arr_next2        -&gt; springe nicht und
+  BSET.L                    D1,D0        -&gt; setze Bit
+  BRA.S                 arr_next3        -&gt; ENDE
+
+arr_next2:
+  BCLR.L                    D1,D0        -&gt; andernfalls lösche Bit
+
+arr_next3:
+  MOVE.L                    D0,arr_temp  -&gt; Wert in die Variable 
+  MOVE.L                 (A7)+,D2        -&gt; D2: vom Stack restaurieren
+
+  self.array := arr_temp
+
+ENDPROC TRUE
+
+
+-&gt; -- ---------------------------------------------------------------
+-&gt; -- Methoden um Zellen auszulesen:
+
+/* -- WICHTIG: Alle Funktionen liefern zwei Funktionswerte zurück.     -- *
+ * --          Hat der zweite Funktionswert den Wert TRUE, dann ist    -- *
+ * --          das Resultat (erster Funktionswert) falsch. Diese liegt -- *
+ * --          entweder daran, daß der Programmierer die falschen      -- * 
+ * --          Parameter benutzt hat oder ganz einfach vergaß das      -- *
+ * --          Objekt zu erzeugen.                                     -- */ 
+
+PROC arr_GetCell(arr_x,arr_y) OF array2
+
+/* -- Diese Methode liefert den Wert zurück, der an der Stelle -- *
+ * -- `arr_x|arr_y&#x27; steht.                                     -- */
+
+DEF arr_mem
+
+  IF self.arr_ArrayExist() -&gt; Speicherbereich muß existieren
+
+    -&gt; Parameter überprüfen
+    IF (arr_x &gt;= self.maxx) OR (arr_y &gt;= self.maxy) THEN RETURN 0,TRUE
+    IF (arr_x &lt; 0) OR (arr_y &lt; 0) THEN RETURN 0,TRUE
+
+    -&gt; ??? ;-)
+    arr_mem := arr_y * self.maxx + arr_x
+    arr_mem := arr_mem * self.unit + self.memory
+
+    -&gt; Wert der Zelle als Funktionswert liefern
+    IF self.unit = ARR_BYTE
+      RETURN Char(arr_mem),FALSE
+    ELSEIF self.unit = ARR_INT
+      RETURN Int(arr_mem),FALSE
+    ELSE
+      RETURN Long(arr_mem),FALSE
+    ENDIF
+
+  ENDIF
+
+ENDPROC
+
+
+PROC arr_GetCell(arr_x,arr_y,arr_z) OF array3
+
+/* -- wie `arr_GetCell() OF array2&#x27;, jedoch mit drittem Parameter -- *
+ * -- Kommentierung erübrigt sich !!!                             -- */
+
+DEF arr_mem
+
+  IF self.arr_ArrayExist()
+
+    IF (arr_x &gt;= self.maxx) OR 
+       (arr_y &gt;= self.maxy) OR
+       (arr_z &gt;= self.maxz) THEN RETURN 0,TRUE
+
+    IF (arr_x &lt; 0) OR 
+       (arr_y &lt; 0) OR
+       (arr_z &lt; 0) THEN RETURN 0,TRUE
+
+    arr_mem := arr_y * self.maxx + arr_x
+    arr_mem := arr_z * self.maxx * self.maxy + arr_mem
+    arr_mem := arr_mem * self.unit + self.memory
+
+    IF self.unit = ARR_BYTE
+      RETURN Char(arr_mem),FALSE
+    ELSEIF self.unit = ARR_INT
+      RETURN Int(arr_mem),FALSE
+    ELSE
+      RETURN Long(arr_mem),FALSE
+    ENDIF
+
+  ENDIF
+
+ENDPROC
+
+
+PROC arr_GetCell(arr_index) OF booleans
+
+/* -- für BOOLEANS braucht man boolesche Funktionen ! -- */
+
+DEF arr_temp,arr_byte,arr_ch
+
+  -&gt; wieder mal ein Test
+  IF (arr_index &lt; 0) OR (arr_index &gt;= self.indices) THEN RETURN 0,TRUE
+  IF Not(self.arr_ArrayExist()) THEN RETURN 0,TRUE
+
+  arr_temp,arr_byte := Mod(arr_index,8)           -&gt; Position und Bit
+  arr_ch            := Char(self.memory+arr_byte) -&gt; Byte lesen
+ 
+  MOVE.L                arr_ch,D0  -&gt; D0: gelesenes Byte
+  MOVE.L              arr_temp,D1  -&gt; D1: berechnetes Bit
+  BTST                      D1,D0  -&gt; entsprechendes Bit testen
+  BEQ.S                 arr_next4  -&gt; wenn gelöscht, dann springe
+  RETURN TRUE,FALSE                -&gt; sonst Ergebnis TRUE
+
+arr_next4:
+
+ENDPROC FALSE,FALSE
+
+
+PROC arr_GetCell(arr_index) OF boolong
+
+/* -- für BOOLEANS braucht man boolesche Funktionen ! -- */
+
+DEF arr_temp
+
+  -&gt; wieder mal ein Test
+  IF (arr_index &lt; 0) OR (arr_index &gt; 31) THEN RETURN FALSE,TRUE
+
+  arr_temp := self.array
+ 
+  MOVE.L              arr_temp,D0  -&gt; D0: gelesenes Byte
+  MOVE.L             arr_index,D1  -&gt; D1: berechnetes Bit
+  BTST                      D1,D0  -&gt; entsprechendes Bit testen
+  BEQ.S                 arr_next5  -&gt; wenn gelöscht, dann springe
+  RETURN TRUE,FALSE                -&gt; sonst Ergebnis TRUE
+
+arr_next5:
+
+ENDPROC FALSE,FALSE
+
+
+-&gt; -- ---------------------------------------------------------------
+-&gt; -- Methoden um Speicher freizugeben:
+
+PROC arr_FreeArray() OF array2
+
+/* -- Mit dieser Methode werden alle Zellen gelöscht -- */
+
+  IF self.arr_ArrayExist() = TRUE
+    FreeMem(self.memory,self.length)
+    self.protect := FALSE
+  ENDIF
+
+ENDPROC
+
+
+PROC arr_FreeArray() OF array3
+
+/* -- siehe `arr_FreeArray() OF array2&#x27; B-) -- */
+
+  IF self.arr_ArrayExist() = TRUE
+    FreeMem(self.memory,self.length)
+    self.protect := FALSE
+  ENDIF
+
+ENDPROC
+
+
+PROC arr_FreeArray() OF booleans
+
+/* -- funktioniert wie alles andere 8) -- */
+
+  IF self.arr_ArrayExist() = TRUE
+    FreeMem(self.memory,self.length)
+    self.protect := FALSE
+  ENDIF
+
+ENDPROC
+
+
+-&gt; -- ---------------------------------------------------------------
+-&gt; -- Boolesche Funktionen:
+
+PROC arr_ArrayExist() OF array2   IS self.protect = 255 -&gt; TRUE für CHARs
+PROC arr_ArrayExist() OF array3   IS self.protect = 255
+PROC arr_ArrayExist() OF booleans IS self.protect = 255
+
+
+-&gt; -- ---------------------------------------------------------------
+-&gt; -- Zugriff auf die Datenkomponenten:
+
+PROC arr_MaxX() OF array2 IS self.maxx
+PROC arr_MaxX() OF array3 IS self.maxx
+
+PROC arr_MaxY() OF array2 IS self.maxy
+PROC arr_MaxY() OF array3 IS self.maxy
+
+PROC arr_MaxZ() OF array3 IS self.maxz
+
+PROC arr_MaxBools() OF booleans IS self.indices
+
+PROC arr_CellSize() OF array2 IS self.unit
+PROC arr_CellSize() OF array3 IS self.unit
+
+
+-&gt; -- ---------------------------------------------------------------
+-&gt; -- Methoden zur Berechnung des Speicherbedarfs:
+
+PROC arr_UsedMem() OF array2
+DEF arr_used
+
+  IF self.arr_ArrayExist()
+    arr_used := self.arr_MaxX() * self.arr_MaxY() * self.arr_CellSize()
+    arr_used := arr_used + SIZEOF array2
+  ELSE
+    arr_used := SIZEOF array2
+  ENDIF
+
+ENDPROC arr_used
+
+
+PROC arr_UsedMem() OF array3
+DEF arr_used
+
+  IF self.arr_ArrayExist()
+    arr_used := self.arr_MaxX() * self.arr_MaxY() * self.arr_CellSize()
+    arr_used := arr_used * self.arr_MaxZ()
+    arr_used := arr_used + SIZEOF array3
+  ELSE
+    arr_used := SIZEOF array3
+  ENDIF
+
+ENDPROC arr_used
+
+
+PROC arr_UsedMem() OF booleans
+DEF arr_used
+
+  IF self.arr_ArrayExist()
+    arr_used := self.length + SIZEOF booleans
+  ELSE
+    arr_used := SIZEOF booleans
+  ENDIF
+
+ENDPROC arr_used
+
+
+PROC arr_UsedMem() OF boolong IS 4
+
+
+-&gt; -- ---------------------------------------------------------------
+-&gt; -- Methoden zum Kopieren der Objekte:
+
+PROC arr_Copy() OF array2
+DEF arr_array2 : PTR TO array2
+
+  NEW arr_array2.arr_InitArray(self.maxx,self.maxy,self.unit)
+  IF arr_array2.arr_ArrayExist() = TRUE
+
+    -&gt; Das Kopieren geht des ganzen Speicherbereichs geht
+    -&gt; schneller als das Auslesen und Schreiben einzelner
+    -&gt; Speicherzellen. 
+    CopyMem(self.memory,arr_array2.memory,self.length)
+
+  ELSE
+    RETURN NIL
+  ENDIF
+
+ENDPROC arr_array2
+
+
+PROC arr_Copy() OF array3
+DEF arr_array3 : PTR TO array3
+
+  NEW arr_array3.arr_InitArray(self.maxx,self.maxy,self.maxz,self.unit)
+  IF arr_array3.arr_ArrayExist() = TRUE
+    CopyMem(self.memory,arr_array3.memory,self.length)
+  ELSE
+    RETURN NIL
+  ENDIF
+ENDPROC arr_array3
+
+
+PROC arr_Copy() OF booleans
+DEF arr_booleans : PTR TO booleans
+  NEW arr_booleans.arr_InitArray(self.indices)
+  IF arr_booleans.arr_ArrayExist() = TRUE
+    CopyMem(self.memory,arr_booleans.memory,self.length)
+  ELSE
+    RETURN NIL
+  ENDIF
+ENDPROC arr_booleans
+
+
+PROC arr_Copy() OF boolong
+DEF arr_boolong : PTR TO boolong
+  NEW arr_boolong.arr_InitArray()
+  IF arr_boolong &lt;&gt; NIL
+    arr_boolong.array := self.array
+  ENDIF
+ENDPROC arr_boolong
+
+
+-&gt; -- ---------------------------------------------------------------
+-&gt; -- Destruktoren:
+
+PROC end() OF array2   IS self.arr_FreeArray()
+PROC end() OF array3   IS self.arr_FreeArray()
+PROC end() OF booleans IS self.arr_FreeArray()
+
+CHAR &#x27;$VER: Arrays.M (E-Modul) v2.8 (c) Copyrights by Daniel Kasmeroglu&#x27;,0
+  ‹1186 bytes of embedded binary/non-text data elided›
+  ‹24 bytes of embedded binary/non-text data elided›
+  ‹212 bytes of embedded binary/non-text data elided›
+  ‹31 bytes of embedded binary/non-text data elided›
+  ‹47 bytes of embedded binary/non-text data elided›
+  ‹543 bytes of embedded binary/non-text data elided›</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

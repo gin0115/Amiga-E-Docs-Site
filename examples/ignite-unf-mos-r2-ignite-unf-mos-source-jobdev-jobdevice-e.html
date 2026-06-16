@@ -1,0 +1,407 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>jobdevice.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-ignite-unf-mos-r2.html">ignite-unf-mos-r2</a> &rsaquo; jobdevice.e</div><h1>File: <code>jobdevice.e</code></h1><p class="meta">381 lines · project <a href="../examples/pkg-ignite-unf-mos-r2.html"><code>ignite-unf-mos-r2</code></a></p><p class="pathctx">ignite-unf-mos-r2/ignite-unf-mos/source/jobdev/jobdevice.e</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/boopsi.html">amigalib/boopsi</a></li><li><a href="../modules/lists.html">amigalib/lists</a></li><li><a href="../modules/dos.html">dos/dos</a></li><li><a href="../modules/dosextens.html">dos/dosextens</a></li><li><a href="../modules/devices.html">exec/devices</a></li><li><a href="../modules/errors.html">exec/errors</a></li><li><a href="../modules/io.html">exec/io</a></li><li><a href="../modules/lists.html">exec/lists</a></li><li><a href="../modules/memory.html">exec/memory</a></li><li><a href="../modules/nodes.html">exec/nodes</a></li><li><a href="../modules/ports.html">exec/ports</a></li><li><a href="../modules/resident.html">exec/resident</a></li><li><a href="../modules/dostags.html">morphos/dos/dostags</a></li><li><a href="../modules/libraries.html">morphos/exec/libraries</a></li><li><a href="../modules/tasks.html">morphos/exec/tasks</a></li><li><a href="../modules/tagitem.html">utility/tagitem</a></li></ul></div><h2>Source</h2><pre class="code">OPT NOSTARTUP, MORPHOS, EXENAME = &#x27;job.device&#x27;, PREPROCESS
+
+-&gt; June 2010: OpenDevice unit can now be a previsouly opended unit (by address! (io.unit))
+-&gt; otherwise just pass -1 for a new unit.
+
+MODULE &#x27;morphos/exec/libraries&#x27;
+MODULE &#x27;exec/resident&#x27;
+MODULE &#x27;exec/io&#x27;
+MODULE &#x27;exec/lists&#x27;
+MODULE &#x27;exec/memory&#x27;
+MODULE &#x27;exec/ports&#x27;
+MODULE &#x27;exec/nodes&#x27;
+MODULE &#x27;exec/devices&#x27;
+MODULE &#x27;exec/errors&#x27;
+MODULE &#x27;amigalib/boopsi&#x27;
+MODULE &#x27;morphos/emul/emulregs&#x27;
+MODULE &#x27;amigalib/lists&#x27;
+MODULE &#x27;morphos/dos/dostags&#x27;
+MODULE &#x27;morphos/exec/tasks&#x27;
+MODULE &#x27;dos/dos&#x27;
+MODULE &#x27;dos/dosextens&#x27;
+MODULE &#x27;utility/tagitem&#x27;
+
+MODULE &#x27;*jobdefs&#x27;
+
+#ifdef DEBUG
+   #define DEBUGF(str,...) DebugF(str,...)
+#else
+   #define DEBUGF(str,...)
+#endif
+
+ENUM SUBMSG_NONE, SUBMSG_DIE
+
+OBJECT devunit OF mln
+   port:PTR TO mp
+   opencnt:INT
+   priority:INT
+   execbase
+   dosbase
+   currmsg:PTR TO devunit
+ENDOBJECT
+
+OBJECT devbase OF lib
+   pad2:INT
+   seglist:LONG -&gt; unused here
+   execbase
+   dosbase
+   unitlist:mlh
+ENDOBJECT
+
+#define DEV_NAME &#x27;job.device&#x27;
+#define DEV_IDSTR &#x27;job.device by LS &#x27; + _DATE_
+
+CONST DEV_VERSION = 1,
+      DEV_REVISION = 0
+
+PROC norun() IS -1
+
+STATIC devname    = DEV_NAME,
+       devidstr   = DEV_IDSTR,
+       devtag     = [
+                 RTC_MATCHWORD,
+                 devtag,
+                 endskip,
+                 RTF_PPC,
+                 DEV_VERSION,
+                 NT_DEVICE,
+                 0,
+                 devname,
+                 devidstr,
+                 sysv_rtinit,
+                 0,
+                 NIL
+                     ]:rt
+
+devFuncTable:
+   PTR FUNCARRAY_32BIT_NATIVE
+   PTR devOpen, devClose, devExpunge, devExt, devBeginIO, devAbortIO
+   PTR -1
+
+endskip:
+
+
+PROC sysv_rtinit(dum, seglist, execbase)
+   DEF device:PTR TO devbase, a, dosbase
+
+   DEBUGF(&#x27;job.device/init\n&#x27;)
+
+   dosbase:= OpenLibrary(&#x27;dos.library&#x27;, 50)
+   IF dosbase = NIL THEN RETURN NIL
+
+   device := MakeLibrary(devFuncTable, NIL, NIL, SIZEOF devbase, NIL)
+   IF device = NIL
+      CloseLibrary(dosbase)
+      RETURN NIL
+   ENDIF
+
+   DEBUGF(&#x27;device=$\h\n&#x27;, device)
+   NewList(device.unitlist)
+
+   device.dosbase := dosbase
+   device.execbase := execbase
+   device.seglist := seglist
+
+   device.version := DEV_VERSION
+   device.revision := DEV_REVISION
+   device.flags := LIBF_SUMUSED OR LIBF_CHANGED
+   device.ln.name := devname
+   device.idstring := devidstr
+   device.ln.type := NT_DEVICE
+
+   AddDevice(device)
+
+ENDPROC device
+
+PROC devOpen()
+   DEF device:REG, iob:REG PTR TO io, unitnum:REG, flags:REG
+
+   LWZ device, REG_A6
+   LWZ iob, REG_A1
+   LWZ unitnum, REG_D0
+   LWZ flags, REG_D1  -&gt; dont care for now
+
+ENDPROC openJobDevice(device, iob, unitnum, flags)
+
+PROC devClose()
+   DEF iob:REG PTR TO io, unit:PTR TO devunit, a
+
+   LWZ iob, REG_A1
+
+ENDPROC closeJobDevice(iob)
+
+PROC devExpunge()
+   DEF device:REG PTR TO lib
+   LWZ device, REG_A6
+   RETURN expungeJobDevice(device)
+ENDPROC
+
+PROC devExt()
+ENDPROC NIL
+
+PROC devBeginIO()
+   DEF device:REG PTR TO devbase, iob:REG PTR TO jobmsg
+   DEF execbase, msg:PTR TO jobmsg
+
+   LWZ device, REG_A6
+   LWZ iob, REG_A1
+
+   execbase := device.execbase
+
+   DEBUGF(&#x27;devBeginIO()\n&#x27;)
+
+   iob.break := NIL
+
+   SELECT iob.io.command
+   CASE CMD_RESET   -&gt; abort all requests
+      Forbid()
+      -&gt; remove and reply all queued ioreqs
+      WHILE msg := GetMsg(iob.io.unit::devunit.port)
+         msg.io.error := IOERR_ABORTED
+         ReplyMsg(msg)
+      ENDWHILE
+      msg := iob.io.unit::devunit.currmsg
+      IF msg THEN msg.break := JMBREAKF_ABORT
+      Permit()
+   CASE CMD_FLUSH   -&gt; abort all queued requests
+      Forbid()
+      -&gt; remove and reply all queued ioreqs
+      WHILE msg := GetMsg(iob.io.unit::devunit.port)
+         msg.io.error := IOERR_ABORTED
+         ReplyMsg(msg)
+      ENDWHILE
+      Permit()
+   DEFAULT          -&gt; requests we handle in unit process
+      iob.io.flags := NIL -&gt; clear quick bit
+      PutMsg(iob.io.unit::devunit.port, iob)
+   ENDSELECT
+
+   DEBUGF(&#x27;devBeginIO() DONE\n&#x27;)
+
+ENDPROC
+
+PROC devAbortIO()
+   DEF iob:REG PTR TO jobmsg
+   LWZ iob, REG_A1
+
+   DEBUGF(&#x27;devAbortIO()\n&#x27;)
+
+   IF iob.io.mn.ln.type = NT_MESSAGE THEN iob.break := iob.break OR JMBREAKF_ABORT
+ENDPROC
+
+EXPORT PROC openJobDevice(device:PTR TO devbase, iob:PTR TO io, unit:PTR TO devunit, flags)
+   DEF execbase, dosbase, process
+
+   execbase := device.execbase
+   dosbase := device.dosbase
+
+   DEBUGF(&#x27;internalDevOpen($\h, $\h, \d, $\h)\n&#x27;, device, iob, unitnum, flags)
+
+   device.opencnt++
+
+   IF unit = -1 -&gt; we want new unit ?
+      unit := AllocVec(SIZEOF devunit, MEMF_CLEAR OR MEMF_PUBLIC)
+      IF unit = NIL THEN JUMP internaldevopen_err
+      AddTail(device.unitlist, unit)
+      iob.unit := unit
+      unit.execbase := execbase
+      unit.dosbase := dosbase
+      process := spawnUnitProcess({unitProc}, 0, &#x27;job.device process&#x27;, unit)
+      IF process = NIL THEN JUMP internaldevopen_err
+   ELSE
+      -&gt; use old unit
+      IFN unitexists(device, unit)
+         DebugF(&#x27;job.device/OpenDevice: wrong unit $\h\n&#x27;, unit)
+         unit := NIL
+         JUMP internaldevopen_err
+      ENDIF
+      iob.unit := unit
+   ENDIF
+
+   iob.mn.ln.type := NT_REPLYMSG -&gt; for CheckIO/AbortIO/WaitIO
+   iob.device := device
+   unit.opencnt++
+
+   DEBUGF(&#x27;internalDevOpen DONE\n&#x27;)
+
+   RETURN NIL
+
+internaldevopen_err:
+
+   device.opencnt--
+
+   IF unit THEN FreeVec(unit)
+   iob.error := -1 -&gt; for now
+   iob.device := NIL -&gt; safe to close it anyway
+
+ENDPROC -1
+
+PROC unitexists(device:PTR TO devbase, unit:PTR TO devunit)
+   DEF node:PTR TO mln
+   node := device.unitlist.head
+   WHILE node.succ
+      IF node = unit THEN RETURN TRUE
+      node := node.succ
+   ENDWHILE
+ENDPROC FALSE
+
+PROC spawnUnitProcess(code, pri, name, unit:PTR TO devunit)
+   DEF task, execbase, dosbase
+   DEF tags[16]:ARRAY OF tagitem
+
+   DEBUGF(&#x27;spawnProcess($\h, \d, &quot;\s&quot;, $\h)\n&#x27;, code,pri,name,unit)
+
+   execbase := unit.execbase
+   dosbase := unit.dosbase
+
+   tags[0].tag := NP_ENTRY
+   tags[0].data := code
+   tags[1].tag := NP_PRIORITY
+   tags[1].data := pri
+   tags[2].tag := NP_NAME
+   tags[2].data := name
+   tags[3].tag := NP_CodeType
+   tags[3].data := CODETYPE_PPC
+   tags[4].tag := NP_PPCStackSize
+   tags[4].data := 16000
+   tags[5].tag := NP_PPC_Arg1
+   tags[5].data := unit
+   tags[6].tag := NIL
+   tags[6].data := NIL
+
+
+   task := CreateNewProc(tags)
+
+   IF task
+      DEBUGF(&#x27;spawnProcess: task created, waiting for unit.port\n&#x27;)
+      WHILEN unit.port DO Delay(1)
+   ENDIF
+   DEBUGF(&#x27;spawnProcess done: task = $\h, unit.port = $\h\n&#x27;, task, unit.port)
+   IF unit.port = -1 -&gt; error ?
+      RemTask(task)
+      RETURN NIL
+   ENDIF
+ENDPROC task
+
+
+EXPORT PROC closeJobDevice(iob:PTR TO io)
+   DEF device:PTR TO devbase, x, execbase
+
+   DEBUGF(&#x27;internalDevClose($\h)\n&#x27;, iob)
+
+   device := iob.device
+
+   IF device = NIL THEN RETURN NIL -&gt; alrady closed/never open/failed open
+
+   execbase := device.execbase
+
+   device.opencnt--
+   iob.unit.opencnt--
+
+   IF iob.unit.opencnt = 0
+      iob.command := SUBMSG_DIE
+      PutMsg(iob.unit::devunit.port, iob)
+      WaitPort(iob.mn.replyport)
+      GetMsg(iob.mn.replyport)
+      Remove(iob.unit)
+      FreeVec(iob.unit)
+   ENDIF
+
+   iob.device := NIL
+
+   IF device.opencnt = 0 THEN RETURN expungeJobDevice(device)
+
+ENDPROC NIL
+
+PROC expungeJobDevice(lib:PTR TO devbase)
+   DEF seglist, execbase
+
+   seglist := lib.seglist
+   execbase := lib.execbase
+
+   IF lib.opencnt &gt; 0
+      lib.flags OR= LIBF_DELEXP
+      RETURN NIL
+   ENDIF
+
+   CloseLibrary(lib.dosbase)
+   Remove(lib)
+   FreeMem(lib - lib.negsize, lib.negsize + lib.possize)
+
+ENDPROC seglist
+
+
+PROC unitProc(unit:PTR TO devunit)
+   DEF msg:PTR TO jobmsg, func(PTR), execbase, process:PTR TO process
+
+   DEBUGF(&#x27;subtask init!\n&#x27;)
+
+   execbase := unit.execbase
+
+   process := FindTask(NIL)
+
+   -&gt;unit.port := process.msgport  OOPS breaks if func() uses pr_msgport!
+   unit.port := CreateMsgPort()
+
+   IFN unit.port
+      unit.port := -1
+      RETURN NIL
+   ENDIF
+
+   SetTaskPri(FindTask(NIL), unit.priority)
+
+   DEBUGF(&#x27;subtask running!\n&#x27;)
+
+   LOOP
+      WaitPort(unit.port)
+      WHILE (msg := GetMsg(unit.port))
+         IF msg.io.command = SUBMSG_DIE
+            DeleteMsgPort(unit.port)
+            Forbid()
+            ReplyMsg(msg)
+            RETURN NIL
+         ELSE
+            unit.currmsg := msg
+            IF msg.priority &lt;&gt; unit.priority
+               unit.priority := msg.priority
+               SetTaskPri(FindTask(NIL), msg.priority)
+            ENDIF
+            DEBUGF(&#x27;unitProcess: func()\n&#x27;)
+            func := msg.jobfunc
+            func(msg)
+            unit.currmsg := NIL
+            ReplyMsg(msg)
+            DEBUGF(&#x27;unitProcess: func() DONE\n&#x27;)
+         ENDIF
+      ENDWHILE
+   ENDLOOP
+
+ENDPROC NIL
+
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

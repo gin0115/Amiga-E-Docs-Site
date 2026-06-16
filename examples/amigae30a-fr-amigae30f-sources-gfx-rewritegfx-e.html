@@ -1,0 +1,155 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>RewriteGfx.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-amigae30a-fr.html">amigae30a_fr</a> &rsaquo; RewriteGfx.e</div><h1>File: <code>RewriteGfx.e</code></h1><p class="meta">129 lines · project <a href="../examples/pkg-amigae30a-fr.html"><code>amigae30a_fr</code></a></p><p class="pathctx">amigae30a_fr/AmigaE30f/Sources/Gfx/RewriteGfx.e</p><p class="prose">Utilisant un script de description d&#x27;<a href="../modules/image.html">image</a> (de type Forth) pour afficher des graphiques récursivement (tortues) Proche des grammaires normales de type s-&gt;ASA, les commandes tortues (de type forth) suivantes peuvent être utilisés : up stylo levé down stylo baissé &lt;x&gt; &lt;y&gt; set fixe la position absolue </p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/mathtrans.html">mathtrans</a></li></ul></div><h2>Source</h2><pre class="code">/* Utilisant un script de description d&#x27;image (de type Forth)
+   pour afficher des graphiques récursivement (tortues)
+
+   Proche des grammaires normales de type s-&gt;ASA,
+   les commandes tortues (de type forth) suivantes peuvent être utilisés :
+
+   up                 stylo levé
+   down               stylo baissé
+   &lt;x&gt; &lt;y&gt; set        fixe la position absolue
+   &lt;d&gt; move           déplace relativement a partir des dernières coordonnées
+                      d&#x27;un distance &lt;d&gt; en direction del&#x27;&lt;angle&gt;,
+                      trace une ligne si le stylo est baissé
+   &lt;angle&gt; degr       fixe l&#x27;angle initial
+   &lt;angle&gt; rol        tourne relativement dans le sens contraires
+                      des aiguilles d&#x27;une montre (gauche)
+   &lt;angle&gt; rol        tourne relativement dans le sens des aiguilles
+                      d&#x27;une montre (droite)
+   &lt;nr&gt; col           fixe la couleur
+   push               sauve l&#x27;état de x/y/angle/stylo à ce point sur le pile
+   pop                restaure létat
+   dup                double le dernier contenu sur la pile
+   &lt;int&gt; &lt;int&gt; add    additionne 2 entiers
+   &lt;int&gt; &lt;int&gt; sub    soustrait 2 entiers (premier - second)
+   &lt;int&gt; &lt;int&gt; mul    multiplie 2 entiers
+   &lt;int&gt; &lt;int&gt; div    divise 2 entiers
+   &lt;int&gt; &lt;int&gt; eq     regarde si 2 entiers sont égaux
+   &lt;int&gt; &lt;int&gt; uneq   regarde si 2 entiers sont inégaux
+   &lt;bool&gt; if &lt;s&gt; end  condition
+
+   Traduction : Olivier ANH (BUGSS)   */
+
+CONST CURGR=0     /* FIXEZ CECI A 0-2 POUR D&#x27;AUTRES GRAMMAIRES */
+
+MODULE &#x27;MathTrans&#x27;
+
+ENUM S=1000, A,B,C,D,E,F,G, Z
+CONST R=20
+
+DEF gr[10]:ARRAY OF LONG,win,stack[5000]:ARRAY OF LONG,sp=NIL:PTR TO LONG,
+    penf=TRUE,x=50.0,y=60.0,col=2,degr=0.0
+
+/* ne construisez pas votre propre gramaire, si vous ne savez pas exactement
+   ce que vous faites. Il n&#x27;y a pas de vérification d&#x27;erreurs. */
+
+PROC initgrammar()
+  gr[0]:=[[S,   A,A,A],                               /* lotsa triangles */
+          [A,   25,&quot;ror&quot;,D,D,D,D,D,D,&quot;up&quot;,50,&quot;move&quot;,&quot;down&quot;],
+          [D,   F,G,F,G,F,G,E],
+          [E,   &quot;up&quot;,R,&quot;move&quot;,30,&quot;rol&quot;,5,&quot;move&quot;,30,&quot;rol&quot;,&quot;down&quot;],
+          [F,   R,&quot;move&quot;],
+          [G,   120,&quot;rol&quot;]]
+  gr[1]:=[[S,   100,20,&quot;set&quot;,30,A],                   /* shell */
+          [A,   &quot;dup&quot;,&quot;move&quot;,1,&quot;sub&quot;,&quot;dup&quot;,0,&quot;uneq&quot;,&quot;if&quot;,B,&quot;end&quot;],
+          [B,   &quot;dup&quot;,&quot;dup&quot;,90,&quot;ror&quot;,&quot;move&quot;,180,&quot;ror&quot;,&quot;up&quot;,&quot;move&quot;,
+                90,&quot;ror&quot;,&quot;down&quot;,20,&quot;ror&quot;,A]]          /* quelques figures */
+  gr[2]:=[[S,   B,B,B,B,B,B,B,B,B,B,B,B,B,B,B],
+          [B,   A,A,A,A,A,A,A,A,-10,&quot;move&quot;],
+          [A,   &quot;down&quot;,80,&quot;move&quot;,183,&quot;rol&quot;]]
+ENDPROC
+
+PROC main()
+  mathtransbase:=OpenLibrary(&#x27;mathtrans.library&#x27;,0)
+  IF mathtransbase=NIL
+    WriteF(&#x27;Ne peut ouvrir la &quot;mathtrans.library&quot;.\n&#x27;)
+  ELSE
+    win:=OpenW(20,20,600,200,$200,$F,&#x27;Rewrite Graphics&#x27;,NIL,1,NIL)
+    IF win=NIL
+      WriteF(&#x27;Ne peut ouvrir la fenêtre !\n&#x27;)
+    ELSE
+      initgrammar()
+      sp:=stack+400      /* temp */
+      dorewrite(S)
+      IF sp&lt;&gt;(stack+400) THEN WriteF(&#x27;ATTENTION : la pile n&#x27;&#x27;est pas propre\n&#x27;)
+      WaitIMessage(win)
+      CloseW(win)
+    ENDIF
+    CloseLibrary(mathtransbase)
+  ENDIF
+ENDPROC
+
+PROC dorewrite(startsym)
+  DEF i:PTR TO LONG
+  ForAll({i},gr[CURGR],`IF i[0]=startsym THEN dolist(i) ELSE 0)
+ENDPROC
+
+PROC dolist(list:PTR TO LONG)
+  DEF r=1,sym,rada,cosa,sina,xd,yd,xo,yo,a
+  WHILE r&lt;ListLen(list)
+    sym:=list[r++]
+    IF sym&lt;S
+      sp[]++:=sym
+    ELSE
+      IF sym&gt;Z
+        SELECT sym
+          CASE &quot;down&quot;; penf:=TRUE
+          CASE &quot;up&quot;;   penf:=FALSE
+          CASE &quot;set&quot;;  y:=sp[]--|; x:=sp[]--|
+          CASE &quot;col&quot;;  col:=sp[]--
+          CASE &quot;rol&quot;;  degr:=sp[]--|+degr
+          CASE &quot;ror&quot;;  degr:=-sp[]--|+degr
+          CASE &quot;degr&quot;; degr:=sp[]--|
+          CASE &quot;push&quot;; sp[]++:=x; sp[]++:=y; sp[]++:=degr; sp[]++:=penf
+          CASE &quot;pop&quot;;  sp[]--:=penf; sp[]--:=degr; sp[]--:=y; sp[]--:=x
+          CASE &quot;dup&quot;;  a:=sp[]--; sp[]++:=a; sp[]++:=a
+          CASE &quot;add&quot;;  sp[]++:=sp[]--+sp[]--
+          CASE &quot;sub&quot;;  a:=sp[]--; sp[]++:=sp[]---a
+          CASE &quot;mul&quot;;  sp[]++:=sp[]--*sp[]--
+          CASE &quot;div&quot;;  a:=sp[]--; sp[]++:=sp[]--/a
+          CASE &quot;eq&quot;;   sp[]++:=sp[]--=sp[]--
+          CASE &quot;uneq&quot;; sp[]++:=sp[]--&lt;&gt;sp[]--
+          CASE &quot;end&quot;;  NOP
+          CASE &quot;if&quot;;   IF sp[]--=FALSE THEN WHILE list[r++]&lt;&gt;&quot;end&quot; DO NOP
+          CASE &quot;move&quot;
+            xo:=x; yo:=y; x:=sp[]--|+x
+            rada:=|degr/180.0*3.14159
+            cosa:=SpCos(rada); sina:=SpSin(rada)
+            xd:=|x-xo; yd:=|y-yo
+            x:=|xo+(xd*cosa)-(yd*sina)
+            y:=|yo+(yd*cosa)-(xd*sina)
+            IF penf THEN Line(|xo|*2,|yo|,|x|*2,|y|,col)
+          DEFAULT; WriteF(&#x27;ATTENTION : opcode inconnu\n&#x27;)
+        ENDSELECT
+      ELSE
+        dorewrite(sym)
+      ENDIF
+    ENDIF
+  ENDWHILE
+ENDPROC
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

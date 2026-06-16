@@ -1,0 +1,167 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>rbf.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-jrh-rkrm-1.html">JRH-RKRM-1</a> &rsaquo; rbf.e</div><h1>File: <code>rbf.e</code></h1><p class="meta">141 lines · project <a href="../examples/pkg-jrh-rkrm-1.html"><code>JRH-RKRM-1</code></a></p><p class="pathctx">JRH-RKRM-1/JRH-RKRM-PartOne/Exec_Library/Interrupts/rbf.e</p><p class="prose">rbf.e - Serial receive buffer full interrupt handler example.  To receive characters, this example requires ASCII <a href="../modules/serial.html">serial</a> input at your Amiga&#x27;s <a href="../modules/current.html">current</a> <a href="../modules/serial.html">serial</a> hardware baud rate (i.e., 9600 after reboot, else last baud rate used).</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/ecode.html">other/ecode</a></li></ul></div><h2>Source</h2><pre class="code">-&gt; rbf.e - Serial receive buffer full interrupt handler example.
+-&gt;
+-&gt; To receive characters, this example requires ASCII serial input at your
+-&gt; Amiga&#x27;s current serial hardware baud rate (i.e., 9600 after reboot, else
+-&gt; last baud rate used).
+
+-&gt; E-Note: E does not (as of v3.1a) support Resources in the conventional way
+MODULE &#x27;other/ecode&#x27;,
+       &#x27;other/misc&#x27;,
+       &#x27;dos/dos&#x27;,
+       &#x27;exec/execbase&#x27;,
+       &#x27;exec/interrupts&#x27;,
+       &#x27;exec/nodes&#x27;,
+       &#x27;exec/memory&#x27;,
+       &#x27;hardware/custom&#x27;,
+       &#x27;hardware/intbits&#x27;,
+       &#x27;resources/misc&#x27;
+
+ENUM ERR_NONE, ERR_BITS, ERR_ECODE, ERR_PORT, ERR_SIG
+
+RAISE ERR_SIG IF AllocSignal()=-1
+
+CONST BUFFERSIZE=256, NAMESIZE=32
+CONST ALLOCEDBUFFER=BUFFERSIZE+2
+
+OBJECT rbfData
+  task
+  signal
+  bufferCount  -&gt; E-Note: C version disagrees with Assembly handler!
+  charBuffer[ALLOCEDBUFFER]:ARRAY
+  flagBuffer[ALLOCEDBUFFER]:ARRAY
+  name[NAMESIZE]:ARRAY
+ENDOBJECT
+
+-&gt; E-Note: set-up &quot;custom&quot;
+DEF custom=CUSTOMADDR:PTR TO custom
+
+PROC main() HANDLE
+  -&gt; E-Note: to help with cleaning up, currentuser has been replaced by
+  -&gt;         portuser and bitsuser, both initialised to non-zero
+  DEF allocname, rbfdata=NIL:PTR TO rbfData, portuser=-1, bitsuser=-1,
+      signr=-1, serdevice, rbfint=NIL:PTR TO is, priorint:PTR TO is,
+      priorenable, signal, exec:PTR TO execbase
+  -&gt; E-Note: get the right type for execbase
+  exec:=execbase
+
+  allocname:=&#x27;rbf-example&#x27;
+
+  miscbase:=OpenResource(&#x27;misc.resource&#x27;)
+
+  -&gt; Allocate the serial port registers.
+  IF portuser:=allocMiscResource(MR_SERIALPORT, allocname)
+    -&gt; Hey! Someone&#x27;s got it!
+    WriteF(&#x27;serial hardware allocated by \s. Trying to remove it\n&#x27;, portuser)
+
+    Forbid()
+    IF serdevice:=FindName(exec.devicelist, portuser) THEN RemDevice(serdevice)
+    Permit()
+
+    IF portuser:=allocMiscResource(MR_SERIALPORT, allocname)  -&gt; And try again
+      -&gt; E-Note: error if still allocated
+      Raise(ERR_PORT)
+    ENDIF
+  ENDIF
+
+  -&gt; Get the serial control bits.  (Give up if allocated.)
+  IF bitsuser:=allocMiscResource(MR_SERIALBITS, allocname) THEN Raise(ERR_BITS)
+  -&gt; Got them both
+  WriteF(&#x27;serial hardware allocated\n&#x27;)
+
+  -&gt; Allocate a signal bit for the interrupt handler to signal us.
+  signr:=AllocSignal(-1)
+
+  rbfint:=NewM(SIZEOF is, MEMF_PUBLIC OR MEMF_CLEAR)
+  rbfdata:=NewM(SIZEOF rbfData, MEMF_PUBLIC OR MEMF_CLEAR)
+  rbfdata.task:=FindTask(NIL)   -&gt; Init rbfdata object
+  rbfdata.signal:=Shl(1, signr)
+
+  rbfint.ln.type:=NT_INTERRUPT  -&gt; Init interrupt node.
+  -&gt; E-Note: copy *safely* to rbfdata.name
+  AstrCopy(rbfdata.name, allocname, NAMESIZE)
+  rbfint.ln.name:=rbfdata.name
+  rbfint.data:=rbfdata
+  rbfint.code:=eCodeIntHandler({rbfHandler})
+  IF rbfint.code=NIL THEN Raise(ERR_ECODE)
+
+  -&gt; Save state of RBF and interrupt disable it.
+  priorenable:=custom.intenar AND INTF_RBF
+  custom.intena:=INTF_RBF
+  IF priorint:=SetIntVector(INTB_RBF, rbfint)
+    WriteF(&#x27;replaced the \s RBF interrupt handler\n&#x27;, priorint.ln.name)
+  ENDIF
+
+  WriteF(&#x27;enabling RBF interrupt\n&#x27;)
+  custom.intena:=INTF_SETCLR OR INTF_RBF
+
+  WriteF(&#x27;waiting for buffer to fill up. Use CTRL-C to break\n&#x27;)
+  signal:=Wait(Shl(1, signr) OR SIGBREAKF_CTRL_C)
+
+  IF signal AND SIGBREAKF_CTRL_C THEN WriteF(&#x27;&gt;break&lt;\n&#x27;)
+  WriteF(&#x27;Character buffer contains:\n\s\n&#x27;, rbfdata.charBuffer)
+
+  custom.intena:=INTF_RBF  -&gt; Restore previous handler.
+  SetIntVector(INTB_RBF, priorint)  -&gt; Enable it if it was enabled before.
+  IF priorenable THEN custom.intena:=INTF_SETCLR OR INTF_RBF
+
+EXCEPT DO
+  -&gt; E-Note: these next two aren&#x27;t really necessary
+  IF rbfdata THEN Dispose(rbfdata)
+  IF rbfint THEN Dispose(rbfint)
+  IF signr&lt;&gt;-1 THEN FreeSignal(signr)
+  -&gt; Release serial hardware
+  IF bitsuser=NIL THEN freeMiscResource(MR_SERIALBITS)
+  IF portuser=NIL THEN freeMiscResource(MR_SERIALPORT)
+  -&gt; There is no &#x27;CloseResource()&#x27; function
+  SELECT exception
+  CASE ERR_BITS;   WriteF(&#x27;Serial control already allocated by \s\n&#x27;, bitsuser)
+  CASE ERR_ECODE;  WriteF(&#x27;Ran out of memory in eCodeIntHandler()\n&#x27;)
+  CASE ERR_PORT;   WriteF(&#x27;Serial hardware already allocated by \s\n&#x27;, portuser)
+  CASE ERR_SIG;    WriteF(&#x27;Can&#x27;&#x27;t allocate signal\n&#x27;)
+  CASE &quot;MEM&quot;;      WriteF(&#x27;Ran out of memory\n&#x27;)
+  ENDSELECT
+ENDPROC
+
+-&gt; Note - This simple handler just receives one buffer full of serial
+-&gt; input data, signals main, then ignores all subsequent serial data.
+
+-&gt; E-Note: we could use Assembly, but we&#x27;ll show how to use an E PROC
+-&gt; E-Note: you get rbfint.data as first arg, interrupt flags as second
+PROC rbfHandler(data:PTR TO rbfData, intflags)
+  DEF input
+  IF data.bufferCount&lt;BUFFERSIZE
+    input:=custom.serdatr
+    data.charBuffer[data.bufferCount]:=input AND $FF
+    data.flagBuffer[data.bufferCount]:=Shr(input, 8) AND $FF
+    data.bufferCount:=data.bufferCount+1
+    IF data.bufferCount=BUFFERSIZE THEN Signal(data.task, data.signal)
+  ENDIF
+  custom.intreq:=INTF_RBF
+ENDPROC
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

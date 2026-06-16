@@ -1,0 +1,157 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>diskfont.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-portable.html">PortablE</a> &rsaquo; diskfont.e</div><h1>File: <code>diskfont.e</code></h1><p class="meta">131 lines · project <a href="../examples/pkg-portable.html"><code>PortablE</code></a></p><p class="pathctx">PortablE/PortablE/PEmodules/target/CPP_AmigaOS4/diskfont/diskfont.e</p><p class="prose">$Id: <a href="../modules/diskfont.html">diskfont</a>.h,v 1.17 2005/11/10 15:31:54 hjfrieden Exp $</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/libraries.html">target/exec/libraries</a></li><li><a href="../modules/nodes.html">target/exec/nodes</a></li></ul></div><h2>Source</h2><pre class="code">/* $Id: diskfont.h,v 1.17 2005/11/10 15:31:54 hjfrieden Exp $ */
+OPT NATIVE
+MODULE &#x27;target/exec/nodes&#x27;, &#x27;target/exec/lists&#x27;, &#x27;target/graphics/text&#x27;, &#x27;target/diskfont/glyph&#x27;, &#x27;target/interfaces/bullet&#x27;
+MODULE &#x27;target/exec/libraries&#x27;, &#x27;target/utility/tagitem&#x27;, &#x27;target/exec/types&#x27;
+{#include &lt;diskfont/diskfont.h&gt;}
+NATIVE {DISKFONT_DISKFONT_H} CONST
+
+NATIVE {MAXFONTPATH} CONST MAXFONTPATH = 256 /* including null terminator */
+
+NATIVE {FontContents} OBJECT fc
+    {fc_FileName}	filename[MAXFONTPATH]	:ARRAY OF CHAR /*TEXT*/
+    {fc_YSize}	ysize	:UINT
+    {fc_Style}	style	:UBYTE
+    {fc_Flags}	flags	:UBYTE
+ENDOBJECT
+
+NATIVE {TFontContents} OBJECT tfc
+    {tfc_FileName}	filename[MAXFONTPATH-2]	:ARRAY OF CHAR /*TEXT*/
+    {tfc_TagCount}	tagcount	:UINT                /* including the TAG_DONE tag */
+    /*
+     * if tfc_TagCount is non-zero, tfc_FileName is overlayed with
+     * Text Tags starting at:  (struct TagItem *)
+     * &amp;tfc_FileName[MAXFONTPATH - (tfc_TagCount * sizeof(struct TagItem))]
+     */
+    {tfc_YSize}	ysize	:UINT
+    {tfc_Style}	style	:UBYTE
+    {tfc_Flags}	flags	:UBYTE
+ENDOBJECT
+
+
+NATIVE {FCH_ID}  CONST FCH_ID  = $0f00 /* FontContentsHeader, then FontContents */
+NATIVE {TFCH_ID} CONST TFCH_ID = $0f02 /* FontContentsHeader, then TFontContents */
+NATIVE {OFCH_ID} CONST OFCH_ID = $0f03 /* FontContentsHeader, then TFontContents,
+                          associated with outline font */
+
+NATIVE {FontContentsHeader} OBJECT fch
+    {fch_FileID}	fileid	:UINT     /* FCH_ID */
+    {fch_NumEntries}	numentries	:UINT /* the number of FontContents elements */
+
+    /* struct FontContents fch_FC[], or struct TFontContents fch_TFC[]; */
+ENDOBJECT
+
+
+NATIVE {DFH_ID}      CONST DFH_ID      = $0f80
+NATIVE {MAXFONTNAME} CONST MAXFONTNAME = 32     /* font name including &quot;.font\0&quot; */
+
+NATIVE {DiskFontHeader} OBJECT diskfontheader
+    /* the following 8 bytes are not actually considered a part of the */
+    /* DiskFontHeader, but immediately preceed it. The NextSegment is  */
+    /* supplied by the linker/loader, and the ReturnCode is the code   */
+    /* at the beginning of the font in case someone runs it...         */
+    /* Warning: you can find those bytes on disk but not in memory.    */
+    /*   ULONG dfh_NextSegment; \* actually a BPTR                     */
+    /*   ULONG dfh_ReturnCode;  \* MOVEQ #0,D0 : RTS                   */
+    /* here then is the official start of the DiskFontHeader...        */
+    {dfh_DF}	df	:ln                /* node to link disk fonts */
+    {dfh_FileID}	fileid	:UINT            /* DFH_ID */
+    {dfh_Revision}	revision	:UINT          /* the font revision */
+    {dfh_Segment}	segment	:VALUE           /* the segment address
+                                             * when loaded */
+    {dfh_Name}	name[MAXFONTNAME]	:ARRAY OF CHAR /*TEXT*/ /* stripped font name (null
+                                             * terminated) */
+    {dfh_TF}	tf	:textfont                /* loaded TextFont structure,
+                                      * dfh_TF.tf_Message.mn_Node.ln_Name
+                                      * points to the full font name */
+ENDOBJECT
+
+/* unfortunately, this needs to be explicitly typed      */
+/* used only if dfh_TF.tf_Style FSB_TAGGED bit is set    */
+/* moved to dfh_TF.tf_Extension-&gt;tfe_Tags during loading */
+NATIVE {dfh_TagList}  CONST
+
+NATIVE {AFB_MEMORY}   CONST AFB_MEMORY   = 0      /* dont filter out memory fonts */
+NATIVE {AFF_MEMORY}   CONST AFF_MEMORY   = $0001
+NATIVE {AFB_DISK}     CONST AFB_DISK     = 1      /* dont filter out disk fonts */
+NATIVE {AFF_DISK}     CONST AFF_DISK     = $0002
+NATIVE {AFB_SCALED}   CONST AFB_SCALED   = 2      /* dont filter out scaled fonts */
+NATIVE {AFF_SCALED}   CONST AFF_SCALED   = $0004
+NATIVE {AFB_BITMAP}   CONST AFB_BITMAP   = 3      /* filter out .otag files */
+NATIVE {AFF_BITMAP}   CONST AFF_BITMAP   = $0008
+NATIVE {AFB_OTAG}     CONST AFB_OTAG     = 4      /* show .otag files only, */
+NATIVE {AFF_OTAG}     CONST AFF_OTAG     = $0010 /* implemented since V50 */
+NATIVE {AFB_CHARSET}  CONST AFB_CHARSET  = 5      /* show fonts in all charsets, */
+NATIVE {AFF_CHARSET}  CONST AFF_CHARSET  = $0020 /* implemented since V50 */
+NATIVE {AFB_TYPE}     CONST AFB_TYPE     = 6      /* return diskfont type in [t]af_Type: */
+                            /* AFF_DISK|AFF_BITMAP for bitmap fonts, */
+                            /* AFF_DISK|AFF_OTAG for .otag fonts, */
+                            /* AFF_DISK|AFF_OTAG|AFF_SCALED for */
+                            /* scalable .otag fonts. */
+NATIVE {AFF_TYPE}     CONST AFF_TYPE     = $0040 /* implemented since V50 */
+
+NATIVE {AFB_TAGGED}   CONST AFB_TAGGED   = 16     /* return TAvailFonts with taglist */
+NATIVE {AFF_TAGGED}   CONST AFF_TAGGED   = $10000
+
+NATIVE {AvailFonts} OBJECT af
+    {af_Type}	type	:UINT /* MEMORY, DISK, or SCALED */
+    {af_Attr}	attr	:textattr /* text attributes for font */
+ENDOBJECT
+
+NATIVE {TAvailFonts} OBJECT taf
+    {taf_Type}	type	:UINT /* MEMORY, DISK, or SCALED */
+    {taf_Attr}	attr	:ttextattr /* text attributes for font */
+ENDOBJECT
+
+NATIVE {AvailFontsHeader} OBJECT afh
+    {afh_NumEntries}	numentries	:UINT /* number of AvailFonts elements */
+    /* struct AvailFonts afh_AF[], or struct TAvailFonts afh_TAF[]; */
+ENDOBJECT
+
+/* structure used by EOpenEngine() ESetInfo() etc (V50) */
+NATIVE {EGlyphEngine} OBJECT eglyphengine
+    {ege_IBullet}	ibullet	:PTR TO bulletiface    /* NULL for 68K font engines */
+    {ege_BulletBase}	bulletbase	:PTR TO lib
+    {ege_GlyphEngine}	glyphengine	:PTR TO glyphengine
+ENDOBJECT
+
+/* flags for OpenOutlineFont() (V50) */
+NATIVE {OFB_OPEN} CONST OFB_OPEN = 0
+NATIVE {OFF_OPEN} CONST OFF_OPEN = $00000001
+
+/* structure returned by OpenOutlineFont() (V50) */
+NATIVE {OutlineFont} OBJECT outlinefont
+    {olf_OTagPath}	otagpath	:ARRAY OF CHAR /*STRPTR*/    /* full path &amp; name of the .otag file */
+    {olf_OTagList}	otaglist	:ARRAY OF tagitem    /* relocated .otag file in memory     */
+    {olf_EngineName}	enginename	:ARRAY OF CHAR /*STRPTR*/  /* OT_Engine name                     */
+    {olf_LibraryName}	libraryname	:ARRAY OF CHAR /*STRPTR*/ /* OT_Engine name + &quot;.library&quot;        */
+    {olf_EEngine}	eengine	:eglyphengine     /* All NULL if OFF_OPEN not specified */
+    {olf_Reserved}	reserved	:APTR    /* for future expansion               */
+    {olf_UserData}	userdata	:APTR    /* for private use                    */
+ENDOBJECT
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

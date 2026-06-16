@@ -1,0 +1,491 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>cosmicRGB.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-ignite-unf-mos-r2.html">ignite-unf-mos-r2</a> &rsaquo; cosmicRGB.e</div><h1>File: <code>cosmicRGB.e</code></h1><p class="meta">465 lines · project <a href="../examples/pkg-ignite-unf-mos-r2.html"><code>ignite-unf-mos-r2</code></a></p><p class="pathctx">ignite-unf-mos-r2/ignite-unf-mos/source/ignite/stuff/cosmicRGB.e</p><p class="prose">** cosmic_32.e - Generates cosmic flame fractals :-) ** This version makes use of and requires 24 bit <a href="../modules/graphics.html">graphics</a>. ** ** Based on cosmic.e, this version uses more colours, more detail ** and is alot slower :) Also removed accesses to customchips. ** Copyright © 2004 Leif Salomonsson. ** ** Copyright © </p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/modeid.html">graphics/modeid</a></li><li><a href="../modules/intuitionbase.html">intuition/intuitionbase</a></li><li><a href="../modules/tagitem.html">utility/tagitem</a></li></ul></div><h2>Source</h2><pre class="code">/*
+**    cosmic_32.e - Generates cosmic flame fractals :-)
+**    This version makes use of and requires 24 bit graphics.
+**
+**    Based on cosmic.e, this version uses more colours, more detail
+**    and is alot slower :) Also removed accesses to customchips.
+**    Copyright © 2004 Leif Salomonsson.
+**
+**    Copyright © 1996 by Chris Sumner
+**
+**
+**    Cosmic flame fractal code derived from FracBlank source code
+**    Copyright © 1991-1992 by Olaf `Olsen&#x27; Barthel
+**
+**    Cosmic flame fractal code derived from xlock source code
+**    Copyright © 1988-1991 by Patrick J. Naughton.
+**
+**   Permission to use, copy, modify, and distribute this software and its
+**   documentation for any purpose and without fee is hereby granted,
+**   provided that the above copyright notice appear in all copies and that
+**   both that copyright notice and this permission notice appear in
+**   supporting documentation.
+*/
+
+
+
+/* MorphOS version by LS 2004 */
+
+OPT POWERPC, STACK=5000000
+
+OPT PREPROCESS
+
+MODULE &#x27;*macros&#x27;
+
+MODULE &#x27;graphics/modeid&#x27;
+MODULE &#x27;intuition/intuitionbase&#x27;,&#x27;intuition/intuition&#x27;,&#x27;intuition/screens&#x27;
+MODULE &#x27;utility/tagitem&#x27;
+
+MODULE &#x27;morphos/cybergfx&#x27;
+
+RAISE &quot;^C&quot; IF CtrlC()=TRUE
+RAISE &quot;STCK&quot; IF FreeStack() &lt; 8000
+
+CONST MAXFLAMELEVEL   = 250
+CONST MAXTOTALPOINTS  = 300000
+CONST FLAME_SIZE      = 500
+CONST WIDTH = 800, HEIGHT = 600
+CONST HASHMASK = $FFFF
+CONST HASHSIZE = HASHMASK+1
+
+
+#define HASHXY(x,y) (x + y AND HASHMASK)
+
+OBJECT point
+   x:INT, y:INT
+   r:LONG, g:LONG, b:LONG
+   hnext:PTR TO point
+ENDOBJECT
+
+DEF flame:PTR TO DOUBLE
+DEF numpoints, count=0
+
+DEF pointMem:PTR TO point
+DEF pointHash:PTR TO LONG
+
+DEF win:PTR TO window, width, height, centx, centy
+DEF rp
+
+DEF maxRCount, maxGCount, maxBCount
+DEF totRCount, totGCount, totBCount
+
+
+PROC main() HANDLE
+  openiface()
+  LOOP
+    cosmic()
+    IF LeftMouse(win) THEN Raise(0)
+  ENDLOOP
+EXCEPT
+  closeiface()
+  ExceptionReport(&#x27;main()&#x27;)
+ENDPROC
+
+PROC cosmic()
+   DEF ib:PTR TO intuitionbase
+   DEF x,q, str[50]:STRING
+
+  ib:=intuitionbase
+  q := Mul(ib.micros,ib.seconds) -&gt;- count
+  Rnd(q OR $80000000)
+  q := Rnd(1000)
+
+
+  FOR x := 0 TO 10 DO Rnd(32768)
+
+  FOR x := 0 TO 5 DO flame[x] := Rnd(32768)!/16384.0-1.0*0.9
+  /*
+  FOR x := 6 TO 60 STEP 6
+     flame[x+0] := !-flame[x-6]
+     flame[x+1] := !-flame[x-6+1]
+     flame[x+2] := Rnd(32768)!/16384.0-1.0*0.9
+     flame[x+3] := !-flame[x-6+3]
+     flame[x+4] := !-flame[x-6+4]
+     flame[x+5] := Rnd(32768)!/16384.0-1.0*0.9
+  ENDFOR
+  */
+  FOR x := 6 TO 60 STEP 6
+     flame[x+0] := Rnd(32768)!/16384.0-1.0*0.9
+     flame[x+1] := Rnd(32768)!/16384.0-1.0*0.9
+     flame[x+2] := Rnd(32768)!/16384.0-1.0*0.9
+     flame[x+3] := Rnd(32768)!/16384.0-1.0*0.9
+     flame[x+4] := Rnd(32768)!/16384.0-1.0*0.9
+     flame[x+5] := Rnd(32768)!/16384.0-1.0*0.9
+  ENDFOR
+
+
+
+  numpoints:=0
+  maxRCount:=0
+  maxGCount:=0
+  maxBCount:=0
+  totRCount:=0
+  totGCount:=0
+  totBCount:=0
+
+  FOR x := 0 TO HASHSIZE-1 DO pointHash[x] := NIL
+
+  recurseRGB(0.0,0.0,0.0,0.0,0,0)
+  WriteF(&#x27;MaxCount=\d,\d,\d\n&#x27;, maxRCount, maxGCount, maxBCount)
+  renderRGB()
+
+  IF count++ = 0
+      count := 0
+      Delay(120)
+      clearwindow(win)
+
+   ENDIF
+
+ENDPROC
+
+PROC    clearwindow(window:PTR TO window)
+
+
+    FillPixelArray(window.rport,  window.borderleft,
+                            window.bordertop,
+                            window.width-window.borderright-1,
+                            window.height-window.borderbottom-1, $00000000)
+
+
+ENDPROC
+
+PROC findPoint(point:REG PTR TO point, x:REG,y:REG)
+   WHILE point
+      IF point.x = x
+         IF point.y = y
+            RETURN point
+         ENDIF
+      ENDIF
+      point := point.hnext
+   ENDWHILE
+ENDPROC NIL
+
+PROC recurseRGB_(x:DOUBLE,y:DOUBLE,ox:DOUBLE, oy:DOUBLE, lev,col)
+   DEF f:PTR TO DOUBLE, nx:DOUBLE, ny:DOUBLE
+   DEF i, point:PTR TO point, oldpoint:PTR TO point
+
+
+  CtrlC()
+
+  FreeStack()
+
+
+   IF numpoints &gt; MAXTOTALPOINTS THEN RETURN FALSE
+
+   IF lev &gt;= MAXFLAMELEVEL
+
+      point := pointMem[numpoints++]
+
+      IF ! x &gt; -1.0
+      IF ! x &lt; 1.0
+      IF ! y &gt; -1.0
+      IF ! y &lt; 1.0
+
+         point.x := ! x * (width/2!) ! + centx
+         point.y := ! y * (height/2!) ! + centy
+
+         i := HASHXY(point.x, point.y)
+         oldpoint := findPoint(pointHash[i], point.x, point.y)
+         IF oldpoint
+            IF col AND %001
+               oldpoint.r++
+               IF ! Fabs(!x-ox) &gt; 0.2 THEN oldpoint.b++
+               IF ! Fabs(!y-oy) &gt; 0.2 THEN oldpoint.g++
+            ENDIF
+            IF col AND %010
+               oldpoint.g++
+               IF ! Fabs(!x-ox) &gt; 0.2 THEN oldpoint.r++
+               IF ! Fabs(!y-oy) &gt; 0.2 THEN oldpoint.b++
+            ENDIF
+            IF col AND %100
+               oldpoint.b++
+               IF ! Fabs(!x-ox) &gt; 0.2 THEN oldpoint.g++
+               IF ! Fabs(!y-oy) &gt; 0.2 THEN oldpoint.r++
+            ENDIF
+            maxRCount := Max(maxRCount, oldpoint.r)
+            maxGCount := Max(maxGCount, oldpoint.g)
+            maxBCount := Max(maxBCount, oldpoint.b)
+         ELSE
+            point.hnext := pointHash[i]
+            pointHash[i] := point
+            IF col AND %001
+               point.r++
+               -&gt;IF ! Fabs(!x-ox) &gt; 0.2 THEN oldpoint.b++
+               -&gt;IF ! Fabs(!y-oy) &gt; 0.2 THEN oldpoint.g++
+            ENDIF
+            IF col AND %010
+               point.g++
+               -&gt;IF ! Fabs(!x-ox) &gt; 0.2 THEN oldpoint.r++
+               -&gt;IF ! Fabs(!y-oy) &gt; 0.2 THEN oldpoint.b++
+            ENDIF
+            IF col AND %100
+               point.b++
+               -&gt;IF ! Fabs(!x-ox) &gt; 0.2 THEN oldpoint.g++
+               -&gt;IF ! Fabs(!y-oy) &gt; 0.2 THEN oldpoint.r++
+            ENDIF
+         ENDIF
+      ENDIF ; ENDIF ; ENDIF ; ENDIF
+
+   ELSE
+
+     lev++
+
+     f := flame
+
+
+
+      nx := !(!x*f[]++)+(!y*f[]++)+f[]++
+      ny := !(!x*f[]++)+(!y*f[]++)+f[]++
+
+      IF recurseRGB(nx,ny,x,y,lev,%100)=FALSE THEN RETURN FALSE
+
+      nx := !(!x*f[]++)+(!y*f[]++)+f[]++
+      ny := !(!x*f[]++)+(!y*f[]++)+f[]++
+
+      IF recurseRGB(nx,ny,x,y,lev,%010)=FALSE THEN RETURN FALSE
+
+      nx := !(!x*f[]++)+(!y*f[]++)+f[]++
+      ny := !(!x*f[]++)+(!y*f[]++)+f[]++
+
+      IF recurseRGB(nx,ny,x,y,lev,%001)=FALSE THEN RETURN FALSE
+
+      -&gt;RETURN TRUE
+
+      nx := !(!x*f[]++)+(!y*f[]++)+f[]++
+      ny := !(!x*f[]++)+(!y*f[]++)+f[]++
+
+      IF recurseRGB(nx,ny,x,y,lev,%111)=FALSE THEN RETURN FALSE
+
+      nx := !(!x*f[]++)+(!y*f[]++)+f[]++
+      ny := !(!x*f[]++)+(!y*f[]++)+f[]++
+
+      IF recurseRGB(nx,ny,x,y,lev,%011)=FALSE THEN RETURN FALSE
+
+      nx := !(!x*f[]++)+(!y*f[]++)+f[]++
+      ny := !(!x*f[]++)+(!y*f[]++)+f[]++
+
+      IF recurseRGB(nx,ny,x,y,lev,%110)=FALSE THEN RETURN FALSE
+
+      nx := !(!x*f[]++)+(!y*f[]++)+f[]++
+      ny := !(!x*f[]++)+(!y*f[]++)+f[]++
+
+      IF recurseRGB(nx,ny,x,y,lev,%101)=FALSE THEN RETURN FALSE
+
+
+
+
+  ENDIF
+ENDPROC TRUE
+
+PROC recurseRGB(x:DOUBLE,y:DOUBLE,ox:DOUBLE, oy:DOUBLE, lev,col)
+   DEF f:PTR TO DOUBLE, nx:DOUBLE, ny:DOUBLE
+   DEF i, point:PTR TO point, oldpoint:PTR TO point
+
+
+  CtrlC()
+
+  FreeStack()
+
+
+   IF numpoints &gt; MAXTOTALPOINTS THEN RETURN FALSE
+
+   IF lev &gt;= MAXFLAMELEVEL
+
+      point := pointMem[numpoints++]
+
+      IF ! x &gt; -1.0
+      IF ! x &lt; 1.0
+      IF ! y &gt; -1.0
+      IF ! y &lt; 1.0
+
+         point.x := ! x * (width/2!) ! + centx
+         point.y := ! y * (height/2!) ! + centy
+
+         i := HASHXY(point.x, point.y)
+         oldpoint := findPoint(pointHash[i], point.x, point.y)
+         IF oldpoint
+            IF col AND %001
+               oldpoint.r++
+               -&gt;IF ! Fabs(!x-ox) &gt; 0.2 THEN oldpoint.b++
+               -&gt;IF ! Fabs(!y-oy) &gt; 0.2 THEN oldpoint.g++
+            ENDIF
+            IF col AND %010
+               oldpoint.g++
+               -&gt;IF ! Fabs(!x-ox) &gt; 0.2 THEN oldpoint.r++
+               -&gt;IF ! Fabs(!y-oy) &gt; 0.2 THEN oldpoint.b++
+            ENDIF
+            IF col AND %100
+               oldpoint.b++
+               -&gt;IF ! Fabs(!x-ox) &gt; 0.2 THEN oldpoint.g++
+               -&gt;IF ! Fabs(!y-oy) &gt; 0.2 THEN oldpoint.r++
+            ENDIF
+            IF col AND %1000
+               oldpoint.r++
+               oldpoint.g++
+               oldpoint.b++
+            ENDIF
+            maxRCount := Max(maxRCount, oldpoint.r)
+            maxGCount := Max(maxGCount, oldpoint.g)
+            maxBCount := Max(maxBCount, oldpoint.b)
+         ELSE
+            point.hnext := pointHash[i]
+            pointHash[i] := point
+            IF col AND %001
+               point.r++
+               -&gt;IF ! Fabs(!x-ox) &gt; 0.2 THEN point.b++
+               -&gt;IF ! Fabs(!y-oy) &gt; 0.2 THEN point.g++
+            ENDIF
+            IF col AND %010
+               point.g++
+               -&gt;IF ! Fabs(!x-ox) &gt; 0.2 THEN point.r++
+               -&gt;IF ! Fabs(!y-oy) &gt; 0.2 THEN point.b++
+            ENDIF
+            IF col AND %100
+               point.b++
+               -&gt;IF ! Fabs(!x-ox) &gt; 0.2 THEN point.g++
+               -&gt;IF ! Fabs(!y-oy) &gt; 0.2 THEN point.r++
+            ENDIF
+         ENDIF
+      ENDIF ; ENDIF ; ENDIF ; ENDIF
+
+   ELSE
+
+     lev++
+
+     f := flame
+
+
+
+      nx := !(!x*f[]++)+(!y*f[]++)+f[]++
+      ny := !(!x*f[]++)+(!y*f[]++)+f[]++
+
+      IF recurseRGB(nx,ny,x,y,lev,%100)=FALSE THEN RETURN FALSE
+
+      nx := !(!x*f[]++)+(!y*f[]++)+f[]++
+      ny := !(!x*f[]++)+(!y*f[]++)+f[]++
+
+      IF recurseRGB(nx,ny,x,y,lev,%010)=FALSE THEN RETURN FALSE
+
+      nx := !(!x*f[]++)+(!y*f[]++)+f[]++
+      ny := !(!x*f[]++)+(!y*f[]++)+f[]++
+
+      IF recurseRGB(nx,ny,x,y,lev,%001)=FALSE THEN RETURN FALSE
+
+      nx := !(!x*f[]++)+(!y*f[]++)+f[]++
+      ny := !(!x*f[]++)+(!y*f[]++)+f[]++
+
+      IF recurseRGB(nx,ny,x,y,lev,%1000)=FALSE THEN RETURN FALSE
+
+
+  ENDIF
+ENDPROC TRUE
+
+PROC renderRGB()
+   DEF point:PTR TO point
+   DEF r, g, b, a
+   DEF rx:DOUBLE, ry:DOUBLE, rz:DOUBLE
+   DEF gx:DOUBLE, gy:DOUBLE, gz:DOUBLE
+   DEF bx:DOUBLE, by:DOUBLE, bz:DOUBLE
+
+   rx := !1.0 / Flog(maxRCount!)
+   ry := maxRCount!/Flog(maxRCount!)
+   rz := maxRCount!/(maxRCount! - ry)
+
+   gx := !1.0 / Flog(maxGCount!)
+   gy := maxGCount!/Flog(maxGCount!)
+   gz := maxGCount!/(maxGCount! - gy)
+
+   bx := !1.0 / Flog(maxBCount!)
+   by := maxBCount!/Flog(maxBCount!)
+   bz := maxBCount!/(maxBCount! - by)
+
+
+   FOR a := 0 TO (HASHSIZE-1)
+      point := pointHash[a]
+      WHILE point
+
+         r := IF point.r THEN ! Flog(point.r!) * rx * 350.0 - ry * rz ! ELSE NIL
+         g := IF point.g THEN ! Flog(point.g!) * gx * 350.0 - gy * gz ! ELSE NIL
+         b := IF point.b THEN ! Flog(point.b!) * bx * 350.0 - by * bz ! ELSE NIL
+
+         r := Max(Min(r, 255),0)
+         g := Max(Min(g, 255),0)
+         b := Max(Min(b, 255),0)
+
+         WriteRGBPixel(rp, point.x, point.y, Long([0,r,g,b]:CHAR))
+
+         point := point.hnext
+
+      ENDWHILE
+
+   ENDFOR
+
+ENDPROC
+
+-&gt;----------------------------------------------------------------------------&lt;-
+
+PROC openiface()
+   DEF tags:PTR TO LONG, x
+   DEF ib:PTR TO intuitionbase
+
+   cybergfxbase := OpenLibrary(&#x27;cybergraphics.library&#x27;,41)
+   IF cybergfxbase = NIL THEN Raise(&quot;LIB&quot;)
+
+  -&gt; lets hope workbench is atleast 24bit !
+  win:=OpenW(10,10,800,600,NIL,$800,&#x27;cosmicRGB&#x27;,NIL,NIL,NIL,NIL)
+  IF win=NIL THEN Raise(&quot;wndw&quot;)
+
+  centx := win.borderleft + (WIDTH/2)
+  centy := win.bordertop + (HEIGHT/2)
+  width := win.width-win.borderright-1
+  height := win.height-win.borderbottom-1
+
+  rp:=win.rport
+
+  NEW flame[FLAME_SIZE]
+  NEW pointMem[MAXTOTALPOINTS+1]
+  NEW pointHash[HASHSIZE+1]
+
+  SetStdRast(rp)
+
+  clearwindow(win)
+
+ENDPROC
+
+PROC closeiface()
+  IF win THEN CloseW(win)
+  IF cybergfxbase THEN CloseLibrary(cybergfxbase)
+ENDPROC
+
+
+
+
+
+
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

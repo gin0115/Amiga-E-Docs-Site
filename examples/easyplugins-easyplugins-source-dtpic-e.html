@@ -1,0 +1,195 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>dtpic.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-easyplugins.html">EasyPLUGINs</a> &rsaquo; dtpic.e</div><h1>File: <code>dtpic.e</code></h1><p class="meta">169 lines · project <a href="../examples/pkg-easyplugins.html"><code>EasyPLUGINs</code></a></p><p class="pathctx">EasyPLUGINs/EasyPLUGINs/source/dtpic.e</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/workbench.html">workbench/workbench</a></li></ul></div><h2>Source</h2><pre class="code">;/*
+
+    ec dtpic
+    flushcache
+    ec dtpic_test
+    dtpic_test
+    quit
+
+    $VER: DTPic Plugin V1.00
+
+    Synopsis: I had the idea of writing this quickly after looking at the bitmap_plugin.
+                 Eeek! Not a user friendly way of sticking a picture onto a window.
+    
+                 Do you want to stick a nice picture in your EasyGui&#x27;s? Don&#x27;t want
+                 too much bother? Need automatic colour remapping? Here&#x27;s what you
+                 are looking for then.
+
+    Written by: Will Harwood (147800.97@swansea.ac.uk)
+
+
+    Notes: Apologies for the rather messy implementation, but for colour remapping
+             DoDTMethod needs a pointer to a window which does not exist...
+    
+             This could easily be extended to allow the user to set the screen palette
+             as that of the picture (this code is taken for some more comprehensive stuff
+             I wrote for a game) but since EasyGUI is designed primarily for Workbench GUI&#x27;s,
+             this seems rather pointless.
+    
+
+    Please, *please* e-mail me if you find any errors or obvious omissions in the code!
+    (Not spelling though.)
+
+*/
+
+OPT OSVERSION=39
+OPT MODULE
+OPT EXPORT
+
+MODULE  &#x27;workbench/workbench&#x27;,
+        &#x27;exec/ports&#x27;,
+          &#x27;datatypes&#x27;, 
+        &#x27;intuition/screens&#x27;, &#x27;intuition/intuition&#x27;,
+        &#x27;tools/easygui&#x27;, &#x27;tools/Exceptions&#x27;,
+          &#x27;graphics/gfx&#x27;, &#x27;graphics/scale&#x27;,
+          &#x27;datatypes/datatypes&#x27;, &#x27;datatypes/datatypesclass&#x27;, &#x27;datatypes/pictureclass&#x27;,
+          &#x27;utility&#x27;, &#x27;utility/tagitem&#x27;
+
+
+ENUM PLA_DTPic_Scale=$82010000, PLA_DTPic_Filename
+
+
+OBJECT dtpic_plugin OF plugin
+    PRIVATE
+    object                          /* the datatype object */
+    bitmap:PTR TO bitmap            /* a pointer to its bitmap */
+    bmh:PTR TO bitmapheader     /* a pointer to the bitmapheader */
+    filename:PTR TO CHAR
+    scale
+ENDOBJECT
+
+PROC init(tags=NIL:PTR TO tagitem) OF dtpic_plugin
+    DEF t_bitmap=NIL:PTR TO bitmap, t_bmh=NIL:PTR TO bitmapheader
+
+    /* Open our own libraries */
+    IF NIL=(datatypesbase:=OpenLibrary(&#x27;datatypes.library&#x27;, 39)) THEN Raise(&quot;dlib&quot;)
+    IF NIL=(utilitybase:=OpenLibrary(&#x27;utility.library&#x27;, 39)) THEN Raise(&quot;util&quot;) 
+
+    self.filename:=GetTagData(PLA_DTPic_Filename, &#x27;&#x27;, tags)
+   self.scale:=GetTagData(PLA_DTPic_Scale, FALSE, tags)
+
+    /*- Here we come to a circular problem: To use colour remapping I need a pointer to
+        the window, but before the window can be opened EasyGUI needs to get the minimum
+        dims of the picture. Erk. So I have to open the picture twice, first to get the
+        dims, and secondly in render to get the actual picture. -*/
+
+    /* Get a new datatypes object from disk, and quit if something went wrong */
+    self.object:=NewDTObjectA(self.filename, [DTA_SOURCETYPE, DTST_FILE,
+                                             DTA_GROUPID,    GID_PICTURE,
+                                             PDTA_REMAP,     TRUE,
+                                             0])
+
+    IF self.object=0 THEN Raise(&quot;FILE&quot;)
+    
+    IF DoDTMethodA(self.object, 0, 0, [DTM_PROCLAYOUT,FALSE,TRUE])=NIL
+        DisposeDTObject(self.object)
+        self.object:=NIL
+        Raise(&quot;dt&quot;)
+    ENDIF
+
+    IF GetDTAttrsA(self.object, [PDTA_BITMAPHEADER,{t_bmh}, 0])&lt;&gt;1 THEN Raise(&quot;dt&quot;)
+
+    self.bmh:=t_bmh
+    self.bitmap:=0
+
+ENDPROC
+
+PROC end() OF dtpic_plugin
+    IF self.object THEN DisposeDTObject(self.object)
+    IF datatypesbase THEN CloseLibrary(datatypesbase)
+    IF utilitybase THEN CloseLibrary(utilitybase)
+ENDPROC
+
+PROC will_resize() OF dtpic_plugin IS self.scale
+
+PROC min_size(ta, fh) OF dtpic_plugin IS self.bmh.width, self.bmh.height
+
+PROC render(ta, x,y, xs, ys, win:PTR TO window) OF dtpic_plugin
+    DEF t_bitmap=NIL:PTR TO bitmap, t_bmh=NIL:PTR TO bitmapheader, tbm=NIL:PTR TO bitmap
+
+    /* A rather messy solution to an intractable problem (unless we do something sneaky
+        in dtpic_test, but I don&#x27;t want to have to alter the source). If self.bitmap=NIL
+        then this is the first time this procedure hase been called, so we have to close
+        the object, and then open it up again. */
+    IF (self.bitmap=NIL) AND (self.object)
+        DisposeDTObject(self.object)
+        self.object:=NewDTObjectA(self.filename, [DTA_SOURCETYPE, DTST_FILE,
+                                                     DTA_GROUPID,    GID_PICTURE,
+                                                     PDTA_REMAP,     TRUE,
+                                             0])
+
+        IF self.object=0 THEN Raise(&quot;FILE&quot;)
+        
+        IF DoDTMethodA(self.object, win, 0, [DTM_PROCLAYOUT,FALSE,TRUE])=NIL
+            DisposeDTObject(self.object)
+            self.object:=NIL
+            Raise(&quot;dt&quot;)
+        ENDIF
+    
+        /* GetDTAttrsA returns the number of items of information about the object it was able
+            to get, so if it returns any less than two here there&#x27;s been a problem */
+        IF GetDTAttrsA(self.object,
+                                [PDTA_BITMAP,      {t_bitmap},
+                                 PDTA_BITMAPHEADER,{t_bmh},
+                                 0])&lt;&gt;2 THEN Raise(&quot;dt&quot;)
+    
+        self.bitmap:=t_bitmap
+        self.bmh:=t_bmh
+    ENDIF
+    
+    IF self.object
+        IF self.scale
+            /* Use bitmap scale into a temporary bitmap */
+            IF NIL=(tbm:=AllocBitMap(win.width, win.height, self.bmh.depth, 0, 0)) THEN Raise(&quot;bm&quot;)
+            BitMapScale([0, 0, self.bmh.width, self.bmh.height, self.bmh.width, self.bmh.height, 
+                             0, 0, xs, ys, xs, ys,
+                             self.bitmap, tbm, 0, 0, 0, 0, 0]:bitscaleargs)
+            BltBitMapRastPort(tbm, 0, 0, win.rport, x, y, xs, ys, $c0)
+            FreeBitMap(tbm)
+        ELSE
+            /* No scaling, so just blit it */
+            BltBitMapRastPort(self.bitmap, 0, 0, win.rport, x, y, xs, ys, $c0)
+        ENDIF
+    ENDIF
+ENDPROC
+
+PROC set(attr, value) OF dtpic_plugin
+    SELECT attr
+    CASE PLA_DTPic_Scale
+        self.scale:=value
+    ENDSELECT
+ENDPROC
+
+PROC get(attr) OF dtpic_plugin
+    SELECT attr
+    CASE PLA_DTPic_Scale
+        RETURN self.scale, TRUE
+    ENDSELECT
+ENDPROC
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

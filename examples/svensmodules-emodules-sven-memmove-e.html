@@ -1,0 +1,161 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>memmove.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-svensmodules.html">SvensModules</a> &rsaquo; memmove.e</div><h1>File: <code>memmove.e</code></h1><p class="meta">135 lines · project <a href="../examples/pkg-svensmodules.html"><code>SvensModules</code></a></p><p class="pathctx">SvensModules/emodules/sven/memmove.e</p><p class="prose">Copies <a href="../modules/memory.html">memory</a> blocks. They may overlap (forwards and backwards). ** returns the destination.</p><h2>Source</h2><pre class="code">/* Copies memory blocks. They may overlap (forwards and backwards).
+** returns the destination.
+*/
+
+OPT MODULE
+
+/*EXPORT PROC memmove(dest:PTR TO CHAR,src:PTR TO CHAR,size)
+DEF dummy
+
+  dummy:=dest
+  IF src&gt;dest
+    WHILE size--&gt;=0 DO dest[]++:=src[]++
+  ELSEIF src&lt;dest
+    src:=src+size
+    dest:=dest+size
+    WHILE size--&gt;=0 DO dest[]--:=src[]--
+  ENDIF
+
+ENDPROC dummy
+*/
+
+/*
+EXPORT PROC memmove(dest:PTR TO CHAR,src:PTR TO CHAR,size)
+
+  MOVE.W  size.W,D1
+  MOVE.W  D1,D2
+  SUBQ.W  #1,D1
+  BMI.S   memmove_ende
+
+  MOVEA.L dest,A1
+  MOVEA.L src,A0
+  MOVE.L  A1,D0
+  SUB.L   A0,D0
+  BMI.S   memmove_loop2
+
+  ADDA.L  D2,A0
+  ADDA.L  D2,A1
+memmove_loop1:
+  MOVE.B  -(A0),-(A1)
+  DBRA.S  D1,memmove_loop1
+  BRA.S   memmove_ende
+
+memmove_loop2:
+  MOVE.B  (A0)+,(A1)+
+  DBRA.S  D1,memmove_loop2
+
+memmove_ende:
+ENDPROC dest
+*/
+
+/* does all the fancy stuff like LONG-copies etc.
+**
+** Taken from the sources of an C-compiler. Don&#x27;t remember which
+** one it was.
+*/
+EXPORT PROC memmove(dest:PTR TO CHAR,src:PTR TO CHAR,size)
+
+       MOVEA.L src,A1
+       MOVEA.L dest,A0
+       MOVE.L  size,D0
+       BLE.S   memmove_ret
+       CMPA.L  A0,A1
+       BHI.S   memmove_forward
+-&gt; Rückwärts kopieren:
+       ADD.L   D0,A0
+       ADD.L   D0,A1
+       CMPI.L  #8,D0           -&gt; weniger als 8 Bytes?
+       BLT.S   memmove_loop1
+       MOVE.L  A0,D1
+       LSR.L   #1,D1           -&gt; a0 ungerade?
+       BCC.S   memmove_a0even1
+       MOVE.B  -(A1),-(A0)     -&gt; dann gerade machen!
+       SUBQ.L  #1,D0
+
+memmove_a0even1:
+       MOVE.L  A1,D1
+       LSR.L   #1,D1           -&gt; a1 ungerade?
+       BCS.S   memmove_loop1   -&gt; dann hilft nix mehr
+-&gt; Langwortweise kopieren:
+       SUBQ.L  #4,D0
+       BLT.S   memmove_nolw1
+
+memmove_lw1:
+       MOVE.L  -(A1),-(A0)
+       SUBQ.L  #4,D0
+       BHI.S   memmove_lw1
+
+memmove_nolw1:
+       ADDQ.L  #4,D0
+       BEQ.S   memmove_ret
+
+memmove_loop1:
+       MOVE.B  -(A1),-(A0)
+       SUBQ.L  #1,D0
+       BNE.S   memmove_loop1
+       BRA.S   memmove_ret
+
+memmove_forward:
+-&gt; Vorwärts verschieben
+       CMP.L   #8,D0           -&gt; weniger als 8 Bytes?
+       BLT.S   memmove_loop2
+       MOVE.L  A0,D1
+       LSR.L   #1,D1           -&gt; a0 ungerade?
+       BCC.S   memmove_a0even2
+       MOVE.B  (A1)+,(A0)+     -&gt; dann gerade machen!
+       SUBQ.L  #1,D0
+
+memmove_a0even2:
+       MOVE.L  A1,D1
+       LSR.L   #1,D1           -&gt; a1 ungerade?
+       BCS.S   memmove_loop2   -&gt; dann hilft nix mehr
+-&gt; Langwortweise kopieren:
+       SUBQ.L  #4,D0
+       BLT.S   memmove_nolw2
+
+memmove_lw2:
+       MOVE.L  (A1)+,(A0)+
+       SUBQ.L  #4,D0
+       BHI.S   memmove_lw2
+
+memmove_nolw2:
+       ADDQ.L  #4,D0
+       BEQ.S   memmove_ret
+
+memmove_loop2:
+-&gt; Byteweise kopieren:
+       MOVE.B  (A1)+,(A0)+
+       SUBQ.L  #1,D0
+       BNE.S   memmove_loop2
+
+memmove_ret:
+
+ENDPROC dest
+
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

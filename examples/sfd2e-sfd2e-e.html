@@ -1,0 +1,213 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>sfd2e.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-sfd2e.html">sfd2e</a> &rsaquo; sfd2e.e</div><h1>File: <code>sfd2e.e</code></h1><p class="meta">187 lines · project <a href="../examples/pkg-sfd2e.html"><code>sfd2e</code></a></p><p class="pathctx">sfd2e/sfd2e.e</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/scanners.html">smartlib/scanners</a></li><li><a href="../modules/utils.html">smartlib/utils</a></li></ul></div><h2>Source</h2><pre class="code">
+MODULE &#x27;smartlib/utils&#x27;
+MODULE &#x27;smartlib/scanners&#x27;
+
+OBJECT sfd_parser OF scan_handle
+ENDOBJECT
+
+DEF case
+DEF basename
+DEF offset
+DEF version
+
+DEF result
+DEF formals[16]:LIST
+
+PROC force_definition() OF sfd_parser
+  LOOP
+    IF self.is_char_raw(&quot;=&quot;)
+      self.force_char(&quot;=&quot;)
+      IF self.is_word(&#x27;base&#x27;)
+        IF self.is_char_raw(&quot;_&quot;) THEN self.force_raw()
+        self.force_name()
+        self.force_case()
+        basename:=str_dup(self.item)
+        PrintF(&#x27;\n&#x27;)
+        PrintF(&#x27;OPT MODULE\n&#x27;)
+        PrintF(&#x27;OPT EXPORT\n\n&#x27;)
+        PrintF(&#x27;DEF \s\n\n&#x27;,basename)
+        self.force_eol()
+      ELSEIF self.is_word(&#x27;bias&#x27;)
+        self.force_long()
+        offset:=-self.long
+        self.force_eol()
+      ELSEIF self.is_word(&#x27;reserve&#x27;)
+        self.force_long()
+        offset:=offset-(self.long*6)
+        self.force_eol()
+      ELSEIF self.is_word(&#x27;version&#x27;)
+        self.force_long()
+        IF self.long&gt;version
+          IF version&gt;0 THEN RETURN
+        ENDIF
+        self.force_eol()
+      ELSEIF self.is_word(&#x27;varargs&#x27;)
+        self.force_eol()
+        self.skip()
+        self.force_char_raw(&quot;\n&quot;)
+        WHILE self.is_raw(&quot; &quot;) OR self.is_raw(&quot;\t&quot;)
+          self.skip()
+          self.force_char_raw(&quot;\n&quot;)
+        ENDWHILE
+        self.is_blank()
+      ELSEIF self.is_word(&#x27;end&#x27;)
+        RETURN
+      ELSE
+        self.skip()
+        self.force_eol()
+      ENDIF
+    ELSEIF self.is_char_raw(&quot;*&quot;)
+      self.skip()
+      self.force_eol()
+    ELSE
+      self.force_function()
+      self.force_eol()
+      offset:=offset-6
+    ENDIF
+  ENDLOOP
+ENDPROC
+PROC force_function() OF sfd_parser
+  DEF n
+  IF self.is_word(&#x27;VOID&#x27;)
+    result:=FALSE
+  ELSE
+    self.force_type()
+    result:=TRUE
+  ENDIF
+  PrintF(&#x27;PROC &#x27;)
+  self.force_name()
+  self.force_case()
+  PrintF(self.item)
+  n:=0
+  self.force_char(&quot;(&quot;); PrintF(&#x27;(&#x27;)
+  WHILE self.is_char(&quot;)&quot;)=0
+    IF n&gt;0
+      self.force_char(&quot;,&quot;)
+      self.is_eol()
+      PrintF(&#x27;,&#x27;)
+    ENDIF
+    self.force_formal()
+    self.force_case()
+    PrintF(self.item)
+    formals[n]:=str_dup(self.item)
+    INC n
+  ENDWHILE
+  PrintF(&#x27;)\n&#x27;)
+  n:=0
+  self.force_char_raw(&quot;(&quot;);
+  WHILE self.is_char_raw(&quot;)&quot;)=0
+    IF n&gt;0 THEN self.force_char_raw(&quot;,&quot;)
+    IF self.is_char_raw(&quot;d&quot;)
+      PrintF(&#x27;  MOVE.L  \s,D&#x27;,formals[n])
+    ELSEIF self.is_char_raw(&quot;a&quot;)
+      PrintF(&#x27;  MOVEA.L \s,A&#x27;,formals[n])
+    ENDIF
+    self.force_raw()
+    self.force_long()
+    PrintF(&#x27;\d\n&#x27;,self.long)
+    INC n
+  ENDWHILE
+  IF basename=NIL THEN self.error(&#x27;unknown library base&#x27;,0)
+  PrintF(&#x27;  MOVEA.L \s,A6\n&#x27;,basename)
+  PrintF(&#x27;  JSR     \d(A6)\n&#x27;,offset)
+  IF result
+    PrintF(&#x27;  TST.L   D0\n&#x27;)
+    PrintF(&#x27;ENDPROC D0\n&#x27;)
+  ELSE
+    PrintF(&#x27;ENDPROC\n&#x27;)
+  ENDIF
+ENDPROC
+PROC force_type() OF sfd_parser
+  IF self.is_word(&#x27;struct&#x27;)
+    self.force_name()
+    self.force_char(&quot;*&quot;)
+  ELSE
+    self.force_name()
+    self.is_char(&quot;*&quot;)
+  ENDIF
+  self.is_char(&quot;*&quot;)
+ENDPROC
+PROC force_formal() OF sfd_parser
+  DEF item[80]:STRING
+  IF self.is_word(&#x27;const&#x27;)
+  ELSEIF self.is_word(&#x27;CONST&#x27;)
+  ENDIF
+  IF self.is_word(&#x27;struct&#x27;)
+    self.force_name()
+    self.force_char(&quot;*&quot;)
+  ELSE
+    self.force_name()
+    self.is_char(&quot;*&quot;)
+    IF self.is_char(&quot;(&quot;)
+      self.force_char(&quot;*&quot;)
+      self.force_name()
+      StrCopy(item,self.item)
+      self.force_char(&quot;)&quot;)
+      self.force_char(&quot;(&quot;)
+      IF self.is_char(&quot;)&quot;)
+      ELSE
+        self.force_type()
+        self.force_name()
+        WHILE TRUE
+          EXIT self.is_char(&quot;)&quot;)
+          self.force_char(&quot;,&quot;)
+          self.force_type()
+          self.force_name()
+        ENDWHILE
+      ENDIF
+      AstrCopy(self.item,item)
+      RETURN
+    ENDIF
+  ENDIF
+  self.is_char(&quot;*&quot;)
+  self.force_name()
+ENDPROC
+PROC force_case() OF sfd_parser
+  IF case=0 THEN LowerStr(self.item)
+ENDPROC
+
+PROC main()
+  DEF myargs[3]:LIST,rdargs
+  DEF sfd:PTR TO sfd_parser
+  rdargs:=ReadArgs(&#x27;SFD=FILE/A,CASE/S,VERSION/N&#x27;,myargs,NIL)
+  IF rdargs
+    case:=myargs[1]
+    IF myargs[2] THEN version:=Long(myargs[2])
+    NEW sfd.create(myargs[0])
+    sfd.force_definition()
+    END sfd
+  ELSE
+    WriteF(&#x27;Bad Args!\n&#x27;)
+  ENDIF
+ENDPROC
+
+CHAR &#x27;$VER: sfd2e 1.0 (14.05.2004) Copyright © Damien Guichard&#x27;,0
+
+
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

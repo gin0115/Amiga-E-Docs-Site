@@ -1,0 +1,787 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>cPath_Dir.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-portable.html">PortablE</a> &rsaquo; cPath_Dir.e</div><h1>File: <code>cPath_Dir.e</code></h1><p class="meta">761 lines · project <a href="../examples/pkg-portable.html"><code>PortablE</code></a></p><p class="pathctx">PortablE/PortablE/PEmodules/targetShared/POSIX/cPath_Dir.e</p><p class="prose">POSIX/cPath_Dir.e 15-10-2022 POSIX-specific <a href="../modules/classes.html">classes</a> &amp; procedures for portable file &amp; dir access. Developed in 2009,2010,2011,2022 by Christopher Steven Handley. Basically completed 18-04-2009, started 15-04-09.</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/fcntl.html">target/fcntl</a></li><li><a href="../modules/time.html">target/sys/time</a></li><li><a href="../modules/types.html">target/sys/types</a></li></ul></div><h2>Source</h2><pre class="code">/* POSIX/cPath_Dir.e 15-10-2022
+	POSIX-specific classes &amp; procedures for portable file &amp; dir access.
+	Developed in 2009,2010,2011,2022 by Christopher Steven Handley.
+	Basically completed 18-04-2009, started 15-04-09.
+*/
+
+OPT NATIVE, POINTER, INLINE, PREPROCESS
+PUBLIC MODULE &#x27;targetShared/cPath_DirBase&#x27;
+MODULE &#x27;targetShared/POSIX/cPath_shared&#x27;
+MODULE &#x27;target/sys/types&#x27;, &#x27;target/sys/stat&#x27;, &#x27;target/errno&#x27;
+MODULE &#x27;target/sys/time&#x27;, &#x27;target/time&#x27;, &#x27;target/utime&#x27;
+MODULE &#x27;target/fcntl&#x27;, &#x27;target/dirent&#x27;
+MODULE &#x27;target/unistd&#x27;	-&gt;POSIX (non-Windows) module
+
+PRIVATE
+CONST DEBUG = FALSE
+
+-&gt;this is part of &lt;stdio.h&gt;, and theoretically also &lt;io.h&gt; under Windows.
+PROC rename(oldName:ARRAY OF CHAR, newName:ARRAY OF CHAR) IS NATIVE {rename( (const char*)} oldName {, (const char*)} newName {)} ENDNATIVE !!VALUE
+
+-&gt;throw an error rather than returning returning an error value
+PROC safeSeek(fileDesc, position:BIGVALUE, from=SEEK_SET) RETURNS newPosition:BIGVALUE
+	DEF seek
+	
+	SELECT SEEKMAX OF from
+	CASE SEEK_SET ; seek := {SEEK_SET}!!VALUE
+	CASE SEEK_END ; seek := {SEEK_END}!!VALUE
+	CASE SEEK_CUR ; seek := {SEEK_CUR}!!VALUE
+	DEFAULT ; Throw(&quot;EPU&quot;, &#x27;cPath; safeSeek(); from has illegal value&#x27;)
+	ENDSELECT
+	
+	newPosition := lseek64(fileDesc, position, seek)
+	IF newPosition = -1 THEN Throw(&quot;FILE&quot;, posixFailureReason(&#x27;cPath; safeSeek(); lseek64() failed&#x27;))
+ENDPROC
+
+CONST POSIXFAULTBUFFERSIZE = 512
+DEF posixFaultBuffer[POSIXFAULTBUFFERSIZE]:STRING
+
+-&gt;return string describing reason for posix failure, appended with the supplied explanation
+PROC posixFailureReason(explanation:ARRAY OF CHAR, param1=0, param2=0, param3=0) RETURNS reason:ARRAY OF CHAR
+	IF errno
+		StringF(posixFaultBuffer, explanation, param1, param2, param3)
+		IF explanation
+			StrAdd( posixFaultBuffer, &#x27;: &#x27;)
+			StrAdd( posixFaultBuffer, describeErrNo())
+		ENDIF
+		reason := posixFaultBuffer
+	ELSE
+		reason := explanation
+	ENDIF
+ENDPROC 
+
+PROC describeErrNo() RETURNS desc:ARRAY OF CHAR
+	SELECT 128 OF errno
+	CASE EPERM ; desc := &#x27;Operation not permitted&#x27;
+	CASE ENOENT ; desc := &#x27;No such file or directory&#x27;
+	CASE ESRCH ; desc := &#x27;No such process&#x27;
+	CASE EINTR ; desc := &#x27;Interrupted function call&#x27;
+	CASE EIO ; desc := &#x27;Input/output error&#x27;
+	CASE ENXIO ; desc := &#x27;No such device or address&#x27;
+	CASE E2BIG ; desc := &#x27;Arg list too long&#x27;
+	CASE ENOEXEC ; desc := &#x27;Exec format error&#x27;
+	CASE EBADF ; desc := &#x27;Bad file descriptor&#x27;
+	CASE ECHILD ; desc := &#x27;No child processes&#x27;
+	CASE EAGAIN ; desc := &#x27;Resource temporarily unavailable&#x27;
+	CASE ENOMEM ; desc := &#x27;Not enough space&#x27;
+	CASE EACCES ; desc := &#x27;Permission denied&#x27;
+	CASE EFAULT ; desc := &#x27;Bad address&#x27;
+	CASE EBUSY ; desc := &#x27;strerror reports &quot;Resource device&quot;&#x27;
+	CASE EEXIST ; desc := &#x27;File exists&#x27;
+	CASE EXDEV ; desc := &#x27;Improper link (cross-device link?)&#x27;
+	CASE ENODEV ; desc := &#x27;No such device&#x27;
+	CASE ENOTDIR ; desc := &#x27;Not a directory&#x27;
+	CASE EISDIR ; desc := &#x27;Is a directory&#x27;
+	CASE EINVAL ; desc := &#x27;Invalid argument&#x27;
+	CASE ENFILE ; desc := &#x27;Too many open files in system&#x27;
+	CASE EMFILE ; desc := &#x27;Too many open files&#x27;
+	CASE ENOTTY ; desc := &#x27;Inappropriate I/O control operation&#x27;
+	CASE EFBIG ; desc := &#x27;File too large&#x27;
+	CASE ENOSPC ; desc := &#x27;No space left on device&#x27;
+	CASE ESPIPE ; desc := &#x27;Invalid seek (seek on a pipe?)&#x27;
+	CASE EROFS ; desc := &#x27;Read-only file system&#x27;
+	CASE EMLINK ; desc := &#x27;Too many links&#x27;
+	CASE EPIPE ; desc := &#x27;Broken pipe&#x27;
+	CASE EDOM ; desc := &#x27;Domain error (math functions)&#x27;
+	CASE ERANGE ; desc := &#x27;Result too large (possibly too small)&#x27;
+	CASE EDEADLOCK ; desc := &#x27;Resource deadlock avoided&#x27;
+	CASE ENAMETOOLONG, 91 ; desc := &#x27;Filename too long&#x27;
+	CASE ENOLCK, 46 ; desc := &#x27;No locks available&#x27;
+	CASE ENOSYS, 88 ; desc := &#x27;Function not implemented&#x27;
+	CASE ENOTEMPTY, 90 ; desc := &#x27;Directory not empty&#x27;
+	CASE EILSEQ ; desc := &#x27;Illegal byte sequence&#x27;
+	DEFAULT ; desc := &#x27;Unknown error&#x27;
+	ENDSELECT
+ENDPROC
+
+PROC bigMax(a:BIGVALUE, b:BIGVALUE) IS IF a &gt; b THEN a ELSE b
+PROC bigMin(a:BIGVALUE, b:BIGVALUE) IS IF a &lt; b THEN a ELSE b
+
+PUBLIC
+
+
+/*****************************/ -&gt;cHostDir class has host OS implementation
+CLASS cHostDir OF cBaseDir PRIVATE
+	-&gt;failureOrigin:ARRAY OF CHAR
+	-&gt;failureReason:ARRAY OF CHAR
+	-&gt;readOnly:BOOL
+	dirPath:OWNS STRING
+	hostDirPath:OWNS STRING
+	stat:_stat			-&gt;write-through cache of: mode bits
+	dirp:PTR TO DIR
+	forcedMode:MODE_T	-&gt;which mode bits had to be forced (set) to be opened
+	linkPath:OWNS STRING	-&gt;path of link, if any, returned by queryExtra()
+	linkIs0unknown1none2soft
+ENDCLASS
+
+PROC new() OF cHostDir
+	self.failureOrigin := NILA
+	self.failureReason := NILA
+	self.readOnly := FALSE
+	self.dirPath := NILS
+	self.hostDirPath := NILS
+	-&gt;self.stat
+	self.dirp := NIL
+	self.forcedMode := 0
+	self.linkPath := NILS
+ENDPROC
+
+PROC end() OF cHostDir
+	IF self.dirp THEN self.close()
+	SUPER self.end()
+ENDPROC
+
+-&gt;opens a dir for use, creating it if necessary IF in write mode
+-&gt;NOTE: Any previous dir must have been closed, or an error will be raised.
+-&gt;NOTE: readOnly=TRUE prevents *any* changes to the dir.
+PROC open(dirPath:ARRAY OF CHAR, readOnly=FALSE:BOOL, forceOpen=FALSE:BOOL) OF cHostDir RETURNS success:BOOL
+	DEF alreadyExisted:BOOL
+	
+	success := TRUE
+	alreadyExisted := TRUE
+	
+	-&gt;use check
+	IF self.dirp THEN Throw(&quot;EMU&quot;, &#x27;cHostDir.open(); a dir is already open&#x27;)
+	IF dirPath = NILA THEN Throw(&quot;EMU&quot;, &#x27;cHostDir.open(); dirPath=NIL&#x27;)
+	IF InvalidDirPath(dirPath) THEN Throw(&quot;EMU&quot;, &#x27;cHostDir.open(); dirPath is invalid&#x27;)
+	
+	-&gt;store parameters
+	self.failureOrigin := NILA
+	self.failureReason := NILA
+	self.readOnly := readOnly
+	self.hostDirPath := ExportPath(dirPath)
+	self.dirPath     := StrJoin(dirPath)
+	self.forcedMode := 0
+	self.linkPath := NILS
+	self.linkIs0unknown1none2soft := 0
+	
+	alreadyExisted := access(self.hostDirPath, 0) &lt;&gt; -1
+	
+	-&gt;examine dir before opening, and deal with read/write protection
+	IF alreadyExisted
+		IF self.hostDirPath[EstrLen(self.hostDirPath) - 1] = &quot;:&quot;
+			-&gt;(disk root)
+			self.stat.mode := S_IRUSR OR S_IWUSR
+		ELSE
+			-&gt;(not disk root)
+			IF stat(self.hostDirPath, self.stat) = -1
+				self.failureReason := posixFailureReason(&#x27;error examining dir&#x27;)
+				RETURN FALSE
+			ENDIF
+			
+			IF self.stat.mode AND S_IRUSR = 0
+				-&gt;(dir is read protected)
+				IF forceOpen
+					self.stat.mode := self.stat.mode OR S_IRUSR
+					IF chmod(self.hostDirPath, self.stat.mode) = -1
+						self.failureReason := posixFailureReason(&#x27;could not remove read protection&#x27;)
+						RETURN FALSE
+					ENDIF
+					self.forcedMode := self.forcedMode OR S_IRUSR
+				ELSE
+					-&gt;&#x27;emulate&#x27; what POSIX cannot enforce - failure to open
+					self.failureReason := &#x27;no read permission&#x27;
+					RETURN FALSE
+				ENDIF
+			ENDIF
+			
+			IF (readOnly = FALSE) AND (self.stat.mode AND S_IWUSR = 0)
+				-&gt;(dir is write protected)
+				IF forceOpen
+					self.stat.mode := self.stat.mode OR S_IWUSR
+					IF chmod(self.hostDirPath, self.stat.mode) = -1
+						self.failureReason := posixFailureReason(&#x27;could not remove write protection&#x27;)
+						RETURN FALSE
+					ENDIF
+					self.forcedMode := self.forcedMode OR S_IWUSR
+				ELSE
+					-&gt;&#x27;emulate&#x27; what POSIX cannot enforce - failure to open
+					self.failureReason := &#x27;no write permission&#x27;
+					RETURN FALSE
+				ENDIF
+			ENDIF
+		ENDIF
+	ENDIF
+	
+	-&gt;open dir as specified
+	IF alreadyExisted = FALSE
+		IF self.hostDirPath[EstrLen(self.hostDirPath) - 1] = &quot;:&quot;
+			-&gt;(disk root)
+			self.stat.mode := S_IRUSR OR S_IWUSR
+		ELSE
+			-&gt;(not disk root)
+			IF readOnly
+				self.failureReason := &#x27;dir does not exist&#x27;
+				RETURN FALSE
+			ELSE
+				IF _mkdir(self.hostDirPath, S_IRWXU #ifdef pe_TargetOS_Linux OR S_IRWXG OR (S_IROTH OR S_IXOTH) #endif) = -1
+					self.failureReason := posixFailureReason(&#x27;failed to create dir&#x27;)
+					RETURN FALSE
+				ENDIF
+			ENDIF
+			
+			IF stat(self.hostDirPath, self.stat) = -1
+				self.failureReason := posixFailureReason(&#x27;error examining dir&#x27;)
+				RETURN FALSE
+			ENDIF
+		ENDIF
+	ENDIF
+	
+	self.dirp := opendir(self.hostDirPath)
+	IF self.dirp = NIL
+		self.failureReason := posixFailureReason(&#x27;error opening dir&#x27;)
+		RETURN FALSE
+	ENDIF
+FINALLY
+	IF (success = FALSE) OR exception
+		-&gt;clean-up after a failure, returning the object &amp; the dir itself to the state it had before open() was called
+		IF self.dirp
+			closedir(self.dirp)
+			self.dirp := NIL
+		ENDIF
+		END self.hostDirPath
+		IF self.dirPath
+			IF alreadyExisted OR readOnly = FALSE THEN DeletePath(self.dirPath, TRUE)	-&gt;remove dir if it didn&#x27;t exist before it was opened
+			END self.dirPath
+		ENDIF
+	ENDIF
+	
+	IF success = FALSE
+		self.failureOrigin := &#x27;cHostDir.open()&#x27;
+	ENDIF
+ENDPROC
+
+-&gt;close an open dir
+PROC close() OF cHostDir
+	-&gt;use check
+	IF self.dirp = NIL THEN Throw(&quot;EMU&quot;, &#x27;cHostDir.close(); dir not open&#x27;)
+	
+	IF closedir(self.dirp) = -1 THEN Throw(&quot;EMU&quot;, &#x27;cHostDir.close(); closing dir failed&#x27;)
+	self.dirp := NIL
+	
+	IF self.forcedMode
+		-&gt;restore forced mode bits
+		self.stat.mode := self.stat.mode AND NOT self.forcedMode
+		chmod(self.hostDirPath, self.stat.mode)
+	ENDIF
+	
+	END self.dirPath
+	END self.hostDirPath
+	
+	END self.linkPath
+ENDPROC
+
+-&gt;flushes any caches used for the dir, whether they are provided by this class or the host OS
+-&gt;NOTE: In write mode, ensures all changes are commited to disk, without needing to close() dir.
+-&gt;NOTE: In read mode, refreshes any caches, ensuring any changes to dir will be seen.
+PROC flush() OF cHostDir
+	-&gt;use check
+	IF self.dirp = NIL THEN Throw(&quot;EMU&quot;, &#x27;cHostDir.flush(); dir not open&#x27;)
+	
+	-&gt;refresh write-through cache (should not strictly be required in write mode)
+	IF self.hostDirPath[EstrLen(self.hostDirPath) - 1] &lt;&gt; &quot;:&quot;
+		-&gt;(not disk root)
+		IF stat(self.hostDirPath, self.stat) = -1 THEN Throw(&quot;FILE&quot;, posixFailureReason(&#x27;cHostDir.flush(); stat() failed&#x27;))
+	ENDIF
+	
+	-&gt;flush cached link info
+	END self.linkPath
+	self.linkIs0unknown1none2soft := 0
+ENDPROC
+
+PROC make() OF cHostDir RETURNS object:OWNS PTR TO cHostDir
+	NEW object
+ENDPROC
+
+-&gt;return clone of current object, with same dir open, but in read-only mode unless writeNotRead=TRUE
+-&gt;NOTE: Will return clone=NIL if there is a problem.
+PROC clone(writeNotRead=FALSE:BOOL) OF cHostDir RETURNS clone:OWNS PTR TO cHostDir
+	-&gt;use check
+	IF self.dirp = NIL THEN Throw(&quot;EMU&quot;, &#x27;cHostDir.clone(); dir not open&#x27;)
+	
+	clone := self.make()
+	clone.new()
+	IF (self.readOnly = FALSE) AND (writeNotRead = TRUE)
+		-&gt;(opening two files in write mode) which is not allowed, so fail without trying
+		END clone
+		
+	ELSE IF clone.open(self.dirPath, NOT writeNotRead) = FALSE
+		-&gt;(failed to open file)
+		END clone
+	ELSE
+		-&gt;success
+	ENDIF
+ENDPROC
+
+-&gt;PROC infoReadOnly() OF cHostDir RETURNS readOnly:BOOL
+
+PROC infoIsOpen() OF cHostDir RETURNS isOpen:BOOL IS self.dirp &lt;&gt; NIL
+
+PRIVATE
+PROC openKludgeBegin() OF cHostDir
+/*
+	IF self.dirp = NIL THEN Throw(&quot;BUG&quot;, &#x27;cHostDir.openKludgeBegin(); kludge already started&#x27;)
+	
+	IF closedir(self.dirp) = -1 THEN Throw(&quot;BUG&quot;, &#x27;cHostDir.openKludgeBegin(); closedir() failed&#x27;)
+	self.dirp := NIL
+*/
+ENDPROC
+
+PROC openKludgeFinish() OF cHostDir
+IF (self.linkIs0unknown1none2soft &lt; 2) AND (self.readOnly = FALSE) THEN _mkdir(self.hostDirPath, S_IRWXU #ifdef pe_TargetOS_Linux OR S_IRWXG OR (S_IROTH OR S_IXOTH) #endif)
+/*
+	IF self.dirp THEN Throw(&quot;BUG&quot;, &#x27;cHostDir.openKludgeFinish(); kludge already finished&#x27;)
+	
+	-&gt;undo kludge; re-opening of dir must match that in the open() method
+	self.dirp := opendir(self.hostDirPath)
+	IF (self.dirp = NIL) AND (self.readOnly = FALSE)
+		IF _mkdir(self.hostDirPath, S_IRWXU #ifdef pe_TargetOS_Linux OR S_IRWXG OR (S_IROTH OR S_IXOTH) #endif) = 0
+			self.dirp := opendir(self.hostDirPath)
+		ENDIF
+	ENDIF
+	IF self.dirp = NIL
+		END self.dirPath
+		END self.hostDirPath
+		Throw(&quot;BUG&quot;, &#x27;cHostDir.openKludgeFinish(); kludge failed&#x27;)
+	ENDIF
+*/
+ENDPROC
+PUBLIC
+
+-&gt;changes the attributes in a flexible manner
+PROC setAttributes(attr, mask=-1) OF cHostDir RETURNS success:BOOL
+	DEF newAttr, mode:MODE_T
+	
+	success := TRUE
+	
+	-&gt;use check
+	IF self.dirp = NIL THEN Throw(&quot;EMU&quot;, &#x27;cHostDir.setAttributes(); dir not open&#x27;)
+	IF self.readOnly THEN Throw(&quot;EMU&quot;, &#x27;cHostDir.setAttributes(); dir opened in read only mode&#x27;)
+	
+	-&gt;calculate new attributes
+	attr := attr AND mask		-&gt;clear any bits that the mask excludes (mistakes?)
+	
+	newAttr := self.getAttributes()
+	newAttr := newAttr AND NOT mask		-&gt;clear any bits that will be changed; i.e. only copy bits that are not changing
+	newAttr := newAttr OR attr			-&gt;add changed bits
+	
+	-&gt;change dir&#x27;s mode bits according to new attributes
+	mode := self.stat.mode AND NOT (S_IRUSR OR S_IWUSR)	-&gt;keep unsupported mode bits the same
+	IF newAttr AND CPA_READ THEN mode := mode OR S_IRUSR
+	IF attr AND CPA_STRICT = FALSE
+		IF newAttr AND CPA_WRITE  THEN mode := mode OR S_IWUSR
+		IF newAttr AND CPA_DELETE THEN mode := mode OR S_IWUSR
+	ELSE
+		IF newAttr AND (CPA_WRITE OR CPA_DELETE) THEN mode := mode OR S_IWUSR
+	ENDIF
+	
+	-&gt;#might need? self.openKludgeBegin()
+	IF chmod(self.hostDirPath, mode) = -1
+		self.failureReason := posixFailureReason(&#x27;error setting dir mode bits&#x27;)
+		RETURN FALSE
+	ENDIF
+	self.forcedMode := self.forcedMode AND NOT (mode XOR self.stat.mode)	-&gt;clear any bits that have been changed, so they will no-longer be restored
+	self.stat.mode := mode
+	
+	-&gt;#might need? self.openKludgeFinish()
+FINALLY
+	IF success = FALSE
+		self.failureOrigin := &#x27;cHostDir.setAttributes()&#x27;
+	ENDIF
+ENDPROC
+
+-&gt;returns the dir&#x27;s attribute bit pattern
+-&gt;NOTE: The OS&#x27;s attributes are mapped as well as possible to the CPA_ set.
+PROC getAttributes() OF cHostDir RETURNS attr
+	-&gt;use check
+	IF self.dirp = NIL THEN Throw(&quot;EMU&quot;, &#x27;cHostDir.getAttributes(); dir not open&#x27;)
+	
+	attr := 0
+	IF self.stat.mode AND S_IRUSR THEN attr := attr OR CPA_READ
+	IF self.stat.mode AND S_IWUSR THEN attr := attr OR CPA_WRITE OR CPA_DELETE
+ENDPROC
+
+-&gt;return what attributes are supported
+-&gt;NOTE: a bit set to 1 indicate a supported attribute
+PROC getAttributesSupported() OF cHostDir RETURNS mask
+	-&gt;use check
+	IF self.dirp = NIL THEN Throw(&quot;EMU&quot;, &#x27;cHostDir.getAttributesSupported(); dir not open&#x27;)
+	
+	mask := CPA_READ OR (CPA_WRITE OR CPA_DELETE)
+ENDPROC
+
+-&gt;changes the whole path (moving &amp; renaming)
+PROC setPath(path:ARRAY OF CHAR) OF cHostDir RETURNS success:BOOL
+	DEF hostDirPath:OWNS STRING
+	
+	success := TRUE
+	
+	-&gt;use check
+	IF self.dirp = NIL THEN Throw(&quot;EMU&quot;, &#x27;cHostDir.setPath(); dir not open&#x27;)
+	IF self.readOnly THEN Throw(&quot;EMU&quot;, &#x27;cHostDir.setPath(); dir opened in read only mode&#x27;)
+	IF path = NILA THEN Throw(&quot;EMU&quot;, &#x27;cHostDir.setPath(); path=NILA&#x27;)
+	IF InvalidDirPath(path) THEN Throw(&quot;EMU&quot;, &#x27;cHostDir.setPath(); path is invalid&#x27;)
+	
+	-&gt;perform rename/move
+	hostDirPath := ExportPath(path)
+	-&gt;#might need? self.openKludgeBegin()
+	IF rename(self.hostDirPath, hostDirPath) = -1
+		self.failureReason := posixFailureReason(&#x27;error renaming host dir&#x27;)
+		RETURN FALSE
+	ENDIF
+	
+	-&gt;update internal dirpath
+	END self.dirPath
+	self.dirPath := StrJoin(path)
+	
+	END self.hostDirPath
+	self.hostDirPath := PASS hostDirPath
+	
+	-&gt;#might need? self.openKludgeFinish()
+FINALLY
+	END hostDirPath
+	
+	IF success = FALSE
+		self.failureOrigin := &#x27;cHostDir.setPath()&#x27;
+	ENDIF
+ENDPROC
+
+-&gt;returns the whole path
+PROC getPath() OF cHostDir RETURNS path:ARRAY OF CHAR
+	-&gt;use check
+	IF self.dirp = NIL THEN Throw(&quot;EMU&quot;, &#x27;cHostDir.getPath(); dir not open&#x27;)
+	
+	path := self.dirPath
+ENDPROC
+
+
+-&gt;changes the info of a dir that is not changed by non-Extra methods of this class
+-&gt;NOTE: The returned failure may only indicate a partial failure, if multiple
+-&gt;      underlying OS elements are changed.
+-&gt;NOTE: Will avoid setting stuff that is not supported in the place the extra originated 
+-&gt;      from (this does NOT generate a failure).
+-&gt;NOTE: May be passed extra=NIL; will do nothing.
+PROC setExtra(extra:PTR TO cExtra) OF cHostDir RETURNS success:BOOL
+	DEF value, unknown:BOOL
+	
+	-&gt;use check
+	IF self.dirp = NIL THEN Throw(&quot;EMU&quot;, &#x27;cHostDir.setExtra(); dir not open&#x27;)
+	IF self.readOnly THEN Throw(&quot;EMU&quot;, &#x27;cHostDir.setExtra(); dir opened in read only mode&#x27;)
+	
+	success := TRUE
+	IF extra = NIL THEN RETURN
+	
+	value, unknown := extra.queryExtra(&quot;ATTR&quot;)
+	IF unknown = FALSE THEN success := success AND self.changeExtra(&quot;ATTR&quot;, value)
+	
+	value, unknown := extra.queryExtra(&quot;SLNK&quot;)
+	IF unknown = FALSE THEN success := success AND self.changeExtra(&quot;SLNK&quot;, value)
+ENDPROC
+
+-&gt;returns an object storing all the info of a dir that is not returned by non-Extra methods of this class
+-&gt;NOTE: It returns NIL to indicate a failure.
+PROC getExtra() OF cHostDir RETURNS extra:OWNS PTR TO cExtra
+	DEF hostExtra:OWNS PTR TO cHostExtra
+	
+	-&gt;use check
+	IF self.dirp = NIL THEN Throw(&quot;EMU&quot;, &#x27;cHostDir.getExtra(); dir not open&#x27;)
+	
+	NEW hostExtra.new()
+	IF hostExtra.setExtra(self) = FALSE THEN END hostExtra
+	RETURN hostExtra
+ENDPROC
+
+-&gt;changes an OS-specific element of the dir
+-&gt;NOTE: Returns unknown=TRUE if the specified element is not supported by the host OS.
+PROC changeExtra(specific:QUAD, value) OF cHostDir RETURNS success:BOOL, unknown:BOOL
+	DEF mode:MODE_T, mask:MODE_T, newMode:MODE_T
+#ifdef pe_TargetOS_Linux
+	DEF linkType, linkPath:ARRAY OF CHAR, hostLinkPath:OWNS STRING, changesNeeded:BOOL
+#endif
+	
+	success := TRUE
+	
+	-&gt;use check
+	IF self.dirp = NIL THEN Throw(&quot;EMU&quot;, &#x27;cHostDir.changeExtra(); dir not open&#x27;)
+	IF self.readOnly THEN Throw(&quot;EMU&quot;, &#x27;cHostDir.changeExtra(); dir opened in read only mode&#x27;)
+	
+#ifdef pe_TargetOS_Linux
+	linkType := IF specific = &quot;SLNK&quot; THEN 2 ELSE /*IF specific = &quot;HLNK&quot; THEN 3 ELSE*/ 0
+	IF linkType THEN specific := &quot;link&quot; ELSE IF specific = &quot;link&quot; THEN specific := 0
+#endif
+	
+	unknown := FALSE
+	SELECT specific
+	CASE &quot;ATTR&quot;
+		-&gt;calculate new mode
+		mask := NOT (S_IRUSR OR S_IWUSR)	-&gt;exclude bits supported by getAttributes(), since these may be cached by a super class that is unaware of POSIX flags
+		mode := value AND mask !!MODE_T		-&gt;clear any bits that the mask excludes
+		
+		newMode := self.stat.mode
+		newMode := newMode AND NOT mask		-&gt;clear any bits that will be changed; i.e. only copy bits that are not changing
+		newMode := newMode OR mode			-&gt;add changed bits
+		
+		-&gt;change dir&#x27;s mode bits
+		IF chmod(self.hostDirPath, newMode) = -1
+			self.failureReason := posixFailureReason(&#x27;error setting dir mode bits&#x27;)
+			RETURN FALSE
+		ENDIF
+		self.stat.mode := newMode
+#ifdef pe_TargetOS_Linux
+	CASE &quot;link&quot;
+		linkPath := value!!ARRAY OF CHAR
+		
+		changesNeeded := FALSE
+		IF self.linkIs0unknown1none2soft &lt;&gt; linkType
+			-&gt;(changing from a soft to a hard link, or vice versa)
+			changesNeeded := TRUE
+			
+		ELSE IF (self.linkPath &lt;&gt; NILA) AND (linkPath &lt;&gt; NILA)
+			-&gt;(before &amp; after states are both links) so see if the link is being changed
+			IF StrCmpNoCase(self.linkPath, linkPath) = FALSE THEN changesNeeded := TRUE
+			
+		ELSE IF (self.linkPath &lt;&gt; NILA) &lt;&gt; (linkPath &lt;&gt; NILA)
+			-&gt;(changing creating or destroying a link)
+			changesNeeded := TRUE
+		ENDIF
+		
+		IF changesNeeded
+			IF linkPath
+				self.openKludgeBegin()
+				
+				IF success := DeletePath(self.dirPath, /*force*/TRUE)
+					hostLinkPath := ExportPath(linkPath)
+					IF symlink(hostLinkPath, self.hostDirPath) = 0
+						END self.linkPath
+						self.linkPath := StrJoin(linkPath)
+						self.linkIs0unknown1none2soft := linkType
+					ENDIF
+				ENDIF
+				
+				self.openKludgeFinish()
+			ELSE
+				-&gt;(removing link)
+				IF self.linkIs0unknown1none2soft = 0
+					self.linkPath, self.linkIs0unknown1none2soft := getDirLink(self.hostDirPath)
+				ENDIF
+				
+				IF self.linkIs0unknown1none2soft = linkType
+					-&gt;(there is a link to be removed)
+					self.openKludgeBegin()
+					
+					IF success := DeletePath(self.dirPath, /*force*/TRUE)
+						-&gt;a new dir will be subsequently created
+						END self.linkPath
+						self.linkIs0unknown1none2soft := 1
+					ENDIF
+					
+					self.openKludgeFinish()
+				ELSE
+					success := TRUE
+				ENDIF
+			ENDIF
+			
+			IF success
+				-&gt;refresh write-through cache
+				IF stat(self.hostDirPath, self.stat) = -1 THEN Throw(&quot;FILE&quot;, posixFailureReason(&#x27;cHostFile.changeExtra(); stat() failed&#x27;))
+			ENDIF
+		ELSE
+			success := TRUE
+		ENDIF
+#endif
+	DEFAULT
+		success := FALSE
+		unknown := TRUE
+	ENDSELECT
+FINALLY
+	IF success = FALSE
+		self.failureOrigin := &#x27;cHostDir.changeExtra()&#x27;
+	ENDIF
+	
+#ifdef pe_TargetOS_Linux
+	END hostLinkPath
+#endif
+ENDPROC
+
+-&gt;returns an OS-specific element of this dir
+-&gt;NOTE: Returns unknown=TRUE if the specified element is not supported by the host OS.
+PROC queryExtra(specific:QUAD) OF cHostDir RETURNS value, unknown:BOOL
+	DEF mask
+	
+	-&gt;use check
+	IF self.dirp = NIL THEN Throw(&quot;EMU&quot;, &#x27;cHostDir.queryExtra(); dir not open&#x27;)
+	
+	value := 0
+	unknown := FALSE
+	SELECT specific
+	CASE &quot;ATTR&quot;
+		mask := NOT (S_IRUSR OR S_IWUSR)
+		value := self.stat.mode AND mask
+#ifdef pe_TargetOS_Linux
+	CASE &quot;LINK&quot;
+		IF self.linkIs0unknown1none2soft = 0
+			self.linkPath, self.linkIs0unknown1none2soft := getDirLink(self.hostDirPath)
+		ENDIF
+		
+		value := self.linkPath
+#endif
+	DEFAULT
+		unknown := TRUE
+	ENDSELECT
+ENDPROC
+
+#ifdef pe_TargetOS_Linux
+PRIVATE
+PROC getDirLink(hostPath:STRING) RETURNS linkPath:OWNS STRING, linkIs0unknown1none2soft
+	DEF hostLinkPath:OWNS STRING, max, len:SSIZE_T
+	
+	max := 1024 / 2
+	REPEAT
+		max := max * 2
+		END hostLinkPath
+		
+		NEW hostLinkPath[max]
+		len := readlink(hostPath, hostLinkPath, max)
+	UNTIL (len &lt; max) OR (max &gt; 1024000)
+	
+	IF len &gt;= 0
+		SetStr(hostLinkPath, len!!VALUE)
+		linkPath := ImportDirPath(hostLinkPath)
+		linkIs0unknown1none2soft := 2
+	ELSE
+		linkIs0unknown1none2soft := 1	-&gt;# this could be wrong, should really check errno
+	ENDIF
+FINALLY
+	END hostLinkPath
+ENDPROC
+PUBLIC
+#endif
+
+
+-&gt;PROC openParent(forceOpen=FALSE:BOOL) OF cHostDir RETURNS success:BOOL
+
+-&gt;closes the current dir &amp; opens the specified sub-dir
+PROC openChild(relativePath:ARRAY OF CHAR, forceOpen=FALSE:BOOL) OF cHostDir RETURNS success:BOOL
+	DEF currentPath:OWNS STRING, childPath:OWNS STRING
+	
+	-&gt;use check
+	IF self.dirp = NIL THEN Throw(&quot;EMU&quot;, &#x27;cHostDir.openChild(); dir not open&#x27;)
+	IF InvalidDirPath(relativePath) THEN Throw(&quot;EMU&quot;, &#x27;cHostDir.openChild(); relativePath is invalid&#x27;)
+	
+	NEW currentPath[EstrLen(self.dirPath)]
+	StrCopy(currentPath, self.dirPath)
+	
+	NEW childPath[EstrLen(self.dirPath) + StrLen(relativePath)]
+	StrCopy(childPath, self.dirPath)
+	StrAdd( childPath, relativePath)
+	
+	self.close()
+	success := self.open(childPath, self.readOnly, forceOpen)
+	IF success = FALSE
+		IF self.open(currentPath, self.readOnly, TRUE) = FALSE	-&gt;forceOpen=TRUE
+			Throw(&quot;BUG&quot;, &#x27;cHostDir.openChild(); failed to reopen current dir, after failed to open child&#x27;)
+		ENDIF
+	ENDIF
+FINALLY
+	END currentPath, childPath
+ENDPROC
+
+-&gt;returns a list of the dirs contents
+PROC makeEntryList() OF cHostDir RETURNS list:OWNS PTR TO cDirEntryList
+	DEF dir:PTR TO DIR, dirent:PTR TO dirent, fullHostPath:OWNS STRING, isDir:BOOL, name:OWNS STRING
+#ifndef pe_TargetOS_Linux
+	DEF stat:_stat
+#endif	
+	
+	dir := opendir(self.hostDirPath)
+	IF dir = NIL THEN Throw(&quot;FILE&quot;, posixFailureReason(&#x27;cHostDir.makeEntryList(); opendir() failed for dir &quot;\s&quot;&#x27;, self.hostDirPath))
+	
+	/*isNetworkShare := StrCmp(self.hostDirPath, &#x27;\\\\&#x27;, 2)*/
+	
+	NEW list.new()
+ 	REPEAT
+		IF dirent := readdir(dir)
+			IF StrCmp(dirent.name, &#x27;.&#x27;) OR StrCmp(dirent.name, &#x27;..&#x27;) = FALSE
+				-&gt;determine whether file or dir
+				NEW fullHostPath[EstrLen(self.hostDirPath) + 1 + StrLen(dirent.name) + 1]
+				StrCopy(fullHostPath, self.hostDirPath)
+				StrAdd( fullHostPath, #ifdef pe_TargetOS_Linux &#x27;/&#x27; #else &#x27;\\&#x27; #endif)
+				StrAdd( fullHostPath, dirent.name)
+				
+				#ifdef pe_TargetOS_Linux
+					isDir := (dirent.type = DT_DIR)
+				#else
+					IF stat(fullHostPath, stat) = 0
+						isDir := (stat.mode AND S_IFDIR &lt;&gt; 0)
+					ELSE
+						isDir := FALSE
+					ENDIF
+					/*
+					DEF tmpDir:PTR TO DIR
+					tmpDir := opendir(fullHostPath)
+					isDir := tmpDir &lt;&gt; NIL
+					IF isDir THEN closedir(tmpDir)
+					*/
+					/*
+					DEF isNetworkShare:BOOL, fileDesc
+					IF isNetworkShare = FALSE
+						-&gt;(not on a network share) so can use a very fast file/dir check
+						StrAdd( fullHostPath, &#x27;\\.&#x27;)
+						isDir := access(fullHostPath, 0) &lt;&gt; -1
+					ELSE
+						isDir := TRUE
+					ENDIF
+					
+					IF isDir
+						-&gt;(on a network share, or else is likely a dir) so use a file check that is much slower (20 times) when anti-virus is running
+						fileDesc := open(fullHostPath, O_BINARY OR O_RDONLY)
+						isDir := fileDesc = -1
+						IF isDir = FALSE THEN close(fileDesc)
+					ENDIF
+					*/
+				#endif
+				
+				END fullHostPath
+				
+				-&gt;add to list
+				NEW name[StrLen(dirent.name) + 1]
+				StrCopy(name, dirent.name)
+				IF isDir THEN StrAdd(name, &#x27;/&#x27;)
+				
+				list.addString(PASS name)
+			ENDIF
+		ENDIF
+	UNTIL dirent = NIL
+FINALLY
+	IF dir THEN IF closedir(dir) = -1 THEN Throw(&quot;FILE&quot;, posixFailureReason(&#x27;cHostDir.makeEntryList(); closedir() failed&#x27;))
+	
+	IF exception THEN END list
+	END fullHostPath
+ENDPROC
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

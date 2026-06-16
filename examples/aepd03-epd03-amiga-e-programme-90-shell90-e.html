@@ -1,0 +1,299 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>shell90.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-aepd03.html">AEPD03</a> &rsaquo; shell90.e</div><h1>File: <code>shell90.e</code></h1><p class="meta">273 lines · project <a href="../examples/pkg-aepd03.html"><code>AEPD03</code></a></p><p class="pathctx">AEPD03/EPD03/Amiga_E-Programme/90/shell90.e</p><p class="prose">set up a screen with a 90 degrees font and have a screen with only 60 colums, but a giant 80 rows!</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/diskfont.html">diskfont</a></li></ul></div><h2>Source</h2><pre class="code">/* set up a screen with a 90 degrees font
+   and have a screen with only 60 colums, but a giant 80 rows! */
+
+CONST LINES=512, INTERLACE=TRUE
+
+/* change these two above to suit your needs! if you want
+   NTSC, set LINES=400 (etc.)
+   best you keep lines to a minimum of 256   */
+
+MODULE &#x27;DiskFont&#x27;
+
+CONST COL=LINES/8-3, H=LINES-11, F=INTERLACE*-4
+
+DEF oldfont,newfont,screen,window,tat[4]:ARRAY OF LONG,cx=0,cy=0,font,
+    class,code,mes,input[100]:ARRAY,quit=FALSE
+
+PROC main()
+  diskfontbase:=OpenLibrary(&#x27;diskfont.library&#x27;,0)
+  IF diskfontbase=NIL
+    WriteF(&#x27;Could not open &quot;diskfont.library&quot;!\n&#x27;)
+  ELSE
+    screen:=OpenS(640,LINES,1,$8000+F,&#x27;90 Degrees! Rotate yo monitor!&#x27;)
+    IF screen=NIL
+      WriteF(&#x27;could not open screen!\n&#x27;)
+    ELSE
+      window:=OpenW(0,0,640,LINES,$200000,$1940,&#x27;!&#x27;,screen,$F,0)
+      IF window=NIL
+        WriteF(&#x27;could not open window!\n&#x27;)
+      ELSE
+        font:=setfont(&#x27;90.font&#x27;,8,stdrast)
+        IF font=NIL
+          WriteF(&#x27;could not open &quot;90.font&quot;!\n&#x27;)
+        ELSE
+          mainloop()
+          CloseFont(font)
+        ENDIF
+        CloseW(window)
+      ENDIF
+      CloseS(screen)
+    ENDIF
+    CloseLibrary(diskfontbase)
+  ENDIF
+ENDPROC
+
+PROC mainloop()
+  write90(&#x27;90 degrees command shell.\ntype &quot;HELP&quot; for infos\n&#x27;)
+  REPEAT
+    write90(&#x27;&gt;&#x27;)
+    read90()
+    processcommand()
+  UNTIL quit
+ENDPROC
+
+PROC processcommand()
+  DEF s[50]:STRING,p=0,p2,args[100]:STRING,handle,ok,outstr[200]:STRING
+  WHILE Char(p+input)=&quot; &quot; DO INC p
+  p2:=InStr(input,&#x27; &#x27;,p)
+  StrCopy(s,input+p,p2-p)
+  IF p2&lt;&gt;-1 THEN StrCopy(args,input+p2+1,ALL)
+  UpperStr(s)
+  IF StrCmp(s,&#x27;HELP&#x27;,ALL)
+    write90(&#x27;Commands supported:\n&#x27;)
+    write90(&#x27;HELP     this one.\n&#x27;)
+    write90(&#x27;Q        leave!\n&#x27;)
+    write90(&#x27;D &lt;dir&gt;  show a dir\n&#x27;)
+    write90(&#x27;T &lt;file&gt; type a file stripped\n&#x27;)
+    write90(&#x27;M &lt;adr&gt;  show 77 rows of mem\n&#x27;)
+    write90(&#x27;CLS      guess...\n&#x27;)
+    write90(&#x27;&lt;anyother&gt; execute clicommand\n&#x27;)
+    write90(&#x27;(restricted to output only)\n&#x27;)
+  ELSEIF StrCmp(s,&#x27;Q&#x27;,ALL)
+    quit:=TRUE
+  ELSEIF StrCmp(s,&#x27;D&#x27;,ALL)
+    showdir(args)
+  ELSEIF StrCmp(s,&#x27;M&#x27;,ALL)
+    showmem(args)
+  ELSEIF StrCmp(s,&#x27;CLS&#x27;,ALL)
+    cx:=0; cy:=0
+    Colour(0,0)
+    RectFill(stdrast,0,0,639,H+10)
+    Colour(1,0)
+  ELSEIF StrCmp(s,&#x27;T&#x27;,ALL)
+    handle:=Open(args,1005)
+    IF handle=NIL
+      write90(&#x27;Could not open file!\n&#x27;)
+    ELSE
+      ok:=ReadStr(handle,outstr)
+      WHILE ok&lt;&gt;-1
+        writestr90(outstr); write90(&#x27;\n&#x27;)
+        ok:=ReadStr(handle,outstr)
+      ENDWHILE
+      Close(handle)
+    ENDIF
+  ELSEIF StrCmp(s,&#x27;&#x27;,ALL)=FALSE
+    handle:=Open(&#x27;ram:$temp&#x27;,1006)
+    IF handle=NIL
+      write90(&#x27;could not open temp file!\n&#x27;)
+    ELSE
+      Execute(input,NIL,handle)
+      Close(handle)
+      handle:=Open(&#x27;ram:$temp&#x27;,1005)
+      IF handle=NIL
+        write90(&#x27;could not read temp file!\n&#x27;)
+      ELSE
+        ok:=ReadStr(handle,outstr)
+        WHILE ok&lt;&gt;-1
+          write90(outstr); write90(&#x27;\n&#x27;)
+          ok:=ReadStr(handle,outstr)
+        ENDWHILE
+        Close(handle)
+      ENDIF
+    ENDIF        
+  ENDIF
+ENDPROC
+
+PROC showdir(args)
+  DEF lock,ok,d,dir,s[50]:STRING,info[300]:ARRAY
+  ADDQ.L #4,info
+  BCLR #1,info.B        /* buffer must be LONG aligned */
+  lock:=Lock(args,-2)
+  IF lock&lt;&gt;0
+    ok:=Examine(lock,info)
+    IF ok&lt;&gt;0
+      dir:=Long(info+4)
+      IF dir&gt;0
+        StringF(s,&#x27;Directory of: \s\n&#x27;,info+8); write90(s)
+        WHILE ok&lt;&gt;0
+          ok:=ExNext(lock,info)
+          IF ok&lt;&gt;0
+            d:=Long(info+124); dir:=Long(info+4)
+            IF dir&gt;0
+              StringF(s,&#x27;\l\s[29]\n&#x27;,info+8)
+            ELSE
+              StringF(s,&#x27;\l\s[21] \r\d[7]\n&#x27;,info+8,d)
+            ENDIF
+            write90(s)
+          ENDIF
+        ENDWHILE
+      ELSE
+        write90(&#x27;No Dir!\n&#x27;)
+      ENDIF
+    ENDIF
+    UnLock(lock)
+  ELSE
+    write90(&#x27;What ?!?\n&#x27;)
+  ENDIF
+ENDPROC
+
+PROC showmem(args)
+  DEF adr,a,b,radr:PTR TO LONG,c,s[100]:STRING
+  adr:=Val(args,{a})
+  IF a=0
+    write90(&#x27;Illegal address.\nUsage: M &lt;adr&gt;\n&#x27;)
+  ELSE
+    BCLR #0,adr.B                    /* we don&#x27;t like uneven addresses */
+    FOR a:=0 TO 77
+      radr:=a*16+adr
+      StringF(s,&#x27;$\r\z\h[6] &#x27;,radr); write90(s)
+      FOR b:=0 TO 3
+        StringF(s,&#x27;\r\z\h[8] &#x27;,radr[b]); write90(s)
+      ENDFOR
+      FOR b:=0 TO 15
+        c:=Char(b+radr)
+        IF (c&lt;32) OR (c&gt;126) THEN c:=46
+        put90(c)
+      ENDFOR
+      write90(&#x27;\n&#x27;)
+    ENDFOR
+  ENDIF
+ENDPROC
+
+PROC write90(string)
+  DEF a,s[200]:STRING,l
+  StrCopy(s,string,ALL)
+  l:=EstrLen(s)-1
+  IF l&gt;=0 THEN FOR a:=0 TO l DO put90(Char(a+s))
+ENDPROC
+
+PROC writestr90(string)
+  DEF a,s[200]:STRING,l,r
+  StrCopy(s,string,ALL)
+  l:=EstrLen(s)-1
+  IF l&gt;=0
+    FOR a:=0 TO l
+      r:=put90(Char(a+s))
+      IF r
+        a:=l
+        DEC cy
+      ENDIF
+    ENDFOR
+  ENDIF
+ENDPROC
+
+PROC read90()
+  DEF n=0
+  put90(&quot;_&quot;)
+  wait4message()
+  put90(8)
+  PutChar(input,0)
+  WHILE code&lt;&gt;13
+    IF (code&gt;=32) AND (COL-1&gt;cx)
+      PutChar(input+n,code)
+      INC n
+      put90(code)
+    ELSEIF (code=8) AND (n&gt;0)
+      DEC n
+      put90(8)
+    ENDIF
+    PutChar(input+n,0)
+    put90(&quot;_&quot;)
+    wait4message()
+    put90(8)
+  ENDWHILE
+  put90(10)
+ENDPROC
+
+PROC put90(c)
+  DEF b,r=FALSE
+  IF c&gt;=32                                    /* character */
+    TextF(cy*8,-cx*8+H+10,&#x27;\c&#x27;,c)
+    INC cx
+    IF COL+1=cx THEN r:=lf()
+  ELSEIF c=10                                 /* lf+cr */
+    r:=lf()
+  ELSEIF (c=8) AND (cx&gt;0)                     /* backspace */
+    DEC cx
+    put90(&quot; &quot;)
+    DEC cx
+  ELSEIF c=9                                  /* tab */
+    b:=cx AND 7
+    IF b=0 THEN cx:=cx+8 ELSE cx:=cx-b+8
+    IF cx&gt;COL THEN r:=lf()
+  ELSEIF c=13
+    cx:=0                                     /* cr */
+  ENDIF
+ENDPROC r
+
+PROC lf()
+  cx:=0
+  IF cy=79
+    ClipBlit(stdrast,8,11,stdrast,0,11,632,H,$C0)
+    Colour(0,0)
+    RectFill(stdrast,632,11,639,H+10)
+    Colour(1,0)
+  ELSE
+    INC cy
+  ENDIF
+ENDPROC TRUE
+
+PROC setfont(name,h,rast)
+  oldfont:=Long(rast+52)
+  tat[0]:=name
+  tat[1]:=Mul(h,$10000)+96
+  newfont:=OpenDiskFont(tat)
+  IF newfont&lt;&gt;NIL
+    SetFont(rast,newfont)
+  ENDIF
+ENDPROC newfont
+
+PROC wait4message()
+  start:
+  mes:=GetMsg(Long(window+86))
+  IF mes&lt;&gt;0
+    class:=Long(mes+20)
+    code:=Int(mes+24)
+    ReplyMsg(mes)
+    IF class&lt;&gt;$200000 THEN JUMP start
+  ELSE
+    Wait(-1)
+    JUMP start
+  ENDIF  
+ENDPROC
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

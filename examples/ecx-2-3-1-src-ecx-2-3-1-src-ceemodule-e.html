@@ -1,0 +1,318 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ceemodule.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-ecx-2-3-1-src.html">ECX_2.3.1-src</a> &rsaquo; ceemodule.e</div><h1>File: <code>ceemodule.e</code></h1><p class="meta">292 lines · project <a href="../examples/pkg-ecx-2-3-1-src.html"><code>ECX_2.3.1-src</code></a></p><p class="pathctx">ECX_2.3.1-src/ecx-2.3.1-src/ceemodule.e</p><p class="prose">CeeModule.e by Leif Salomonsson is Copyright (c) 2008</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/dos.html">dos/dos</a></li></ul></div><h2>Source</h2><pre class="code">/* CeeModule.e by Leif Salomonsson is Copyright (c) 2008 */
+/* Released under ECX TOOLS LICENSE, see ECXTOOLSLICENSE.TXT */
+
+-&gt; Prints out ECX module in C-friendlier way.
+
+-&gt; Libraryfunctions as either FD or Prototypes.
+-&gt; Objects as Structs.
+-&gt; Constants as #defines.
+
+-&gt; Requires ecx 1.10+ compiled modules to display libfunc argument names properly.
+
+-&gt; May 2008: 1.0
+-&gt; Sep 2009: 1.1: made types into exec/types.h style instead.
+-&gt; Mar 2010: 1.2: silly field array print bug fixed.
+
+MODULE &#x27;*binary&#x27;
+MODULE &#x27;dos/dos&#x27;
+
+OBJECT args
+   module
+   libprotos
+ENDOBJECT
+
+PROC main() HANDLE
+   DEF fh=NIL, str[256]:STRING, rdargs=NIL, args:PTR TO args
+   DEF fib:fileinfoblock, flen, fbuf, filename[300]:STRING
+   DEF a, b, c, lptr:PTR TO LONG, e, fdofs
+   DEF head:PTR TO moduleheader
+   DEF strtable
+   DEF info:PTR TO modinfo
+   DEF object:PTR TO modobject
+   DEF libi:PTR TO modlibi
+   DEF lfunc:PTR TO modlfunc
+   DEF param:PTR TO modarg
+   DEF member:PTR TO modmember
+   DEF lparam:PTR TO lfuncarg
+
+   NEW args
+
+   /* read agrs */
+   rdargs := ReadArgs(&#x27;MODULE/A,LIBPROTOS/S&#x27;, args, NIL)
+
+   IF rdargs = NIL THEN Raise(&quot;ARGS&quot;)
+
+   StrCopy(str, args.module)
+
+   IF StrCmp(str+EstrLen(str)-2, &#x27;.m&#x27;) = FALSE THEN StrAdd(str, &#x27;.m&#x27;)
+   StrCopy(filename, str)
+
+   fh := Open(filename, OLDFILE)
+   IF fh = NIL
+      StrCopy(str, &#x27;ECXMODULES:&#x27;)
+      StrAdd(str, filename)
+      StrCopy(filename, str)
+      fh := Open(filename, OLDFILE)
+      IF fh = NIL THEN Raise(&quot;OPEN&quot;)
+   ENDIF
+
+   PrintF(&#x27;CeeModule 1.2 by LS 2008-10 -&gt; \q\s\q\n\n&#x27;, filename)
+
+   ExamineFH(fh, fib)
+   flen := fib.size
+   fbuf := NewR(flen+4)
+   Read(fh, fbuf, flen)
+   head := fbuf
+
+   IF head.identification &lt;&gt; &quot;ECXM&quot; THEN Raise(&quot;FORM&quot;)
+
+   IF head.modversion &lt; 1 THEN Raise(&quot;TOLD&quot;)  -&gt; 1.11
+
+   IF head.modsize &lt;&gt; flen THEN Raise(&quot;SIZE&quot;) -&gt; 1.11
+
+   IF head.osversion THEN PrintF(&#x27;/* OSVERSION: \d */ \n\n&#x27;, head.osversion)
+
+   info := head + head.strtabinfo
+   strtable := info + SIZEOF modinfo
+
+   /* FD */
+   info := head.libiinfo
+   IF info &lt;&gt; NIL AND (args.libprotos = FALSE)
+      info := info + head
+      libi := info + SIZEOF modinfo
+      c := info.count + 1
+      WHILE c--
+         PrintF(&#x27;##base _\s\n##bias 30\n&#x27;, libi.basename + strtable)
+         fdofs := -30
+         lfunc := libi + SIZEOF modlibi
+         FOR a := 0 TO libi.nroflfuncs-1
+            IF lfunc.baseofs &lt; (fdofs + IF lfunc.type = 1 THEN 2 ELSE 0)
+               PrintF(&#x27;##private\n&#x27;)
+               WHILE lfunc.baseofs &lt; (fdofs + IF lfunc.type = 1 THEN 2 ELSE 0)
+                  PrintF(&#x27;Private_\d&#x27;+&#x27;()\n&#x27;, -fdofs)
+                  fdofs := fdofs - 6
+               ENDWHILE
+               PrintF(&#x27;##public\n&#x27;)
+            ENDIF
+            PrintF(&#x27;\s(&#x27;, lfunc.name + strtable)
+            lparam := lfunc + SIZEOF modlfunc
+            FOR b := 0 TO lfunc.nrofargs-1
+               PrintF(&#x27;\s&#x27;, lparam[b].name + strtable)
+               IF b &lt; (lfunc.nrofargs-1) THEN PrintF(&#x27;,&#x27;)
+            ENDFOR
+            PrintF(&#x27;)&#x27;)
+
+            IF lfunc.type = 0
+               PrintF(&#x27;(&#x27;)
+               FOR b := 0 TO lfunc.nrofargs-1
+                  PrintF(&#x27;\c\d&#x27;, IF lparam[b].rtype = 0 THEN &quot;d&quot; ELSE &quot;a&quot;, lparam[b].rnum)
+                  IF b &lt; (lfunc.nrofargs-1) THEN PrintF(&#x27;,&#x27;)
+               ENDFOR
+               PrintF(&#x27;)&#x27;)
+            ELSE
+               IF lfunc.basertype = 0
+                  IF lfunc.basernum = 12
+                     PrintF(&#x27;(sysv,r12base)&#x27;)
+                  ELSEIF lfunc.basernum = 3
+                     PrintF(&#x27;(base,sysv)&#x27;)
+                  ELSEIF lfunc.basernum
+                     PrintF(&#x27;(sysv,base)&#x27;)
+                  ELSE
+                     PrintF(&#x27;(sysv)&#x27;)
+                  ENDIF
+               ELSE
+                  PrintF(&#x27;(sysv,base)&#x27;)
+               ENDIF
+            ENDIF
+            PrintF(&#x27;\n&#x27;)
+            lfunc := lfunc + lfunc.totalsize
+            fdofs := fdofs - 6
+         ENDFOR
+         PrintF(&#x27;##end\n\n&#x27;)
+         libi := libi + libi.totalsize
+      ENDWHILE
+   ENDIF
+
+   /* PROTO */
+   info := head.libiinfo
+   IF info &lt;&gt; NIL AND (args.libprotos &lt;&gt; FALSE )
+      info := info + head
+      libi := info + SIZEOF modinfo
+      c := info.count + 1
+      WHILE c--
+         lfunc := libi + SIZEOF modlibi
+         FOR a := 0 TO libi.nroflfuncs-1
+            PrintF(&#x27;\l\s \s(&#x27;,
+               ListItem([&#x27;LONG&#x27;,&#x27;DOUBLE&#x27;,&#x27;VECTOR&#x27;,&#x27;LONG LONG&#x27;], lfunc.return),
+               lfunc.name + strtable)
+            lparam := lfunc + SIZEOF modlfunc
+            FOR b := 0 TO lfunc.nrofargs-1
+               PrintF(&#x27;\s \s&#x27;,
+                  ListItem([&#x27;LONG&#x27;,&#x27;LONG&#x27;,&#x27;DOUBLE&#x27;,&#x27;VECTOR&#x27;,&#x27;LONG LONG&#x27;, &#x27;LONG LONG&#x27;], lparam[b].rtype),
+                  lparam[b].name + strtable)
+               IF b &lt; (lfunc.nrofargs-1) THEN PrintF(&#x27;,&#x27;)
+            ENDFOR
+            PrintF(&#x27;);\n&#x27;)
+            lfunc := lfunc + lfunc.totalsize
+         ENDFOR
+         libi := libi + libi.totalsize
+      ENDWHILE
+   ENDIF
+
+
+   /* STRUCT */
+   info := head.objectinfo
+   IF info
+      info := info + head
+      object := info + SIZEOF modinfo
+      c := info.count + 1
+      WHILE c--
+         PrintF(&#x27;struct \s {\n&#x27;, object.name + strtable)
+         member := object + SIZEOF modobject
+         a := object.nrofmembers + 1
+         WHILE a--
+            PrintF(&#x27;   \s;\n&#x27;,
+                   ctypestr50(member.size,
+                              member.esize,
+                              member.numes,
+                              member.object + strtable,
+                              member.flags,
+                              member.name + strtable,
+                              str))
+            member++
+         ENDWHILE
+         PrintF(&#x27;}; /* SIZEOF = \d */\n\n&#x27;, object.sizeof)
+         object := object + object.totalsize
+      ENDWHILE
+   ENDIF
+
+   /* #DEFINE */
+   info := head.constinfo
+   IF info
+      info := info + head
+      lptr := info + SIZEOF modinfo
+      b := info.count + 1
+      WHILE b--
+         PrintF(&#x27;#define \s \s\n&#x27;, lptr[]++ + strtable, valstr(lptr[]++, str))
+      ENDWHILE
+      PrintF(&#x27;\n&#x27;)
+   ENDIF
+
+   PrintF(&#x27;\n&#x27;)
+
+EXCEPT DO
+
+   IF fh THEN Close(fh)
+   IF rdargs THEN FreeArgs(rdargs)
+   SELECT exception
+   CASE &quot;MEM&quot;  ; PrintF(&#x27;Error: out of memory.\n&#x27;)
+   CASE &quot;FORM&quot; ; PrintF(&#x27;Error: not an ecx module.\n&#x27;)
+   CASE &quot;ARGS&quot; ; PrintF(&#x27;Error: bad arguments.\n&#x27;)
+   CASE &quot;OPEN&quot; ; PrintF(&#x27;Error: could not open file.\n&#x27;)
+   CASE &quot;TOLD&quot; ; PrintF(&#x27;Error: module is too old.\n&#x27;)
+   CASE &quot;SIZE&quot; ; PrintF(&#x27;Error: module is corrupt (wrong modsize).\n&#x27;)
+   CASE NIL
+   DEFAULT     ; PrintF(&#x27;Error: unknown.\n&#x27;)
+   ENDSELECT
+
+ENDPROC exception
+
+
+
+PROC valstr(val, str)
+   IF val = $80000000  -&gt; this value actually gets smaller than 255 when Abs():ed.
+      StringF(str, &#x27;0x\h&#x27;, val)
+   ELSEIF Abs(val) &gt; 255
+      StringF(str, &#x27;0x\h&#x27;, val)
+   ELSE
+      StringF(str, &#x27;\d&#x27;, val)
+   ENDIF
+ENDPROC str
+
+PROC ctypestr50(size, esize, numes, object, flags, name, str)
+   SELECT size
+   CASE 0
+      SELECT esize
+      CASE 1   ; StringF(str,
+                  IF flags AND MEMBF_SIGNED THEN &#x27;BYTE \s&#x27;+&#x27;[\d]&#x27; ELSE &#x27;CHAR \s&#x27;+&#x27;[\d]&#x27;,
+                  name, numes)
+      CASE 2   ; StringF(str,
+                  IF flags AND MEMBF_SIGNED THEN &#x27;WORD \s&#x27;+&#x27;[\d]&#x27; ELSE &#x27;UWORD \s&#x27;+&#x27;[\d]&#x27;,
+                  name, numes)
+      CASE 4   ; StringF(str,
+                  IF flags AND MEMBF_FLOAT THEN &#x27;FLOAT \s&#x27;+&#x27;[\d]&#x27; ELSE
+                  (IF flags AND MEMBF_SIGNED THEN &#x27;LONG \s&#x27;+&#x27;[\d]&#x27; ELSE &#x27;ULONG \s&#x27;+&#x27;[\d]&#x27;),
+                  name, numes)
+      CASE 8   ; StringF(str,
+                  IF flags AND MEMBF_FLOAT THEN &#x27;DOUBLE \s&#x27;+&#x27;[\d]&#x27; ELSE &#x27;QUAD \s&#x27;+&#x27;[\d]&#x27;,
+                  name, numes)
+      CASE 16  ; StringF(str, &#x27;vector \s&#x27;+&#x27;[\d]&#x27;, name, numes)
+      CASE 255 ;  IF numes = 1
+                     StringF(str, &#x27;struct \s \s&#x27;, object, name)
+                  ELSE
+                     StringF(str, &#x27;struct \s \s&#x27;+&#x27;[\d]&#x27;, object, name, numes)
+                  ENDIF
+      ENDSELECT
+   CASE 1 ; StringF(str, IF flags AND MEMBF_SIGNED THEN &#x27;BYTE \s&#x27; ELSE &#x27;CHAR \s&#x27;, name)
+   CASE 2 ; StringF(str, IF flags AND MEMBF_SIGNED THEN &#x27;WORD \s&#x27; ELSE &#x27;UWORD \s&#x27;, name)
+   CASE 4
+      SELECT esize
+      CASE 0   ; StringF(str, IF flags AND MEMBF_SIGNED THEN &#x27;LONG \s&#x27; ELSE
+                              (IF flags AND MEMBF_FLOAT THEN &#x27;FLOAT \s&#x27; ELSE &#x27;ULONG \s&#x27;),
+                                 name)
+      CASE 1   ; StringF(str,
+                  IF flags AND MEMBF_SIGNED THEN &#x27;BYTE *\s&#x27; ELSE &#x27;CHAR *\s&#x27;, name)
+      CASE 2   ; StringF(str,
+                  IF flags AND MEMBF_SIGNED THEN &#x27;WORD *\s&#x27; ELSE &#x27;UWORD *\s&#x27;, name)
+      CASE 4   ; StringF(str, IF flags AND MEMBF_SIGNED THEN &#x27;LONG *\s&#x27; ELSE
+                              (IF flags AND MEMBF_FLOAT THEN &#x27;FLOAT *\s&#x27; ELSE &#x27;ULONG *\s&#x27;), name)
+      CASE 8   ; StringF(str,
+                  IF flags AND MEMBF_FLOAT THEN &#x27;DOUBLE *\s&#x27; ELSE &#x27;QUAD *\s&#x27;, name)
+      CASE 16  ; StringF(str, &#x27;vector *\s&#x27;, name)
+      CASE 255 ; StringF(str, &#x27;struct \s *\s&#x27;, object, name)
+      ENDSELECT
+   CASE 8
+      StringF(str, IF flags AND MEMBF_FLOAT THEN &#x27;DOUBLE \s&#x27; ELSE &#x27;QUAD \s&#x27;, name)
+   CASE 16
+      StringF(str, &#x27;vector \s&#x27;, name)
+      SELECT esize
+      CASE 4   ; StringF(str,
+                  IF flags AND MEMBF_FLOAT THEN &#x27;vector float \s&#x27; ELSE &#x27;vector long \s&#x27;, name)
+      CASE 2   ; StringF(str,
+                  IF flags AND MEMBF_SIGNED THEN &#x27;vector short \s&#x27; ELSE &#x27;vector unsigned short \s&#x27;,
+                     name)
+      CASE 1   ; StringF(str,
+                  IF flags AND MEMBF_SIGNED THEN &#x27;vector signed char \s&#x27; ELSE &#x27;vector char&#x27;,
+                     name)
+      ENDSELECT
+   ENDSELECT
+ENDPROC str
+
+
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

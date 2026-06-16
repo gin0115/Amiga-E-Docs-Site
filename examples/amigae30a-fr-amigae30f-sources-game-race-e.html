@@ -1,0 +1,329 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Race.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-amigae30a-fr.html">amigae30a_fr</a> &rsaquo; Race.e</div><h1>File: <code>Race.e</code></h1><p class="meta">303 lines · project <a href="../examples/pkg-amigae30a-fr.html"><code>amigae30a_fr</code></a></p><p class="pathctx">amigae30a_fr/AmigaE30f/Sources/Game/Race.e</p><p class="prose">version ordinateur du jeu autorace Jouez juste pour voir comment il marche. L&#x27;objectif est de bien choisir sa vitesse pour allez rapidement sans rentrer chez les autres. Si vous conduisez trop vite pour prendre un virage, vous perdez. Ce jeu est facile aussi à jouer sur le papier. A part le fait que</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/clonescreen.html">tools/clonescreen</a></li></ul></div><h2>Source</h2><pre class="code">/* version ordinateur du jeu autorace
+
+   Jouez juste pour voir comment il marche. L&#x27;objectif est
+   de bien choisir sa vitesse pour allez rapidement sans rentrer
+   chez les autres. Si vous conduisez trop vite pour prendre un
+   virage, vous perdez. Ce jeu est facile aussi à jouer sur le
+   papier. A part le fait que vous pouvez dessiner de belles
+   courbes avec :-)
+
+*/
+
+OPT OSVERSION=37
+
+MODULE &#x27;tools/clonescreen&#x27;, &#x27;gadtools&#x27;, &#x27;libraries/gadtools&#x27;,
+       &#x27;intuition/screens&#x27;, &#x27;graphics/text&#x27;, &#x27;intuition/intuition&#x27;,
+       &#x27;graphics/rastport&#x27;
+
+CONST MAXP=10,
+      MAXBOUND=1000,
+      MAXTRAS=50000,
+      OFF=7
+CONST MAXAREA=MAXBOUND*5+10,
+      OURIDCMP=IDCMP_MENUPICK+IDCMP_MOUSEMOVE+IDCMP_MOUSEBUTTONS
+
+DEF xres=60,yres=40,xpixel,ypixel,xoff=20,yoff,xsize,ysize,window=NIL,
+    curx[MAXP]:LIST, cury[MAXP]:LIST, lastx[MAXP]:LIST, lasty[MAXP]:LIST,
+    players=2,curp,stat,midx,midy,pointx,pointy,p[18]:LIST,
+    kx1,kx2,ky1,ky2,boundary[MAXBOUND]:LIST,area[MAXAREA]:ARRAY,
+    ainfo:areainfo,tras:tmpras,nogreen=FALSE
+
+PROC main()
+  DEF screen=NIL:PTR TO screen,font=NIL:PTR TO textfont,depth,title,menu,visual
+  title:=&#x27;AutoRace v0.1&#x27;
+  IF gadtoolsbase:=OpenLibrary(&#x27;gadtools.library&#x27;,37)
+    screen,window,font:=openscreenwindow(title)
+    IF screen
+      font:=Long(stdrast+52)
+      depth,xsize,ysize:=getcloneinfo(screen)
+      yoff:=screen.wbortop+font.ysize+1+30
+      xpixel:=xsize-10-xoff/xres
+      ypixel:=ysize-10-yoff/yres
+      SetColour(screen,0,$04,$C2,$73)
+      SetColour(screen,1,$00,$00,$00)
+      SetColour(screen,2,$DF,$DF,$DF)
+      SetColour(screen,3,$E1,$5A,$03)
+      IF window
+        Colour(3,2)
+        TextF(10,20,&#x27;\d \d&#x27;,xpixel,ypixel)
+        IF menu:=CreateMenusA([1,0,&#x27;Projet&#x27;,0,0,0,0,
+                                 2,0,&#x27;Nouveau&#x27;,&#x27;n&#x27;,0,0,0,
+                                 2,0,&#x27;Pas de vert&#x27;,&#x27;g&#x27;,0,0,0,
+                                 2,0,&#x27;Quitter&#x27;,&#x27;q&#x27;,0,0,0,
+                               1,0,&#x27;Joueur&#x27;,0,0,0,0,
+                                 2,0,&#x27;Un&#x27;,&#x27;1&#x27;,0,0,0,
+                                 2,0,&#x27;Deux&#x27;,&#x27;2&#x27;,0,0,0,
+                                 2,0,&#x27;Trois&#x27;,&#x27;3&#x27;,0,0,0,
+                                 2,0,&#x27;Quatre&#x27;,&#x27;4&#x27;,0,0,0,
+                                 2,0,&#x27;Cinq&#x27;,&#x27;5&#x27;,0,0,0,
+                               0,0,0,0,0,0,0]:newmenu,NIL)
+          IF visual:=GetVisualInfoA(screen,NIL)
+            IF LayoutMenusA(menu,visual,NIL)
+              IF SetMenuStrip(window,menu)
+                loop()
+                ClearMenuStrip(window)
+              ELSE
+                WriteF(&#x27;Ne peut pas mettre le menu!\n&#x27;)
+              ENDIF
+            ELSE
+              WriteF(&#x27;Ne peut pas mettre en place les menus!\n&#x27;)
+            ENDIF
+            FreeVisualInfo(visual)
+          ELSE
+            WriteF(&#x27;ne peut pas prendre les visual infos!\n&#x27;)
+          ENDIF
+          FreeMenus(menu)
+        ELSE
+          WriteF(&#x27;Ne peut pas créer les menus!\n&#x27;)
+        ENDIF
+      ELSE
+        WriteF(&#x27;Ne peut pas ouvrir de fenêtre!\n&#x27;)
+      ENDIF
+    ELSE
+      WriteF(&#x27;Ne peut pas ouvrir d\aécran!\n&#x27;)
+    ENDIF
+    closeclonescreen(screen,font,window)
+    CloseLibrary(gadtoolsbase)
+  ELSE
+    WriteF(&#x27;ne peut ouvrir la gadtools v37+\n&#x27;)
+  ENDIF
+ENDPROC
+
+PROC openscreenwindow(t) HANDLE
+  DEF s=NIL,w=NIL,f=NIL
+  s,f:=openclonescreen(&#x27;Workbench&#x27;,t,3)
+  w:=backdropwindow(s,OURIDCMP,$1B00)
+EXCEPT
+ENDPROC s,w,f
+
+
+PROC wait4message(window:PTR TO window)
+  DEF mes:PTR TO intuimessage,type,infos
+  REPEAT
+    type:=0
+    IF mes:=Gt_GetIMsg(window.userport)
+      type:=mes.class
+      IF type=IDCMP_MENUPICK
+        infos:=mes.code
+        IF infos=-1 THEN type:=0
+      ELSEIF type=IDCMP_MOUSEBUTTONS
+        IF mes.code&lt;&gt;SELECTUP THEN type:=0
+      ELSEIF type=IDCMP_REFRESHWINDOW
+        Gt_BeginRefresh(window)
+        Gt_EndRefresh(window,TRUE)
+        type:=0
+      ENDIF
+      Gt_ReplyIMsg(mes)
+    ELSE
+      Wait(-1)
+    ENDIF
+  UNTIL type
+ENDPROC type,infos
+
+ENUM NO_ACTION,SELECTING,GAME_OVER   -&gt; stat
+CONST BACKC=2,FRONTC=1,PLAYERC=3,GRASSC=0
+
+PROC loop() HANDLE
+  DEF quit=FALSE,class,infos,menu,item,rast:PTR TO rastport
+  ListCopy(boundary,[11,7, 24,5, 42,10, 45,16, 43,26, 39,29, 25,33, 10,30, 7,23, 6,17, 11,7])
+
+  rast:=stdrast
+  rast.aolpen:=GRASSC
+  -&gt;rast.flags:=rast.flags OR RPF_AREAOUTLINE
+  rast.tmpras:=InitTmpRas(tras,NewM(MAXTRAS,2),MAXTRAS)
+  InitArea(ainfo,area,MAXAREA)
+  rast.areainfo:=ainfo
+
+  resetgame()
+  REPEAT
+    IF stat=NO_ACTION THEN startselection()
+    class,infos:=wait4message(window)  -&gt;WaitIMessage(window) -&gt; planté?
+    SELECT class
+      CASE IDCMP_MENUPICK
+        menu:=infos AND %11111
+        item:=Shr(infos AND %11111100000,5)
+        SELECT menu
+          CASE 0
+            SELECT item
+              CASE 0; nogreen:=FALSE; resetgame()
+              CASE 1; nogreen:=TRUE;  resetgame()
+              CASE 2; quit:=TRUE
+            ENDSELECT
+          CASE 1
+            players:=item+1
+            resetgame()
+        ENDSELECT
+      CASE IDCMP_MOUSEMOVE
+        IF stat&lt;GAME_OVER THEN updateselection()
+      CASE IDCMP_MOUSEBUTTONS
+        IF stat&lt;GAME_OVER THEN finishselection()
+    ENDSELECT
+  UNTIL quit
+EXCEPT
+  WriteF(&#x27;Pas de mémoire pour tmpras!\n&#x27;)
+ENDPROC
+
+PROC resetgame()
+  DEF x,y,a,l
+  Box(0,0,xsize-1,ysize-1,BACKC)
+  FOR x:=0 TO xres DO FOR y:=0 TO yres DO vplot(x,y,FRONTC)
+  Line(xcoord(0),ycoord(0),xcoord(15),ycoord(15),FRONTC)
+  Colour(GRASSC,BACKC)
+  IF nogreen=FALSE
+    AreaMove(stdrast,xcoord(boundary[0]),ycoord(boundary[1]))
+    l:=ListLen(boundary)
+    FOR a:=2 TO l-1 STEP 2 DO AreaDraw(stdrast,xcoord(boundary[a]),ycoord(boundary[a+1]))
+    AreaEnd(stdrast)
+  ENDIF
+  FOR a:=0 TO players-1
+    curx[a]:=OFF-a; cury[a]:=OFF-a; lastx[a]:=OFF-a; lasty[a]:=OFF-a
+  ENDFOR
+  stat:=NO_ACTION
+  curp:=0
+ENDPROC
+
+PROC startselection()
+  DEF posm=0,a,b,pc:PTR TO LONG,distx,disty,x,y
+  midx:=curx[curp]-lastx[curp]+curx[curp]
+  midy:=cury[curp]-lasty[curp]+cury[curp]
+  pc:=p
+  stat:=SELECTING
+  FOR a:=-1 TO 1
+    FOR b:=-1 TO 1
+      IF valid(midx+a,midy+b)
+        posm++
+        pc[]++:=xcoord(midx+a)
+        pc[]++:=ycoord(midy+b)
+      ELSE
+        pc[]++:=0
+        pc[]++:=0
+      ENDIF
+    ENDFOR
+  ENDFOR
+  IF posm
+    message(&#x27;Joueur \d a \d déplacement(s) possible(s)&#x27;,curp+1,posm)
+    plotplayer(curp)
+    x:=xcoord(midx); y:=ycoord(midy)
+    distx:=xpixel/2+xpixel
+    disty:=ypixel/2+ypixel
+    kx1:=x-distx
+    kx2:=x+distx
+    ky1:=y-disty
+    ky2:=y+disty
+    drawkader()
+    computemouse()
+    selectline(2)
+  ELSE
+    message(&#x27;Joueur \d a perdu!&#x27;,curp+1,0)
+    stat:=GAME_OVER
+  ENDIF
+ENDPROC
+
+PROC updateselection()
+  selectline(2)
+  computemouse()
+  selectline(2)
+ENDPROC
+
+PROC finishselection()
+  selectline(2)
+  drawkader()
+  selectline(1)
+  vplot(curx[curp],cury[curp],FRONTC)
+  lastx[curp]:=curx[curp]
+  lasty[curp]:=cury[curp]
+  curx[curp]:=xvirtua(pointx)
+  cury[curp]:=yvirtua(pointy)
+  stat:=NO_ACTION
+  curp++
+  IF curp=players THEN curp:=0
+  plotplayer(curp)
+ENDPROC
+
+PROC computemouse()
+  DEF pc:PTR TO LONG,a,x,y,mx,my
+  pc:=p
+  pointx:=pointy:=10000
+  mx:=MouseX(window)
+  my:=MouseY(window)
+  FOR a:=0 TO 8
+    x:=pc[]++; y:=pc[]++
+    IF x
+      IF (Abs(x-mx)+Abs(y-my))&lt;(Abs(pointx-mx)+Abs(pointy-my))
+        pointx:=x; pointy:=y
+      ENDIF
+    ENDIF
+  ENDFOR
+  IF (pointx=10000) OR (pointy=10000)
+    pointx:=0
+    pointy:=0
+  ENDIF
+ENDPROC
+
+PROC selectline(mode)
+  SetDrMd(stdrast,mode)
+  Line(xcoord(curx[curp]),ycoord(cury[curp]),pointx,pointy,FRONTC)
+  SetDrMd(stdrast,1)
+ENDPROC
+
+PROC xcoord(vx) RETURN vx*xpixel+xoff
+PROC ycoord(vy) RETURN vy*ypixel+yoff
+PROC col(vx,vy) RETURN ReadPixel(stdrast,xcoord(vx),ycoord(vy))
+PROC valid(x,y) RETURN col(x,y)=FRONTC
+PROC xvirtua(x) RETURN x-xoff/xpixel
+PROC yvirtua(y) RETURN y-yoff/ypixel
+
+PROC drawkader()
+  SetDrMd(stdrast,2)
+  Line(kx1,ky1,kx1,ky2,FRONTC)
+  Line(kx1,ky1,kx2,ky1,FRONTC)
+  Line(kx2,ky2,kx1,ky2,FRONTC)
+  Line(kx2,ky2,kx2,ky1,FRONTC)
+  SetDrMd(stdrast,1)
+ENDPROC
+
+PROC vplot(vx,vy,col)
+  DEF x,y
+  x:=xcoord(vx)
+  y:=ycoord(vy)
+  Box(x,y,x+1,y+1,col)
+ENDPROC
+
+PROC plotplayer(player)
+  DEF x,y
+  x:=xcoord(curx[player])
+  y:=ycoord(cury[player])
+  Box(x-1,y-1,x+2,y+2,PLAYERC+player)
+ENDPROC
+
+PROC message(s,p1,p2)
+  TextF(10,30,&#x27;                                             &#x27;)
+  TextF(10,30,s,p1,p2)
+ENDPROC
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

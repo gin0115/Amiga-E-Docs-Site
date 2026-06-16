@@ -1,0 +1,376 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>BinDif.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-portable.html">PortablE</a> &rsaquo; BinDif.e</div><h1>File: <code>BinDif.e</code></h1><p class="meta">350 lines · project <a href="../examples/pkg-portable.html"><code>PortablE</code></a></p><p class="pathctx">PortablE/PortablE/Examples/std/Shell/BinDif.e</p><p class="prose">BinDif.e 16-10-22 by Christopher Steven Handley.</p><h2>Source</h2><pre class="code">/* BinDif.e 16-10-22 by Christopher Steven Handley.
+*/
+/*
+	This program does a binary comparison of two files, or of all the files
+	within two folders.  For folder comparisons, the first folder is the one
+	scanned for files, such that files present in the second folder but not the
+	first will be ignored.
+	
+	The Numeric switch makes the output easily usable by scripts.
+	
+	Folder comparisons has the option to Copy the identical/different files
+	to other folders.
+*/
+
+MODULE &#x27;std/cPath&#x27;, &#x27;std/pShellParameters&#x27;, &#x27;std/pShell&#x27;
+
+PRIVATE
+STATIC shellArgs = &#x27;MainFileDir/A, OtherFileDir/A, Fast/S, OnlyOverlap/S, Numeric/S, ListBytes/S, ResumeFrom/K,  Copy/S, IdenticalFilesTo/K, DifferentMainFilesTo/K, DifferentOtherFilesTo/K&#x27;
+-&gt;index:            0              1               2       3              4          5            6              7       8                   9                       10
+
+CONST BUFSIZE = 512000
+PUBLIC
+
+PROC main() RETURNS ret
+	DEF hostPath1:ARRAY OF CHAR, hostPath2:ARRAY OF CHAR, hostResumePath1:ARRAY OF CHAR, fast:BOOL, onlyOverlap:BOOL, numeric:BOOL, listBytes:BOOL
+	DEF     path1:OWNS STRING,       path2:OWNS STRING,       resumePath1:OWNS STRING,   dif
+	
+	DEF copy:BOOL, hostIdenticalFilesTo:ARRAY OF CHAR, hostDifferentMainFilesTo:ARRAY OF CHAR, hostDifferentOtherFilesTo:ARRAY OF CHAR
+	DEF                identicalFilesTo:OWNS STRING,       differentMainFilesTo:OWNS STRING,       differentOtherFilesTo:OWNS STRING
+	
+	ret := SHELL_RET_OK
+	
+	-&gt;parse parameters
+	IF ParseParams(shellArgs) = FALSE THEN Raise(&quot;ARGS&quot;)
+	hostPath1 := GetParam(0)
+	hostPath2 := GetParam(1)
+	fast      := GetParam(2) &lt;&gt; NILA
+	onlyOverlap := GetParam(3) &lt;&gt; NILA
+	numeric     := GetParam(4) &lt;&gt; NILA
+	listBytes   := GetParam(5) &lt;&gt; NILA
+	hostResumePath1 := GetParam(6)
+	copy            := GetParam(7) &lt;&gt; NILA
+	hostIdenticalFilesTo      := GetParam(8)
+	hostDifferentMainFilesTo  := GetParam(9)
+	hostDifferentOtherFilesTo := GetParam(10)
+	
+	-&gt;perform request
+	path1 := ImportDirPath(hostPath1)
+	path2 := ImportDirPath(hostPath2)
+	
+	IF ExistsPath(path1) AND ExistsPath(path2)
+		-&gt;(paths were dirs)
+		IF hostResumePath1
+			resumePath1 := ImportDirPath(hostResumePath1)
+			IF InvalidDirPath(resumePath1) THEN Throw(&quot;ARGS&quot;, &#x27;Invalid path for ResumeFrom/K parameter&#x27;)
+			
+			IF ExistsPath(resumePath1) = FALSE
+				END resumePath1
+				
+				resumePath1 := ImportFilePath(hostResumePath1)
+				IF InvalidFilePath(resumePath1) THEN Throw(&quot;ARGS&quot;, &#x27;Invalid path for ResumeFrom/K parameter&#x27;)
+			ENDIF
+		ENDIF
+		
+		IF (hostIdenticalFilesTo &lt;&gt; NILA) OR (hostDifferentMainFilesTo &lt;&gt; NILA) OR (hostDifferentOtherFilesTo &lt;&gt; NILA) XOR copy
+			Throw(&quot;ARGS&quot;, &#x27;The Copy/S parameter requires the IdenticalFilesTo/K or DifferentMainFilesTo/K or DifferentOtherFilesTo/K parameters, and vice versa&#x27;)
+		ENDIF
+		
+		IF hostIdenticalFilesTo      THEN      identicalFilesTo := ImportDirPath(hostIdenticalFilesTo)
+		IF hostDifferentMainFilesTo  THEN  differentMainFilesTo := ImportDirPath(hostDifferentMainFilesTo)
+		IF hostDifferentOtherFilesTo THEN differentOtherFilesTo := ImportDirPath(hostDifferentOtherFilesTo)
+		
+		IF      identicalFilesTo THEN IF InvalidDirPath(     identicalFilesTo) THEN Throw(&quot;ARGS&quot;, &#x27;Invalid path for IdenticalFilesTo/K parameter&#x27;)
+		IF  differentMainFilesTo THEN IF InvalidDirPath( differentMainFilesTo) THEN Throw(&quot;ARGS&quot;, &#x27;Invalid path for DifferentMainFilesTo/K parameter&#x27;)
+		IF differentOtherFilesTo THEN IF InvalidDirPath(differentOtherFilesTo) THEN Throw(&quot;ARGS&quot;, &#x27;Invalid path for DifferentOtherFilesTo/K parameter&#x27;)
+		
+		dif := binDifDir(path1, path2, onlyOverlap, fast, /*quiet=*/numeric, copy, listBytes, identicalFilesTo, differentMainFilesTo, differentOtherFilesTo, resumePath1)
+		
+		IF numeric
+			Print(&#x27;\d\n&#x27;, dif)
+			
+		ELSE IF dif = 0
+			Print(&#x27;No different files found.\n&#x27;)
+		ELSE
+			Print(&#x27;Found \d different files.\n&#x27;, dif)
+		ENDIF
+	ELSE
+		END path1, path2
+		path1 := ImportFilePath(hostPath1)
+		path2 := ImportFilePath(hostPath2)
+		
+		IF ExistsPath(path1) AND ExistsPath(path2)
+			-&gt;(paths were files)
+			IF hostResumePath1           THEN Throw(&quot;ARGS&quot;,            &#x27;ResumeFrom/K parameter does not make sense for files&#x27;)
+			IF copy                      THEN Throw(&quot;ARGS&quot;,                  &#x27;Copy/S parameter does not make sense for files&#x27;)
+			IF hostIdenticalFilesTo      THEN Throw(&quot;ARGS&quot;,      &#x27;IdenticalFilesTo/K parameter does not make sense for files&#x27;)
+			IF hostDifferentMainFilesTo  THEN Throw(&quot;ARGS&quot;,  &#x27;DifferentMainFilesTo/K parameter does not make sense for files&#x27;)
+			IF hostDifferentOtherFilesTo THEN Throw(&quot;ARGS&quot;, &#x27;DifferentOtherFilesTo/K parameter does not make sense for files&#x27;)
+			
+			dif := binDifFile(path1, path2, onlyOverlap, fast, /*dirMode=*/FALSE, listBytes)
+			
+			IF numeric
+				Print(&#x27;\d\n&#x27;, dif)
+				
+			ELSE IF dif = 0
+				Print(&#x27;No differences found.\n&#x27;)
+			ELSE
+				Print(&#x27;Found \d bytes difference.\n&#x27;, dif)
+			ENDIF
+		ELSE
+			IF ExistsPath(path1, TRUE) AND ExistsPath(path2, TRUE)
+				Print(&#x27;ERROR:  One FileDir was a file &amp; one was a directory.\n&#x27;)
+			ELSE
+				Print(&#x27;ERROR:  One or both FileDirs did not exist.\n&#x27;)
+			ENDIF
+			Raise(&quot;ERR&quot;)
+		ENDIF
+	ENDIF
+	
+	IF dif &lt;&gt; 0 THEN ret := SHELL_RET_WARN
+FINALLY
+	SELECT exception
+	CASE 0
+		-&gt;use existing &quot;ret&quot; value
+	CASE &quot;FILE&quot;
+		-&gt;(error already reported) so finish gracefully
+		ret := SHELL_RET_ERROR
+	CASE &quot;ARGS&quot;
+		-&gt;(error already reported) so finish gracefully
+		IF exceptionInfo THEN Print(&#x27;ERROR:  \s\n&#x27;, exceptionInfo)
+		ret := SHELL_RET_ERROR
+	CASE &quot;ERR&quot;
+		-&gt;(error already reported) so finish gracefully
+		ret := SHELL_RET_ERROR
+	CASE &quot;BRK&quot;
+		Print(&#x27;User break\n&#x27;)
+		ret := SHELL_RET_ERROR
+	CASE &quot;MEM&quot;
+		Print(&#x27;Ran out of memory\n&#x27;)
+		ret := SHELL_RET_FAIL
+	DEFAULT
+		PrintException()
+		ret := SHELL_RET_FAIL
+	ENDSELECT
+	
+	END path1, path2, resumePath1
+	END identicalFilesTo, differentMainFilesTo, differentOtherFilesTo
+ENDPROC
+
+
+PRIVATE
+DEF file1:OWNS PTR TO cHostFile, file2:OWNS PTR TO cHostFile
+DEF buf1:ARRAY OF BYTE, buf2:ARRAY OF BYTE
+PUBLIC
+
+PROC new()
+	NEW file1.new(), file2.new()
+	NEW buf1[BUFSIZE], buf2[BUFSIZE]
+ENDPROC
+
+PROC end()
+	END file1, file2
+	END buf1, buf2
+ENDPROC
+
+PROC binDifFile(filePath1:ARRAY OF CHAR, filePath2:ARRAY OF CHAR, onlyOverlap:BOOL, fast:BOOL, dirMode:BOOL, listBytes:BOOL) RETURNS dif
+	DEF length1:BIGVALUE, nextPos1:BIGVALUE, readLen1
+	DEF length2:BIGVALUE, nextPos2:BIGVALUE, readLen2
+	DEF index, minLen, oldPos:BIGVALUE
+	DEF temp:OWNS STRING
+	
+	IF file1.open(filePath1, TRUE) = FALSE THEN errorFile(file1, filePath1, &#x27;open&#x27;)
+	IF file2.open(filePath2, TRUE) = FALSE THEN errorFile(file2, filePath2, &#x27;open&#x27;)
+	
+	length1 := file1.getSize()
+	length2 := file2.getSize()
+	
+	IF fast THEN IF (length1 = length2) AND (file1.getTime() = file2.getTime()) THEN RETURN 0
+	
+	dif := 0
+	nextPos1 := nextPos2 := 0
+	REPEAT
+		readLen1 := bigMin(BUFSIZE, length1 - nextPos1) !!VALUE
+		readLen2 := bigMin(BUFSIZE, length2 - nextPos2) !!VALUE
+		
+		oldPos := nextPos1
+		minLen := Min(readLen1, readLen2)
+		file1.setPosition(nextPos1 := file1.read(buf1, minLen))
+		file2.setPosition(nextPos2 := file2.read(buf2, minLen))
+		
+		-&gt;compare buffers
+		FOR index := 0 TO minLen-1
+			IF buf1[index] &lt;&gt; buf2[index]
+				dif++
+				IF listBytes THEN Print(&#x27;Byte \d was $\h[2] for main &amp; $\h[2] for other.\n&#x27;, index+oldPos!!VALUE,
+					buf1[index] + IF buf1[index] &lt; 0 THEN 256 ELSE 0,
+					buf2[index] + IF buf2[index] &lt; 0 THEN 256 ELSE 0)
+			ENDIF
+		ENDFOR
+		
+		IF CtrlC()
+			IF dirMode THEN abortDir(temp := StrJoin(filePath1))
+			Raise(&quot;BRK&quot;)
+		ENDIF
+	UNTIL (nextPos1 &gt;= length1) OR (nextPos2 &gt;= length2)
+	
+	IF onlyOverlap = FALSE THEN dif := dif + Abs(length1 - length2 !!VALUE)
+FINALLY
+	IF file1.infoIsOpen() THEN file1.close()
+	IF file2.infoIsOpen() THEN file2.close()
+	END temp
+ENDPROC
+
+PRIVATE
+PROC bigMin(a:BIGVALUE, b:BIGVALUE) IS IF a &lt; b THEN a ELSE b
+
+PROC errorFile(file:PTR TO cHostFile, path:ARRAY OF CHAR, action:ARRAY OF CHAR)
+	DEF hostPath:OWNS STRING
+	
+	hostPath := ExportPath(path)
+	Print(&#x27;ERROR:  Failed to \s the file &quot;\s&quot; because of \s in \s.\n&#x27;, action, hostPath, file.infoFailureReason(), file.infoFailureOrigin())
+	Raise(&quot;FILE&quot;)
+FINALLY
+	END hostPath
+ENDPROC
+PUBLIC
+
+
+PROC binDifDir(dirPath1:ARRAY OF CHAR, dirPath2:ARRAY OF CHAR, onlyOverlap:BOOL, fast:BOOL, quiet:BOOL, copy:BOOL, listBytes:BOOL, identicalFilesTo:STRING, differentMainFilesTo:STRING, differentOtherFilesTo:STRING, resumePath1:STRING) RETURNS dif
+	baseDirPathLen1 := StrLen(dirPath1)
+	baseDirPathLen2 := StrLen(dirPath2)
+	baseDirPath2 := dirPath2
+	
+	cmp_fast := fast
+	cmp_quiet := quiet
+	cmp_onlyOverlap := onlyOverlap
+	cmp_listBytes := listBytes
+	cmp_resumeFromPath1 := resumePath1
+	cmp_copy                  := copy
+	cmp_identicalFilesTo      := identicalFilesTo
+	cmp_differentMainFilesTo  := differentMainFilesTo
+	cmp_differentOtherFilesTo := differentOtherFilesTo
+	
+	RecurseDir(dirPath1, compareFile, NIL, NIL, abortDir)
+	dif := diffFiles
+ENDPROC
+
+PRIVATE
+DEF diffFiles=0, baseDirPathLen1, baseDirPathLen2, baseDirPath2:ARRAY OF CHAR, cmp_resumeFromPath1:STRING, cmp_fast:BOOL, cmp_quiet:BOOL, cmp_onlyOverlap:BOOL, cmp_listBytes:BOOL
+DEF cmp_copy:BOOL, cmp_identicalFilesTo:STRING, cmp_differentMainFilesTo:STRING, cmp_differentOtherFilesTo:STRING
+PUBLIC
+
+FUNC compareFile(filePath1:STRING) OF funcRecurseFile
+	DEF filePath2:OWNS STRING, dif
+	DEF hostFilePath1:OWNS STRING, hostFilePath2:OWNS STRING
+	
+	IF cmp_resumeFromPath1 
+		IF StrCmpPath(filePath1, cmp_resumeFromPath1, EstrLen(cmp_resumeFromPath1))
+			-&gt;(reached the resume point)
+			cmp_resumeFromPath1 := NILS
+		ELSE
+			RETURN
+		ENDIF
+	ENDIF
+	
+	NEW filePath2[EstrLen(filePath1) - baseDirPathLen1 + baseDirPathLen2]
+	StrCopy(filePath2, baseDirPath2)
+	StrAdd( filePath2, filePath1, ALL, baseDirPathLen1)
+	
+	IF ExistsPath(filePath2) = FALSE
+		dif := -1
+		diffFiles++
+		
+		IF cmp_quiet = FALSE
+			hostFilePath2 := ExportPath(filePath2)
+			Print(&#x27;File &quot;\s&quot; does not exist!\n&#x27;, hostFilePath2)
+		ENDIF
+		
+	ELSE IF dif := binDifFile(filePath1, filePath2, cmp_onlyOverlap, cmp_fast, /*dirMode=*/TRUE, cmp_listBytes)
+		diffFiles++
+		
+		IF cmp_quiet = FALSE
+			hostFilePath1 := ExportPath(filePath1)
+			hostFilePath2 := ExportPath(filePath2)
+			Print(&#x27;File &quot;\s&quot; was \d bytes different from &quot;\s&quot;.\n&#x27;, hostFilePath2, dif, hostFilePath1)
+			-&gt;was: Print(&#x27;Found \d bytes difference between file &quot;\s&quot; &amp; &quot;\s&quot;.\n&#x27;, dif, hostFilePath1, hostFilePath2)
+		ENDIF
+	ENDIF
+	
+	IF dif = 0
+		IF cmp_identicalFilesTo THEN relativeCopy(filePath1, 1, cmp_identicalFilesTo)
+		
+	ELSE IF dif &lt;&gt; 0
+		IF cmp_differentMainFilesTo THEN relativeCopy(filePath1, 1, cmp_differentMainFilesTo)
+		
+		IF cmp_differentOtherFilesTo THEN IF dif &lt;&gt; -1 THEN relativeCopy(filePath2, 2, cmp_differentOtherFilesTo)
+	ENDIF
+FINALLY
+	IF exception = &quot;FILE&quot;
+		diffFiles++
+		exception := 0
+	ENDIF
+	
+	END filePath2
+	END hostFilePath1, hostFilePath2
+ENDFUNC
+
+
+FUNC abortDir(nextPath:STRING) OF funcRecurseDirAbort
+	DEF hostPath:OWNS STRING
+	
+	hostPath := ExportPath(IF cmp_resumeFromPath1 THEN cmp_resumeFromPath1 ELSE nextPath)	-&gt;if still resuming, then show the resume folder, since folders are scanned in a non-obvious order
+	Print(&#x27;Aborted while scanning \s &quot;\s&quot; (you can use this with the ResumeFrom/K parameter).\n&#x27;, IF FastIsFile(nextPath) THEN &#x27;file&#x27; ELSE &#x27;directory&#x27;, hostPath)
+	Raise(&quot;BRK&quot;)
+FINALLY
+	END hostPath
+ENDFUNC
+
+
+PRIVATE
+
+PROC relativeCopy(sourceFilePath:STRING, baseNumber, targetDirPath:STRING)
+	DEF baseDirPathLen
+	DEF sourceFile:OWNS PTR TO cFile, targetFile:OWNS PTR TO cFile, targetFilePath:OWNS STRING
+	
+	NEW sourceFile.new()
+	
+	baseDirPathLen := IF baseNumber = 1 THEN baseDirPathLen1 ELSE baseDirPathLen2
+	NEW targetFilePath[EstrLen(sourceFilePath) - baseDirPathLen + EstrLen(targetDirPath)]
+	StrCopy(targetFilePath, targetDirPath)
+	StrAdd( targetFilePath, sourceFilePath, ALL, baseDirPathLen)
+	
+	CreateDirs(targetFilePath)
+	IF sourceFile.open(sourceFilePath, TRUE)	-&gt;readOnly=TRUE
+		targetFile := sourceFile.makeCopy(targetFilePath)
+		IF targetFile
+			targetFile.close()
+		ELSE
+			IF cmp_quiet = FALSE THEN Print(&#x27;WARNING: Failed to copy file &quot;\s&quot; because of \s in \s.\n&#x27;, sourceFilePath, sourceFile.infoFailureReason(), sourceFile.infoFailureOrigin())
+		ENDIF
+		sourceFile.close()
+	ELSE
+			IF cmp_quiet = FALSE THEN Print(&#x27;WARNING: Failed to copy file &quot;\s&quot; because of \s in \s.\n&#x27;, sourceFilePath, sourceFile.infoFailureReason(), sourceFile.infoFailureOrigin())
+	ENDIF
+FINALLY
+	END sourceFile, targetFile, targetFilePath
+ENDPROC
+
+PUBLIC
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

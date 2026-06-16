@@ -1,0 +1,324 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>coordinate.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-aepd31.html">AEPD31</a> &rsaquo; coordinate.e</div><h1>File: <code>coordinate.e</code></h1><p class="meta">298 lines · project <a href="../examples/pkg-aepd31.html"><code>AEPD31</code></a></p><p class="pathctx">AEPD31/EPD31/Programme/oomodules/coordinate.e</p><p class="prose">rotating seems to work</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/float.html">oomodules/sort/number/float</a></li></ul></div><h2>Source</h2><pre class="code">/*
+
+rotating
+
+seems to work
+*/
+
+OPT MODULE
+OPT EXPORT
+
+MODULE &#x27;oomodules/sort/number/float&#x27;,&#x27;oomodules/object&#x27;
+
+OBJECT coordinate OF object
+  x:PTR TO float,
+  y:PTR TO float,
+  z:PTR TO float
+ENDOBJECT
+
+PROC name() OF coordinate IS &#x27;Coordinate&#x27;
+
+PROC init() OF coordinate
+DEF float_x:PTR TO float,
+    float_y:PTR TO float,
+    float_z:PTR TO float
+
+  NEW float_x.new()
+  self.x := float_x
+
+  NEW float_y.new()
+  self.y := float_y
+
+  NEW float_z.new()
+  self.z := float_z
+
+ENDPROC
+
+PROC end() OF coordinate
+DEF float:PTR TO float
+
+  float := self.x
+  END float
+
+  float := self.y
+  END float
+
+  float := self.y
+  END float
+
+ENDPROC
+
+PROC getX() OF coordinate IS self.x.get()
+PROC getY() OF coordinate IS self.y.get()
+PROC getZ() OF coordinate IS self.z.get()
+
+PROC setX(v) OF coordinate IS self.x.set(v)
+PROC setY(v) OF coordinate IS self.y.set(v)
+PROC setZ(v) OF coordinate IS self.z.set(v)
+
+
+
+/* returns an array with a normal compare to all three dims?
+PROC cmp(item:PTR TO integer) OF integer
+ IF self.number &lt; item.number THEN RETURN -1
+ RETURN IF self.number &gt; item.number THEN 1 ELSE 0
+ENDPROC
+
+*/
+
+PROC select(optionlist,index) OF coordinate
+/*
+
+TODO: error check: len-o&#x27;-list!
+
+*/
+DEF item, value
+
+  item := ListItem(optionlist, index)
+
+  SELECT item
+    CASE &quot;set&quot;
+      INC index
+      self.x.set(ListItem(optionlist,index))
+
+      INC index
+      self.y.set(ListItem(optionlist,index))
+
+      INC index
+      self.z.set( ListItem(optionlist,index))
+
+  ENDSELECT
+
+ENDPROC index
+
+PROC write() OF coordinate
+DEF out
+
+  out:=String(100)
+
+  StrAdd(out,&#x27;[ &#x27;)
+  StrAdd(out, self.x.write())
+  StrAdd(out,&#x27; ; &#x27;)
+  StrAdd(out, self.y.write())
+  StrAdd(out,&#x27; ; &#x27;)
+  StrAdd(out, self.z.write())
+  StrAdd(out,&#x27; ]&#x27;)
+
+  RETURN out
+ENDPROC
+
+PROC copy(to:PTR TO coordinate) OF coordinate
+
+  self.x.copy( to.x )
+  self.y.copy( to.y )
+  self.z.copy( to.z )
+
+ENDPROC
+
+PROC shift(by:PTR TO coordinate) OF coordinate
+
+  self.x.add(by.x)
+  self.y.add(by.y)
+  self.z.add(by.z)
+
+ENDPROC
+
+-&gt; turns 0-360 to 0-2*pi
+PROC angle2radians(angle) OF coordinate
+/*
+
+Seems to work only with angles&gt;0
+NOTE: only float angles, please!
+
+*/
+DEF out[80]:STRING
+
+  IF angle&lt;0 THEN angle := angle+360
+
+  angle := angle/180.0
+  angle := angle*3.14159265
+
+-&gt;  RealF(out,angle,8)
+-&gt;  WriteF(&#x27;\s\n&#x27;, out)
+
+  RETURN angle
+ENDPROC
+
+PROC rotateZ(angle,coordinate=NIL:PTR TO coordinate) OF coordinate
+/*
+
+This method rotates the point by the given angle around the given coordinate.
+If no coordinate is specified, we rotate aroung 0;0;0
+
+*/
+
+DEF fltangle, nux, nuy, out[80]:STRING,
+    fltx,flty, resulta, resultb
+
+ /*
+  * To rotate around a point we do this: substract the coordinate&#x27;s values,
+  * i.e. shift it to 0;0;0, rotate it, and add the coordinate&#x27;s values
+  * to the result.
+  */
+
+  IF coordinate
+    self.x.substract(coordinate.x)
+    self.y.substract(coordinate.y)
+    self.z.substract(coordinate.z)
+  ENDIF
+
+
+  fltangle := self.angle2radians(angle)
+
+  fltx := self.x.get()
+  flty := self.y.get()
+
+  resulta := !fltx * Fcos(fltangle)
+  resultb := !flty * Fsin(fltangle)
+
+  nux := !resulta - resultb
+
+  resulta := !fltx * Fsin(fltangle)
+  resultb := !flty * Fcos(fltangle)
+
+  nuy := !resulta + resultb
+
+ /*
+  * Now let&#x27;s shift it back to where it came from (see above)
+  */
+
+  self.x.set(nux)
+  self.y.set(nuy)
+
+  IF coordinate
+    self.x.add(coordinate.x)
+    self.y.add(coordinate.y)
+    self.z.add(coordinate.z)
+  ENDIF
+
+ENDPROC
+
+PROC rotateY(angle,coordinate=NIL:PTR TO coordinate) OF coordinate
+/*
+
+  note:
+
+  to rotate 90 degree (mathematical) one has to provide -90
+  (wrong formula?)
+*/
+
+DEF fltangle, nux, nuz, out[80]:STRING,
+    fltx,fltz, resulta, resultb
+
+
+  IF coordinate
+    self.x.substract(coordinate.x)
+    self.y.substract(coordinate.y)
+    self.z.substract(coordinate.z)
+  ENDIF
+
+
+  fltangle := self.angle2radians(angle)
+
+  fltx := self.x.get()
+  fltz := self.z.get()
+
+  resulta := !fltz * Fcos(fltangle)
+  resultb := !fltx * Fsin(fltangle)
+
+  nuz := !resulta - resultb
+
+  resulta := !fltz * Fsin(fltangle)
+  resultb := !fltx * Fcos(fltangle)
+
+  nux := !resulta + resultb
+
+  self.x.set(nux)
+  self.z.set(nuz)
+
+  IF coordinate
+    self.x.add(coordinate.x)
+    self.y.add(coordinate.y)
+    self.z.add(coordinate.z)
+  ENDIF
+
+ENDPROC
+
+PROC rotateX(angle,coordinate=NIL:PTR TO coordinate) OF coordinate
+/*
+
+  note:
+
+  to rotate 90 degree (mathematical) one has to provide -90
+  (wrong formula?)
+*/
+
+DEF fltangle, nuy, nuz, out[80]:STRING,
+    fltz,flty, resulta, resultb
+
+  IF coordinate
+    self.x.substract(coordinate.x)
+    self.y.substract(coordinate.y)
+    self.z.substract(coordinate.z)
+  ENDIF
+
+
+  fltangle := self.angle2radians(angle)
+
+  fltz := self.z.get()
+  flty := self.y.get()
+
+  resulta := !flty * Fcos(fltangle)
+  resultb := !fltz * Fsin(fltangle)
+
+  nuy := !resulta - resultb
+
+  resulta := !flty * Fsin(fltangle)
+  resultb := !fltz * Fcos(fltangle)
+
+  nuz := !resulta + resultb
+
+  self.y.set(nuy)
+  self.z.set(nuz)
+
+  IF coordinate
+    self.x.add(coordinate.x)
+    self.y.add(coordinate.y)
+    self.z.add(coordinate.z)
+  ENDIF
+
+ENDPROC
+
+PROC neg() OF coordinate
+  self.x.neg()
+  self.y.neg()
+  self.z.neg()
+ENDPROC
+
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

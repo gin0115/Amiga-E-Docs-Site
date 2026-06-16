@@ -1,0 +1,209 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>pAmigaRTG.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-portable.html">PortablE</a> &rsaquo; pAmigaRTG.e</div><h1>File: <code>pAmigaRTG.e</code></h1><p class="meta">183 lines · project <a href="../examples/pkg-portable.html"><code>PortablE</code></a></p><p class="pathctx">PortablE/PortablE/PEmodules/target/CPP_AmigaOS4/CSH/pAmigaRTG.e</p><p class="prose">pAmigaRTG.e 04-05-2013 A collection of RTG wrappers for P96. Copyright (c) 2012, 2013 Christopher Steven Handley ( http://cshandley.co.uk/email ) NOTE: These procedures should NOT be used with 8-bit or lower depth bitmaps, unless otherwise specified.</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/picasso96api.html">target/picasso96api</a></li></ul></div><h2>Source</h2><pre class="code">/* pAmigaRTG.e 04-05-2013
+	A collection of RTG wrappers for P96.
+	Copyright (c) 2012, 2013 Christopher Steven Handley ( http://cshandley.co.uk/email )
+	
+	NOTE: These procedures should NOT be used with 8-bit or lower depth bitmaps, unless otherwise specified.
+*/
+OPT INLINE, PREPROCESS
+OPT POINTER
+PUBLIC MODULE &#x27;targetShared/Amiga/CSH/pAmigaRTG_base&#x27;
+MODULE &#x27;target/Picasso96API&#x27;, &#x27;graphics&#x27;, &#x27;utility/tagitem&#x27;, &#x27;exec&#x27;, &#x27;dos/dos&#x27;
+
+CONST RGB_MASK = $FFFFFF, ALPHA_MASK = $FF000000
+
+PROC new()
+	p96base := OpenLibrary(&#x27;Picasso96API.library&#x27;, 0)
+	IF p96base=NIL THEN CleanUp(RETURN_ERROR)
+ENDPROC
+
+PROC end()
+	CloseLibrary(p96base)
+ENDPROC
+
+
+/*
+PROC rtgAvailVideoMem() RETURNS freeBytes
+	p96GetBoardDataTagList(0, [P96BD_FreeMemory,ADDRESSOF freeBytes, TAG_DONE]:tagitem)
+ENDPROC
+*/
+
+PROC rtgSupported() RETURNS supported:BOOL /*REPLACEMENT*/ IS TRUE
+
+PROC rtgAllocBitMap(width, height, depth, flags, friend=NIL:PTR TO bitmap) RETURNS bitmap:PTR TO bitmap /*REPLACEMENT*/
+	-&gt;don&#x27;t inline as this as it causes GCC to say &quot;warning: NULL used in arithmetic&quot;
+	bitmap := p96AllocBitMap(width, height, depth, flags OR IF (friend = NIL) AND (flags AND BMF_DISPLAYABLE = 0) THEN BMF_USERPRIVATE ELSE 0, friend, IF depth = 32 THEN RGBFB_A8R8G8B8 ELSE IF friend THEN p96GetBitMapAttr(friend, P96BMA_RGBFORMAT) ELSE IF depth &gt; 8 THEN RGBFB_R8G8B8 ELSE RGBFB_CLUT)
+ENDPROC
+
+PROC rtgCloneBitMap(orig:PTR TO bitmap, friend=NIL:PTR TO bitmap, extraFlags=0, x=0, y=0, width=-1, height=-1, origRastport=NIL:PTR TO rastport) RETURNS clone:PTR TO bitmap REPLACEMENT
+	DEF depth, flags, cloneDepth
+	DEF useClipBlit:BOOL, cloneRastport:rastport
+	
+	IF width  = -1 THEN width  := GetBitMapAttr(orig, BMA_WIDTH)
+	IF height = -1 THEN height := GetBitMapAttr(orig, BMA_HEIGHT)
+	depth  := rtgGetBitMapDepth(orig)
+	flags  := GetBitMapAttr(orig, BMA_FLAGS)
+	
+	cloneDepth := IF depth = 32 THEN 32 ELSE IF friend THEN rtgGetBitMapDepth(friend) ELSE IF depth &gt; 8 THEN 24 ELSE depth		-&gt;this must match rtgAllocBitMap()&#x27;s format choices
+ 	clone := rtgAllocBitMap(width, height, cloneDepth, flags OR extraFlags, friend)
+	IF clone = NIL THEN RETURN
+	
+	useClipBlit := IF origRastport THEN origRastport.layer &lt;&gt; NIL ELSE FALSE
+	IF useClipBlit
+		InitRastPort(cloneRastport)
+		cloneRastport.bitmap := clone
+		ClipBlit(origRastport,x,y, cloneRastport,0,0, width,height, $c0)
+	ELSE
+		BltBitMap(       orig,x,y, clone,0,0, width,height, $c0, $ff, NILA)
+	ENDIF
+ENDPROC
+
+-&gt;if the bitmap has a depth &lt;= 8, then it may return 0
+-&gt;NOTE: This works-around OS4 seemingly defining &quot;depth&quot; to exclude the Alpha channel
+PROC rtgGetBitMapDepth(bitmap:PTR TO bitmap) RETURNS depth /*REPLACEMENT*/ IS p96GetBitMapAttr(bitmap, P96BMA_BITSPERPIXEL)		-&gt;was: IF p96GetBitMapAttr(bitmap, P96BMA_RGBFORMAT) = RGBFB_A8R8G8B8 THEN 32 ELSE GetBitMapAttr(bitmap, BMA_DEPTH)
+
+PROC rtgBitMapInVideoMem(bitmap:PTR TO bitmap) RETURNS inVideoMem:BOOL /*REPLACEMENT*/ IS p96GetBitMapAttr(bitmap, P96BMA_ISONBOARD) &lt;&gt; 0
+
+PROC rtgMaxWidthBitMapInVideoMem() RETURNS size /*REPLACEMENT*/ IS 1024-1
+
+PROC rtgMaxHeightBitMapInVideoMem() RETURNS size /*REPLACEMENT*/ IS 1024-1
+
+PROC rtgReadPixel( rp:PTR TO rastport, x, y) RETURNS colour /*REPLACEMENT*/ IS p96ReadPixel(rp, x!!UINT, y!!UINT)
+
+PROC rtgWritePixel(rp:PTR TO rastport, x, y, color) /*REPLACEMENT*/ IS p96WritePixel(rp, x!!UINT, y!!UINT, color/*!!ULONG*/) BUT EMPTY
+
+PROC rtgReadPixelArray(srcRastport:PTR TO rastport, minX, minY, maxX, maxY, destArray:ARRAY OF LONG) REPLACEMENT
+	DEF destRI:p96RenderInfo, width, height
+	
+	width  := maxX - minX + 1
+	height := maxY - minY + 1
+	
+	destRI.memory := destArray
+	destRI.bytesperrow := width * SIZEOF LONG !!INT
+	destRI.rgbformat   := RGBFB_A8R8G8B8
+	
+	p96ReadPixelArray(destRI, 0, 0, srcRastport, minX!!UINT, minY!!UINT, width!!UINT, height!!UINT)
+ENDPROC
+
+PROC rtgWritePixelArray(destRastport:PTR TO rastport, minX, minY, maxX, maxY, srcArray:ARRAY OF LONG) REPLACEMENT
+	DEF srcRI:p96RenderInfo, width, height
+	
+	width  := maxX - minX + 1
+	height := maxY - minY + 1
+	
+	srcRI.memory := srcArray
+	srcRI.bytesperrow := width * SIZEOF LONG !!INT
+	srcRI.rgbformat   := RGBFB_A8R8G8B8
+	
+	p96WritePixelArray(srcRI, 0, 0, destRastport, minX!!UINT, minY!!UINT, width!!UINT, height!!UINT)
+ENDPROC
+
+-&gt;NOTE: &quot;smooth&quot; may be ignored in some cases.
+PROC rtgScale(srcBitMap:PTR TO bitmap, srcX, srcY, srcWidth, srcHeight, destBitMap:PTR TO bitmap, destX, destY, destWidth, destHeight, screenDepth, smooth=FALSE:BOOL) REPLACEMENT
+	DEF result, flags
+	
+	IF rtgAlphaSupported(screenDepth)
+		flags := /*COMPFLAG_FORCESOFTWARE OR COMPFLAG_HARDWAREONLY OR*/ IF smooth THEN COMPFLAG_SRCFILTER ELSE 0		-&gt;Using COMPFLAG_IGNOREDESTALPHA stops it working correctly
+		IF rtgBitMapInVideoMem(srcBitMap) = FALSE THEN flags := flags OR COMPFLAG_FORCESOFTWARE		-&gt;this WOULD make it nearly *2 faster on X1000, IF rtgBitMapInVideoMem() actually worked
+		
+		result := CompositeTagList(COMPOSITE_SRC, srcBitMap, destBitMap, [
+			COMPTAG_SRCX,      srcX,
+			COMPTAG_SRCY,      srcY,
+			COMPTAG_SRCWIDTH,  srcWidth,
+			COMPTAG_SRCHEIGHT, srcHeight,
+			COMPTAG_DESTX,     destX,
+			COMPTAG_DESTY,     destY,
+			COMPTAG_DESTWIDTH, destWidth,
+			COMPTAG_DESTHEIGHT,destHeight,
+			COMPTAG_OFFSETX,   destX,
+			COMPTAG_OFFSETY,   destY,
+			COMPTAG_SCALEX, destWidth  * COMP_FIX_ONE + (srcWidth -1) / srcWidth,		-&gt;was: Comp_float_to_fix(destWidth !!FLOAT / srcWidth),
+			COMPTAG_SCALEY, destHeight * COMP_FIX_ONE + (srcHeight-1) / srcHeight,
+			COMPTAG_FLAGS,  flags /*OR COMPFLAG_SRCALPHAOVERRIDE*/,
+			/*MPTAG_SRCALPHA, COMP_FIX_ONE,*/
+			/*COMPTAG_FRIENDBITMAP,destBitMap,*/
+		TAG_END]:tagitem)
+		IF result &lt;&gt; COMPERR_SUCCESS THEN Throw(&quot;BUG&quot;, &#x27;pAmigaRTG; rtgScale(); CompositeTagList() failed&#x27;)
+	ELSE
+		bitMapScaleClassic(srcBitMap, srcX, srcY, srcWidth, srcHeight, destBitMap, destX, destY, destWidth, destHeight, screenDepth)
+	ENDIF
+ENDPROC
+
+PROC rtgAlphaSupported(screenDepth) RETURNS alphaSupported:BOOL /*REPLACEMENT*/ IS IF gfxbase.version &gt;= 53 THEN screenDepth = 32 ELSE FALSE
+
+PROC rtgBltBitMapAlpha(srcBitMap:PTR TO bitmap, srcX, srcY, destBitMap:PTR TO bitmap, destX, destY, sizeX, sizeY) REPLACEMENT
+	DEF result
+	
+	result := CompositeTagList(COMPOSITE_SRC_OVER_DEST, srcBitMap, destBitMap, [
+		COMPTAG_SRCX,      srcX,
+		COMPTAG_SRCY,      srcY,
+		COMPTAG_SRCWIDTH,  sizeX,
+		COMPTAG_SRCHEIGHT, sizeY,
+		COMPTAG_DESTX,     destX,
+		COMPTAG_DESTY,     destY,
+		COMPTAG_DESTWIDTH, sizeX,
+		COMPTAG_DESTHEIGHT,sizeY,
+		COMPTAG_OFFSETX,   destX,
+		COMPTAG_OFFSETY,   destY,
+		COMPTAG_FLAGS,COMPFLAG_IGNOREDESTALPHA /*OR COMPFLAG_FORCESOFTWARE OR COMPFLAG_HARDWAREONLY*/,
+		/*COMPTAG_FRIENDBITMAP,destBitMap,*/
+	TAG_END]:tagitem)
+/*
+IF result &lt;&gt; COMPERR_SUCCESS
+	Print(&#x27;# bitmap $\h has drawable=\d\n&#x27;, srcBitMap, p96GetBitMapAttr(srcBitMap, P96BMA_ISONBOARD))
+	Print(&#x27;# result = \d\n&#x27;, result)
+	result := CompositeTagList(COMPOSITE_SRC_OVER_DEST, srcBitMap, destBitMap, [COMPTAG_SRCX,      srcX, COMPTAG_SRCY,      srcY, COMPTAG_SRCWIDTH,  sizeX, COMPTAG_SRCHEIGHT, sizeY, COMPTAG_DESTX,     destX, COMPTAG_DESTY,     destY, COMPTAG_DESTWIDTH, sizeX, COMPTAG_DESTHEIGHT,sizeY, COMPTAG_OFFSETX,   destX, COMPTAG_OFFSETY,   destY, COMPTAG_FLAGS,COMPFLAG_IGNOREDESTALPHA, TAG_END]:tagitem)
+ENDIF
+*/
+	IF result &lt;&gt; COMPERR_SUCCESS THEN Throw(&quot;BUG&quot;, &#x27;pAmigaRTG; rtgBltBitMapAlpha(); CompositeTagList() failed&#x27;)
+ENDPROC
+
+
+#ifdef pe_TargetOS_AmigaOS4
+PROC bitMapScaleClassic(srcBitMap:PTR TO bitmap, srcX, srcY, srcWidth, srcHeight, dstBitMap:PTR TO bitmap, dstX, dstY, dstWidth, dstHeight, screenDepth) REPLACEMENT
+	DEF kludge:BOOL, srcDepth, srcBitMap2:PTR TO bitmap
+	
+	-&gt;scaling does not seem to work on bitmaps that are friends with 16-bit screens, so work-around that
+	srcDepth := rtgGetBitMapDepth(srcBitMap)
+	IF kludge := (srcDepth &gt; 8) AND (srcDepth &lt; 32) AND (srcDepth = screenDepth)
+		srcBitMap2 := rtgAllocBitMap(srcWidth, srcHeight, 32, 0)
+		BltBitMap(srcBitMap,srcX,srcY, srcBitMap2,0,0, srcWidth,srcHeight, $c0,$ff,NILA)
+		
+		srcBitMap := srcBitMap2
+		srcX := 0
+		srcY := 0
+	ENDIF
+	
+	SUPER bitMapScaleClassic(srcBitMap, srcX, srcY, srcWidth, srcHeight, dstBitMap, dstX, dstY, dstWidth, dstHeight, screenDepth)
+	
+	IF kludge
+		FreeBitMap(srcBitMap2)
+	ENDIF
+ENDPROC
+#endif
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

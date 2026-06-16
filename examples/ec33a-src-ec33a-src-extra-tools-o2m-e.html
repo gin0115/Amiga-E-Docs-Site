@@ -1,0 +1,166 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>o2m.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-ec33a-src.html">ec33a_src</a> &rsaquo; o2m.e</div><h1>File: <code>o2m.e</code></h1><p class="meta">140 lines · project <a href="../examples/pkg-ec33a-src.html"><code>ec33a_src</code></a></p><p class="pathctx">ec33a_src/ec33a_src/extra/tools/o2m.e</p><p class="prose">o2m.e, <a href="../modules/convert.html">convert</a> assembly (and a subset of C) .o files to E <a href="../modules/modules.html">modules</a>.</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/doshunks.html">dos/doshunks</a></li></ul></div><h2>Source</h2><pre class="code">-&gt; o2m.e, convert assembly (and a subset of C) .o files to E modules.
+
+MODULE &#x27;dos/doshunks&#x27;, &#x27;tools/file&#x27;
+
+DEF type,codesize,codeadr,relocadr=NIL,relocsize -&gt; filled by process()
+
+OBJECT syminfo
+  next,sym,len,val
+ENDOBJECT
+
+DEF slist=NIL
+
+PROC main() HANDLE
+  DEF infile[100]:STRING, outfile[100]:STRING, m, l
+  WriteF(&#x27;o2m v0.1 by $#%! 1993\n&#x27;)
+  StringF(infile,&#x27;\s.o&#x27;,arg)
+  StringF(outfile,&#x27;\s.m&#x27;,arg)
+  WriteF(&#x27;Converting &quot;\s&quot; to &quot;\s&quot;\n&#x27;,infile,outfile)
+  m,l:=readfile(infile)
+  process(m,l)
+  writeinfos()
+  writemodule(outfile)
+EXCEPT
+  SELECT exception
+    CASE &quot;MEM&quot;;  WriteF(&#x27;No Mem!\n&#x27;)
+    CASE &quot;OPEN&quot;; WriteF(&#x27;Could not open file\n&#x27;)
+    CASE &quot;IN&quot;;   WriteF(&#x27;Problems while reading\n&#x27;)
+    CASE &quot;FORM&quot;; WriteF(&#x27;Hunk format error!\n&#x27;)
+  ENDSELECT
+ENDPROC
+
+PROC process(o:PTR TO LONG,len) HANDLE
+  DEF n,hunk,s:PTR TO syminfo,c
+  IF o[]++&lt;&gt;HUNK_UNIT THEN Raise(&quot;FORM&quot;)
+  o:=o[]++*4+o
+  IF o[]=HUNK_NAME
+    o++
+    o:=o[]++*4+o    
+  ENDIF
+  type:=o[]++
+  IF (type&lt;&gt;HUNK_CODE) AND (type&lt;&gt;HUNK_DATA) THEN Raise(&quot;CODE&quot;)
+  codesize:=o[]++
+  codeadr:=o
+  o:=codesize*4+o
+  WHILE (hunk:=o[]++)&lt;&gt;HUNK_END
+    IF hunk=HUNK_RELOC32
+      IF relocadr THEN Raise(&quot;1REL&quot;)
+      n:=o[]++
+      IF o[]++ THEN Raise(&quot;1REL&quot;)
+      relocadr:=o
+      o:=n*4+o
+      IF o[]++ THEN Raise(&quot;1REL&quot;)
+      relocsize:=n
+    ELSEIF hunk=HUNK_EXT
+      WHILE Char(o)=EXT_DEF
+        n:=o[]++ AND $FFFFFF
+        s:=NewR(SIZEOF syminfo)
+        s.sym:=o
+        c:=Char(o)
+        IF (c&gt;=&quot;A&quot;) AND (c&lt;=&quot;Z&quot;) THEN PutChar(o,c+32)
+        s.len:=n*4
+        s.next:=slist
+        slist:=s
+        o:=n*4+o
+        s.val:=o[]++
+      ENDWHILE
+      IF o[]++ THEN Raise(&quot;DEF&quot;)
+    ELSE
+      Raise(&quot;HUNK&quot;)
+    ENDIF
+  ENDWHILE
+EXCEPT
+  SELECT exception
+    CASE &quot;HUNK&quot;; WriteF(&#x27;Only hunk_code, hunk_ext and hunk_reloc32 allowed\n&#x27;)
+    CASE &quot;CODE&quot;; WriteF(&#x27;hunk_code or hunk_data expected\n&#x27;)
+    CASE &quot;1REL&quot;; WriteF(&#x27;At most one relochunk expected\n&#x27;)
+    CASE &quot;DEF&quot;;  WriteF(&#x27;Only XDEFs allowed, no XREFs\n&#x27;)
+  ENDSELECT
+  Raise(&quot;FORM&quot;)
+ENDPROC
+
+PROC writeinfos()
+  DEF list:PTR TO syminfo, s[50]:STRING
+  list:=slist
+  WriteF(&#x27;codesize=\d, numreloc=\d\n&#x27;,codesize*4,relocsize)
+  WHILE list
+    StrCopy(s,list.sym,list.len)
+    WriteF(&#x27;\s=$\h &#x27;,s,list.val)
+    list:=list.next
+  ENDWHILE
+  WriteF(&#x27;\n&#x27;)
+ENDPROC
+
+PROC writemodule(modname)
+  DEF handle,list:PTR TO syminfo, s[50]:STRING, res[50]:STRING, num, l, ll
+  IF (handle:=Open(modname,NEWFILE))=NIL THEN Raise(&quot;OPEN&quot;)
+  Write(handle,[&quot;EM&quot;,&quot;OD&quot;,5,0,1000,0,0,0,0,0,0,2,0,0,3,0,codesize]:INT,34)
+  Write(handle,codeadr,codesize*4)
+  IF relocadr
+    IF relocsize
+      Write(handle,[7,0,relocsize]:INT,6)
+      Write(handle,relocadr,relocsize*4)
+    ENDIF
+  ENDIF
+  Write(handle,[4]:INT,2)
+  list:=slist
+  WHILE list
+    StrCopy(s,list.sym,list.len)
+    num:=findargs(s,res)
+    l:=EstrLen(res)
+    ll:=l+IF Even(l) THEN 2 ELSE 1
+    Write(handle,[ll]:INT,2)
+    Write(handle,res,ll)
+    Write(handle,[list.val]:LONG,4)
+    IF type=HUNK_CODE
+      Write(handle,[1,num,0,0,0]:INT,10)
+    ELSE
+      Write(handle,[2]:INT,2)
+    ENDIF
+    list:=list.next
+    WriteF(&#x27;\s/\d &#x27;,res,num)
+  ENDWHILE
+  Write(handle,[-1,0,0]:INT,6)
+  Close(handle)
+  WriteF(&#x27;\n&#x27;)
+ENDPROC
+
+PROC findargs(sym,res)
+  DEF fpos,lpos,ipos,a=0,c,s
+  lpos:=IF (ipos:=InStr(sym,&#x27;_i&#x27;))&gt;1 THEN ipos ELSE EstrLen(sym)
+  fpos:=0
+  WHILE sym[fpos]=&quot;_&quot; DO fpos++
+  WHILE sym[lpos-1]=&quot;_&quot; DO lpos--
+  IF lpos&gt;fpos THEN StrCopy(res,sym+fpos,lpos-fpos) ELSE StrCopy(res,sym)
+  IF ipos&gt;1
+    s:=ipos+sym
+    WHILE c:=s[]++ DO IF c=&quot;i&quot; THEN INC a
+  ENDIF
+ENDPROC a
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

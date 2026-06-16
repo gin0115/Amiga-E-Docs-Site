@@ -1,0 +1,150 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>sortedTree.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-framework.html">framework</a> &rsaquo; sortedTree.e</div><h1>File: <code>sortedTree.e</code></h1><p class="meta">124 lines · project <a href="../examples/pkg-framework.html"><code>framework</code></a></p><p class="pathctx">framework/fw/sortedTree.e</p><p class="prose"><a href="../modules/dictionary.html#obj-sortedtree">sortedTree</a> is an efficient data structure for <a href="../modules/comparable.html">comparable</a> objects. Time complexity for data adding is O(log n). Space complexity is O(n).</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/comparable.html">fw/comparable</a></li></ul></div><h2>Source</h2><pre class="code">
+-&gt; sortedTree is an efficient data structure for comparable objects.
+-&gt; Time complexity for data adding is O(log n).
+-&gt; Space complexity is O(n).
+
+-&gt; Copyright © Guichard Damien 01/04/1996
+
+OPT MODULE
+OPT EXPORT
+OPT NOWARN
+
+MODULE &#x27;fw/comparable&#x27;
+
+OBJECT sortedTree OF comparable
+  left:PTR TO sortedTree
+  right:PTR TO sortedTree
+ENDOBJECT
+
+-&gt; Count nodes.
+PROC nodes() OF sortedTree
+  DEF tot=1
+  IF self.left  THEN tot:=tot+self.left.nodes()
+  IF self.right THEN tot:=tot+self.right.nodes()
+ENDPROC tot
+
+-&gt; Count leaves.
+PROC leaves() OF sortedTree
+  DEF tot=0
+  IF self.left THEN tot:=tot+self.left.leaves()
+  IF self.right
+    tot:=tot+self.right.leaves()
+  ELSEIF self.left=NIL  -&gt; Both NIL, so a leaf
+    tot++
+  ENDIF
+ENDPROC tot
+
+-&gt; Add an element to the tree.
+PROC add(e:PTR TO sortedTree) OF sortedTree
+  DEF parent:PTR TO sortedTree
+  WHILE self
+    parent:=self
+    self:=IF e.isLessThan(self) THEN self.left ELSE self.right
+  ENDWHILE
+  IF e.isLessThan(parent)
+    parent.left:=e
+  ELSE
+    parent.right:=e
+  ENDIF
+ENDPROC
+
+-&gt; Print the tree in infix order.
+PROC printNodes() OF sortedTree
+  IF self.left  THEN self.left.printNodes()
+  self.out()
+  IF self.right THEN self.right.printNodes()
+ENDPROC
+
+-&gt; Print tree leaves from left to right.
+PROC printLeaves() OF sortedTree
+  IF self.left THEN self.left.printLeaves()
+  IF self.right
+    self.right.printLeaves()
+  ELSEIF self.left=NIL  -&gt; Both NIL, so a leaf
+    self.out()
+  ENDIF
+ENDPROC
+
+-&gt; Tree performance expressed in percentage of the 
+-&gt; performance of a perfectly balanced binary tree.
+PROC performance() OF sortedTree
+  DEF count,weight=0,number=1
+  DEF best=0,actual
+  count:=self.nodes()
+  WHILE count&gt;number
+    best:=number*weight+best
+    count:=count-number
+    INC weight
+    number:=number*2
+  ENDWHILE
+  best:=count*weight+best     -&gt; Length of a walk in a perfect tree
+  actual:=self.walkLength(0)  -&gt; Length of a walk in the real tree
+ENDPROC best*100/actual       -&gt; performance in %
+
+-&gt; Lenght of a walk in the tree.
+PROC walkLength(depth) OF sortedTree
+  DEF tot=0
+  IF self.left  THEN tot:=tot+self.left.walkLength(depth+1)
+  IF self.right THEN tot:=tot+self.right.walkLength(depth+1)
+ENDPROC depth+tot
+
+-&gt; Prefix walk through the tree.
+PROC prefix(proc) OF sortedTree
+  proc(self)
+  IF self.left  THEN self.left.prefix(proc)
+  IF self.right THEN self.right.prefix(proc)
+ENDPROC
+
+-&gt; Infix walk through the tree.
+PROC infix(proc) OF sortedTree
+  proc(self)
+  IF self.left  THEN self.left.infix(proc)
+  IF self.right THEN self.right.infix(proc)
+ENDPROC
+
+-&gt; Postfix walk through the tree.
+PROC postfix(proc) OF sortedTree
+  proc(self)
+  IF self.left  THEN self.left.postfix(proc)
+  IF self.right THEN self.right.postfix(proc)
+ENDPROC
+
+-&gt; NEVER call this method. Use loadObject() instead.
+PROC load() OF sortedTree
+  IF self.left  THEN self.left :=self.loadObject()
+  IF self.right THEN self.right:=self.loadObject()
+ENDPROC
+
+-&gt; NEVER call this method. Use storeObject() instead.
+PROC store() OF sortedTree
+  IF self.left  THEN self.left.storeObject()
+  IF self.right THEN self.right.storeObject()
+ENDPROC
+
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

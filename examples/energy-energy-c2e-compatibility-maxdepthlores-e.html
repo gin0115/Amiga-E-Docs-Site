@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>maxdepthlores.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-energy.html">energy</a> &rsaquo; maxdepthlores.e</div><h1>File: <code>maxdepthlores.e</code></h1><p class="meta">89 lines · project <a href="../examples/pkg-energy.html"><code>energy</code></a></p><p class="pathctx">energy/Energy/C2E/Compatibility/maxdepthlores.e</p><p class="prose">maxdepthlores.e * * This software is provided as-is and is subject to change; no warranties * are made. All use is at your own risk. No liability or responsibility * is assumed. *</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/types.html">exec/types</a></li></ul></div><h2>Source</h2><pre class="code">/*  maxdepthlores.e
+ *
+ * This software is provided as-is and is subject to change; no warranties
+ * are made.  All use is at your own risk.  No liability or responsibility
+ * is assumed.
+ *
+ */
+
+MODULE 	&#x27;exec/types&#x27;,
+	&#x27;intuition/intuition&#x27;,
+	&#x27;graphics/displayinfo&#x27;,
+	&#x27;graphics/modeid&#x27;,
+	&#x27;intuition/screens&#x27;,
+	&#x27;dos/dos&#x27;
+
+PROC quit(whytext,failcode)
+ PrintF(&#x27;\s\n&#x27;,whytext)
+ CleanUp(failcode)
+ENDPROC
+
+PROC main()
+
+DEF    modeid = LORES_KEY,
+	displayhandle,
+	dimensioninfo:dimensioninfo,
+
+    maxdepth:PTR TO INT, maxcolors:PTR TO INT,
+    soerror = NIL,colornum,
+    screen:PTR TO screen
+
+    IF displayhandle:=FindDisplayInfo(modeid) = NIL THEN;
+        quit(&#x27;modeID not found in display database&#x27;,RETURN_FAIL)
+
+    IF GetDisplayInfoData(displayhandle,dimensioninfo,
+    SIZEOF dimensioninfo,DTAG_DIMS,NIL) = NIL THEN;
+        quit(&#x27;mode dimension info not available&#x27;,RETURN_FAIL)
+
+    maxdepth:=dimensioninfo.maxdepth
+    PrintF(&#x27;dimensioninfo.maxdepth=\d\n&#x27;,maxdepth)
+
+    IF screen:=OpenScreenTagList(NIL,[SA_DISPLAYID ,modeid,
+                                    SA_DEPTH        ,maxdepth,
+                                    SA_TITLE        ,&#x27;MaxDepth LORES&#x27;,
+                                    SA_ERRORCODE    ,{soerror},
+                                    SA_FULLPALETTE  ,TRUE,
+                                    NIL])
+
+            /* Zowee! we actually got the screen open!
+             * now let&#x27;s try drawing into it.
+             */
+            maxcolors:=Shl(1,maxdepth)
+            
+            PrintF(&#x27;maxcolors=\d\n&#x27;,maxcolors)
+            
+            FOR colornum:=0 TO maxcolors
+
+                SetAPen(screen.rastport,colornum)
+                Move(screen.rastport,colornum,screen.barheight + 2)
+                Draw(screen.rastport,colornum,screen.height - 1)
+            ENDFOR
+            Delay(TICKS_PER_SECOND * 6)
+
+            CloseScreen(screen)
+    ELSE
+            /* Hmmm.  Couldn&#x27;t open the screen.  maybe not
+             * enough CHIP RAM? Maybe not enough chips! ;-)
+             */
+            SELECT soerror
+
+                CASE OSERR_NOCHIPS
+                    quit(&#x27;Bummer! You need new chips dude!&#x27;,RETURN_FAIL)
+                
+                CASE OSERR_UNKNOWNMODE
+                    quit(&#x27;Bummer! Unknown screen mode.&#x27;,RETURN_FAIL)
+                
+                CASE OSERR_NOCHIPMEM
+                    quit(&#x27;Not enough CHIP memory.&#x27;,RETURN_FAIL)
+                
+                CASE OSERR_NOMEM
+                    quit(&#x27;Not enough FAST memory.&#x27;,RETURN_FAIL)
+                
+                DEFAULT
+                    PrintF(&#x27;soerror=\d\n&#x27;,soerror)
+                    quit(&#x27;Screen opening error.&#x27;,RETURN_FAIL)
+            ENDSELECT
+            quit(&#x27;Could not open screen.&#x27;,RETURN_FAIL)
+        ENDIF
+ENDPROC
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

@@ -1,0 +1,516 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>eiffel_lex.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-eiffel.html">eiffel</a> &rsaquo; eiffel_lex.e</div><h1>File: <code>eiffel_lex.e</code></h1><p class="meta">490 lines · project <a href="../examples/pkg-eiffel.html"><code>eiffel</code></a></p><p class="pathctx">eiffel/flc/source/eiffel_lex.e</p><p class="prose">Copyright © 1995, Guichard Damien.</p><h2>Source</h2><pre class="code">
+-&gt; Copyright © 1995, Guichard Damien.
+
+-&gt; Eiffel 3.0 lexical analyser
+-&gt; ANY,NONE,INTEGER,BOOLEAN,CHARACTER,STRING,ARRAY,REAL,DOUBLE,BIT,POINTER
+-&gt; are also lexical tokens to avoid illegal use of reserved words
+
+-&gt; TO DO :
+-&gt;   &#x27;Result&#x27; should be a reserved word
+-&gt;   ANY, ARRAY and Void should not be reserved words
+-&gt;   REAL, DOUBLE and BIT n constants
+
+OPT MODULE
+
+MODULE &#x27;*errors&#x27;
+MODULE &#x27;*token&#x27;,&#x27;*entity_tree&#x27;
+
+EXPORT ENUM LEX_ALIAS=300,LEX_ALL,LEX_AND,LEX_ANY,LEX_ARRAY,LEX_AS,LEX_BIT,
+  LEX_BOOLEAN,LEX_CHARACTER,LEX_CHECK,LEX_CLASS,LEX_CREATION,LEX_CURRENT,
+  LEX_DEBUG,LEX_DEFERRED,LEX_DO,LEX_DOUBLE,LEX_ELSE,LEX_ELSEIF,LEX_END,
+  LEX_ENSURE,LEX_EXPANDED,LEX_EXPORT,LEX_EXTERNAL,LEX_FALSE,LEX_FEATURE,
+  LEX_FROM,LEX_FROZEN,LEX_IF,LEX_IMPLIES,LEX_INDEXING,LEX_INFIX,LEX_INHERIT,
+  LEX_INSPECT,LEX_INTEGER,LEX_INVARIANT,LEX_IS,LEX_LIKE,LEX_LOCAL,
+  LEX_LOOP,LEX_NONE,LEX_NOT,LEX_OBSOLETE,LEX_OLD,LEX_ONCE,LEX_OR,
+  LEX_POINTER,LEX_PREFIX,LEX_REAL,LEX_REDEFINE,LEX_RENAME,LEX_REQUIRE,
+  LEX_RESCUE,LEX_RESULT,LEX_RETRY,LEX_SELECT,LEX_SEPARATE,LEX_STRING,
+  LEX_STRIP,LEX_THEN,LEX_TRUE,LEX_UNDEFINE,LEX_UNIQUE,LEX_UNTIL,
+  LEX_VARIANT,LEX_VOID,LEX_WHEN,LEX_XOR
+
+EXPORT ENUM LEX_EOF=600, -&gt; Text end reached
+  LEX_IDENT,    -&gt; self.ident contains the identifier
+  LEX_STR,      -&gt; self.ident contains the string
+  LEX_NUMERAL,  -&gt; self.value contains the integer
+  LEX_CHAR      -&gt; self.value contains the character
+
+-&gt; A table to perform binary search of reserved words
+DEF table:PTR TO entity_tree
+
+EXPORT OBJECT eiffel_lex PUBLIC
+  last:INT               -&gt; last lexical token
+  value:LONG             -&gt; numeral value
+  ident:PTR TO CHAR      -&gt; current identifier
+  line:INT               -&gt; current line
+PRIVATE
+  text:PTR TO CHAR       -&gt; source text
+  cur:PTR TO CHAR        -&gt; current position in text
+  stored_cur:PTR TO CHAR -&gt; stored position
+  stored_line:INT        -&gt; stored line
+  stored_last:INT        -&gt; store lexical token
+ENDOBJECT
+
+-&gt; Load a text as a lex stream
+PROC attach_text(name) OF eiffel_lex HANDLE
+  DEF handle=NIL,slen
+  DEF tok:PTR TO token
+  IF self.text THEN self.detach_text()
+  slen:=FileLength(name)
+  IF (handle:=Open(name,OLDFILE))=NIL THEN Raise(ER_SOURCEFILE)
+  self.text:=NewR(slen+2)
+  IF Read(handle,self.text,slen)&lt;slen THEN Raise(ER_SOURCEFILE)
+  self.text[slen]:=&quot;\0&quot;
+  self.cur:=self.text
+  self.line:=1
+  IF self.ident=NIL THEN self.ident:=String(40)
+  IF table=NIL
+    NEW table
+    table.add(NEW tok.create(&#x27;alias&#x27;,LEX_ALIAS))
+    table.add(NEW tok.create(&#x27;all&#x27;,LEX_ALL))
+    table.add(NEW tok.create(&#x27;and&#x27;,LEX_AND))
+    table.add(NEW tok.create(&#x27;any&#x27;,LEX_ANY))
+    table.add(NEW tok.create(&#x27;array&#x27;,LEX_ARRAY))
+    table.add(NEW tok.create(&#x27;as&#x27;,LEX_AS))
+    table.add(NEW tok.create(&#x27;bit&#x27;,LEX_BIT))
+    table.add(NEW tok.create(&#x27;boolean&#x27;,LEX_BOOLEAN))
+    table.add(NEW tok.create(&#x27;character&#x27;,LEX_CHARACTER))
+    table.add(NEW tok.create(&#x27;check&#x27;,LEX_CHECK))
+    table.add(NEW tok.create(&#x27;class&#x27;,LEX_CLASS))
+    table.add(NEW tok.create(&#x27;creation&#x27;,LEX_CREATION))
+    table.add(NEW tok.create(&#x27;current&#x27;,LEX_CURRENT))
+    table.add(NEW tok.create(&#x27;debug&#x27;,LEX_DEBUG))
+    table.add(NEW tok.create(&#x27;deferred&#x27;,LEX_DEFERRED))
+    table.add(NEW tok.create(&#x27;do&#x27;,LEX_DO))
+    table.add(NEW tok.create(&#x27;double&#x27;,LEX_DOUBLE))
+    table.add(NEW tok.create(&#x27;else&#x27;,LEX_ELSE))
+    table.add(NEW tok.create(&#x27;elseif&#x27;,LEX_ELSEIF))
+    table.add(NEW tok.create(&#x27;end&#x27;,LEX_END))
+    table.add(NEW tok.create(&#x27;ensure&#x27;,LEX_ENSURE))
+    table.add(NEW tok.create(&#x27;expanded&#x27;,LEX_EXPANDED))
+    table.add(NEW tok.create(&#x27;export&#x27;,LEX_EXPORT))
+    table.add(NEW tok.create(&#x27;external&#x27;,LEX_EXTERNAL))
+    table.add(NEW tok.create(&#x27;false&#x27;,LEX_FALSE))
+    table.add(NEW tok.create(&#x27;feature&#x27;,LEX_FEATURE))
+    table.add(NEW tok.create(&#x27;from&#x27;,LEX_FROM))
+    table.add(NEW tok.create(&#x27;frozen&#x27;,LEX_FROZEN))
+    table.add(NEW tok.create(&#x27;if&#x27;,LEX_IF))
+    table.add(NEW tok.create(&#x27;implies&#x27;,LEX_IMPLIES))
+    table.add(NEW tok.create(&#x27;indexing&#x27;,LEX_INDEXING))
+    table.add(NEW tok.create(&#x27;infix&#x27;,LEX_INFIX))
+    table.add(NEW tok.create(&#x27;inherit&#x27;,LEX_INHERIT))
+    table.add(NEW tok.create(&#x27;inspect&#x27;,LEX_INSPECT))
+    table.add(NEW tok.create(&#x27;integer&#x27;,LEX_INTEGER))
+    table.add(NEW tok.create(&#x27;invariant&#x27;,LEX_INVARIANT))
+    table.add(NEW tok.create(&#x27;is&#x27;,LEX_IS))
+    table.add(NEW tok.create(&#x27;like&#x27;,LEX_LIKE))
+    table.add(NEW tok.create(&#x27;local&#x27;,LEX_LOCAL))
+    table.add(NEW tok.create(&#x27;loop&#x27;,LEX_LOOP))
+    table.add(NEW tok.create(&#x27;none&#x27;,LEX_NONE))
+    table.add(NEW tok.create(&#x27;not&#x27;,LEX_NOT))
+    table.add(NEW tok.create(&#x27;obsolete&#x27;,LEX_OBSOLETE))
+    table.add(NEW tok.create(&#x27;old&#x27;,LEX_OLD))
+    table.add(NEW tok.create(&#x27;once&#x27;,LEX_ONCE))
+    table.add(NEW tok.create(&#x27;or&#x27;,LEX_OR))
+    table.add(NEW tok.create(&#x27;pointer&#x27;,LEX_POINTER))
+    table.add(NEW tok.create(&#x27;prefix&#x27;,LEX_PREFIX))
+    table.add(NEW tok.create(&#x27;real&#x27;,LEX_REAL))
+    table.add(NEW tok.create(&#x27;redefine&#x27;,LEX_REDEFINE))
+    table.add(NEW tok.create(&#x27;rename&#x27;,LEX_RENAME))
+    table.add(NEW tok.create(&#x27;require&#x27;,LEX_REQUIRE))
+    table.add(NEW tok.create(&#x27;rescue&#x27;,LEX_RESCUE))
+ -&gt; table.add(NEW tok.create(&#x27;result&#x27;,LEX_RESULT))
+    table.add(NEW tok.create(&#x27;retry&#x27;,LEX_RETRY))
+    table.add(NEW tok.create(&#x27;select&#x27;,LEX_SELECT))
+    table.add(NEW tok.create(&#x27;separate&#x27;,LEX_SEPARATE))
+    table.add(NEW tok.create(&#x27;string&#x27;,LEX_STRING))
+    table.add(NEW tok.create(&#x27;strip&#x27;,LEX_STRIP))
+    table.add(NEW tok.create(&#x27;then&#x27;,LEX_THEN))
+    table.add(NEW tok.create(&#x27;true&#x27;,LEX_TRUE))
+    table.add(NEW tok.create(&#x27;undefine&#x27;,LEX_UNDEFINE))
+    table.add(NEW tok.create(&#x27;unique&#x27;,LEX_UNIQUE))
+    table.add(NEW tok.create(&#x27;until&#x27;,LEX_UNTIL))
+    table.add(NEW tok.create(&#x27;variant&#x27;,LEX_VARIANT))
+    table.add(NEW tok.create(&#x27;void&#x27;,LEX_VOID))
+    table.add(NEW tok.create(&#x27;when&#x27;,LEX_WHEN))
+    table.add(NEW tok.create(&#x27;xor&#x27;,LEX_XOR))
+  ENDIF
+  self.read()
+EXCEPT DO
+  IF handle THEN Close(handle)
+  ReThrow()
+ENDPROC
+
+-&gt; Detach the text
+PROC detach_text() OF eiffel_lex
+  Dispose(self.text)
+  self.text:=NIL
+ENDPROC
+
+-&gt; Read next lexical token form the text
+-&gt; Update line, last, value, ident
+PROC read() OF eiffel_lex
+  DEF cur:PTR TO CHAR
+  cur:=self.cur
+  self.last:=0
+  REPEAT
+    SELECT 256 OF cur[]++
+    CASE &quot;,&quot;,&quot;;&quot;,&quot;*&quot;,&quot;+&quot;,&quot;=&quot;,&quot;(&quot;,&quot;)&quot;,&quot;{&quot;,&quot;}&quot;,&quot;[&quot;,&quot;]&quot;,&quot;@&quot;,&quot;!&quot;
+      self.last:=cur[-1]
+    CASE &quot;a&quot; TO &quot;z&quot;,&quot;A&quot; TO &quot;Z&quot;,&quot;_&quot;
+      self.cur:=cur-1
+      self.last:=LEX_IDENT
+      self.identifier()
+      RETURN
+    CASE &quot;0&quot; TO &quot;9&quot;
+      self.cur:=cur-1
+      self.last:=LEX_NUMERAL
+      self.number()
+      RETURN
+    CASE &quot;\a&quot;
+      self.cur:=cur
+      self.last:=LEX_CHAR
+      self.character()
+      RETURN
+    CASE &quot;\q&quot;
+      self.cur:=cur
+      self.last:=LEX_STR
+      self.string()
+      RETURN
+    CASE &quot;-&quot;
+      IF cur[]=&quot;-&quot;
+        INC cur
+        WHILE cur[]++&lt;&gt;&quot;\n&quot; DO NOP
+        self.line:=self.line+1
+      ELSEIF cur[]=&quot;&gt;&quot;
+        INC cur
+        self.last:=&quot;-&gt;&quot;
+      ELSE
+        self.last:=&quot;-&quot;
+      ENDIF
+    CASE &quot;.&quot;
+      IF cur[]=&quot;.&quot;
+        INC cur
+        self.last:=&quot;..&quot;
+      ELSE
+        self.last:=&quot;.&quot;
+      ENDIF
+    CASE &quot;/&quot;
+      IF cur[]=&quot;/&quot;
+        INC cur
+        self.last:=&quot;//&quot;
+      ELSEIF cur[]=&quot;=&quot;
+        INC cur
+        self.last:=&quot;/=&quot;
+      ELSE
+        self.last:=&quot;/&quot;
+      ENDIF
+    CASE &quot;&gt;&quot;
+      IF cur[]=&quot;&gt;&quot;
+        INC cur
+        self.last:=&quot;&gt;&gt;&quot;
+      ELSEIF cur[]=&quot;=&quot;
+        INC cur
+        self.last:=&quot;&gt;=&quot;
+      ELSE
+        self.last:=&quot;&gt;&quot;
+      ENDIF
+    CASE &quot;&lt;&quot;
+      IF cur[]=&quot;&lt;&quot;
+        INC cur
+        self.last:=&quot;&lt;&lt;&quot;
+      ELSEIF cur[]=&quot;=&quot;
+        INC cur
+        self.last:=&quot;&lt;=&quot;
+      ELSE
+        self.last:=&quot;&lt;=&quot;
+      ENDIF
+    CASE &quot;:&quot;
+      IF cur[]=&quot;=&quot;
+        INC cur
+        self.last:=&quot;:=&quot;
+      ELSE
+        self.last:=&quot;:&quot;
+      ENDIF
+    CASE &quot;?&quot;
+      IF cur[]++&lt;&gt;&quot;=&quot; THEN Raise(ER_SYNTAX)
+      self.last:=&quot;?=&quot;
+    CASE &quot;\\&quot;
+      IF cur[]++&lt;&gt;&quot;\\&quot; THEN Raise(ER_SYNTAX)
+      self.last:=&quot;\\\\&quot;
+    CASE &quot;\n&quot;
+      self.line:=self.line+1
+    CASE &quot;\0&quot;
+      self.last:=LEX_EOF
+    CASE &quot; &quot;,&quot;\t&quot;,&quot;\b&quot;
+    DEFAULT
+      Raise(ER_SYNTAX)
+    ENDSELECT
+  UNTIL self.last
+  self.cur:=cur
+ENDPROC
+
+-&gt; Store text position
+PROC store() OF eiffel_lex
+  self.stored_cur:=self.cur
+  self.stored_line:=self.line
+  self.stored_last:=self.last
+ENDPROC
+
+-&gt; Restore text position
+PROC restore() OF eiffel_lex
+  self.cur :=self.stored_cur
+  self.line:=self.stored_line
+  self.last:=self.stored_last
+ENDPROC
+
+-&gt; Destructor
+PROC end() OF eiffel_lex
+  IF self.text THEN self.detach_text()
+  IF self.ident THEN DisposeLink(self.ident)
+ENDPROC
+
+
+-&gt; PRIVATE methods used by read()
+
+-&gt; Find reserved word if possible
+PROC identifier() OF eiffel_lex
+  DEF c:PTR TO CHAR,cur,a
+  DEF tok:PTR TO token
+  c:=self.ident
+  cur:=self.cur
+  WHILE self.isalpha(a:=cur[]++) OR self.isdigit(a) DO c[]++:=a
+  c[]:=&quot;\0&quot;
+  LowerStr(self.ident)
+  self.cur:=cur-1
+  IF tok:=table.find(self.ident) THEN self.last:=tok.type
+ENDPROC
+
+-&gt; Parse eiffel integers and these nasty &quot;_&quot;
+PROC number() OF eiffel_lex
+  DEF c,cur,value=0
+  cur:=self.cur
+  c:=cur[]
+  WHILE self.isdigit(c)
+    IF c=&quot;_&quot;
+      WHILE cur[]=&quot;_&quot;
+        self.cur:=cur+1
+        value:=Mul(1000,value)+self.digits()
+        cur:=cur+4
+      ENDWHILE
+      self.value:=value
+      RETURN
+    ELSE
+      value:=Mul(10,value)+c-&quot;0&quot;
+    ENDIF
+    INC cur
+    c:=cur[]
+  ENDWHILE
+  self.cur:=cur
+  self.value:=value
+ENDPROC
+
+-&gt; Parse 3 Eiffel digits
+PROC digits() OF eiffel_lex
+  DEF c,i,value=0
+  FOR i:=1 TO 3
+    c:=self.cur[]
+    self.cur:=self.cur+SIZEOF CHAR
+    IF Not(self.isdigit(c)) THEN Raise(ER_SYNTAX)
+    IF c=&quot;_&quot; THEN Raise(ER_SYNTAX)
+    value:=10*value+c-&quot;0&quot;
+  ENDFOR
+ENDPROC value
+
+-&gt; In future &quot;_&quot; won&#x27;t be considered as a real Eiffel digit
+PROC isdigit(c) OF eiffel_lex
+ENDPROC (c&gt;=&quot;0&quot;) AND (c&lt;=&quot;9&quot;) OR (c=&quot;_&quot;)
+
+-&gt; More classic alpha characters
+PROC isalpha(c) OF eiffel_lex
+ IF c=&quot;_&quot; THEN RETURN TRUE
+ IF (c&gt;=&quot;a&quot;) AND (c&lt;=&quot;z&quot;) THEN RETURN TRUE
+ IF (c&gt;=&quot;A&quot;) AND (c&lt;=&quot;Z&quot;) THEN RETURN TRUE
+ENDPROC
+
+-&gt; Eiffel strings with all special characters
+PROC string() OF eiffel_lex
+  DEF c:PTR TO CHAR,a
+  c:=self.ident
+  LOOP
+    a:=self.cur[]
+    self.cur:=self.cur+1
+    SELECT a
+    CASE &quot;\q&quot;
+      c[]:=&quot;\0&quot;
+      RETURN
+    CASE &quot;%&quot;
+      a:=self.cur[]
+      self.cur:=self.cur+1
+      SELECT a
+      CASE &quot;A&quot;
+        c[]++:=&quot;@&quot;
+      CASE &quot;B&quot;
+        c[]++:=8
+      CASE &quot;C&quot;
+        c[]++:=&quot;^&quot;
+      CASE &quot;D&quot;
+        c[]++:=&quot;$&quot;
+      CASE &quot;F&quot;
+        c[]++:=12
+      CASE &quot;H&quot;
+        c[]++:=&quot;\\&quot;
+      CASE &quot;L&quot;
+        c[]++:=&quot;~&quot;
+      CASE &quot;N&quot;
+        c[]++:=&quot;\n&quot;
+      CASE &quot;Q&quot;
+        c[]++:=&quot;`&quot;
+      CASE &quot;R&quot;
+        c[]++:=&quot;\b&quot;
+      CASE &quot;S&quot;
+        c[]++:=&quot;#&quot;
+      CASE &quot;T&quot;
+        c[]++:=&quot;\t&quot;
+      CASE &quot;U&quot;
+        c[]++:=&quot;\0&quot;
+      CASE &quot;V&quot;
+        c[]++:=&quot;|&quot;
+      CASE &quot;%&quot;
+        c[]++:=&quot;%&quot;
+      CASE &quot;\a&quot;
+        c[]++:=&quot;\a&quot;
+      CASE &quot;\q&quot;
+        c[]++:=&quot;\q&quot;
+      CASE &quot;(&quot;
+        c[]++:=&quot;[&quot;
+      CASE &quot;)&quot;
+        c[]++:=&quot;]&quot;
+      CASE &quot;&lt;&quot;
+        c[]++:=&quot;{&quot;
+      CASE &quot;&gt;&quot;
+        c[]++:=&quot;}&quot;
+      CASE &quot;/&quot;
+        self.value:=Val(self.cur,{a})
+        IF a=0 THEN Raise(ER_SYNTAX)
+        c[]++:=self.value
+        self.cur:=self.cur+a
+        IF self.cur[]&lt;&gt;&quot;/&quot; THEN Raise(ER_SYNTAX)
+        self.cur:=self.cur+1
+      DEFAULT
+        Raise(ER_SYNTAX)
+      ENDSELECT
+    CASE &quot;\0&quot;
+      Raise(ER_SYNTAX)
+    CASE &quot;\a&quot;
+      Raise(ER_SYNTAX)
+    CASE &quot;\b&quot;
+      Raise(ER_SYNTAX)
+    CASE &quot;\n&quot;
+      Raise(ER_SYNTAX)
+    DEFAULT
+      c[]++:=a
+    ENDSELECT
+  ENDLOOP
+ENDPROC
+
+-&gt; Eiffel characters without special characters
+PROC character() OF eiffel_lex
+  DEF a,len
+  a:=self.cur[]
+  self.cur:=self.cur+1
+  SELECT a
+  CASE &quot;%&quot;
+    a:=self.cur[]
+    self.cur:=self.cur+1
+    SELECT a
+    CASE &quot;A&quot;
+      a:=&quot;@&quot;
+    CASE &quot;B&quot;
+      a:=8
+    CASE &quot;C&quot;
+      a:=&quot;^&quot;
+    CASE &quot;D&quot;
+      a:=&quot;$&quot;
+    CASE &quot;F&quot;
+      a:=12
+    CASE &quot;H&quot;
+      a:=&quot;\\&quot;
+    CASE &quot;L&quot;
+      a:=&quot;~&quot;
+    CASE &quot;N&quot;
+      a:=&quot;\n&quot;
+    CASE &quot;Q&quot;
+      a:=&quot;`&quot;
+    CASE &quot;R&quot;
+      a:=&quot;\b&quot;
+    CASE &quot;S&quot;
+      a:=&quot;#&quot;
+    CASE &quot;T&quot;
+      a:=&quot;\t&quot;
+    CASE &quot;U&quot;
+      a:=&quot;\0&quot;
+    CASE &quot;V&quot;
+      a:=&quot;|&quot;
+    CASE &quot;%&quot;
+      a:=&quot;%&quot;
+    CASE &quot;\a&quot;
+      a:=&quot;\a&quot;
+    CASE &quot;\q&quot;
+      a:=&quot;\q&quot;
+    CASE &quot;(&quot;
+      a:=&quot;[&quot;
+    CASE &quot;)&quot;
+      a:=&quot;]&quot;
+    CASE &quot;&lt;&quot;
+      a:=&quot;{&quot;
+    CASE &quot;&gt;&quot;
+      a:=&quot;}&quot;
+    CASE &quot;/&quot;
+      a:=Val(self.cur,{len})
+      IF len=0 THEN Raise(ER_SYNTAX)
+      self.cur:=self.cur+len
+      IF self.cur[]&lt;&gt;&quot;/&quot; THEN Raise(ER_SYNTAX)
+      self.cur:=self.cur+1
+    DEFAULT
+      Raise(ER_SYNTAX)
+    ENDSELECT
+  CASE &quot;\0&quot;
+    Raise(ER_SYNTAX)
+  CASE &quot;\a&quot;
+    Raise(ER_SYNTAX)
+  CASE &quot;\b&quot;
+    Raise(ER_SYNTAX)
+  CASE &quot;\n&quot;
+    Raise(ER_SYNTAX)
+  ENDSELECT
+  self.value:=a
+  IF self.cur[]&lt;&gt;&quot;\a&quot; THEN Raise(ER_SYNTAX)
+  self.cur:=self.cur+1
+ENDPROC
+
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

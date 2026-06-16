@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>phoneme.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-e-modules01.html">e-modules01</a> &rsaquo; phoneme.e</div><h1>File: <code>phoneme.e</code></h1><p class="meta">91 lines · project <a href="../examples/pkg-e-modules01.html"><code>e-modules01</code></a></p><p class="pathctx">e-modules01/emodules/translator42/phoneme.e</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/dos.html">dos/dos</a></li></ul></div><h2>Source</h2><pre class="code">OPT OSVERSION=37
+OPT PREPROCESS
+
+/*
+*-- AutoRev header do NOT edit!
+*
+*   Project         :   Translate the text into phoneme form
+*   File            :   phoneme.e
+*   Copyright       :   © 1996 Piotr Gapinski
+*   Author          :   Piotr Gapinski
+*   Creation Date   :   05.01.96
+*   Current version :   1.0
+*   Translator      :   AmigaE v3.1+
+*
+*   REVISION HISTORY
+*
+*   Date         Version         Comment
+*   --------     -------         ------------------------------------------
+*
+*-- REV_END --*
+*/
+
+MODULE &#x27;dos/dos&#x27;,&#x27;dos/dosextens&#x27;,
+       &#x27;libraries/translator&#x27;,&#x27;translator&#x27;,
+       &#x27;tools/exceptions&#x27;
+
+#define PROGRAMNAME    &#x27;phoneme&#x27;
+#define PROGRAMVERSION &#x27;$VER: phoneme 1.0 (05.01.96)&#x27;
+
+ENUM  ERR_OK,ERR_NOLIB,ERR_ARGS,ERR_NOFILE,ERR_EMPTY,ERR_NOMEM,ERR_READ,
+      ERR_TRANSLATOR,ERR_CTRLC
+ENUM  ARG_FILE,ARG_ACCENT,NUMARGS
+CONST BUFFSIZE=$40
+
+PROC main() HANDLE
+  DEF rdargs,args[NUMARGS]:LIST,templ,file,accent,
+      char,buf,size,handle=0
+
+  templ:=&#x27;FILE/A,ACCENT/F&#x27;
+  IF (rdargs:=ReadArgs(templ,args,NIL))=NIL THEN Raise(ERR_ARGS)
+  file:=args[ARG_FILE]
+  accent:=IF args[ARG_ACCENT]=NIL THEN &#x27;POLSKI&#x27; ELSE args[ARG_ACCENT]
+  IF (translatorbase:=OpenLibrary(TRANSLATORNAME,TRANSLATORVERSION))=NIL THEN
+     Raise(ERR_NOLIB)
+
+  IF (handle:=Open(file,MODE_OLDFILE))=NIL THEN Raise(ERR_NOFILE)
+  Seek(handle,0,OFFSET_END)
+  size:=Seek(handle,0,OFFSET_BEGINNING)
+  IF size=0 THEN Raise(ERR_EMPTY)
+  IF (buf:=New(BUFFSIZE))=NIL THEN Raise(ERR_NOMEM)
+
+  IF (SetAccent(accent))=0 THEN accent:=&#x27;Accent file not found...\n&#x27;
+  WriteF(&#x27;  FILE: \s\nACCENT: \s\n&#x27;,file,accent)
+
+  WHILE (size:=Read(handle,char,1))&lt;&gt;0
+    IF (Translate(char,1,buf,BUFFSIZE))&lt;&gt;0 THEN Raise(ERR_TRANSLATOR)
+    WriteF(&#x27;\s&#x27;,buf)
+    IF CtrlC() THEN Raise(ERR_CTRLC)
+  ENDWHILE
+  WriteF(&#x27;\n&#x27;)
+EXCEPT
+  IF rdargs THEN FreeArgs(rdargs)
+  IF handle THEN Close(handle)
+  IF translatorbase THEN CloseLibrary(translatorbase)
+  IF exception
+    SELECT exception
+    CASE ERR_ARGS
+      WriteF(&#x27;Bad args!!! (try &quot;\s ?&quot;)\n&#x27;,PROGRAMNAME)
+    CASE ERR_NOLIB
+      WriteF(&#x27;You need &quot;\s&quot; V\d!\n&#x27;,TRANSLATORNAME,TRANSLATORVERSION)
+    CASE ERR_NOFILE
+      WriteF(&#x27;File &quot;\s&quot; not found!\n&#x27;,file)
+    CASE ERR_EMPTY
+      WriteF(&#x27;File &quot;\s&quot; is empty!\n&#x27;,file)
+    CASE ERR_NOMEM
+      WriteF(&#x27;No free memory!\n&#x27;)
+    CASE ERR_READ
+      WriteF(&#x27;Error while reading file &quot;\s&quot;\n&#x27;,file)
+    CASE ERR_TRANSLATOR
+      WriteF(&#x27;Translator error!\n&#x27;)
+    CASE ERR_CTRLC
+      WriteF(&#x27;*** user break!\n&#x27;)
+    DEFAULT
+      report_exception()
+      WriteF(&#x27;LEVEL: main()\n&#x27;)
+    ENDSELECT
+  ENDIF
+ENDPROC
+
+CHAR PROGRAMVERSION,0
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

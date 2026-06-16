@@ -1,0 +1,141 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>10mins.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-aepd30.html">AEPD30</a> &rsaquo; 10mins.e</div><h1>File: <code>10mins.e</code></h1><p class="meta">115 lines · project <a href="../examples/pkg-aepd30.html"><code>AEPD30</code></a></p><p class="pathctx">AEPD30/EPD30/Amiga_E-Programme/10mins/10mins.e</p><p class="prose">************************************************************ * * * 10mins - © 14-Mar-1995 by Maik &quot;Blizzer&quot; Schreiber * * ¯¯¯¯¯¯¯¯¯¯¯¯¯¯¯¯¯¯¯¯¯¯¯¯¯¯¯¯¯¯¯¯¯¯¯¯¯¯¯¯¯¯¯¯¯¯¯¯¯¯ * * Version 1.1 Source for AmigaE FREEWARE * * * * * * SnailMail: Maik Schreiber * * Ruschvitzstraße 19 * * D-18528 Bergen * * </p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/utility.html">utility</a></li></ul></div><h2>Source</h2><pre class="code">
+/*************************************************************
+*                                                            *
+*     10mins - © 14-Mar-1995 by Maik &quot;Blizzer&quot; Schreiber     *
+  ‹62 bytes of embedded binary/non-text data elided›
+*  Version 1.1          Source for AmigaE          FREEWARE  *
+*                                                            *
+*                                                            *
+*  SnailMail: Maik Schreiber                                 *
+*             Ruschvitzstraße 19                             *
+*             D-18528 Bergen                                 *
+*             FR Germany                                     *
+*                                                            *
+*  EMail    : blizzer@freeway.shnet.org                      *
+*             blizzer@empire.insider.sub.de                  *
+*                                                            *
+*************************************************************/
+
+/*
+** Usage:
+  ‹9 bytes of embedded binary/non-text data elided›
+** 10mins -t &lt;text file&gt; [-v60] [-s &lt;seconds&gt;] [-o &lt;output&gt;] [-nb]
+**_____________________________________________________________________________
+**
+** History:
+  ‹11 bytes of embedded binary/non-text data elided›
+** - 1.0, 10-Mar-1995:
+**   - intial version of 10mins (Source for AmigaE)
+**
+** - 1.1, 14-Mar-1995:
+**   - now only runs under OS2.04 or higher
+**   - new parameters &quot;TEXT=-t/A&quot;, &quot;VBF60=-v60/S&quot;, &quot;SECS=-s/N&quot;, &quot;OUTPUT=-o&quot; and
+**     &quot;NOBEEP=-nb/S&quot;
+*/
+
+
+MODULE &#x27;utility&#x27;
+
+
+ENUM ARG_TEXT,ARG_VBF60,ARG_SECS,ARG_OUTPUT,ARG_NOBEEP,
+     NUMARGS
+
+ENUM ER_NONE,ER_UTIL,ER_BADARGS,ER_TEXT,ER_OUTPUT
+
+
+DEF secs=600,beepf=TRUE,vbf=50,output,text
+
+DEF infile=NIL,rawwin=NIL,line[256]:STRING,eof,dummy,rdargs=NIL,
+    args[NUMARGS]:LIST
+
+
+PROC main() HANDLE
+  IF KickVersion(37)=FALSE
+    WriteF(&#x27;Requires OS2.04 (V37) or higher !!\n&#x27;)
+    CleanUp(20)
+  ENDIF
+
+  IF (utilitybase:=OpenLibrary(&#x27;utility.library&#x27;,37))=NIL THEN Raise(ER_UTIL)
+  FOR dummy:=0 TO NUMARGS-1 DO args[dummy]:=0
+  rdargs:=ReadArgs(&#x27;TEXT=-t/A,VBF60=-v60/S,SECS=-s/N,OUTPUT=-o,NOBEEP=-nb/S&#x27;,args,NIL)
+  IF rdargs=NIL THEN Raise(ER_BADARGS)
+
+  output:=&#x27;RAW:0/203/640/53/Reminder/NOSIZE&#x27;
+  IF args[ARG_TEXT] THEN text:=args[ARG_TEXT]
+  IF args[ARG_VBF60] THEN vbf:=60
+  IF args[ARG_SECS] THEN secs:=Long(args[ARG_SECS])
+  IF args[ARG_OUTPUT] THEN output:=args[ARG_OUTPUT]
+  IF args[ARG_NOBEEP] THEN beepf:=FALSE
+
+  IF (infile:=Open(text,OLDFILE))=NIL THEN Raise(ER_TEXT)
+
+  IF (rawwin:=Open(output,NEWFILE))=NIL THEN Raise(ER_OUTPUT)
+  SetStdOut(rawwin)
+  stdout:=rawwin
+
+  WriteF(&#x27;\c0 p\n&#x27;,155)
+  IF beepf THEN WriteF(&#x27;\c&#x27;,7)
+  REPEAT
+    eof:=ReadStr(infile,line)
+    WriteF(line)
+    Out(rawwin,10)
+  UNTIL eof
+
+  FOR dummy:=0 TO (secs-1)
+
+    /* English should use this ..
+    */
+    WriteF(&#x27;\e[3;32m\d secs left (&lt;Ctrl c&gt; exits) .. \c&#x27;,secs-dummy,13)
+
+    /* .. and Germans this (remove the /* */ stuff !)
+    */
+/*  WriteF(&#x27;\e[3;32mNoch \d sec (&lt;Ctrl c&gt; bricht ab) .. \c&#x27;,secs-dummy,13) */
+
+    Delay(vbf)
+    IF CtrlC() THEN dummy:=secs
+  ENDFOR
+  Raise(ER_NONE)
+EXCEPT
+  IF rawwin THEN Close(rawwin)
+  IF infile THEN Close(infile)
+  IF rdargs THEN FreeArgs(rdargs)
+  IF utilitybase THEN CloseLibrary(utilitybase)
+  SELECT exception
+    CASE ER_UTIL;    WriteF(&#x27;Couldn&#x27;&#x27;t open utility.library 37 !!\n&#x27;)
+    CASE ER_BADARGS; WriteF(&#x27;Bad args !!\n&#x27;)
+    CASE ER_TEXT;    WriteF(&#x27;Couldn&#x27;&#x27;t open text file &#x27;&#x27;\s&#x27;&#x27; !!\n&#x27;,text)
+    CASE ER_OUTPUT;  WriteF(&#x27;Couldn&#x27;&#x27;t open output &#x27;&#x27;\s&#x27;&#x27; !!\n&#x27;,output)
+  ENDSELECT
+  CleanUp(0)
+ENDPROC
+
+
+CHAR &#x27;$VER: 10mins 1.1 (14-Mar-1995) © by Maik &quot;Blizzer&quot; Schreiber [FREEWARE]&#x27;
+
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

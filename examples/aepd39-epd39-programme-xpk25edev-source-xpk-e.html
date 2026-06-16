@@ -1,0 +1,346 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>xpk.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-aepd39.html">AEPD39</a> &rsaquo; xpk.e</div><h1>File: <code>xpk.e</code></h1><p class="meta">320 lines · project <a href="../examples/pkg-aepd39.html"><code>AEPD39</code></a></p><p class="pathctx">AEPD39/EPD39/Programme/xpk25Edev/source/xpk.e</p><p class="prose">** $Filename: xpk.h $ ** $Release: 0.9 $ ** ** ** ** (C) Copyright 1991 U. Dominik Mueller, Bryan Ford, Christian Schneider ** All Rights Reserved</p><h2>Source</h2><pre class="code">/*
+**	$Filename: xpk.h $
+**	$Release: 0.9 $
+**
+**
+**
+**	(C) Copyright 1991 U. Dominik Mueller, Bryan Ford, Christian Schneider
+**	    All Rights Reserved
+*/
+
+
+/*
+**  Converted from C include file to E module by
+**  Torgil Svenssom (snorq@lysator.liu.se) in 1995
+**
+**  see the file E.README
+**
+*/
+
+
+OPT MODULE
+OPT PREPROCESS
+OPT EXPORT
+
+
+-&gt; there are two defines left. this and one at the bottom
+
+#define XPKNAME &#x27;xpkmaster.library&#x27;
+
+/*****************************************************************************
+ *
+ *
+ *      The packing/unpacking tags
+ *
+ */
+
+CONST XPK_TagBase = TAG_USER + &quot;X&quot;*256 + &quot;P&quot;
+CONST XTAG        = XPK_TagBase
+
+-&gt; Caller must supply ONE of these to tell Xpk#?ackFile where to get data from
+
+CONST XPK_InName = XTAG+$01,  -&gt; Process an entire named file
+      XPK_InFH   = XTAG+$02   -&gt; File handle - start from current position
+
+-&gt; If packing partial file, must also supply InLen
+
+CONST XPK_InBuf  = XTAG+$03,  -&gt; Single unblocked memory buffer, supply InLen
+      XPK_InHook = XTAG+$04   -&gt; Call custom Hook to read data
+
+-&gt; If packing, must also supply InLen
+-&gt; If unpacking, InLen required only for PPDecrunch
+
+-&gt; Caller must supply ONE of these to tell Xpk#?ackFile where to send data to
+CONST XPK_OutName   = XTAG+$10, -&gt; Write (or overwrite) this data file
+      XPK_OutFH     = XTAG+$11, -&gt; File handle - write from current pos on
+      XPK_OutBuf    = XTAG+$12,	-&gt; Unblocked buf - must also supply OutBufLen
+      XPK_GetOutBuf = XTAG+$13,	-&gt; Master alloc. OutBuf tag data pts to buf ptr
+      XPK_OutHook   = XTAG+$14  -&gt; Callback Hook to get output buffers
+
+-&gt; Other tags for Pack/Unpack
+CONST XPK_InLen        = XTAG+$20,  -&gt; Length of data in input buffer
+      XPK_OutBufLen    = XTAG+$21,  -&gt; Length of output buffer
+      XPK_GetOutLen    = XTAG+$22,  -&gt; tag data pts to long to receive OutLen
+      XPK_GetOutBufLen = XTAG+$23,  -&gt; tag data pts to long to rec. OutBufLen
+      XPK_Password     = XTAG+$24,  -&gt; Password for de/encoding
+      XPK_GetError     = XTAG+$25,  -&gt; ti_Data points to buf for error message
+      XPK_OutMemType   = XTAG+$26,  -&gt; Memory type for output buffer
+      XPK_PassThru     = XTAG+$27,  -&gt; Bool: Pass through unrec.formats on unpck
+      XPK_StepDown     = XTAG+$28,  -&gt; Bool: Step down pack method if necessary
+      XPK_ChunkHook    = XTAG+$29,  -&gt; Call this Hook between chunks
+      XPK_PackMethod   = XTAG+$2a,  -&gt; Do a FindMethod before packing
+      XPK_ChunkSize    = XTAG+$2b,  -&gt; Chunk size to try to pack with
+      XPK_PackMode     = XTAG+$2c,  -&gt; Packing mode for sublib to use
+      XPK_NoClobber    = XTAG+$2d,  -&gt; Don&#x27;t overwrite existing files
+      XPK_Ignore       = XTAG+$2e,  -&gt; Skip this tag
+      XPK_TaskPri      = XTAG+$2f,  -&gt; Change priority for (un)packing
+      XPK_FileName     = XTAG+$30,  -&gt; File name for progress report
+      XPK_ShortError   = XTAG+$31,  -&gt; Output short error messages
+      XPK_PackersQuery = XTAG+$32,  -&gt; Query available packers
+      XPK_PackerQuery  = XTAG+$33,  -&gt; Query properties of a packer
+      XPK_ModeQuery    = XTAG+$34,  -&gt; Query properties of packmode
+      XPK_LossyOK      = XTAG+$35   -&gt; Lossy packing permitted? def.=no
+
+
+CONST XPK_FindMethod = XPK_PackMethod, -&gt; Compatibility
+      XPK_MARGIN     = 256             -&gt; Safety margin for output buffer
+
+
+
+
+/*****************************************************************************
+ *
+ *
+ *     The hook function interface
+ *
+ */
+
+-&gt; Message passed to InHook and OutHook as the ParamPacket
+OBJECT xpkIOMsg
+	type      :LONG   -&gt; (unsigned) Read/Write/Alloc/Free/Abort
+	ptr       :LONG   -&gt; (APTR) The mem area to read from/write to
+	size      :LONG   -&gt; The size of the read/write
+	ioError   :LONG   -&gt; The IoErr() that occurred
+	reserved  :LONG   -&gt; Reserved for future use
+	private1  :LONG   -&gt; Hook specific, will be set to 0 by
+	private2  :LONG   -&gt; master library before first use
+	private3  :LONG
+	private4  :LONG
+ENDOBJECT
+
+-&gt; The values for xpkIoMsg.type
+CONST XIO_READ    = 1,
+      XIO_WRITE   = 2,
+      XIO_FREE    = 3,
+      XIO_ABORT   = 4,
+      XIO_GETBUF  = 5,
+      XIO_SEEK    = 6,
+      XIO_TOTSIZE = 7
+
+
+
+
+
+/*****************************************************************************
+ *
+ *
+ *      The progress report interface
+ *
+ */
+
+-&gt; Passed to ChunkHook as the ParamPacket
+OBJECT xpkProgress
+  type          :LONG         -&gt; Type of report: start/cont/end/abort
+  packerName    :PTR TO CHAR	-&gt; Brief name of packer being used
+  packerLongName:PTR TO CHAR  -&gt; Descriptive name of packer being used
+  activity      :PTR TO CHAR  -&gt; Packing/unpacking message
+  fileName      :PTR TO CHAR  -&gt; Name of file being processed, if available
+
+  ccur          :LONG   -&gt; Amount of packed data already processed
+  ucur          :LONG   -&gt; Amount of unpacked data already processed
+  ulen          :LONG   -&gt; Amount of unpacked data in file
+  cf            :LONG   -&gt; Compression factor so far
+  done          :LONG   -&gt; Percentage done already
+  speed         :LONG   -&gt; Bytes per second, from beginning of stream
+  reserved[8]   :ARRAY  -&gt; For future use
+ENDOBJECT
+
+CONST XPKPROG_START = 1,
+      XPKPROG_MID   = 2,
+      XPKPROG_END   = 3
+
+
+
+
+
+/*****************************************************************************
+ *
+ *
+ *       The file info block
+ *
+ */
+
+OBJECT xpkFib
+  type  :LONG   -&gt; Unpacked, packed, archive?
+  ulen  :LONG   -&gt; Uncompressed length
+  dlen  :LONG   -&gt; Compressed length
+  nlen  :LONG   -&gt; Next chunk len
+  ucur  :LONG   -&gt; Uncompressed bytes so far
+  ccur  :LONG		-&gt; Compressed bytes so far
+  id    :LONG		-&gt; 4 letter ID of packer
+
+  packer[6]   :ARRAY  -&gt; (unsigned) 4 letter name of packer
+  subVersion  :INT    -&gt; Required sublib version
+  masVersion  :INT    -&gt; Required masterlib version
+  flags       :INT    -&gt; Password?
+  head[16]    :ARRAY  -&gt; (unsigned) First 16 bytes of orig. file
+  ratio       :LONG   -&gt; Compression ratio
+
+  reserved[8] :ARRAY OF LONG	-&gt; For future use
+ENDOBJECT
+
+CONST XPKTYPE_UNPACKED  = 0,  -&gt; Not packed
+      XPKTYPE_PACKED    = 1,  -&gt; Packed file
+      XPKTYPE_ARCHIVE   = 2   -&gt; Archive
+
+CONST XPKFLAGS_PASSWORD = 1,  -&gt; Password needed
+      XPKFLAGS_NOSEEK   = 2,  -&gt; Chunks are dependent
+      XPKFLAGS_NONSTD   = 4   -&gt; Nonstandard file format
+
+
+
+
+
+
+/*****************************************************************************
+ *
+ *
+ *       The error messages
+ *
+ */
+
+CONST XPKERR_OK          =   0,
+      XPKERR_NOFUNC      =  -1, -&gt; This function not implemented
+      XPKERR_NOFILES     =  -2, -&gt; No files allowed for this function
+      XPKERR_IOERRIN     =  -3, -&gt; Input error happened, look at Result2
+      XPKERR_IOERROUT    =  -4, -&gt; Output error happened,look at Result2
+      XPKERR_CHECKSUM    =  -5, -&gt; Check sum test failed
+      XPKERR_VERSION     =  -6, -&gt; Packed file&#x27;s version newer than lib
+      XPKERR_NOMEM       =  -7, -&gt; Out of memory
+      XPKERR_LIBINUSE    =  -8, -&gt; For not-reentrant libraries
+      XPKERR_WRONGFORM   =  -9, -&gt; Was not packed with this library
+      XPKERR_SMALLBUF    = -10, -&gt; Output buffer too small
+      XPKERR_LARGEBUF    = -11, -&gt; Input buffer too large
+      XPKERR_WRONGMODE   = -12, -&gt; This packing mode not supported
+      XPKERR_NEEDPASSWD  = -13, -&gt; Password needed for decoding
+      XPKERR_CORRUPTPKD  = -14, -&gt; Packed file is corrupt
+      XPKERR_MISSINGLIB  = -15, -&gt; Required library is missing
+      XPKERR_BADPARAMS   = -16, -&gt; Caller&#x27;s TagList was screwed up
+      XPKERR_EXPANSION   = -17, -&gt; Would have caused data expansion
+      XPKERR_NOMETHOD    = -18, -&gt; Can&#x27;t find requested method
+      XPKERR_ABORTED     = -19, -&gt; Operation aborted by user
+      XPKERR_TRUNCATED   = -20, -&gt; Input file is truncated
+      XPKERR_WRONGCPU    = -21, -&gt; Better CPU required for this library
+      XPKERR_PACKED      = -22, -&gt; Data are already XPacked
+      XPKERR_NOTPACKED   = -23, -&gt; Data not packed
+      XPKERR_FILEEXISTS  = -24, -&gt; File already exists
+      XPKERR_OLDMASTLIB  = -25, -&gt; Master library too old
+      XPKERR_OLDSUBLIB   = -26, -&gt; Sub library too old
+      XPKERR_NOCRYPT     = -27, -&gt; Cannot encrypt
+      XPKERR_NOINFO      = -28, -&gt; Can&#x27;t get info on that packer
+      XPKERR_LOSSY       = -29, -&gt; This compression method is lossy
+      XPKERR_NOHARDWARE  = -30, -&gt; Compression hardware required
+      XPKERR_BADHARDWARE = -31, -&gt; Compression hardware failed
+      XPKERR_WRONGPW     = -32  -&gt; Password was wrong
+
+
+CONST XPKERRMSGSIZE	= 80	-&gt;  Maximum size of an error message
+
+
+
+
+
+
+/*****************************************************************************
+ *
+ *
+ *     The XpkQuery() call
+ *
+ */
+
+OBJECT xpkPackerInfo
+  name[24]        :ARRAY  -&gt; Brief name of the packer
+  longName[32]    :ARRAY  -&gt; Full name of the packer
+  description[80] :ARRAY  -&gt; One line description of packer
+
+  flags     :LONG   -&gt; Defined below
+  maxChunk  :LONG   -&gt; Max input chunk size for packing
+  defChunk  :LONG   -&gt; Default packing chunk size
+  defMode   :INT    -&gt; (unsigned) Default mode on 0..100 scale
+ENDOBJECT
+
+-&gt; Defines for Flags
+CONST XPKIF_PK_CHUNK    = $00000001, -&gt; Library supplies chunk packing
+      XPKIF_PK_STREAM   = $00000002, -&gt; Library supplies stream packing
+      XPKIF_PK_ARCHIVE  = $00000004, -&gt; Library supplies archive packing
+      XPKIF_UP_CHUNK    = $00000008, -&gt; Library supplies chunk unpacking
+      XPKIF_UP_STREAM   = $00000010, -&gt; Library supplies stream unpacking
+      XPKIF_UP_ARCHIVE  = $00000020, -&gt; Library supplies archive unpacking
+      XPKIF_HOOKIO      = $00000080, -&gt; Uses full Hook I/O
+      XPKIF_CHECKING    = $00000400, -&gt; Does its own data checking
+      XPKIF_PREREADHDR  = $00000800, -&gt; Unpacker pre-reads the next chunkhdr
+      XPKIF_ENCRYPTION  = $00002000, -&gt; Sub library supports encryption
+      XPKIF_NEEDPASSWD  = $00004000, -&gt; Sub library requires encryption
+      XPKIF_MODES       = $00008000, -&gt; Sub library has different modes
+      XPKIF_LOSSY       = $00010000  -&gt; Sub library does lossy compression
+
+
+OBJECT xpkMode
+  next  :PTR TO xpkMode -&gt; Chain to next descriptor for ModeDesc list*/
+
+  upto        :LONG     -&gt; (unsigned) Maximum efficiency handled by this mode
+  flags       :LONG     -&gt; (unsigned) Defined below
+  packMemory  :LONG     -&gt; (unsigned) Extra memory required during packing
+  unpackMemory:LONG     -&gt; (unsigned) Extra memory during unpacking
+  packSpeed   :LONG     -&gt; (unsigned) Approx packing speed in K per second
+  unpackSpeed :LONG     -&gt; (unsigned) Approx unpacking speed in K per second
+  ratio       :INT      -&gt; (unsigned) CF in 0.1% for AmigaVision executable
+  chunkSize   :INT      -&gt; (unsigned) Desired chunk size in K (!!) for this mode
+
+  description[10]:ARRAY -&gt; 7 character mode description
+ENDOBJECT
+
+-&gt; Defines for XpkMode.Flags
+CONST XPKMF_A3000SPEED = $00000001, -&gt; Timings on A3000/25
+      XPKMF_PK_NOCPU   = $00000002, -&gt; Packing not heavily CPU dependent
+      XPKMF_UP_NOCPU   = $00000004  -&gt; Unpacking... (i.e. hardware modes)
+
+CONST MAXPACKERS = 100
+CONST XPK_PACKER_ARRAY_SIZE = MAXPACKERS * 6
+
+OBJECT xpkPackerList
+  numPackers                    :LONG   -&gt; (unsigned)
+  packer[XPK_PACKER_ARRAY_SIZE] :ARRAY  -&gt; MAXPACKERS items. 6 bytes each
+ENDOBJECT
+
+
+
+
+/*****************************************************************************
+ *
+ *
+ *     The XpkOpen() type calls
+ *
+ */
+
+CONST XPKLEN_ONECHUNK = $7fffffff
+
+#define xpkFH xpkFib
+
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

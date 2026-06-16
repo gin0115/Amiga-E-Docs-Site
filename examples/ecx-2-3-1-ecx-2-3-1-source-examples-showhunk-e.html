@@ -1,0 +1,910 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ShowHunk.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-ecx-2-3-1.html">ECX_2.3.1</a> &rsaquo; ShowHunk.e</div><h1>File: <code>ShowHunk.e</code></h1><p class="meta">884 lines · project <a href="../examples/pkg-ecx-2-3-1.html"><code>ECX_2.3.1</code></a></p><p class="pathctx">ECX_2.3.1/ecx-2.3.1/source/examples/ShowHunk.e</p><p class="prose">simple hunk-dump program with 680x0 disassembler for code hunks</p><h2>Source</h2><pre class="code">
+/* simple hunk-dump program with 680x0 disassembler for code hunks */
+
+/*
+   WARNING: hunk_reloc32_short and hunk_relative_reloc hunks have not been
+   tested. If you find a file with this type of hunk, and this program
+   doesn&#x27;t work with it, *PLEASE* contact the program authors so fixes may
+   be made.
+*/
+
+/* bugs left:
+   - link disasms wrong
+   - bset should give &lt;illegal ea&gt; with bit &gt; 31
+*/
+
+/* 2.1 (LS 2004) */
+/* - addq #8 /subq #8 was wrong. */
+/* - added bsr.l + extb.l */
+/* - fixed link */
+/* - removed some ^ operators */
+/* - some &quot;PROC xxx() RETURN &lt;exp&gt;&quot; changed to &quot;PROC xxx() IS &lt;exp&gt;&quot; */
+/* - On MorphOS, compiled with ECX to PPC was about 12 ! */
+/*   times faster than compiled with EC 68k. Thank mostly */
+/*   custom stringformatting. test: showhunk PPaint disasm &gt;t:temp */
+/* 2.1b (LS 2004) */
+/* - muls / mulu was mixed up */
+
+OPT OSVERSION=37
+
+ENUM HUNK_UNIT=$3E7, HUNK_NAME, HUNK_CODE, HUNK_DATA, HUNK_BSS, HUNK_RELOC32,
+     HUNK_RELOC16, HUNK_RELOC8, HUNK_EXT, HUNK_SYMBOL, HUNK_DEBUG,
+     HUNK_END, HUNK_HEADER, HUNK_OVERLAY=$3F5, HUNK_BREAK, HUNK_DRELOC32,
+     HUNK_DRELOC16, HUNK_DRELOC8, HUNK_LIB, HUNK_INDEX, HUNK_RELOC32_S,
+     HUNK_REL_RELOC32
+
+ENUM EXT_SYM=0, EXT_DEF, EXT_ABS, EXT_RES, EXT_NEWCOMMON, EXT_REF32=129,
+     EXT_COMMON, EXT_REF16, EXT_REF8, EXT_DREF32, EXT_DREF16, EXT_DREF8
+
+ENUM ER_NONE,ER_FILE,ER_MEM,ER_USAGE,ER_HUNKID,ER_BREAK,ER_FILETYPE
+
+DEF flen,o:PTR TO LONG,mem,handle=NIL,hunkid,noreloc=TRUE,hunknr=-1,f=TRUE
+DEF pc:PTR TO INT,hibyte,eleven2nine,eight,seven2six,five2three,two2zero,isize
+DEF tmp,fname[256]:STRING,disasm
+
+PROC main()
+  DEF options:PTR TO LONG,rdargs
+
+  options:=[0,0]
+  IF rdargs:=ReadArgs(&#x27;NAME/A,DISASM/S&#x27;,options,NIL)
+    IF options[0] THEN StrCopy(fname,options[0])
+    disasm:=options[1]
+    FreeArgs(rdargs)
+  ELSE
+    error(ER_USAGE)
+  ENDIF
+
+  PutStr(&#x27;ShowHunk 2.1b by LS 2004\n&#x27;)
+  PutStr(&#x27;ShowHunk v2.0 Copyright (c) 1993 Jim Cooper\n&#x27;)
+  PutStr(&#x27;ShowHunk v0.1 (c) 1992 $#%!\n\n&#x27;)
+
+  flen:=FileLength(fname)
+  handle:=Open(fname,OLDFILE)
+  IF (flen&lt;1) OR (handle=NIL)
+    error(ER_FILE)
+  ELSE
+    mem:=New(flen)
+    IF mem=NIL
+      error(ER_MEM)
+    ELSE
+      IF Read(handle,mem,flen)&lt;&gt;flen THEN error(ER_FILE) ELSE process()
+    ENDIF
+  ENDIF
+  error(ER_NONE)
+ENDPROC
+
+PROC process()
+  DEF end,type
+
+  o:=mem
+  end:=o+flen
+  IF (o[]&lt;&gt;HUNK_HEADER) AND (o[]&lt;&gt;HUNK_UNIT) AND (o[]&lt;&gt;HUNK_LIB) THEN error(ER_FILETYPE)
+  PrintF(&#x27;Hunk layout of file &quot;\s&quot; (\d bytes)\n\n&#x27;,fname,flen)
+  WHILE o&lt;end
+    IF CtrlC() THEN error(ER_BREAK)
+    type:=Int(o); hunkid:=Int(o+2); o:=o+4
+    IF (hunkid&lt;&gt;HUNK_UNIT) AND (hunkid&lt;&gt;HUNK_HEADER) AND (hunkid&lt;&gt;HUNK_BREAK) AND (hunkid&lt;&gt;HUNK_LIB) AND (hunkid&lt;&gt;HUNK_INDEX)
+      IF f
+        PrintF(&#x27;HUNK \d&#x27;,hunknr)
+        INC hunknr
+      ENDIF
+      f:=FALSE
+    ENDIF
+    IF type
+      IF type=$4000
+        PutStr(&#x27;\t** hunk forced to CHIP-mem\n&#x27;)
+      ELSE
+        PrintF(&#x27;\t** type: \d\n&#x27;,type)
+      ENDIF
+    ENDIF
+    SELECT hunkid
+      CASE HUNK_UNIT;        PutStr(&#x27;\thunk_unit: &#x27;); name()
+      CASE HUNK_NAME;        PutStr(&#x27;\thunk_name: &#x27;); name()
+      CASE HUNK_CODE;
+        PutStr(&#x27;\thunk_code&#x27;)
+        IF disasm
+          PutStr(&#x27;\n&#x27;); code()
+        ELSE
+          PrintF(&#x27;: \d bytes\n&#x27;, skip())
+        ENDIF
+      CASE HUNK_DATA;        PrintF(&#x27;\thunk_data: \d bytes\n&#x27;,skip())
+      CASE HUNK_BSS;         PrintF(&#x27;\thunk_bss: \d bytes\n&#x27;,Mul(o[]++,4))
+      CASE HUNK_RELOC32;     PutStr(&#x27;\thunk_reloc32\n&#x27;); reloc(4)
+      CASE HUNK_RELOC16;     PutStr(&#x27;\thunk_reloc16\n&#x27;); reloc(4)
+      CASE HUNK_RELOC8;      PutStr(&#x27;\thunk_reloc8\n&#x27;); reloc(4)
+      CASE HUNK_EXT;         PutStr(&#x27;\thunk_ext\n&#x27;); symbol()
+      CASE HUNK_SYMBOL;      PutStr(&#x27;\thunk_symbol\n&#x27;); symbol()
+      CASE HUNK_DEBUG;       PrintF(&#x27;\thunk_debug: \d bytes\n&#x27;,skip())
+      CASE HUNK_END;         f:=TRUE
+      CASE HUNK_HEADER;      PutStr(&#x27;\thunk_header\n&#x27;); head()
+      CASE HUNK_OVERLAY;     PutStr(&#x27;\thunk_overlay\n&#x27;); overlay()
+      CASE HUNK_BREAK;       PutStr(&#x27;\thunk_break\n&#x27;); hunknr:=1; f:=TRUE
+      CASE HUNK_DRELOC32;    PutStr(&#x27;\thunk_data-reloc32\n&#x27;); reloc(4)
+      CASE HUNK_DRELOC16;    PutStr(&#x27;\thunk_data-reloc16\n&#x27;); reloc(4)
+      CASE HUNK_DRELOC8;     PutStr(&#x27;\thunk_data-reloc8\n&#x27;); reloc(4)
+      CASE HUNK_LIB;         PrintF(&#x27;\tlibrary_hunk: \d bytes\n&#x27;,Mul(o[]++,4)); hunknr:=0
+      CASE HUNK_INDEX;       PrintF(&#x27;\tlibrary_index: \d bytes\n\n&#x27;,skip())
+      CASE HUNK_RELOC32_S;   PutStr(&#x27;\thunk_reloc32_short\n&#x27;); reloc(2);
+      CASE HUNK_REL_RELOC32; PutStr(&#x27;\thunk_relative_reloc32\n&#x27;); reloc(4);
+      DEFAULT
+        error(ER_HUNKID)
+    ENDSELECT
+  ENDWHILE
+  PutStr(IF noreloc THEN &#x27;\nPosition independant code!\n&#x27; ELSE &#x27;\n&#x27;)
+ENDPROC
+
+PROC overlay()
+  DEF m,ts
+  ts:=o[]++
+  PrintF(&#x27;\t  tablesize = \d\n&#x27;,ts)
+  m:=o[]++-2
+  PrintF(&#x27;\t  max. level overlay tree uses = \d\n&#x27;,m)
+  o:=ts*4+o
+  hunknr:=1; f:=TRUE
+ENDPROC
+
+PROC symbol()
+  DEF t,l,s,c,r
+  t:=Char(o); l:=Int(o+2); o:=o+4
+  WHILE l
+    IF CtrlC() THEN error(ER_BREAK)
+    IF t&lt;EXT_NEWCOMMON                  /* sym def */
+      s:=o; o:=l*4+o; c:=o[]++; PutChar(o-4,0)
+      PrintF(&#x27;\t  \s = $\h\n&#x27;,s,c)
+    ELSEIF t=EXT_COMMON OR t=EXT_NEWCOMMON  /* common ref */
+      s:=o; o:=l*4+o; c:=o[]++; PutChar(o-4,0); r:=o[]++
+      PrintF(&#x27;\t  \s (\d ref\s) commonsize = \d\n&#x27;,s,r,
+             IF r=1 THEN &#x27;&#x27; ELSE &#x27;s&#x27;,c)
+      o:=r*4+o
+    ELSE                                /* sym ref */
+      s:=o; o:=l*4+o; r:=o[]++; PutChar(o-4,0)
+      PrintF(&#x27;\t  \s (\d ref\s)\n&#x27;,s,r,IF r=1 THEN &#x27;&#x27; ELSE &#x27;s&#x27;)
+      o:=r*4+o
+    ENDIF
+    t:=Char(o); l:=Int(o+2); o:=o+4
+  ENDWHILE
+ENDPROC
+
+PROC head()
+  DEF a,b
+  a:=0
+  b:=o[a]++
+  WHILE b
+    PrintF(&#x27;\t  libname: \s\n&#x27;,o)
+    a:=a+b
+    b:=o[a]++
+  ENDWHILE
+  b:=o[]++
+  hunknr:=o[]++
+  a:=o[]++-hunknr+1
+  PrintF(&#x27;\t  #of hunks: \d\n&#x27;,a)
+  o:=a*4+o
+ENDPROC
+
+PROC reloc(size)
+  DEF a
+  noreloc:=FALSE
+  a:=o[]++
+  WHILE a
+    IF CtrlC() THEN error(ER_BREAK)
+    PrintF(&#x27;\t  \d reloc entr\s for hunk #\d\n&#x27;,a,
+           IF a=1 THEN &#x27;y&#x27; ELSE &#x27;ies&#x27;,o[]++)
+    o:=a*size+o
+    a:=o[]++
+  ENDWHILE
+ENDPROC
+
+PROC name()
+  DEF a
+  a:=o[]++
+  PrintF(&#x27;\s\n&#x27;,o)
+  o:=a*4+o
+ENDPROC
+
+PROC skip()
+  DEF a
+  a:=Mul(o[]++,4)
+  o:=o+a
+ENDPROC a
+
+PROC error(nr)
+  IF handle THEN Close(handle)
+  PutStr(&#x27;\n&#x27;)
+  SELECT nr
+    CASE ER_FILE;     PrintF(&#x27;Could not read file &quot;\s&quot; !\n&#x27;,fname)
+    CASE ER_MEM;      PutStr(&#x27;No memory for hunks!\n&#x27;)
+    CASE ER_USAGE;    PutStr(&#x27;USAGE: ShowHunk &lt;exe/objfile&gt;\n&#x27;)
+    CASE ER_HUNKID;   PrintF(&#x27;Illegal hunk id: $\h !\n&#x27;,hunkid)
+    CASE ER_BREAK;    PutStr(&#x27;** BREAK: ShowHunk\n&#x27;)
+    CASE ER_FILETYPE; PutStr(&#x27;Not an executable or object file.\n&#x27;)
+  ENDSELECT
+  CleanUp()
+ENDPROC
+
+PROC illegal()
+  PrintF(&#x27;&lt;illegal opcode: $\h&gt;\n&#x27;,pc[])
+ENDPROC
+
+PROC opsize(bit) IS ListItem([&quot;b&quot;,&quot;w&quot;,&quot;l&quot;,&quot;?&quot;],bit)
+
+PROC bitsize(bit) IS IF bit THEN &quot;l&quot; ELSE &quot;w&quot;
+
+PROC immed(val)
+  PrintF(IF val &lt; 16 THEN &#x27;\d&#x27; ELSE &#x27;$\h&#x27;,val)
+ENDPROC
+
+PROC ccode(val,b) IS ListItem([IF b THEN &#x27;ra&#x27; ELSE &#x27;t&#x27;,
+  IF b THEN &#x27;sr&#x27; ELSE &#x27;f&#x27;,&#x27;hi&#x27;,&#x27;ls&#x27;,&#x27;cc&#x27;,&#x27;cs&#x27;,&#x27;ne&#x27;,&#x27;eq&#x27;,&#x27;vc&#x27;,
+  &#x27;vs&#x27;,&#x27;pl&#x27;,&#x27;mi&#x27;,&#x27;ge&#x27;,&#x27;lt&#x27;,&#x27;gt&#x27;,&#x27;le&#x27;,&#x27;??&#x27;],val)
+
+PROC ea(mode,reg,sd)
+  IF mode &lt; 5 THEN
+    PrintF(ListItem([&#x27;d\d&#x27;,&#x27;a\d&#x27;,&#x27;(a\d)&#x27;,&#x27;(a\d)+&#x27;,&#x27;-(a\d)&#x27;],mode),reg)
+  SELECT mode
+    CASE 5;
+       PutStr(&#x27;(&#x27;)
+       immed(pc[1]++)
+       PrintF(&#x27;,a\d)&#x27;,reg)
+    CASE 6;
+      tmp:=pc[1]++
+      PutStr(&#x27;(&#x27;)
+      immed(tmp AND $f)
+      PrintF(&#x27;,a\d,\s\d\s*\d)&#x27;,reg,
+                           IF tmp AND $8000 THEN &#x27;a&#x27; ELSE &#x27;d&#x27;,
+                           (Shr(tmp,12) AND 7),
+                           IF tmp AND $800 THEN &#x27;.L&#x27; ELSE &#x27;.W&#x27;,
+                           ListItem([1,2,4,8],Shr(tmp,9) AND 3))
+    CASE 7;
+      SELECT reg
+        CASE 0;  PrintF(&#x27;(\d).W&#x27;,pc[1]++)
+        CASE 1;  immed(Long(pc+2)); pc:=pc+4      /* bug! was: immed(^pc++) */
+        CASE 2;
+          PutStr(&#x27;(&#x27;)
+          immed(pc[1]++)
+          PutStr(&#x27;,PC)&#x27;)
+        CASE 3;
+          tmp:=pc[1]++
+          PutStr(&#x27;(&#x27;)
+          immed(tmp AND $f)
+          PrintF(&#x27;,PC,\c\d\s&#x27;,IF tmp AND $8000 THEN &quot;a&quot; ELSE &quot;d&quot;,
+                              (Shr(tmp,12) AND 7),
+                              IF tmp AND $800 THEN &#x27;.L)&#x27; ELSE &#x27;.W)&#x27;)
+        CASE 4;
+          IF sd
+            PutStr(&#x27;#&#x27;)
+            immed(IF isize=2 THEN pc[1] ELSE Long(pc+2))
+            pc:=pc+isize
+          ELSE
+            PutStr(&#x27;SR&#x27;)
+          ENDIF
+        DEFAULT;
+          PutStr(&#x27;&lt;unknown ea!&gt;&#x27;)
+      ENDSELECT
+  ENDSELECT
+ENDPROC
+
+PROC movemregs(val,predec)
+  DEF index,first=1,regs:PTR TO LONG
+
+  regs:=[&#x27;d0&#x27;,&#x27;d1&#x27;,&#x27;d2&#x27;,&#x27;d3&#x27;,&#x27;d4&#x27;,&#x27;d5&#x27;,&#x27;d6&#x27;,&#x27;d7&#x27;,
+         &#x27;a0&#x27;,&#x27;a1&#x27;,&#x27;a2&#x27;,&#x27;a3&#x27;,&#x27;a4&#x27;,&#x27;a5&#x27;,&#x27;a6&#x27;,&#x27;a7&#x27;]
+
+  IF predec
+    FOR index:=15 TO 0 STEP -1
+      IF val AND Shl(1,index)
+        IF first = 0 THEN PutStr(&#x27;/&#x27;)
+        PutStr(regs[15-index])
+        first:=0
+      ENDIF
+    ENDFOR
+  ELSE
+    FOR index:=0 TO 15 STEP 1
+      IF val AND Shl(1,index)
+        IF first = 0 THEN PutStr(&#x27;/&#x27;)
+        PutStr(regs[index])
+        first:=0
+      ENDIF
+    ENDFOR
+  ENDIF
+ENDPROC
+
+PROC code0000()
+  DEF c,tmp2
+
+  IF (eleven2nine = 7) OR (seven2six = 3)
+    IF (eleven2nine = 7) AND (eight = 0)
+      tmp:=pc[1]++
+      PrintF(&#x27;moves.\c\t&#x27;,opsize(seven2six))
+      IF Shr(tmp,11) AND 1
+        ea(five2three,two2zero,1)
+        PrintF(&#x27;,\c\d\n&#x27;,IF tmp AND $8000 THEN &quot;a&quot; ELSE &quot;d&quot;,Shr(tmp,12) AND 7)
+      ELSE
+        PrintF(&#x27;\c\d,&#x27;,IF tmp AND $8000 THEN &quot;a&quot; ELSE &quot;d&quot;,Shr(tmp,12) AND 7)
+        ea(five2three,two2zero,0)
+        PutStr(&#x27;\n&#x27;)
+      ENDIF
+    ELSEIF (eight = 0) AND (seven2six = 3)
+      tmp:=pc[1]++
+      IF (five2three = 7) AND (two2zero = 4)
+        tmp2:=pc[1]++
+        PrintF(&#x27;cas2\td\d:d\d,d\d:d\d,\c\d:\c\d\n&#x27;,
+               (tmp AND 7), (tmp2 AND 7),
+               (Shr(tmp,6) AND 7), (Shr(tmp2,6) AND 7),
+               IF tmp AND $8000 THEN &quot;a&quot; ELSE &quot;d&quot;, (Shr(tmp,12) AND 7),
+               IF tmp2 AND $8000 THEN &quot;a&quot; ELSE &quot;d&quot;, (Shr(tmp2,12) AND 7))
+      ELSE
+        PrintF(&#x27;cas\td\d,d\d,&#x27;,tmp AND 7, Shr(tmp,6) AND 7)
+        ea(five2three,two2zero,0)
+        PutStr(&#x27;\n&#x27;)
+      ENDIF
+    ELSE
+      illegal()
+    ENDIF
+  ELSE
+    IF five2three = 1
+      PrintF(&#x27;movep.\c\t&#x27;,bitsize(seven2six AND 1))
+      IF seven2six AND 2
+        PrintF(&#x27;d\d,\d(a\d)\n&#x27;,eleven2nine,pc[1]++,two2zero)
+      ELSE
+        PrintF(&#x27;\d(a\d),d\d\n&#x27;,pc[1]++,two2zero,eleven2nine)
+      ENDIF
+    ELSEIF (eight = 1) OR ((((eleven2nine AND 3) = 0) AND (eight = 0)))
+      PrintF(ListItem([&#x27;btst\t&#x27;,&#x27;bchg\t&#x27;,&#x27;bclr\t&#x27;,&#x27;bset\t&#x27;],seven2six))
+      IF eight = 1
+        PrintF(&#x27;d\d,&#x27;,eleven2nine)
+      ELSE
+        PrintF(&#x27;#\d,&#x27;,pc[1]++)
+      ENDIF
+      ea(five2three,two2zero,0)
+      PutStr(&#x27;\n&#x27;)
+    ELSE
+      IF seven2six = 3
+        tmp:=pc[1]++
+        PrintF(&#x27;\s.\c\t&#x27;,IF Shr(tmp,11) AND 1 THEN &#x27;chk2&#x27; ELSE &#x27;cmp2&#x27;,opsize(eleven2nine))
+        ea(five2three,two2zero,1)
+        PrintF(&#x27;,\c\d\n&#x27;,IF tmp AND $8000 THEN &quot;d&quot; ELSE &quot;a&quot;,Shr(tmp,12) AND 3)
+      ELSE
+        c:=ListItem([&#x27;ori.&#x27;,&#x27;andi.&#x27;,&#x27;subi.&#x27;,&#x27;addi.&#x27;,0,&#x27;eori.&#x27;,&#x27;cmpi.&#x27;,0],eleven2nine)
+        IF c THEN PutStr(c) ELSE illegal()
+        PrintF(&#x27;\c\t#&#x27;,opsize(seven2six))
+        immed(IF seven2six &lt; 2 THEN pc[1]++ ELSE Long((pc := pc + 4) - 4))
+        PutStr(&#x27;,&#x27;)
+        ea(five2three,two2zero,0)
+        PutStr(&#x27;\n&#x27;)
+      ENDIF
+    ENDIF
+  ENDIF
+ENDPROC
+
+PROC code0100()
+  DEF subfield,bitseven,bitsix,curcode
+
+  bitseven:=Shr(seven2six,1)
+  bitsix:=seven2six AND 1
+
+  IF pc[] = $4afa
+    PutStr(&#x27;bgnd\n&#x27;)
+  ELSE
+    IF eight = 1
+      IF bitsix = 1
+        IF (bitseven = 1) AND (five2three=0)
+           PrintF(&#x27;extb.l\td\d\n&#x27;,two2zero)
+        ELSE
+           PutStr(&#x27;lea\t&#x27;)
+           ea(five2three,two2zero,1)
+           PrintF(&#x27;,a\d\n&#x27;,eleven2nine)
+         ENDIF
+      ELSE
+        PutStr(&#x27;chk\t&#x27;)
+        ea(five2three,two2zero,0)
+        PrintF(&#x27;,d\d\n&#x27;,eleven2nine)
+      ENDIF
+    ELSE
+      subfield:=Shl(eleven2nine,1)+eight
+
+      SELECT subfield
+        CASE 0;
+          IF seven2six = 3
+            PutStr(&#x27;move.w\t&#x27;)
+            ea(five2three,two2zero,1)
+            PutStr(&#x27;,sr\n&#x27;)
+          ELSE
+            PrintF(&#x27;negx.\c\t&#x27;,opsize(seven2six))
+            ea(five2three,two2zero,0)
+            PutStr(&#x27;\n&#x27;)
+          ENDIF
+        CASE 1;
+          IF seven2six = 3
+            PutStr(&#x27;move.w\tccr,&#x27;)
+            ea(five2three,two2zero,0)
+            PutStr(&#x27;\n&#x27;)
+          ELSE
+            illegal()
+          ENDIF
+        CASE 2;
+          PrintF(&#x27;clr.\c\t&#x27;,opsize(seven2six))
+          ea(five2three,two2zero,0)
+          PutStr(&#x27;\n&#x27;)
+        CASE 4;
+          IF seven2six = 3
+            PutStr(&#x27;move.w\t&#x27;)
+            ea(five2three,two2zero,1)
+            PutStr(&#x27;,ccr\n&#x27;)
+          ELSE
+            PrintF(&#x27;neg.\c\t&#x27;,opsize(seven2six))
+            ea(five2three,two2zero,0)
+            PutStr(&#x27;\n&#x27;)
+          ENDIF
+        CASE 6;
+          IF seven2six = 3
+            PutStr(&#x27;move.w\tsr,&#x27;)
+            ea(five2three,two2zero,0)
+            PutStr(&#x27;\n&#x27;)
+          ELSE
+            PrintF(&#x27;not.\c\t&#x27;,opsize(seven2six))
+            ea(five2three,two2zero,0)
+            PutStr(&#x27;\n&#x27;)
+          ENDIF
+        CASE 8;
+          IF seven2six = 0
+            IF five2three = 1
+              PrintF(&#x27;link.l\ta\d,#\d\n&#x27;,two2zero,Long(pc+2))
+              pc := pc + 4
+            ELSE
+              PutStr(&#x27;nbcd\t&#x27;)
+              ea(five2three,two2zero,0)
+              PutStr(&#x27;\n&#x27;)
+            ENDIF
+          ELSEIF seven2six = 1
+            IF five2three = 0
+              PrintF(&#x27;swap\td\d\n&#x27;,two2zero)
+            ELSEIF five2three = 1
+              PrintF(&#x27;bkpt\t#\d\n&#x27;,two2zero)
+            ELSE
+              PutStr(&#x27;pea\t&#x27;)
+              ea(five2three,two2zero,0)
+              PutStr(&#x27;\n&#x27;)
+            ENDIF
+          ELSE
+            IF five2three = 0
+              PrintF(&#x27;ext.\c\td\d\n&#x27;,bitsize(bitsix),two2zero)
+            ELSE
+              PrintF(&#x27;movem.\c\t&#x27;,bitsize(bitsix))
+              movemregs(pc[1]++, IF five2three = 4 THEN 1 ELSE 0)
+              PutStr(&#x27;,&#x27;)
+              ea(five2three,two2zero,0)
+              PutStr(&#x27;\n&#x27;)
+            ENDIF
+          ENDIF
+        CASE 10;
+          IF pc[] = $4afc
+            PutStr(&#x27;illegal\n&#x27;)
+          ELSE
+            IF seven2six = 3
+              PutStr(&#x27;tas\t&#x27;)
+              ea(five2three,two2zero,0)
+              PutStr(&#x27;\n&#x27;)
+            ELSE
+              PrintF(&#x27;tst.\c\t&#x27;,opsize(seven2six))
+              ea(five2three,two2zero,0)
+              PutStr(&#x27;\n&#x27;)
+            ENDIF
+          ENDIF
+        CASE 12;
+          tmp:=pc[1]++
+
+          IF (Shl(eight,2)+seven2six) &lt; 2
+            IF seven2six = 1
+              PrintF(&#x27;div.\c&#x27;,IF Shr(tmp,11) AND 1 THEN &quot;s&quot; ELSE &quot;u&quot;)
+              IF ((Shr(tmp,10) AND 1) = 0) AND ((Shr(tmp,12) AND 7) &lt;&gt; (tmp AND 7))
+                PutStr(&#x27;l.l\t&#x27;)
+                ea(five2three,two2zero,1)
+                PrintF(&#x27;,d\d:d\d\n&#x27;,Shr(tmp,12) AND 7,tmp AND 7)
+              ELSE
+                PutStr(&#x27;.l\t&#x27;)
+                ea(five2three,two2zero,1)
+                PrintF(&#x27;,d\d&#x27;,Shr(tmp,12) AND 7)
+                IF Shr(tmp,10) AND 1 THEN PrintF(&#x27;:d\d&#x27;,tmp AND 7)
+                PutStr(&#x27;\n&#x27;)
+              ENDIF
+            ELSE
+              PrintF(&#x27;mul\c.l\t&#x27;,IF Shr(tmp,11) AND 1 THEN &quot;s&quot; ELSE &quot;u&quot;)
+              ea(five2three,two2zero,1)
+              PrintF(&#x27;,d\d&#x27;,Shr(tmp,12) AND 7)
+              IF Shr(tmp,10) AND 1 THEN PrintF(&#x27;:d\d&#x27;,tmp AND 7)
+              PutStr(&#x27;\n&#x27;)
+            ENDIF
+          ELSE
+            PrintF(&#x27;movem.\c\t&#x27;,bitsize(bitsix))
+            ea(five2three,two2zero,0)
+            PutStr(&#x27;,&#x27;)
+            movemregs(tmp, IF five2three = 4 THEN 1 ELSE 0)
+            PutStr(&#x27;\n&#x27;)
+          ENDIF
+        CASE 14;
+          curcode:=pc[]
+
+          SELECT curcode
+            CASE $4e70;
+              PutStr(&#x27;reset\n&#x27;)
+            CASE $4e71;
+              PutStr(&#x27;nop\n&#x27;)
+            CASE $4e72;
+              PutStr(&#x27;stop\n&#x27;)
+            CASE $4e73;
+              PutStr(&#x27;rte\n&#x27;)
+            CASE $4e74;
+              PrintF(&#x27;rtd\t#\d\n&#x27;,(Shl(pc[1]&lt;32767+1,16)-pc[1]++))
+            CASE $4e75;
+              PutStr(&#x27;rts\n&#x27;)
+            CASE $4e76;
+              PutStr(&#x27;trapv\n&#x27;)
+            CASE $4e77;
+              PutStr(&#x27;rtr\n&#x27;)
+            DEFAULT;
+              IF bitseven = 1
+                PutStr(IF bitsix = 1 THEN &#x27;jmp\t&#x27; ELSE &#x27;jsr\t&#x27;)
+                ea(five2three,two2zero,0)
+                PutStr(&#x27;\n&#x27;)
+              ELSE
+                IF bitsix = 1
+                  tmp:=Shr(five2three,1)
+
+                  SELECT tmp
+                    CASE 0;
+                      PrintF(&#x27;trap\t\d\n&#x27;,(Shl((five2three AND 1),2)+two2zero))
+                    CASE 1;
+                      IF five2three AND 1
+                        PrintF(&#x27;unlk\ta\d\n&#x27;,two2zero)
+                      ELSE
+                        PrintF(&#x27;link.w\ta\d,#\d\n&#x27;,two2zero,pc[1]); pc++
+
+                      ENDIF
+                    CASE 2;
+                      PrintF(IF five2three AND 1 THEN &#x27;move\tusp,a\d\n&#x27; ELSE &#x27;move\ta\d,usp\n&#x27;,two2zero)
+                    CASE 3;
+                      PrintF(&#x27;rtm\t\c\d\n&#x27;,IF five2three AND 1 THEN &quot;a&quot; ELSE &quot;d&quot;,two2zero)
+                  ENDSELECT
+                ELSE
+                  illegal()
+                ENDIF
+              ENDIF
+          ENDSELECT
+        DEFAULT; illegal()
+      ENDSELECT
+    ENDIF
+  ENDIF
+ENDPROC
+
+PROC code0101()
+  IF seven2six &lt; 3
+    PutStr(IF eight = 1 THEN &#x27;subq.&#x27; ELSE &#x27;addq.&#x27;)
+    PrintF(&#x27;\c\t#\d,&#x27;,opsize(seven2six),ListItem([8,1,2,3,4,5,6,7],eleven2nine))
+    ea(five2three,two2zero,0)
+    PutStr(&#x27;\n&#x27;)
+  ELSE
+    IF five2three = 1
+      PrintF(&#x27;db\s\td\d,L\z\h[8]\n&#x27;,
+             ccode((Shl(eleven2nine,1)+eight),0),
+             two2zero,
+             pc-o-2-(Shl(pc[1]&lt;32767+1,16)-pc[1]))
+      pc++
+    ELSEIF five2three = 7
+      PrintF(&#x27;trap\s&#x27;,ccode(Shl(eleven2nine,1)+eight,0))
+      IF two2zero &lt; 4
+        IF two2zero AND 1 THEN PrintF(&#x27;.w\t#\d&#x27;,pc[1]++) ELSE PrintF(&#x27;.l\t#\d&#x27;,Long((pc:=pc+4)-4))
+      ENDIF
+      PutStr(&#x27;\n&#x27;)
+    ELSE
+      PrintF(&#x27;s\s\t&#x27;,ccode(Shl(eleven2nine,1)+eight,0))
+      ea(five2three,two2zero,0)
+      PutStr(&#x27;\n&#x27;)
+    ENDIF
+  ENDIF
+ENDPROC
+
+PROC code0110()
+  DEF tmp2,ctl:PTR TO LONG
+
+  IF (pc[] AND $fffe) = $4e7a
+    tmp:=pc[1]++
+    tmp2:= tmp AND $fff
+    IF tmp2 &gt; 7
+      ctl:=ListItem([&#x27;usp&#x27;,&#x27;vbr&#x27;,&#x27;caar&#x27;,&#x27;msp&#x27;,&#x27;isp&#x27;,&#x27;mmusr&#x27;,&#x27;urp&#x27;,&#x27;srp&#x27;],tmp2 - $800)
+    ELSE
+      ctl:=ListItem([&#x27;sfc&#x27;,&#x27;dfc&#x27;,&#x27;cacr&#x27;,&#x27;tc&#x27;,&#x27;itt0&#x27;,&#x27;itt1&#x27;,&#x27;dtt0&#x27;,&#x27;dtt1&#x27;],tmp2)
+    ENDIF
+    IF ctl
+      PutStr(&#x27;movec\t&#x27;)
+      IF pc[-1] AND 1
+        PrintF(&#x27;\s,\c\d\n&#x27;,ctl,IF tmp AND $8000 THEN &quot;a&quot; ELSE &quot;d&quot;,Shr(tmp,12) AND 7)
+      ELSE
+        PrintF(&#x27;\c\d,\s\n&#x27;,IF tmp AND $8000 THEN &quot;a&quot; ELSE &quot;d&quot;,Shr(tmp,12) AND 7,ctl)
+      ENDIF
+    ELSE
+      illegal()
+    ENDIF
+  ELSE
+    PrintF(&#x27;b\s&#x27;,ccode((Shl(eleven2nine,1)+eight),1))
+    tmp:=Char(pc+1)
+    IF tmp = 0
+      PrintF(&#x27;.w\tL\z\h[8]\n&#x27;,pc-o-2-(Shl(pc[1]&lt;32767+1,16)-pc[1]))
+      pc++
+    ELSEIF tmp = 255
+      PrintF(&#x27;.l\tL\z\h[8]\n&#x27;,pc-o-2+Long(pc+2))
+      pc++ ; pc++
+    ELSE
+      PrintF(&#x27;.b\tL\z\h[8]\n&#x27;,pc-o-2-(Shl(tmp&lt;127+1,8)-tmp))
+    ENDIF
+  ENDIF
+ENDPROC
+
+PROC code1000()
+  IF Shr(pc[],4) AND %11111 = %10100   /* bug!: was  Shr(five2three,1) = 0 */
+    IF eight
+      IF seven2six
+        SELECT seven2six
+          CASE 1;  PutStr(&#x27;pack\t&#x27;)
+          CASE 2;  PutStr(&#x27;unpk\t&#x27;)
+          DEFAULT; illegal()
+        ENDSELECT
+        PrintF(IF five2three AND 1 THEN &#x27;-(a\d),-(a\d),#\d\n&#x27; ELSE &#x27;d\d,d\d,#\d\n&#x27;,two2zero,eleven2nine,pc[1]++)
+      ELSE
+        PrintF(IF five2three AND 1 THEN &#x27;sbcd\t-(a\d),-(a\d)\n&#x27; ELSE &#x27;sbcd\td\d,-d\d\n&#x27;,two2zero,eleven2nine)
+      ENDIF
+    ELSE
+      illegal()
+    ENDIF
+  ELSE
+    IF seven2six = 3
+      PutStr(IF eight = 1 THEN &#x27;divs\t&#x27; ELSE &#x27;divu\t&#x27;)
+      ea(five2three,two2zero,1)
+      PrintF(&#x27;,d\d\n&#x27;,eleven2nine)
+    ELSE
+      PrintF(&#x27;or.\c\t&#x27;,opsize(seven2six))
+      IF eight = 1
+        PrintF(&#x27;d\d,&#x27;,eleven2nine)
+        ea(five2three,two2zero,0)
+      ELSE
+        ea(five2three,two2zero,1)
+        PrintF(&#x27;,d\d&#x27;,eleven2nine)
+      ENDIF
+      PutStr(&#x27;\n&#x27;)
+    ENDIF
+  ENDIF
+ENDPROC
+
+PROC code1001()
+  IF seven2six = 3
+    PrintF(&#x27;suba.\c\t&#x27;,bitsize(eight))
+    ea(five2three,two2zero,1)
+    PrintF(&#x27;,a\d\n&#x27;,eleven2nine)
+  ELSE
+    IF (Shr(five2three,1) = 0) AND (eight = 1)
+      PrintF(&#x27;subx.\c\t&#x27;,opsize(seven2six))
+      PrintF(IF five2three AND 1 THEN &#x27;-(a\d),-(a\d)\n&#x27; ELSE &#x27;d\d,d\d\n&#x27;,two2zero,eleven2nine)
+    ELSE
+      PrintF(&#x27;sub.\c\t&#x27;,opsize(seven2six))
+      IF eight = 1
+        PrintF(&#x27;d\d,&#x27;,eleven2nine)
+        ea(five2three,two2zero,0)
+        PutStr(&#x27;\n&#x27;)
+      ELSE
+        ea(five2three,two2zero,1)
+        PrintF(&#x27;,d\d\n&#x27;,eleven2nine)
+      ENDIF
+    ENDIF
+  ENDIF
+ENDPROC
+
+PROC code1011()
+  IF seven2six = 3
+    PrintF(&#x27;cmpa.\c\t&#x27;,bitsize(eight))
+    ea(five2three,two2zero,1)
+    PrintF(&#x27;,a\d\n&#x27;,eleven2nine)
+  ELSE
+    IF five2three = 1
+      PrintF(&#x27;cmpm.\c\t(a\d)+,(a\d)+\n&#x27;,opsize(seven2six),two2zero,eleven2nine)
+    ELSE
+      IF eight = 1
+        PrintF(&#x27;eor.\c\td\d,&#x27;,opsize(seven2six),eleven2nine)
+        ea(five2three,two2zero,0)
+        PutStr(&#x27;\n&#x27;)
+      ELSE
+        PrintF(&#x27;cmp.\c\t&#x27;,opsize(seven2six))
+        ea(five2three,two2zero,1)
+        PrintF(&#x27;,d\d\n&#x27;,eleven2nine)
+      ENDIF
+    ENDIF
+  ENDIF
+ENDPROC
+
+PROC code1100()
+  IF seven2six = 3
+    PutStr(IF eight = 1 THEN &#x27;muls.w\t&#x27; ELSE &#x27;mulu.w\t&#x27;)
+    ea(five2three,two2zero,1)
+    PrintF(&#x27;,d\d\n&#x27;,eleven2nine)
+  ELSE
+    IF Shr(five2three,1) &lt;&gt; 0
+      PrintF(&#x27;and.\c\t&#x27;,opsize(seven2six))
+      IF eight = 1
+        PrintF(&#x27;d\d,&#x27;,eleven2nine)
+        ea(five2three,two2zero,0)
+        PutStr(&#x27;\n&#x27;)
+      ELSE
+        ea(five2three,two2zero,1)
+        PrintF(&#x27;,d\d\n&#x27;,eleven2nine)
+      ENDIF
+    ELSE
+      IF seven2six = 0
+        PrintF(IF five2three AND 1 THEN &#x27;abcd\t-(a\d),-(a\d)\n&#x27; ELSE &#x27;abcd\td\d,d\d\n&#x27;,two2zero,eleven2nine)
+      ELSE
+        PutStr(&#x27;exg\t&#x27;)
+        tmp:=Shl(seven2six,3)+five2three
+        IF tmp = 8
+          PrintF(&#x27;d\d,d\d\n&#x27;,two2zero,eleven2nine)
+        ELSEIF tmp = 9
+          PrintF(&#x27;a\d,a\d\n&#x27;,two2zero,eleven2nine)
+        ELSEIF tmp = 17
+          PrintF(&#x27;a\d,d\d\n&#x27;,two2zero,eleven2nine)
+        ELSE
+          illegal()
+        ENDIF
+      ENDIF
+    ENDIF
+  ENDIF
+ENDPROC
+
+PROC code1101()
+  IF seven2six = 3
+    PrintF(&#x27;adda.\c\t&#x27;,bitsize(eight))
+    ea(five2three,two2zero,1)
+    PrintF(&#x27;,a\d\n&#x27;,eleven2nine)
+  ELSE
+    IF (Shr(five2three,1) = 0) AND (eight = 1)
+      PrintF(&#x27;addx.\c\t&#x27;,opsize(seven2six))
+      PrintF(IF five2three AND 1 THEN &#x27;-(a\d),-(a\d)\n&#x27; ELSE &#x27;d\d,d\d\n&#x27;,two2zero,eleven2nine)
+    ELSE
+      PrintF(&#x27;add.\c\t&#x27;,opsize(seven2six))
+      IF eight = 1
+        PrintF(&#x27;d\d,&#x27;,eleven2nine)
+        ea(five2three,two2zero,0)
+        PutStr(&#x27;\n&#x27;)
+      ELSE
+        ea(five2three,two2zero,1)
+        PrintF(&#x27;,d\d\n&#x27;,eleven2nine)
+      ENDIF
+    ENDIF
+  ENDIF
+ENDPROC
+PROC code1110()
+  DEF subfield,tmp2
+
+  IF seven2six = 3
+    tmp:=pc[1]++
+    tmp2:=tmp AND 31
+    subfield:=Shl((eleven2nine AND 3),1)+eight
+    PutStr(ListItem([&#x27;bftst&#x27;,&#x27;bfextu&#x27;,&#x27;bfchg&#x27;,&#x27;bfexts&#x27;,&#x27;bfclr&#x27;,&#x27;bfffo&#x27;,&#x27;bfset&#x27;,&#x27;bfins&#x27;],subfield))
+    PutStr(&#x27;\t&#x27;)
+    IF subfield = 7 THEN PrintF(&#x27;d\d,&#x27;,Shr(tmp,12) AND 7)
+    ea(five2three,two2zero,0)
+    PrintF(IF Shr(tmp,11) AND 1 THEN &#x27;{d\d:&#x27; ELSE &#x27;{\d:&#x27;,Shr(tmp,6) AND 31)
+    PrintF(IF Shr(tmp,5) AND 1 THEN &#x27;d\d}&#x27; ELSE &#x27;\d}&#x27;,IF tmp2 THEN tmp2 ELSE 32)
+
+    IF (subfield &lt; 7) AND (subfield AND 1) THEN PrintF(&#x27;,d\d&#x27;,Shr(tmp,12) AND 7)
+
+    PutStr(&#x27;\n&#x27;)
+  ELSE
+    PrintF(&#x27;\s\c.&#x27;,ListItem([&#x27;as&#x27;,&#x27;ls&#x27;,&#x27;rox&#x27;,&#x27;ro&#x27;],IF seven2six=3 THEN eleven2nine ELSE five2three AND 3),IF eight=1 THEN &quot;l&quot; ELSE &quot;r&quot;)
+    IF seven2six = 3
+      PutStr(&#x27;\t&#x27;)
+      ea(five2three,two2zero,0)
+      PutStr(&#x27;\n&#x27;)
+    ELSE
+      PrintF(IF five2three AND 4 THEN &#x27;.\c\td\d,d\d\n&#x27; ELSE &#x27;\c\t#\d,d\d\n&#x27;,opsize(seven2six),eleven2nine,two2zero)
+    ENDIF
+  ENDIF
+ENDPROC
+
+PROC code()
+  DEF number
+  isize:=2
+  number:=Shl(o[],2)+o+4
+  pc:=o+4
+
+  PutStr(&#x27;\n&#x27;)
+
+  WHILE (pc &lt; number)
+    hibyte:=Shr(Char(pc),4)
+    eleven2nine:=Shr(Char(pc),1) AND 7
+    eight:=Char(pc) AND 1
+    seven2six:=Shr(Char(pc+1),6) AND 3
+    five2three:=Shr(Char(pc+1),3) AND 7
+    two2zero:=Char(pc+1) AND 7
+
+    IF CtrlC() THEN error(ER_BREAK)             /* essential! */
+
+    PrintF(&#x27;L\z\h[8]:&#x27;,pc-o-4)                  /* for offsets */
+
+    PutStr(&#x27;\t&#x27;)
+
+    IF (hibyte &gt; 0) AND (hibyte &lt; 4)
+      PutStr(IF (eight=0) AND (seven2six=1) THEN &#x27;movea.&#x27; ELSE &#x27;move.&#x27;)
+      SELECT hibyte
+        CASE 1; PutStr(&#x27;b&#x27;)
+        CASE 2; PutStr(&#x27;l&#x27;); isize:=4
+        CASE 3; PutStr(&#x27;w&#x27;)
+      ENDSELECT
+      PutStr(&#x27;\t&#x27;)
+      ea(five2three,two2zero,1)
+      PutStr(&#x27;,&#x27;)
+      ea(Shl(eight,2)+seven2six,eleven2nine,0)
+      PutStr(&#x27;\n&#x27;)
+      isize:=2
+    ELSE
+      SELECT hibyte
+        CASE 0;                 /* Bit Manipulation/MOVEP/immediate */
+          code0000()
+        CASE 4;                 /* Miscellaneous */
+          code0100()
+        CASE 5;                 /* ADDQ/SUBQ/Scc/DBcc/TRAPcc */
+          code0101()
+        CASE 6;                 /* Bcc/BSR/BRA/MOVEC */
+          code0110()
+        CASE 7;                 /* MOVEQ */
+          PutStr(&#x27;moveq\t#&#x27;)
+          immed(Char(pc+1))
+          PrintF(&#x27;,d\d\n&#x27;,eleven2nine)
+        CASE 8;                 /* OR/DIV/SBCD */
+          code1000()
+        CASE 9;                 /* SUB/SUBA/SUBX */
+          code1001()
+        CASE 10;                /* (unassigned, reserved) */
+          illegal()
+        CASE 11;                /* CMP/EOR */
+          code1011()
+        CASE 12;                /* AND/MUL/ABCD/EXG */
+          code1100()
+        CASE 13;                /* ADD/ADDX */
+          code1101()
+        CASE 14;                /* Shift/Rotate/Bit Field */
+          code1110()
+        CASE 15;                /* Coprocessor Interface */
+          illegal()
+      ENDSELECT
+    ENDIF
+    pc++
+  ENDWHILE
+
+  PutStr(&#x27;\n&#x27;)
+
+  o:=number
+ENDPROC
+
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

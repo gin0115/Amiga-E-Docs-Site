@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>memory.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-ecx-2-3-1.html">ECX_2.3.1</a> &rsaquo; memory.e</div><h1>File: <code>memory.e</code></h1><p class="meta">109 lines · project <a href="../examples/pkg-ecx-2-3-1.html"><code>ECX_2.3.1</code></a></p><p class="pathctx">ECX_2.3.1/ecx-2.3.1/source/modules/amigaos4/exec/memory.e</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/nodes.html">exec/nodes</a></li></ul></div><h2>Source</h2><pre class="code">OPT MODULE
+OPT EXPORT
+
+MODULE &#x27;exec/nodes&#x27;
+
+OBJECT ml
+  ln:ln
+  numentries:WORD
+-&gt; Um, what about &#x27;me[1]:ARRAY OF me&#x27;
+ENDOBJECT     /* SIZEOF=16 */
+
+OBJECT me
+  addr:LONG
+  reqs:LONG @ addr
+  length:LONG
+ENDOBJECT     /* SIZEOF=8 */
+
+CONST MEMF_ANY=0,
+      MEMF_PUBLIC=1,
+      MEMF_CHIP=2,
+      MEMF_FAST=4,
+      MEMF_VIRTUAL = 8, /* Memory that is mapped/paged */
+      MEMF_EXECUTABLE = 16, /* Memory that contains executable code */
+      MEMF_LOCAL=$100,
+      MEMF_24BITDMA=$200,
+      MEMF_KICK=$400,
+      MEMF_PRIVATE = $800, /* Memory that is only _visible_ to the  allocator task */
+      MEMF_SHARED = $1000, /* Memory that is visible and accessible to all tasks */
+      MEMF_CLEAR=$10000,
+      MEMF_LARGEST=$20000,
+      MEMF_REVERSE=$40000,
+      MEMF_TOTAL=$80000,
+      MEMF_HWALIGNED = $100000, /* AllocMem: Allocate aligned to hardware page size */
+      MEMF_DELAYED = $200000, /* AllocMem: Delay physical memory mapping */
+      MEMF_NO_EXPUNGE = $80000000,
+
+      MEM_BLOCKSIZE=8,
+      MEM_BLOCKMASK=7
+
+OBJECT memhandlerdata
+  requestsize:LONG
+  requestflags:LONG
+  flags:LONG
+ENDOBJECT     /* SIZEOF=12 */
+
+CONST MEMHF_RECYCLE=1,
+      MEM_DID_NOTHING=0,
+      MEM_ALL_DONE=-1,
+      MEM_TRY_AGAIN=1
+
+OBJECT mh
+  ln:ln
+  attributes:INT  -&gt; This is unsigned
+  first:PTR TO mc
+  lower:LONG
+  upper:LONG
+  free:LONG
+ENDOBJECT     /* SIZEOF=32 */
+
+OBJECT mc
+  next:PTR TO mc
+  bytes:LONG
+-&gt; Um, &#x27;size:LONG&#x27; was an error
+ENDOBJECT     /* SIZEOF=NONE !!! */
+
+
+CONST
+    MEMATTRF_WRITETHROUGH     = (1 SHL 0), /* Stores in this area update cache
+                                           * and memory */
+    MEMATTRF_CACHEINHIBIT     = (1 SHL 1), /* Caches are inhibited in this
+                                           * area */
+    MEMATTRF_COHERENT         = (1 SHL 2), /* Coherency required, stores to
+                                           * same region will be serialized */
+    MEMATTRF_GUARDED          = (1 SHL 3), /* Ensure in-order execute of memory
+                                           * accesses */
+
+    MEMATTRF_REFERENCED       = (1 SHL 4), /* Page containing memory location
+                                           * has been referenced (used) */
+    MEMATTRF_CHANGED          = (1 SHL 5), /* Page containing memory location
+                                           * has been changed */
+
+    /* The following are mutually exclusive */
+    MEMATTRF_SUPER_RW         = (0 SHL 6),
+    MEMATTRF_SUPER_RW_USER_RO = (1 SHL 6),
+    MEMATTRF_SUPER_RW_USER_RW = (2 SHL 6),
+    MEMATTRF_SUPER_RO_USER_RO = (3 SHL 6),
+    MEMATTRF_RW_MASK          = (3 SHL 6),
+
+    MEMATTRF_EXECUTE          = (1 SHL 9), /* CPU can execute instructions
+                                           * from this memory */
+
+    MEMATTRF_NOT_MAPPED       = (1 SHL 10), /* Special flag: The memory is not
+                                           * mapped at all. This flag is only
+                                           * used as return value of
+                                           * GetMemoryAttr */
+    MEMATTRF_RESERVED1        = (1 SHL 11), /* Used by the system */
+    MEMATTRF_RESERVED2        = (1 SHL 12), /* _NEVER_ use these */
+    MEMATTRF_RESERVER3        = (1 SHL 13)
+
+CONST MEMATTRF_READ_WRITE = MEMATTRF_SUPER_RW_USER_RW
+CONST MEMATTRF_READ_ONLY  = MEMATTRF_SUPER_RO_USER_RO
+
+/****** GetMemoryAttrs flags ******************************************/
+CONST GMAF_REPORT_CR = (1 SHL 0)
+
+/****** AllocSysObject flags ******************************************/
+
+CONST ASOF_NOTRACK = (1 SHL 1) /* Used internally to indicate no tracking of object */
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

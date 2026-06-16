@@ -1,0 +1,163 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>cha_bassdrum.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-cha-source.html">cha_source</a> &rsaquo; cha_bassdrum.e</div><h1>File: <code>cha_bassdrum.e</code></h1><p class="meta">137 lines · project <a href="../examples/pkg-cha-source.html"><code>cha_source</code></a></p><p class="pathctx">cha_source/cha_source/cha_bassdrum.e</p><p class="prose">==========================================================================+ | cha_bassdrum.e | | generate a bassdrum <a href="../modules/sound.html">sound</a> | +--------------------------------------------------------------------------</p><h2>Source</h2><pre class="code">/*==========================================================================+
+| cha_bassdrum.e                                                            |
+| generate a bassdrum sound                                                 |
++--------------------------------------------------------------------------*/
+
+OPT OSVERSION=37
+OPT PREPROCESS
+
+MODULE &#x27;*oss&#x27;, &#x27;*oss_output&#x27;, &#x27;*oss_sample&#x27;, &#x27;*outputbuffer&#x27;, &#x27;*errors&#x27;,
+       &#x27;*args&#x27;
+
+RAISE &quot;^C&quot;   IF CtrlC() &lt;&gt; FALSE,
+      &quot;ARGS&quot; IF ReadArgs() = NIL,
+      &quot;MEM&quot;  IF New() = NIL,
+      &quot;MEM&quot;  IF String() = NIL
+
+/*-------------------------------------------------------------------------*/
+
+ENUM ARG_TO,
+     ARG_FREQ,
+     ARG_FALLOFF,
+     ARG_AT,
+     ARG_ST,
+     ARG_DT,
+     ARG_AL,
+     ARG_SL,
+     ARG_RATE,
+     ARG_BITS,
+     ARGCOUNT
+
+PROC main() HANDLE
+
+	DEF out = NIL : PTR TO oss_output,
+	    args = NIL : PTR TO LONG,
+	    rdargs = NIL,
+	    to, freq, falloff, at, st, dt, al, sl, rate, bits
+
+	oss_init()
+
+	-&gt; read args
+	args := New(Mul(ARGCOUNT, SIZEOF LONG))
+	rdargs := ReadArgs(&#x27;TO/A,FREQ=FREQUENCY/K,FALLOFF/K,AT=ATTACKTIME/K,&#x27;
+	                  +&#x27;ST=SUSTAINTIME/K,DT=DECAYTIME/K,AL=ATTACKLEVEL/K,&#x27;
+	                  +&#x27;SL=SUSTAINLEVEL/K,RATE/K,BITS/K&#x27;, args, NIL)
+
+	to      := ossinumarg(ARG_TO)
+	freq    := fargd(ARG_FREQ,   150.0)
+	falloff := fargd(ARG_FALLOFF, 15.0)
+	at      := fargd(ARG_AT,       0.005)
+	st      := fargd(ARG_ST,       0.15)
+	dt      := fargd(ARG_DT,       0.05)
+	al      := fargd(ARG_AL,       2.0)
+	sl      := fargd(ARG_SL,       0.5)
+	rate    := fargd(ARG_RATE, 16574.0)
+	bits    := iargd(ARG_BITS,     8)
+
+	-&gt; check args
+	IF (! freq    &lt;= 0.0) THEN Throw(&quot;rarg&quot;, &#x27;FREQUENCY&#x27;)
+	IF (! falloff &lt;= 0.0) THEN Throw(&quot;rarg&quot;, &#x27;FALLOFF&#x27;)
+	IF (! at      &lt;  0.0) THEN Throw(&quot;rarg&quot;, &#x27;ATTACKTIME&#x27;)
+	IF (! st      &lt;  0.0) THEN Throw(&quot;rarg&quot;, &#x27;SUSTAINTIME&#x27;)
+	IF (! dt      &lt;  0.0) THEN Throw(&quot;rarg&quot;, &#x27;DELAYTIME&#x27;)
+	IF (! al      &lt;  0.0) THEN Throw(&quot;rarg&quot;, &#x27;ATTACKLEVEL&#x27;)
+	IF (! sl      &lt;  0.0) THEN Throw(&quot;rarg&quot;, &#x27;SUSTAINLEVEL&#x27;)
+	IF (! rate    &lt;  0.0) THEN Throw(&quot;rarg&quot;, &#x27;RATE&#x27;)
+	IF (bits &lt;&gt; 8) AND (bits &lt;&gt; 16) THEN Throw(&quot;rarg&quot;, &#x27;BITS&#x27;)
+
+	-&gt; set up output
+	oss(&#x27;in_select \d&#x27;, to)
+	oss(&#x27;in_settype sample\s&#x27;, IF bits = 8 THEN &#x27;&#x27; ELSE &#x27;16&#x27;)
+	oss(&#x27;sa_changesize \d&#x27;, ! (! at + st + dt) * rate !)
+	NEW out.oss_output(to)
+
+	-&gt; generate bassdrum
+	bassdrum(out.info.rate !, freq, falloff, at, st, dt, al, sl, out)
+
+EXCEPT DO
+
+	-&gt; cleanup
+	END out
+	IF rdargs THEN FreeArgs(rdargs)
+	oss_cleanup()
+
+	-&gt; report errors
+	printerror(exception, exceptioninfo)
+
+ENDPROC IF exception THEN 5 ELSE 0
+
+
+PROC bassdrum(rate, freq, falloff, attacktime, sustaintime, decaytime,
+              attacklevel, sustainlevel, out : PTR TO outputbuffer)
+	DEF  time, freq0, freq1, a, b, i, count, v, dv, x
+	-&gt; initialise
+	time  := ! attacktime + sustaintime + decaytime
+	freq0 := freq
+	freq1 := ! freq * Fexp(! -Flog(2.0) * time * falloff)
+	a := ! -6.28318531 * time * freq0 / Flog(! freq0 / freq1)
+	b := Fexp(! -Flog(! freq0 / freq1) / (! rate * time))
+	v := 0.0
+	-&gt; attack phase
+	count := ! attacktime * rate !
+	dv := ! attacklevel / (count !)
+	FOR i := 1 TO count
+		x := ! v * Fsin(a)
+		v := ! v + dv
+		a := ! a * b
+		out.write(x)
+	ENDFOR
+	-&gt; sustain phase, repeated code is easy but inelegant
+	count := ! sustaintime * rate !
+	dv := ! (! sustainlevel - attacklevel) / (count !)
+	FOR i := 1 TO count
+		x := ! v * Fsin(a)
+		a := ! a * b
+		v := ! v + dv
+		out.write(x)
+	ENDFOR
+	-&gt; decay phase, repeated code is easy but inelegant
+	count := ! decaytime * rate !
+	dv := ! -sustainlevel / (count !)
+	FOR i := 1 TO count
+		x := ! v * Fsin(a)
+		a := ! a * b
+		v := ! v + dv
+		out.write(x)
+	ENDFOR
+	-&gt; clear end of sample (possible rounding errors)
+	WHILE out.write(0.0) DO CtrlC()
+ENDPROC
+
+version:
+	CHAR &#x27;$VER: cha_bassdrum 1.2 (1999.12.11) © Claude Heiland-Allen&#x27;,0
+
+/*--------------------------------------------------------------------------+
+| END: cha_bassdrum.e                                                       |
++==========================================================================*/
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

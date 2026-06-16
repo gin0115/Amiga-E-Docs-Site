@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>address_gui.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-muse.html">muse</a> &rsaquo; address_gui.e</div><h1>File: <code>address_gui.e</code></h1><p class="meta">86 lines · project <a href="../examples/pkg-muse.html"><code>muse</code></a></p><p class="pathctx">muse/distribution/tutorial/Example Apps/Address Book/Muse Based/address_gui.e</p><p class="prose">The address book&#x27;s graphical user <a href="../modules/interface.html">interface</a>. This module performs all interactions between the program and the <a href="../modules/interface.html">interface</a>.</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/muse.html">muse/muse</a></li></ul></div><h2>Source</h2><pre class="code">
+-&gt; The address book&#x27;s graphical user interface.
+-&gt; This module performs all interactions
+-&gt; between the program and the interface.
+
+OPT MODULE
+OPT EXPORT
+MODULE &#x27;muse/muse&#x27;,&#x27;*person&#x27;
+
+-&gt; Events this program responds to
+ENUM FINDNEXT=1, CLEARVIEW, INSERT, DELETE, SETSEARCH, RESHOW, START
+
+DEF gads:PTR TO LONG
+
+-&gt; This procedure must be called before the quick gadget access functions
+-&gt; The ideal time is during the startup event
+PROC init_gads()
+DEF gad_labels:PTR TO LONG, t:PTR TO LONG, f
+   gad_labels:=[&#x27;NAME&#x27;, &#x27;TELEPHONE&#x27;, &#x27;LINE1&#x27;, &#x27;LINE2&#x27;,&#x27;LINE3&#x27;,
+                               &#x27;CITY&#x27;, &#x27;COUNTY&#x27;, &#x27;POSTCODE&#x27;]
+   NEW t[8]
+   FOR f:=0 TO 7
+      t[f]:=get_gadgethandle(gad_labels[f])
+   ENDFOR
+   gads:=t
+ENDPROC
+
+-&gt; This procedure takes a *COPY* of whatever is currently displayed.
+-&gt; (I think... - not too sure about the string gadget!)
+PROC get_person()
+DEF t:PTR TO LONG, f,   -&gt; Temporary input array buffer, and index var.
+    p:PTR TO person,    -&gt; This will contain a pointer to a valid person
+    field
+   NEW t[8]
+   FOR f:=0 TO 7
+      field:=get_gadget_info(gads[f])
+      t[f]:=copy_str(field)
+   ENDFOR
+   NEW p.mk(t[0],t[1],t[2],t[3],t[4],t[5],t[6],t[7])
+   END t[8]
+ENDPROC p
+
+PROC copy_str(source)
+DEF dest
+   dest:=String(StrLen(source)+1)
+   StrCopy(dest,source)
+ENDPROC dest
+
+PROC display_person(p:PTR TO person)
+DEF t:PTR TO LONG, f
+   t:=p.flat()
+   FOR f:=0 TO 7 DO set_gadgetinfo(gads[f], t[f])
+ENDPROC
+
+PROC clear_display()
+DEF f
+   FOR f:=0 TO 7 DO set_gadgetinfo(gads[f], &#x27;&#x27;)
+ENDPROC
+
+PROC address_book_window() IS [
+      [NAME,&#x27;MAIN&#x27;],
+      [KEYS, [[&quot;q&quot;,QUIT],[27,QUIT]]],
+      [TITLE, &#x27;The Amazing Address Book Program!&#x27;],
+      [BOX, [10,10,530,180]],
+      [GADGETS,[
+   -&gt; These gadgets do NOT need names since we&#x27;re just using them for events.
+         [&#x27;STD_IMAGE&#x27;, [RESHOW, &#x27;&#x27;,    NORMAL, 50, 10, &#x27;MUSE_LOGO&#x27;]],
+         [&#x27;STD_IMAGE&#x27;, [START,&#x27;&#x27;,      NORMAL, 190, 17, &#x27;TO_START&#x27;]],
+         [&#x27;STD_IMAGE&#x27;, [FINDNEXT, &#x27;&#x27;,  NORMAL, 222,17, &#x27;PLAY&#x27;]],
+         [&#x27;STD_IMAGE&#x27;, [CLEARVIEW, &#x27;&#x27;, NORMAL, 254,17, &#x27;NEWVIEW&#x27;]],
+         [&#x27;STD_IMAGE&#x27;, [SETSEARCH, &#x27;&#x27;, NORMAL, 286,17, &#x27;HELP&#x27;]],
+         [&#x27;STD_IMAGE&#x27;, [INSERT, &#x27;&#x27;,    NORMAL, 318,17, &#x27;YES&#x27;]],
+         [&#x27;STD_IMAGE&#x27;, [DELETE, &#x27;&#x27;,    NORMAL, 350,17, &#x27;NO&#x27;]],
+
+   -&gt; These DO need names however due to the fact they are used for data gathering
+         [&#x27;STRINGGAD&#x27;, [0, &#x27;NAME&#x27;, &#x27;Full Name&#x27;, 100,50, 200, 80]],
+         [&#x27;STRINGGAD&#x27;, [0, &#x27;TELEPHONE&#x27;, &#x27;Telephone&#x27;, 400,50, 100, 20]],
+         [&#x27;STRINGGAD&#x27;, [0, &#x27;LINE1&#x27;, &#x27;Address&#x27;, 100,65, 400, 80]],
+         [&#x27;STRINGGAD&#x27;, [0, &#x27;LINE2&#x27;, &#x27;&#x27;, 100,80, 400, 80]],
+         [&#x27;STRINGGAD&#x27;, [0, &#x27;LINE3&#x27;, &#x27;&#x27;, 100,95, 400, 80]],
+         [&#x27;STRINGGAD&#x27;, [0, &#x27;CITY&#x27;, &#x27;City&#x27;, 100,110, 200, 40]],
+         [&#x27;STRINGGAD&#x27;, [0, &#x27;COUNTY&#x27;, &#x27;County&#x27;, 100,125, 200, 40]],
+         [&#x27;STRINGGAD&#x27;, [0, &#x27;POSTCODE&#x27;, &#x27;Post Code&#x27;, 100,140, 200, 15]]
+      ]] -&gt; END OF GADGETS!
+]
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

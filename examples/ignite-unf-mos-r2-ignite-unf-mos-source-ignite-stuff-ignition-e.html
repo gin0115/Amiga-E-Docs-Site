@@ -1,0 +1,929 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ignition.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-ignite-unf-mos-r2.html">ignite-unf-mos-r2</a> &rsaquo; ignition.e</div><h1>File: <code>ignition.e</code></h1><p class="meta">903 lines · project <a href="../examples/pkg-ignite-unf-mos-r2.html"><code>ignite-unf-mos-r2</code></a></p><p class="pathctx">ignite-unf-mos-r2/ignite-unf-mos/source/ignite/stuff/ignition.e</p><p class="prose">FlameThrower.e requires MorphOS + ECX</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/boopsi.html">aboxlib/boopsi</a></li><li><a href="../modules/lists.html">aboxlib/lists</a></li><li><a href="../modules/dos.html">dos/dos</a></li><li><a href="../modules/lists.html">exec/lists</a></li><li><a href="../modules/memory.html">exec/memory</a></li><li><a href="../modules/nodes.html">exec/nodes</a></li><li><a href="../modules/ports.html">exec/ports</a></li><li><a href="../modules/tasks.html">exec/tasks</a></li><li><a href="../modules/gfx.html">graphics/gfx</a></li><li><a href="../modules/rastport.html">graphics/rastport</a></li><li><a href="../modules/classes.html">intuition/classes</a></li><li><a href="../modules/classusr.html">intuition/classusr</a></li><li><a href="../modules/intuition.html">intuition/intuition</a></li><li><a href="../modules/intuitionbase.html">intuition/intuitionbase</a></li><li><a href="../modules/screens.html">intuition/screens</a></li><li><a href="../modules/mui.html">libraries/mui</a></li><li><a href="../modules/muip.html">libraries/muip</a></li><li><a href="../modules/exec.html">morphos/exec</a></li><li><a href="../modules/muicustomclass.html">muiabox/muicustomclass</a></li><li><a href="../modules/muimaster.html">muimaster</a></li><li><a href="../modules/installhook.html">toolsabox/installhook</a></li><li><a href="../modules/utility.html">utility</a></li><li><a href="../modules/hooks.html">utility/hooks</a></li><li><a href="../modules/tagitem.html">utility/tagitem</a></li></ul></div><h2>Source</h2><pre class="code">
+-&gt; FlameThrower.e
+-&gt; requires MorphOS + ECX
+
+OPT POWERPC
+
+OPT PREPROCESS
+
+OPT NODEFMODS
+
+MODULE &#x27;morphos/exec&#x27;, &#x27;morphos/dos&#x27;, &#x27;morphos/graphics&#x27;, &#x27;morphos/intuition&#x27;
+
+MODULE &#x27;muimaster&#x27;
+MODULE &#x27;libraries/mui&#x27;
+MODULE &#x27;libraries/muip&#x27;
+MODULE &#x27;muiabox/muicustomclass&#x27;
+MODULE &#x27;intuition/classes&#x27;
+MODULE &#x27;intuition/classusr&#x27;
+MODULE &#x27;intuition/screens&#x27;
+MODULE &#x27;intuition/intuition&#x27;
+MODULE &#x27;utility&#x27;
+MODULE &#x27;utility/tagitem&#x27;
+MODULE &#x27;utility/hooks&#x27;
+MODULE &#x27;aboxlib/boopsi&#x27;
+MODULE &#x27;aboxlib/lists&#x27;
+MODULE &#x27;exec/lists&#x27;
+MODULE &#x27;exec/nodes&#x27;
+MODULE &#x27;exec/ports&#x27;
+MODULE &#x27;exec/tasks&#x27;
+MODULE &#x27;exec/memory&#x27;
+MODULE &#x27;dos/dos&#x27;
+MODULE &#x27;toolsabox/installhook&#x27;
+MODULE &#x27;toolsabox/thread&#x27;
+MODULE &#x27;graphics/gfx&#x27;
+
+MODULE &#x27;graphics/rastport&#x27;
+
+-&gt;MODULE &#x27;*macros&#x27;
+
+-&gt;MODULE &#x27;graphics/modeid&#x27;
+MODULE &#x27;intuition/intuitionbase&#x27;-&gt;,&#x27;intuition/intuition&#x27;,&#x27;intuition/screens&#x27;
+MODULE &#x27;utility/tagitem&#x27;
+
+MODULE &#x27;morphos/cybergfx&#x27;
+
+OBJECT point
+   x:INT, y:INT, z:INT -&gt; +-32000. &gt;+-32000 is out of range
+ENDOBJECT
+
+OBJECT flamedata
+   application:PTR TO object
+   self:PTR TO object
+   gauge:PTR TO object
+   status:PTR TO object
+   replyPort:PTR TO mp
+   subPort:PTR TO mp
+   rastPort:rastport
+   width:INT, height:INT
+   prevX:LONG     -&gt; float
+   prevY:LONG     -&gt; float
+   maxPoints:LONG     -&gt; maximum # of points to plot
+   calcPointsDone:LONG
+   rendPointsDone:LONG
+   flameLevel:LONG -&gt; iterate atleast this # of times
+   flameVals[24]:ARRAY OF LONG
+   bgColour:LONG -&gt; ARGB
+   stopCalculating:INT -&gt; calculation polls this.
+   stopRendering:INT -&gt; renderer polls this
+   isCalculating:INT -&gt; TRUE/FALSE
+   isRendering:INT -&gt; TRUE / FALSE
+   calcStack:LONG, calcStackSize:LONG
+   pointsBuf:PTR TO point
+   doZ:LONG -&gt; bool, not used yet
+   alternate:LONG -&gt;
+ENDOBJECT
+
+OBJECT calcdata
+   appobj:PTR TO object
+   selfobj:PTR TO object
+   flameobj:PTR TO object
+   maxPoints:LONG
+   pointsDone:LONG
+   flameLevel:LONG
+   flameVals[24]:ARRAY OF LONG
+   stopCalc:INT
+   isCalculating:INT
+   doZangle:INT
+   doAlternate:INT
+   pointsBuf:PTR TO point
+   calcStack, calcStackSize
+   inputGads[24]:ARRAY OF LONG
+   flameLevelGad:PTR TO object
+   maxPointsGad:PTR TO object
+   -&gt; MUIA_Calc_IsBusy
+   -&gt; MUIM_Calc_Calculate
+   -&gt; MUIA_Calc_PointData
+   -&gt; MUIA_Calc_DataSize
+   -&gt; MUIM_Calc_Stop
+ENDOBJECT
+
+OBJECT renddata
+   appobj:PTR TO object
+   selfobj:PTR TO object
+   flameobj:PTR TO object
+   rastPort:PTR TO rastport
+   pointsDone:LONG
+   bgColour:LONG
+   stopRend:INT
+   isRendering:INT
+   -&gt; MUIA_Rend_IsBusy
+   -&gt; MUIM_Rend_Render
+   -&gt; MUIM_Rend_Stop
+ENDOBJECT
+
+
+OBJECT subMsg OF mn
+   action
+ENDOBJECT
+
+-&gt;DEF alternate
+
+DEF inputGads[12]:ARRAY OF LONG
+DEF flameLevelGad, maxPointsGad
+DEF poppenColBack, rColCycle, gColCycle, bColCycle
+
+ENUM MUIM_Flame_Redraw = $88880000,
+     MUIM_Flame_PushGauge,
+     MUIM_Flame_PushStatusTxt
+
+#define appMethod(obj,...) doMethodA(data.application, [MUIM_Application_PushMethod, obj,...])
+
+#define Percent(max,val) (100.0 / ((max) ! / (val!)) !)
+
+PROC recurse(data:PTR TO flamedata, x,y,z, level)
+   DEF f:PTR TO LONG, v
+   DEF nx,ny,nz, point:PTR TO point
+
+   IF data.stopCalculating
+      data.stopCalculating := FALSE
+      RETURN &quot;STOP&quot;
+   ENDIF
+
+   IF R1 &lt; (data.calcStack + 4000) THEN RETURN &quot;STCK&quot;
+
+   f := data.flameVals
+
+   IF data.calcPointsDone &gt;= data.maxPoints THEN RETURN &quot;DONE&quot;
+
+   IF level &gt;= data.flameLevel
+
+      IF Mod(data.calcPointsDone, data.maxPoints/100) = NIL
+         doMethodA(data.self, [MUIM_Flame_PushGauge,
+          Percent(data.maxPoints, data.calcPointsDone)])
+      ENDIF
+
+      point := data.pointsBuf[data.calcPointsDone++]
+
+      point.x := ! x * 32000.0 !
+      IF point.x &lt; -32000
+         point.x := -32001
+      ELSEIF point.x &gt; 32000
+         point.x := 32001
+      ENDIF
+      point.y := ! y * 32000.0 !
+      IF point.y &lt; -32000
+         point.y := -32001
+      ELSEIF point.y &gt; 32000
+         point.y := 32001
+      ENDIF
+      point.z := ! z * 32000.0 !
+      IF point.z &lt; -32000
+         point.z := -32001
+      ELSEIF point.z &gt; 32000
+         point.z := 32001
+      ENDIF
+
+   ELSE
+
+      IF data.doZ
+         nx:=!(!f[]++*x)+(!f[]++*y)+(!f[]++*z)+f[]++
+         ny:=!(!f[]++*x)+(!f[]++*y)+(!f[]++*z)+f[]++
+         nz:=!(!f[]++*x)+(!f[]++*y)+(!f[]++*z)+f[]++
+      ELSE
+         nx:=!(!f[]++*x)+(!f[]++*y)+f[]++
+         ny:=!(!f[]++*x)+(!f[]++*y)+f[]++
+      ENDIF
+
+      IF data.alternate
+         nx:=Fsin(nx)
+         ny:=Fsin(ny)
+      ENDIF
+
+      v := recurse(data,nx,ny,nz,level+1)
+      IF v THEN RETURN v
+
+      IF data.doZ
+         nx:=!(!f[]++*x)+(!f[]++*y)+(!f[]++*z)+f[]++
+         ny:=!(!f[]++*x)+(!f[]++*y)+(!f[]++*z)+f[]++
+         nz:=!(!f[]++*x)+(!f[]++*y)+(!f[]++*z)+f[]++
+      ELSE
+         nx:=!(!f[]++*x)+(!f[]++*y)+f[]++
+         ny:=!(!f[]++*x)+(!f[]++*y)+f[]++
+      ENDIF
+
+      IF data.alternate
+         nx:=Fsin(nx)
+         ny:=Fsin(ny)
+      ENDIF
+
+      v := recurse(data,nx,ny,nz,level+1)
+      IF v THEN RETURN v
+
+   ENDIF
+
+ENDPROC NIL
+
+-&gt; render flamefractal into offscreen rastport/bitmap
+-&gt; colouring todo
+PROC render(data:PTR TO flamedata)
+   DEF point:REG PTR TO point, num:REG
+   DEF midx:REG, midy:REG, halfw, halfh, divx:REG, divy:REG
+
+   FillPixelArray(data.rastPort, 0, 0, data.width, data.height, data.bgColour)
+
+   halfw := data.width / 2
+   halfh := data.height / 2
+
+   midx := halfw + 1
+   midy := halfh + 1
+
+   divx := 32000 / halfw
+   divy := 32000 / halfh
+
+   point := data.pointsBuf
+   num := data.calcPointsDone + 1
+   data.rendPointsDone := 0
+
+   WHILE num--
+      -&gt;IF point.x &gt;= -32000
+      -&gt;   IF point.x &lt;= 32000
+      -&gt;      IF point.y &gt;= -32000
+      -&gt;         IF point.y &lt;= 32000
+                  WriteRGBPixel(data.rastPort,
+                                point.x / divx + midx,
+                                point.y / divy + midy,
+                                $FFFFFFFF)
+      -&gt;         ENDIF
+      -&gt;      ENDIF
+      -&gt;   ENDIF
+      -&gt;ENDIF
+      data.rendPointsDone++
+      point++
+      IF Mod(data.rendPointsDone, data.maxPoints/100) = NIL
+         doMethodA(data.self, [MUIM_Flame_PushGauge,
+         Percent(data.maxPoints, data.rendPointsDone)])
+      ENDIF
+      IF data.stopRendering
+         data.stopRendering := FALSE
+         RETURN &quot;STOP&quot;
+      ENDIF
+   ENDWHILE
+
+ENDPROC &quot;DONE&quot;
+
+ENUM SUBMSG_NONE, SUBMSG_CALCULATE, SUBMSG_RENDER, SUBMSG_SYNC, SUBMSG_DIE
+
+PROC doSubMessage(data:PTR TO flamedata, command)
+   DEF msg:subMsg
+   msg.ln.succ := NIL
+   msg.ln.pred := NIL
+   msg.ln.type := NT_MESSAGE
+   msg.ln.pri := 0
+   msg.ln.name := &#x27;&#x27;
+   msg.replyport := data.replyPort
+   msg.length := SIZEOF subMsg
+   msg.action := command
+   PutMsg(data.subPort, msg)
+   WaitPort(data.replyPort)
+   GetMsg(data.replyPort)
+ENDPROC
+
+PROC calcCalculate(data:PTR TO flamedata, msg)
+   DEF sss:stackswapstruct, r
+   data.stopCalculating := FALSE
+   data.calcPointsDone := 0
+   data.isCalculating := TRUE
+   ReplyMsg(msg)
+   sss.lower := data.calcStack
+   sss.upper := data.calcStack + data.calcStackSize
+   sss.pointer := data.calcStack + data.calcStackSize
+   r := NewPPCStackSwap(sss, {recurse}, [data,0.0,0.0,0,0,0,0,0])
+   SELECT r
+   CASE &quot;STOP&quot;  ; doMethodA(data.self, [MUIM_Flame_PushStatusTxt, &#x27;Stopped.&#x27;])
+   CASE &quot;STCK&quot;  ; doMethodA(data.self, [MUIM_Flame_PushStatusTxt, &#x27;Out of stack!&#x27;])
+   CASE &quot;DONE&quot;  ; doMethodA(data.self, [MUIM_Flame_PushStatusTxt, &#x27;Done.&#x27;])
+   CASE NIL     ; doMethodA(data.self, [MUIM_Flame_PushStatusTxt, &#x27;Too low flame level.&#x27;])
+   DEFAULT      ; doMethodA(data.self, [MUIM_Flame_PushStatusTxt, &#x27;???&#x27;])
+   ENDSELECT
+   doMethodA(data.self, [MUIM_Flame_PushGauge, Percent(data.maxPoints, data.calcPointsDone)])
+   data.isCalculating := FALSE
+ENDPROC
+
+PROC rendRender(data:PTR TO flamedata, msg)
+   DEF r
+   data.isRendering := TRUE
+   data.stopRendering := FALSE
+   ReplyMsg(msg)
+   r := render(data)
+   SELECT r
+   CASE &quot;STOP&quot; ; doMethodA(data.self, [MUIM_Flame_PushStatusTxt, &#x27;Stopped.&#x27;])
+   CASE &quot;DONE&quot; ; doMethodA(data.self, [MUIM_Flame_PushStatusTxt, &#x27;Done.&#x27;])
+   DEFAULT     ; doMethodA(data.self, [MUIM_Flame_PushStatusTxt, &#x27;???&#x27;])
+   ENDSELECT
+   appMethod(data.self, 2, MUIM_Flame_Redraw, NIL)
+   doMethodA(data.self, [MUIM_Flame_PushGauge, Percent(data.maxPoints, data.rendPointsDone)])
+   data.isRendering := FALSE
+ENDPROC
+
+PROC subtask(private, data:PTR TO flamedata)
+   DEF msg:PTR TO subMsg, cmnd, r
+
+   -&gt;WriteF(&#x27;subtask init!\n&#x27;)
+
+   data.subPort := CreateMsgPort()
+
+   IF data.subPort = NIL THEN RETURN &quot;PORT&quot;
+
+   releaseSuccess(private)
+
+   SetTaskPri(FindTask(NIL), -1)
+
+   -&gt;WriteF(&#x27;subtask running!\n&#x27;)
+
+   LOOP
+      WaitPort(data.subPort)
+      WHILE (msg := GetMsg(data.subPort))
+         cmnd := msg.action
+         SELECT cmnd
+         CASE SUBMSG_CALCULATE
+            -&gt;WriteF(&#x27;SUBMSG_CALCULATE received!\n&#x27;)
+            doMethodA(data.self, [MUIM_Flame_PushStatusTxt, &#x27;Calculating..&#x27;])
+            doMethodA(data.self, [MUIM_Flame_PushGauge, 0])
+            calcCalculate(data, msg)
+         CASE SUBMSG_RENDER
+            doMethodA(data.self, [MUIM_Flame_PushStatusTxt, &#x27;Rendering..&#x27;])
+            doMethodA(data.self, [MUIM_Flame_PushGauge, 0])
+            rendRender(data, msg)
+         CASE SUBMSG_SYNC
+            ReplyMsg(msg)
+         CASE SUBMSG_DIE
+            -&gt;WriteF(&#x27;SUBMSG_DIE received!\n&#x27;)
+            DeleteMsgPort(data.subPort)
+            data.subPort := NIL
+            Forbid()
+            ReplyMsg(msg)
+            RETURN NIL
+         ENDSELECT
+      ENDWHILE
+   ENDLOOP
+
+ENDPROC NIL
+
+-&gt;----------------------------------------------------------------------------&lt;-
+
+PROC flameAskMinMax(cl:PTR TO iclass,obj,msg:PTR TO muip_askminmax)
+
+   -&gt;-&gt;PutStr(&#x27;mAskMinMax()\n&#x27;)
+
+   doSuperMethodA(cl,obj,msg)
+
+   msg.minmaxinfo.minwidth := msg.minmaxinfo.minwidth + 100
+   msg.minmaxinfo.defwidth := msg.minmaxinfo.defwidth + 600
+   msg.minmaxinfo.maxwidth := msg.minmaxinfo.maxwidth + 1280
+
+   msg.minmaxinfo.minheight := msg.minmaxinfo.minheight + 100
+   msg.minmaxinfo.defheight := msg.minmaxinfo.defheight + 400
+   msg.minmaxinfo.maxheight := msg.minmaxinfo.maxheight + 1024
+
+ENDPROC 0
+
+
+PROC flameNew(cl:PTR TO iclass, obj:PTR TO object, msg)
+   DEF data:PTR TO flamedata, a
+
+   IF (obj := doSuperMethodA(cl, obj, msg)) = NIL THEN RETURN 0
+
+   data := INST_DATA(cl, obj)
+
+   data.replyPort := CreateMsgPort()
+   IF data.replyPort = NIL THEN RETURN NIL
+
+   newProcess({subtask}, 0, &#x27;subtask&#x27;, data, NIL)
+   IF data.subPort = NIL THEN RETURN NIL
+
+   InitRastPort(data.rastPort)
+
+ENDPROC obj
+
+
+PROC flameDispose(cl:PTR TO iclass, obj:PTR TO object, msg:PTR TO msg)
+   DEF data:PTR TO flamedata
+
+   data := INST_DATA(cl, obj)
+
+   data.stopCalculating := TRUE
+   data.stopRendering := TRUE
+
+   IF data.subPort
+      doSubMessage(data, SUBMSG_DIE)
+   ENDIF
+
+   IF data.replyPort THEN DeleteMsgPort(data.replyPort)
+   data.replyPort := NIL
+
+   IF data.calcStack THEN FreeVec(data.calcStack)
+   data.calcStack := NIL
+
+   IF data.rastPort.bitmap THEN FreeBitMap(data.rastPort.bitmap)
+   data.rastPort.bitmap := NIL
+
+ENDPROC doSuperMethodA(cl, obj, msg)
+
+
+PROC flameSetup(cl:PTR TO iclass, obj:PTR TO object, msg:PTR TO msg)
+   DEF data:PTR TO flamedata
+
+   -&gt;PutStr(&#x27;mSetup()\n&#x27;)
+
+
+ENDPROC MUI_TRUE
+
+
+PROC flameCleanup(cl:PTR TO iclass, obj:PTR TO object, msg:PTR TO msg)
+   DEF data:PTR TO flamedata
+
+   -&gt;PutStr(&#x27;mCleanup()\n&#x27;)
+
+   data := INST_DATA(cl, obj)
+
+
+
+ENDPROC doSuperMethodA(cl, obj, msg)
+
+
+PROC flameShow(cl:PTR TO iclass, obj:PTR TO object, msg)
+   DEF data:PTR TO flamedata, oldw, oldh
+
+   -&gt;PutStr(&#x27;mShow()\n&#x27;)
+
+   data := INST_DATA(cl, obj)
+
+   oldw := data.width
+   oldh := data.height
+
+   data.width := _mwidth(obj)
+   data.height := _mheight(obj)
+
+   IF data.rastPort.bitmap = NIL
+      data.rastPort.bitmap := AllocBitMap(_mwidth(obj) + 2,_mheight(obj) + 2,24,BMF_CLEAR,_rp(obj).bitmap)
+      IF data.rastPort.bitmap = NIL THEN RETURN NIL
+   ELSEIF (data.width &gt; oldw) OR (data.height &gt; oldh)
+      FreeBitMap(data.rastPort.bitmap)
+      data.rastPort.bitmap := AllocBitMap(_mwidth(obj) + 2,_mheight(obj) + 2,24,BMF_CLEAR,_rp(obj).bitmap)
+      IF data.rastPort.bitmap = NIL THEN RETURN NIL
+      IF data.isRendering = FALSE THEN doSubMessage(data, SUBMSG_RENDER)
+   ELSEIF (data.width &lt; oldw) OR (data.height &lt; oldh)
+      IF data.isRendering = FALSE THEN doSubMessage(data, SUBMSG_RENDER)
+   ENDIF
+
+ENDPROC MUI_TRUE
+
+
+PROC flameHide(cl:PTR TO iclass, obj:PTR TO object, msg:PTR TO muip_hide)
+   DEF data:PTR TO flamedata
+
+   -&gt;PutStr(&#x27;mHide()\n&#x27;)
+
+   data := INST_DATA(cl, obj)
+
+
+ENDPROC MUI_TRUE
+
+
+PROC flameDraw(cl:PTR TO iclass,obj:PTR TO flamedata,msg:PTR TO muip_draw)
+   DEF data:PTR TO flamedata
+   DEF rp, point:REG PTR TO point, num:REG
+   DEF left, top, width, height
+   DEF halfwidth:REG, halfheight:REG, xdiv:REG, ydiv:REG
+
+   doSuperMethodA(cl, obj, msg)
+
+   data := INST_DATA(cl, obj)
+
+
+   IF msg.flags AND MADF_DRAWOBJECT
+
+      BltBitMapRastPort(data.rastPort.bitmap,
+                        1,
+                        1,
+                        _rp(obj),
+                        _mleft(obj),
+                        _mtop(obj),
+                        _mwidth(obj),
+                        _mheight(obj),
+                        $C0)
+
+   ELSEIF msg.flags AND MADF_DRAWUPDATE
+
+      -&gt; not used yet
+
+   ENDIF
+
+
+
+
+ENDPROC 0
+-&gt; msg[1] unused for now, keep NIL
+PROC flameRedraw(cl, obj:PTR TO object, msg:PTR TO LONG)
+
+   Mui_Redraw(obj, MADF_DRAWOBJECT)
+
+ENDPROC
+
+PROC flamePushGauge(cl, obj:PTR TO object, msg:PTR TO LONG)
+   DEF data:PTR TO flamedata
+
+   data := INST_DATA(cl, obj)
+
+    -&gt; msg[1] = 0-100 %
+   doMethodA(data.application, [MUIM_Application_PushMethod, data.gauge, 3,
+   MUIM_Set, MUIA_Gauge_Current, msg[1]])
+
+
+ENDPROC
+
+PROC flamePushStatusTxt(cl, obj:PTR TO object, msg:PTR TO LONG)
+   DEF data:PTR TO flamedata
+
+   data := INST_DATA(cl, obj)
+
+   doMethodA(data.application, [MUIM_Application_PushMethod, data.status, 3,
+   MUIM_Set, MUIA_Text_Contents, msg[1]])
+
+ENDPROC
+
+
+PROC flameDispatcher(cl:PTR TO iclass, obj:PTR TO object, msg:PTR TO msg)
+   DEF mid
+
+   -&gt;PutStr(&#x27;myDispatcher()\n&#x27;)
+
+   mid:=msg.methodid
+   SELECT mid
+   CASE MUIM_Flame_Redraw;  RETURN        flameRedraw(cl, obj, msg)
+   CASE MUIM_Flame_PushGauge;  RETURN  flamePushGauge(cl, obj, msg)
+   CASE MUIM_Flame_PushStatusTxt; RETURN  flamePushStatusTxt(cl, obj, msg)
+   CASE MUIM_Draw        ;  RETURN        flameDraw(cl, obj, msg)
+   CASE MUIM_Show        ;  RETURN        flameShow(cl, obj, msg)
+   CASE MUIM_Hide        ;  RETURN        flameHide(cl, obj, msg)
+   CASE MUIM_AskMinMax   ;  RETURN   flameAskMinMax(cl, obj, msg)
+   CASE MUIM_Setup       ;  RETURN       flameSetup(cl, obj, msg)
+   CASE MUIM_Cleanup     ;  RETURN     flameCleanup(cl, obj, msg)
+   CASE OM_NEW           ;  RETURN         flameNew(cl, obj, msg)
+   CASE OM_DISPOSE       ;  RETURN     flameDispose(cl, obj, msg)
+   ENDSELECT
+
+ENDPROC doSuperMethodA(cl, obj, msg)
+
+
+ENUM ARG_BLA, NROFARGS
+
+#define String_(contents,maxlen,oid)\
+   StringObject,\
+      StringFrame,\
+      MUIA_String_MaxLen  , maxlen,\
+      MUIA_String_Contents, contents,\
+      MUIA_ObjectID, oid,\
+      End
+
+#define IString_(contents,maxlen,oid)\
+   StringObject,\
+      StringFrame,\
+      MUIA_String_MaxLen  , maxlen,\
+      MUIA_String_Contents, contents,\
+      MUIA_ObjectID, oid,\
+      MUIA_String_Integer, 0,\
+      MUIA_String_Accept, &#x27;0123456789&#x27;,\
+      End
+
+PROC main() HANDLE
+   DEF window=NIL, application=NIL, flameobj, flamemcc=NIL:PTR TO mui_customclass
+   DEF sigs=0, result, exit=FALSE, rdargs=NIL, args:PTR TO LONG, x, data:PTR TO flamedata
+   DEF rendbut, stopbut, itstr, mpstr, rcycle, gauge
+   DEF mhook:hook, status, calcbut
+
+   NEW args[NROFARGS]
+
+   rdargs := ReadArgs(&#x27;BLA/S&#x27;, args, NIL)
+   IF rdargs = NIL THEN Raise(&quot;ARGS&quot;)
+
+   muimasterbase := OpenLibrary(MUIMASTER_NAME, MUIMASTER_VMIN)
+   IF muimasterbase = NIL THEN Throw(&quot;LIB&quot;, &#x27;muimaster.library&#x27;)
+
+   cybergfxbase := OpenLibrary(&#x27;cybergraphics.library&#x27;,41)
+   IF cybergfxbase = NIL THEN Throw(&quot;LIB&quot;, &#x27;cybergraphics.library&#x27;)
+
+   flamemcc := eMui_CreateCustomClass(NIL,MUIC_Area,NIL,SIZEOF flamedata,{flameDispatcher})
+   IF flamemcc = NIL THEN Throw(&quot;MCC&quot;, &#x27;flame&#x27;)
+
+   installhook(mhook, {mainHandler})
+
+   application:=ApplicationObject,
+      MUIA_Application_Title      , &#x27;Ignition&#x27;,
+      MUIA_Application_Version    , &#x27;$VER: version&#x27;,
+      MUIA_Application_Copyright  , &#x27;Copyright&#x27;,
+      MUIA_Application_Author     , &#x27;Author&#x27;,
+      MUIA_Application_Description, &#x27;Description&#x27;,
+      MUIA_Application_Base       , &#x27;IGNITIONBASE&#x27;,
+   End
+
+   IF application=NIL THEN Raise(&quot;APP&quot;)
+
+
+   window := WindowObject,
+      MUIA_Window_Title, &#x27;IGNITION&#x27;,
+      MUIA_Window_ID   , &quot;MAIN&quot;,
+      WindowContents, VGroup,
+         Child, VGroup,
+            Child, flameobj := NewObjectA(flamemcc.mcc_class,NIL,
+                             [MUIA_FillArea, FALSE,
+                              MUIA_Frame, MUIV_Frame_Virtual,
+                              NIL]),
+
+            Child, BalanceObject, End,
+            Child, RegisterObject,
+               MUIA_Register_Titles, [&#x27;Calculate&#x27;, &#x27;Render&#x27;, NIL],
+               MUIA_Background, MUII_RegisterBack,
+               MUIA_Weight, 10,
+               Child, maingroup(),
+               Child, coloursgroup(),
+            End,
+         End,
+         Child, gauge := GaugeObject,
+                  MUIA_VertWeight, 1,
+                  MUIA_Gauge_Horiz, TRUE,
+                  MUIA_Background, MUII_BACKGROUND,
+                  MUIA_Gauge_Max, 100,
+                  MUIA_Gauge_Current, 0,
+         End,
+         Child, HGroup,
+            Child, Label1(&#x27;Status:&#x27;),
+            Child, status := TextObject,
+                     MUIA_Frame, MUIV_Frame_Text,
+                     MUIA_Background, MUII_TextBack,
+                     MUIA_Text_PreParse, &#x27;\ec&#x27;,
+                     MUIA_Text_Contents, &#x27;Welcome!&#x27;,
+                     MUIA_Weight, 200, End,
+            Child, calcbut := SimpleButton(&#x27;Calculate&#x27;),
+            Child, rendbut := SimpleButton(&#x27;Render&#x27;),
+            Child, stopbut := SimpleButton(&#x27;Stop&#x27;),
+         End,
+      End,
+   End
+
+
+
+   IF window = NIL THEN Raise(&quot;WIN&quot;)
+
+   doMethodA(application, [OM_ADDMEMBER, window])
+
+   doMethodA(window, [MUIM_Notify,MUIA_Window_CloseRequest, MUI_TRUE,
+      application, 2, MUIM_Application_ReturnID, MUIV_Application_ReturnID_Quit])
+
+
+   data := INST_DATA(flamemcc.mcc_class, flameobj)
+   data.application := application
+   data.self := flameobj
+   data.gauge := gauge
+   data.status := status
+
+   -&gt;doMethodA(flameobj, [MUIM_Notify,MUIA_Width, MUIV_EveryTime,
+   -&gt;   MUIV_Notify_Self, 1, MUIM_Flame_UpdateBitmap])
+
+   -&gt;doMethodA(flameobj, [MUIM_Notify,MUIA_Height, MUIV_EveryTime,
+   -&gt;   MUIV_Notify_Self, 1, MUIM_Flame_UpdateBitmap])
+
+
+   doMethodA(calcbut, [MUIM_Notify,MUIA_Selected, FALSE,
+      flameobj, 4, MUIM_CallHook, mhook, &quot;CALC&quot;, data])
+
+   doMethodA(rendbut, [MUIM_Notify,MUIA_Selected, FALSE,
+      flameobj, 4, MUIM_CallHook, mhook, &quot;REND&quot;, data])
+
+   doMethodA(stopbut, [MUIM_Notify,MUIA_Selected, FALSE,
+      flameobj, 4, MUIM_CallHook, mhook, &quot;STOP&quot;, data])
+
+   doMethodA(application, [MUIM_Application_Load, MUIV_Application_Load_ENVARC])
+
+    -&gt;WriteF(&#x27;hejhej!\n&#x27;)
+
+   set(window, MUIA_Window_Open, MUI_TRUE)
+   get(window, MUIA_Window_Open, {x})
+   IF x = FALSE THEN Raise(&quot;OWIN&quot;)
+
+   -&gt;WriteF(&#x27;hejhej2!\n&#x27;)
+
+   inputLoop(application)
+
+   doMethodA(application, [MUIM_Application_Save, MUIV_Application_Save_ENVARC])
+
+   set(window, MUIA_Window_Open, FALSE)
+
+EXCEPT DO
+
+   IF application THEN Mui_DisposeObject(application)
+   IF flamemcc THEN Mui_DeleteCustomClass(flamemcc)
+   IF muimasterbase THEN CloseLibrary(muimasterbase)
+   IF cybergfxbase THEN CloseLibrary(cybergfxbase)
+   IF rdargs THEN FreeArgs(rdargs)
+
+   SELECT exception
+   CASE &quot;ARGS&quot;  ; WriteF(&#x27;error: args\n&#x27;)
+   CASE &quot;LIB&quot;   ; WriteF(&#x27;error: open library: \s\n&#x27;, exceptioninfo)
+   CASE &quot;WIN&quot;   ; WriteF(&#x27;error: create window\n&#x27;)
+   CASE &quot;OWIN&quot;  ; WriteF(&#x27;error: open window\n&#x27;)
+   CASE &quot;APP&quot;   ; WriteF(&#x27;error: create application\n&#x27;)
+   CASE &quot;MCC&quot;   ; WriteF(&#x27;error: create custom class: \s\n&#x27;, exceptioninfo)
+   ENDSELECT
+
+ENDPROC
+
+
+
+PROC maingroup() IS
+   -&gt;ScrollgroupObject,
+   VGroup,-&gt;   MUIA_ScrollGroup_Contents, VirtGroupObject,
+         Child, HGroup,
+            Child, Label1(&#x27;A&#x27;), Child, inputGads[0] := String_(&#x27;0.0&#x27;, 256, &quot;IPa&quot;),
+            Child, Label1(&#x27;B&#x27;), Child, inputGads[1] := String_(&#x27;0.0&#x27;, 256, &quot;IPb&quot;),
+            Child, Label1(&#x27;C&#x27;), Child, inputGads[2] := String_(&#x27;0.0&#x27;, 256, &quot;IPc&quot;),
+            Child, Label1(&#x27;D&#x27;), Child, inputGads[3] := String_(&#x27;0.0&#x27;, 256, &quot;IPd&quot;),
+            Child, Label1(&#x27;E&#x27;), Child, inputGads[4] := String_(&#x27;0.0&#x27;, 256, &quot;IPe&quot;),
+            Child, Label1(&#x27;F&#x27;), Child, inputGads[5] := String_(&#x27;0.0&#x27;, 256, &quot;IPf&quot;),
+         End,
+         Child, HGroup,
+            Child, Label1(&#x27;G&#x27;), Child, inputGads[6] := String_(&#x27;0.0&#x27;, 256, &quot;IPg&quot;),
+            Child, Label1(&#x27;H&#x27;), Child, inputGads[7] := String_(&#x27;0.0&#x27;, 256, &quot;IPh&quot;),
+            Child, Label1(&#x27;I&#x27;), Child, inputGads[8] := String_(&#x27;0.0&#x27;, 256, &quot;IPi&quot;),
+            Child, Label1(&#x27;J&#x27;), Child, inputGads[9] := String_(&#x27;0.0&#x27;, 256, &quot;IPj&quot;),
+            Child, Label1(&#x27;K&#x27;), Child, inputGads[10] := String_(&#x27;0.0&#x27;, 256, &quot;IPk&quot;),
+            Child, Label1(&#x27;L&#x27;), Child, inputGads[11] := String_(&#x27;0.0&#x27;, 256, &quot;IPl&quot;),
+         End,
+         Child, HGroup,
+            Child, Label1(&#x27;FL:&#x27;),
+            Child, flameLevelGad:= IString_(&#x27;0&#x27;, 256, &quot;FL&quot;),
+            Child, Label1(&#x27;MP:&#x27;),
+            Child, maxPointsGad := IString_(&#x27;0&#x27;, 256, &quot;MP&quot;),
+            Child, Label1(&#x27;Alt:&#x27;),
+            Child, Cycle([&#x27;None&#x27;, &#x27;Sin&#x27;, &#x27;Cos&#x27;, &#x27;Tan&#x27;, NIL]),
+         End,
+      -&gt;End,
+   End
+
+
+
+PROC coloursgroup() IS
+   -&gt;ScrollgroupObject,
+   VGroup,-&gt;   MUIA_ScrollGroup_Contents, VirtGroupObject,
+         Child, HGroup,
+            Child, Label1(&#x27;Background:&#x27;),
+            Child, poppenColBack := PoppenObject, End,
+            Child, RectangleObject, End,
+            Child, Label1(&#x27;Correct Aspect Ratio:&#x27;),
+            Child, CheckMark(0),
+         End,
+         Child, HGroup,
+            Child, Label1(&#x27;R:&#x27;),
+            Child, rColCycle := Cycle([&#x27;Random&#x27;, &#x27;X Speed&#x27;, &#x27;Y Speed&#x27;, &#x27;X-Y Speed&#x27;, &#x27;X+Y Speed&#x27;, NIL]),
+            Child, Label1(&#x27;G:&#x27;),
+            Child, gColCycle := Cycle([&#x27;Random&#x27;, &#x27;X Speed&#x27;, &#x27;Y Speed&#x27;, &#x27;X-Y Speed&#x27;, &#x27;X+Y Speed&#x27;, NIL]),
+            Child, Label1(&#x27;B:&#x27;),
+            Child, bColCycle := Cycle([&#x27;Random&#x27;, &#x27;X Speed&#x27;, &#x27;Y Speed&#x27;, &#x27;X-Y Speed&#x27;, &#x27;X+Y Speed&#x27;, NIL]),
+         End,
+      -&gt;End,
+   End
+
+
+
+
+PROC inputLoop(app)
+   DEF sigs=NIL
+   WHILE doMethodA(app,
+      [MUIM_Application_NewInput,
+      {sigs}]) &lt;&gt; MUIV_Application_ReturnID_Quit
+      IF sigs THEN sigs := Wait(sigs OR SIGBREAKF_CTRL_C)
+      EXIT sigs AND SIGBREAKF_CTRL_C
+   ENDWHILE
+ENDPROC
+
+#define InputError(err) RETURN set(data.status, MUIA_Text_Contents, err)
+
+PROC mainHandler(hook, obj:PTR TO object, msg:PTR TO LONG)
+   DEF t, v, r, data:PTR TO flamedata
+   t := msg[]
+   data := msg[1]
+   SELECT t
+   CASE &quot;CALC&quot;
+
+      data.stopCalculating := TRUE
+      data.stopRendering := TRUE
+      doSubMessage(data, SUBMSG_SYNC)
+
+      v := xget(inputGads[0], MUIA_String_Contents)
+      v, r := RealVal(v) ; IF r = NIL THEN InputError(&#x27;Invalid &quot;A&quot; value&#x27;)
+      data.flameVals[0] := v
+      v := xget(inputGads[1], MUIA_String_Contents)
+      v, r := RealVal(v) ; IF r = NIL THEN InputError(&#x27;Invalid &quot;B&quot; value&#x27;)
+      data.flameVals[1] := v
+      v := xget(inputGads[2], MUIA_String_Contents)
+      v, r := RealVal(v) ; IF r = NIL THEN InputError(&#x27;Invalid &quot;C&quot; value&#x27;)
+      data.flameVals[2] := v
+      v := xget(inputGads[3], MUIA_String_Contents)
+      v, r := RealVal(v) ; IF r = NIL THEN InputError(&#x27;Invalid &quot;D&quot; value&#x27;)
+      data.flameVals[3] := v
+      v := xget(inputGads[4], MUIA_String_Contents)
+      v, r := RealVal(v) ; IF r = NIL THEN InputError(&#x27;Invalid &quot;E&quot; value&#x27;)
+      data.flameVals[4] := v
+      v := xget(inputGads[5], MUIA_String_Contents)
+      v, r := RealVal(v) ; IF r = NIL THEN InputError(&#x27;Invalid &quot;F&quot; value&#x27;)
+      data.flameVals[5] := v
+      v := xget(inputGads[6], MUIA_String_Contents)
+      v, r := RealVal(v) ; IF r = NIL THEN InputError(&#x27;Invalid &quot;G&quot; value&#x27;)
+      data.flameVals[6] := v
+      v := xget(inputGads[7], MUIA_String_Contents)
+      v, r := RealVal(v) ; IF r = NIL THEN InputError(&#x27;Invalid &quot;H&quot; value&#x27;)
+      data.flameVals[7] := v
+      v := xget(inputGads[8], MUIA_String_Contents)
+      v, r := RealVal(v) ; IF r = NIL THEN InputError(&#x27;Invalid &quot;I&quot; value&#x27;)
+      data.flameVals[8] := v
+      v := xget(inputGads[9], MUIA_String_Contents)
+      v, r := RealVal(v) ; IF r = NIL THEN InputError(&#x27;Invalid &quot;J&quot; value&#x27;)
+      data.flameVals[9] := v
+      v := xget(inputGads[10], MUIA_String_Contents)
+      v, r := RealVal(v) ; IF r = NIL THEN InputError(&#x27;Invalid &quot;K&quot; value&#x27;)
+      data.flameVals[10] := v
+      v := xget(inputGads[11], MUIA_String_Contents)
+      v, r := RealVal(v) ; IF r = NIL THEN InputError(&#x27;Invalid &quot;L&quot; value&#x27;)
+      data.flameVals[11] := v
+
+
+      v := xget(flameLevelGad, MUIA_String_Integer)
+      IF v &lt; 10 THEN InputError(&#x27;Invalid &quot;Flame level&quot;&#x27;)
+      data.flameLevel := v
+
+      v := xget(maxPointsGad, MUIA_String_Integer)
+      IF v &lt; 10 THEN InputError(&#x27;Invalid &quot;Max points&quot;&#x27;)
+      IF v &gt; data.maxPoints
+         FreeVec(data.pointsBuf)
+         data.pointsBuf := AllocVec(SIZEOF point * v, MEMF_PUBLIC)
+         data.maxPoints := 0
+         IF data.pointsBuf = NIL THEN InputError(&#x27;Not enough memory.&#x27;)
+      ENDIF
+      data.maxPoints := v
+
+      IF data.calcStackSize &lt; (data.flameLevel * 200 + 16000)
+         IF data.calcStack THEN FreeVec(data.calcStack)
+         data.calcStackSize := data.flameLevel * 200 + 16000 AND -16
+         data.calcStack := AllocVec(data.calcStackSize, MEMF_PUBLIC)
+         IF data.calcStack = NIL THEN InputError(&#x27;Not enough memory.&#x27;)
+      ENDIF
+
+      set(data.gauge, MUIA_Gauge_Current, 0)
+
+      doSubMessage(data, SUBMSG_CALCULATE)
+
+      doSubMessage(data, SUBMSG_RENDER)
+
+   CASE &quot;REND&quot;
+
+      IF data.isRendering THEN data.stopRendering := TRUE
+
+      doSubMessage(data, SUBMSG_RENDER)
+
+   CASE &quot;STOP&quot;
+
+      IF data.isCalculating THEN data.stopCalculating := TRUE
+
+      Mui_Redraw(obj, MADF_DRAWOBJECT)
+
+   ENDSELECT
+
+ENDPROC
+
+PROC xget(obj,attr)
+   DEF x
+   get(obj,attr,{x})
+ENDPROC x
+
+
+
+
+
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

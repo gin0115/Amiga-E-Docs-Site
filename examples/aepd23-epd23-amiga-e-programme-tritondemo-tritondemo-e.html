@@ -1,0 +1,216 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>TritonDemo.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-aepd23.html">AEPD23</a> &rsaquo; TritonDemo.e</div><h1>File: <code>TritonDemo.e</code></h1><p class="meta">190 lines · project <a href="../examples/pkg-aepd23.html"><code>AEPD23</code></a></p><p class="pathctx">AEPD23/EPD23/Amiga_E-Programme/TritonDemo/TritonDemo.e</p><p class="prose">*************************************************************************** ** ** This demo translated by Barry Wills from the original Triton demo source, ** demo.c, the program description of which follows: ** ** Triton - The <a href="../modules/object.html">object</a> oriented GUI creation system for the Amiga ** Written by Stefan Z</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/global.html">*modules/global</a></li><li><a href="../modules/triton.html">triton</a></li></ul></div><h2>Source</h2><pre class="code">/****************************************************************************
+**
+** This demo translated by Barry Wills from the original Triton demo source,
+** demo.c, the program description of which follows:
+**
+**   Triton - The object oriented GUI creation system for the Amiga
+**   Written by Stefan Zeiger in 1993-1994
+**
+**   (c) 1993-1994 by Stefan Zeiger
+**   You are hereby allowed to use this source or parts
+**   of it for creating programs for AmigaOS which use the
+**   Triton GUI creation system. All other rights reserved.
+**
+**   demo.c - Triton demo program
+**
+******
+**
+** Things I Jørgen &#x27;Da&#x27; Larsen have done to the source from Barry Wills
+**
+**  * Replaced Mac2e macros with real AmigaE3.1a defines
+**  * Fixed bug with the menu &#x27;Project/help&#x27;
+**  * Included defs_all
+**  * Moved modules (*.m) to modules/
+**  * Compiled with EC3.1a
+**
+** Remember that the above things are small things the real hard work was
+** done by Barry Wills ( ;-&gt; The E smily ) and Stefan Zeiger.
+**
+*/
+
+OPT PREPROCESS
+OPT OSVERSION=37,
+    REG=5
+
+-&gt; TRITON defs
+#define BeginMenu(t)            TRMN_TITLE,(t)
+#define BeginRequesterGads      Space,EndGroup,Space
+#define CenteredButtonRE(t,i)   HorizGroupSC,Space,TROB_BUTTON,NIL,TRAT_FLAGS,TRBU_RETURNOK OR TRBU_ESCOK,TRAT_TEXT,(t),TRAT_ID,(i),Space,EndGroup
+#define EndRequester            Space,EndGroup,EndProject
+#define HorizGroupEA            TRGR_HORIZ,TRGR_EQUALSHARE OR TRGR_ALIGN
+#define HorizSeparator          HorizGroupEC,Space,Line(TROF_HORIZ),Space,EndGroup
+#define ItemBarlabel            TRMN_ITEM,TRMN_BARLABEL
+#define MenuItem(t,id)          TRMN_ITEM,(t),TRAT_ID,id
+#define TRITONNAME &#x27;triton.library&#x27;
+#define WindowBackfillReq       TRWI_BACKFILL,TRBF_REQUESTERBACK
+#define WindowFlags(f)          TRWI_FLAGS,(f)
+#define WindowID(id)            TRWI_ID,(id)
+#define WindowPosition(pos)     TRWI_POSITION,(pos)
+#define WindowTitle(t)          TRWI_TITLE,(t)
+#define BeginRequester(t,p)     WindowTitle(t),WindowPosition(p),WindowBackfillReq,\
+                                WindowFlags(TRWF_NOZIPGADGET OR TRWF_NOSIZEGADGET OR TRWF_NOCLOSEGADGET OR TRWF_NODELZIP OR TRWF_NOESCCLOSE),\
+                                VertGroupA,Space,HorizGroupA,Space,GroupBox,ObjectBackfillB
+-&gt; TRITON defs
+
+MODULE &#x27;triton&#x27;,
+       &#x27;dos/dos&#x27;,
+       &#x27;libraries/triton&#x27;,
+       &#x27;utility/tagitem&#x27;
+
+MODULE &#x27;*modules/global&#x27;,
+       &#x27;*modules/doGadgets&#x27;,
+       &#x27;*modules/doGroups&#x27;,
+       &#x27;*modules/doText&#x27;,
+       &#x27;*modules/doConnections&#x27;,
+       &#x27;*modules/doBackfill&#x27;,
+       &#x27;*modules/doDisabling&#x27;,
+       &#x27;*modules/doAppWindow&#x27;,
+       &#x27;*modules/doMenus&#x27;,
+       &#x27;*modules/doLists&#x27;
+
+DEF mainApp:PTR TO tr_App,
+    mainProject:PTR TO tr_Project
+
+PROC quitRequest(app) IS Tr_EasyRequest(app, &#x27;%3Do you really want to QUIT?&#x27;,
+                                        &#x27;Yes|No&#x27;, NIL)
+
+PROC doMain() HANDLE
+  DEF projectTags, aboutTrWinTags
+  DEF trmsg:PTR TO tr_Message, class, id, data
+  DEF closeProject=FALSE, reqstr[200]:STRING
+  projectTags:=[WindowID(10), WindowTitle(&#x27;Triton Demo&#x27;),
+                WindowPosition(TRWP_CENTERDISPLAY), WindowFlags(TRWF_HELP),
+    BeginMenu(&#x27;Project&#x27;),
+      MenuItem(&#x27;?_About...&#x27;,101),
+      ItemBarlabel,
+      MenuItem(&#x27;H_Help&#x27;,102),
+      ItemBarlabel,
+      MenuItem(&#x27;Q_Quit&#x27;,103),
+    VertGroupA,
+      Space,  CenteredText3(&#x27;T · r · i · t · o · n&#x27;),
+      Space,  CenteredText3(&#x27;The object oriented GUI creation system&#x27;),
+      Space,  CenteredText(&#x27;Demo program&#x27;),
+      Space,  CenteredText(&#x27;Written and © 1993-1994 by Stefan Zeiger&#x27;),
+      Space,  HorizSeparator,
+      Space,  HorizGroupEA,
+                Space, Button(&#x27;_Gadgets&#x27;,1),
+                Space, Button(&#x27;G_roups&#x27;,2),
+                Space, Button(&#x27;_Text&#x27;,3),
+                Space, EndGroup,
+      Space, HorizGroupEA,
+                Space, Button(&#x27;_Connections&#x27;,4),
+                Space, Button(&#x27;_Backfill&#x27;,5),
+                Space, Button(&#x27;_Disabling&#x27;,6),
+                Space, EndGroup,
+      Space, HorizGroupEA,
+                Space, Button(&#x27;_AppWindow&#x27;,7),
+                Space, Button(&#x27;_Menus&#x27;,8),
+                Space, Button(&#x27;_Lists&#x27;,9),
+                Space, EndGroup,
+      Space, EndGroup, EndProject]
+  aboutTrWinTags:=[BeginRequester(&#x27;About...&#x27;, TRWP_CENTERDISPLAY),
+    VertGroupA, Space,  CenteredText3(&#x27;Triton Demo&#x27;),
+                SpaceS, CenteredText(&#x27;© 1993-1994 by Stefan Zeiger&#x27;),
+                Space,  HorizSeparator,
+                Space,  CenteredText(&#x27;This program is using the&#x27;),
+                SpaceS, CenteredText(&#x27;Triton GUI creation system&#x27;),
+                SpaceS, CenteredText(&#x27;which is © by Stefan Zeiger&#x27;),
+                Space,  EndGroup,
+    BeginRequesterGads,
+    CenteredButtonRE(&#x27;_Ok&#x27;,1),
+    EndRequester]
+  IF (mainProject:=Tr_OpenProject(mainApp, projectTags))=NIL THEN Raise(&#x27;open triton project&#x27;)
+  WHILE closeProject=FALSE
+    Tr_Wait(mainApp, NIL)
+    WHILE trmsg:=Tr_GetMsg(mainApp)
+      IF trmsg.project=mainProject
+        class:=trmsg.class
+        id:=trmsg.id
+        data:=trmsg.data
+        Tr_ReplyMsg(trmsg)
+        SELECT class
+          CASE TRMS_CLOSEWINDOW; closeProject:=quitRequest(mainApp)
+          CASE TRMS_HELP;        StringF(reqstr,&#x27;You requested help for object \d.&#x27;,id) -&gt; Add by Da
+								 Tr_EasyRequest(mainApp, reqstr, &#x27;_Ok&#x27;,
+                                                [TREZ_LOCKPROJECT, mainProject,
+                                                 TREZ_TITLE,       &#x27;Triton help&#x27;,
+                                                 TAG_END]);
+          CASE TRMS_ERROR;       WriteF(&#x27;\s\n&#x27;, Tr_GetErrorString(data))
+          CASE TRMS_ACTION;
+            SELECT id
+              CASE 1;   doGadgets()
+              CASE 2;   doGroups()
+              CASE 3;   doText()
+              CASE 4;   doConnections()
+              CASE 5;   doBackfill()
+              CASE 6;   doDisabling()
+              CASE 7;   doAppWindow()
+              CASE 8;   doMenus()
+              CASE 9;   doLists()
+              CASE 101; Tr_AutoRequest(mainApp, mainProject, aboutTrWinTags);
+              CASE 102; Tr_EasyRequest(mainApp, &#x27;To get help, move the mouse pointer over\n&#x27;+
+                                            &#x27;any gadget or menu item and press &lt;Help&gt;.&#x27;, &#x27;_Ok&#x27;,
+                                       [TREZ_LOCKPROJECT, mainProject,
+                                        TREZ_TITLE, &#x27;Triton help&#x27;,
+                                        TAG_END])
+              CASE 103; closeProject:=TRUE
+            ENDSELECT
+        ENDSELECT
+      ENDIF
+    ENDWHILE
+  ENDWHILE
+EXCEPT DO
+  IF mainProject THEN Tr_CloseProject(mainProject)
+  IF exception THEN ReThrow()
+ENDPROC
+  /* doMain */
+
+PROC main() HANDLE
+  DEF status=RETURN_OK
+  IF (tritonbase:=OpenLibrary(TRITONNAME, TRITON10VERSION))=NIL THEN
+     Raise(&#x27;open triton.library v1.1&#x27;)
+  IF (mainApp:=Tr_CreateApp([TRCA_NAME,     &#x27;AmigaETritonDemo&#x27;,
+                             TRCA_LONGNAME, &#x27;AmigaE Triton Demo&#x27;,
+                             TRCA_VERSION,  &#x27;0.0&#x27;,
+                             TAG_DONE]))=NIL THEN Raise(&#x27;create triton application&#x27;)
+  doMain()
+EXCEPT DO
+  IF exception
+    IF (tritonbase&lt;&gt;NIL) AND (mainApp&lt;&gt;NIL)
+      Tr_EasyRequest(mainApp, &#x27;%3Could not \s!&#x27;, &#x27;Ok&#x27;, [exception])
+    ELSE
+      WriteF(&#x27;Could not \s!&#x27;, exception)
+    ENDIF
+    status:=RETURN_FAIL
+  ENDIF
+  IF mainApp THEN Tr_DeleteApp(mainApp)
+  IF tritonbase THEN CloseLibrary(tritonbase)
+ENDPROC status
+  /* main */
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

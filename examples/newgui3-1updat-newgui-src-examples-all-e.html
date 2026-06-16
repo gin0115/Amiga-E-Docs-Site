@@ -1,0 +1,525 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>all.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-newgui3-1updat.html">newgui3_1updat</a> &rsaquo; all.e</div><h1>File: <code>all.e</code></h1><p class="meta">499 lines · project <a href="../examples/pkg-newgui3-1updat.html"><code>newgui3_1updat</code></a></p><p class="pathctx">newgui3_1updat/NewGUI/Src/Examples/all.e</p><p class="prose">* Little <a href="../modules/example.html">Example</a> for some of NewGUI`s Features... * * *</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/gfxmacros.html">graphics/gfxmacros</a></li><li><a href="../modules/rastport.html">graphics/rastport</a></li><li><a href="../modules/intuition.html">intuition/intuition</a></li><li><a href="../modules/gadtools.html">libraries/gadtools</a></li><li><a href="../modules/newgui.html">newgui/newgui</a></li><li><a href="../modules/ng-progress.html">newgui/ng_progress</a></li><li><a href="../modules/ng-showerror.html">newgui/ng_showerror</a></li><li><a href="../modules/pl-scrolltext.html">newgui/pl_scrolltext</a></li><li><a href="../modules/tagitem.html">utility/tagitem</a></li></ul></div><h2>Source</h2><pre class="code">/*
+ *  Little Example for some of NewGUI`s Features...
+ *
+ *
+ *
+ */
+
+OPT     LARGE
+OPT     OSVERSION = 37
+OPT     PREPROCESS
+
+MODULE  &#x27;graphics/gfxmacros&#x27;
+MODULE  &#x27;graphics/rastport&#x27;
+MODULE  &#x27;intuition/intuition&#x27;
+MODULE  &#x27;libraries/gadtools&#x27;
+MODULE  &#x27;newgui/pl_scrolltext&#x27;
+MODULE  &#x27;newgui/ng_showerror&#x27;
+MODULE  &#x27;newgui/ng_progress&#x27;
+MODULE  &#x27;newgui/newgui&#x27;
+MODULE  &#x27;utility/tagitem&#x27;
+
+ENUM    GUI_MAIN = 1,
+        GUI_FIRST,
+        GUI_FONT,
+        GUI_SCREENMODE,
+        GUI_MULTI,
+        GUI_GAUGE,
+        GUI_ABOUT
+
+DEF     gui:PTR TO guihandle,                   -&gt; guihandle
+        screen=NIL,
+        menu=0,                                 -&gt; GadTools-Menu
+        tickon=FALSE,                           -&gt; Do we want to be reported on Intuiticks?
+        tick=TRUE,                              -&gt; Bool for the Ticking-Procedure!
+        pw:PTR TO progresswin,                  -&gt; NewGUI-Progress-Window...
+        scroll:PTR TO scrolltext
+
+PROC main()     HANDLE
+ makemenus()                                    -&gt; Generate then menu
+  opengui()                                     -&gt; Open the GUI
+
+EXCEPT DO
+   IF scroll THEN END scroll                    -&gt; End the scroll-plugin
+  IF exception THEN ng_showerror(exception)     -&gt; Error-handling with external Modul-Code
+ CleanUp(exception)                             -&gt; EXIT with exception as return-code
+ENDPROC
+
+PROC makemenus()
+ menu:=[
+        NM_TITLE,       0,      &#x27;Project&#x27;,      0,      0,0,0,
+        NM_ITEM,        0,      &#x27;New ...&#x27;,     &#x27;n&#x27;,     0,0,{new},
+        NM_ITEM,        0,      &#x27;Load ...&#x27;,    &#x27;l&#x27;,     NM_ITEMDISABLED,0,{test1},
+        NM_ITEM,        0,      &#x27;Save ...&#x27;,    &#x27;s&#x27;,     NM_ITEMDISABLED,0,{test1},
+        NM_BARLABEL,    0,      0,              0,      0,0,0,
+        NM_ITEM,        0,      &#x27;About ...&#x27;,   &#x27;a&#x27;,     0,0,{about},
+        NM_ITEM,        0,      &#x27;Quit ...&#x27;,    &#x27;q&#x27;,     0,0,0,
+        NM_TITLE,       0,      &#x27;Tools&#x27;,        0,      0,0,0,
+        NM_ITEM,        0,      &#x27;Block Main&#x27;,  &#x27;1&#x27;,0,0,{block},
+        NM_ITEM,        0,      &#x27;Hide Main&#x27;,   &#x27;2&#x27;, 0,0,{hide},
+        NM_ITEM,        0,      &#x27;Appear Main&#x27;, &#x27;3&#x27;,    0,0,{appear},
+        0,              0,      0,              0,      0,0,0]:newmenu
+ENDPROC
+
+PROC opengui()
+  newguiA([
+        NG_WINDOWTITLE, &#x27;NewGUI - Demo&#x27;,        -&gt; Title from the Window
+        NG_PREFSPROC,   {saveprefs},            -&gt; Procedure to save (or show) the preferences for every Window
+        NG_CLONESCREEN, TRUE,                   -&gt; Open a screen (Clone it from WB, but prefer NG_SCR_xxx-Tags!)
+        NG_SCR_TITLE,   &#x27;NewGUI - ALL&#x27;,         -&gt; The Title from our Screen
+        NG_SCR_PUBNAME, &#x27;NEWGUI&#x27;,               -&gt; The Public-Screen-Name
+        NG_OPENPUBSCREEN,       TRUE,           -&gt; If there already is an Pubscreen with that name, than use it!
+        NG_REXXNAME,    &#x27;NEWGUI&#x27;,               -&gt; Name for the ARexx-Port
+        NG_REXXPROC,    {rexxmsg},              -&gt; Procedure to parse ARexx-Messages (Show AFC/Rexxer for details!)
+        NG_FILLHOOK,    {fillrect},             -&gt; Procedure to fill the windows-back and/or groups
+        NG_MENU,        menu,                   -&gt; The used menu-Bar
+        NG_ONCLOSE,     {closepw},              -&gt; Call this procedure on closing
+        NG_GUIID,       GUI_MAIN,               -&gt; Gui-ID
+        NG_GUI,                                 -&gt; (Normally) GUI-Description
+                        NG_DUMMY,               -&gt; But NG_DUMMY says that we want only a BackDrop-Window!
+        NG_NEXTGUI,                             -&gt; PTR to the next Window-Description
+-&gt; Main-Window
+       [NG_WINDOWTITLE, &#x27;NewGUI - Demo&#x27;,
+        NG_FILLHOOK,    {fillrect},
+        NG_MENU,        menu,
+        NG_ONCLOSE,     {closeall},             -&gt; This procedure is called if this window is closed
+        NG_AUTOOPEN,    TRUE,                   -&gt; Says that this window should be already open at the beginning
+        NG_USEMAINSCREEN, TRUE,                 -&gt; This Window should use the Screen from the first GUI (BACKDROP)
+        NG_USEMAINFONT, TRUE,                   -&gt; The font from the Main-GUI (BACKDROP) should be used!
+        NG_GUIID,       GUI_FIRST,              -&gt; Gui-ID
+        NG_GUI,                                 -&gt; Gui-Description!
+
+                [ROWS,
+                [BEVEL,
+                [FILLGROUP1,
+                [ROWS,
+                        [TEXT,&#x27;Main-Window&#x27;,&#x27;NewGUI-Example:&#x27;,TRUE,3]
+                ]]],
+                [BEVELR,
+                [FILLGROUP1,
+                [ROWS,
+                        [SBUTTON,{font},&#x27;Font ...&#x27;],
+                        [SBUTTON,{screenmode},&#x27;Screenmode ...&#x27;],
+                        [SBUTTON,{ticker},&#x27;Ticker on/off&#x27;],
+                        [SBUTTON,{gauge},&#x27;Gauge...&#x27;],
+                        [SBUTTON,{about},&#x27;About ...&#x27;]
+                ]]],
+                [BAR],
+                [BEVELR,
+                [FILLGROUP1,
+                [EQCOLS,
+                        [SBUTTON,{closechilds},&#x27;Close all Windows&#x27;],
+                        [SBUTTON,{new},&#x27;New Fenster&#x27;],
+                        [SBUTTON,{prefs},&#x27;Show Prefs&#x27;],
+                        [SBUTTON,{block},&#x27;Block Main&#x27;],
+                        [SBUTTON,{hide},&#x27;Hide Main&#x27;]]]]],
+        NG_NEXTGUI,     
+-&gt; FONT-Window
+       [NG_WINDOWTITLE, &#x27;Font-Demo&#x27;,
+        NG_FILLHOOK,    {fillrect},
+        NG_MENU,        menu,
+        NG_USEMAINFONT, TRUE,
+        NG_USEMAINSCREEN,TRUE,
+        NG_GUIID,       GUI_FONT,
+        NG_GUI,
+                [EQROWS,
+                        [TEXT,&#x27;Selected Fonts&#x27;,NIL,FALSE,3],
+                [BEVELR,
+                [EQROWS,
+                        [TEXT,&#x27;xentiny 8&#x27;,&#x27;Workbench Icon Text:&#x27;,FALSE,3],
+                        [TEXT,&#x27;end 10&#x27;,&#x27;System Default Text:&#x27;,FALSE,3],
+                        [TEXT,&#x27;except 12&#x27;,&#x27;Screen text:&#x27;,FALSE,3]
+                ]],
+                        [SBUTTON,0,&#x27;Select Workbench Icon Text...&#x27;],
+                        [SBUTTON,0,&#x27;Select System Default Text...&#x27;],
+                        [SBUTTON,0,&#x27;Select Screen text...&#x27;],
+                [BAR],
+                [COLS,
+                        [BUTTON,0,&#x27;Save&#x27;],
+                [SPACEH],
+                        [BUTTON,0,&#x27;Use&#x27;],
+                [SPACEH],
+                        [BUTTON,0,&#x27;Cancel&#x27;]
+                ]],
+        NG_NEXTGUI,     
+-&gt; Screenmode-Window
+       [NG_WINDOWTITLE, &#x27;Screenmode-Demo&#x27;,
+        NG_USEMAINSCREEN,TRUE,
+        NG_USEMAINFONT, TRUE,
+        NG_FILLHOOK,    {fillrect},
+        NG_MENU,        menu,
+        NG_GUIID,       GUI_SCREENMODE,
+        NG_GUI,
+                [EQROWS,
+                [COLS,
+                [EQROWS,
+                        [LISTV,0,&#x27;Display Mode&#x27;,10,4,NIL,TRUE,0,0],
+                [COLS,
+                [EQROWS,
+                        [INTEGER,0,&#x27;Width:&#x27;,640,5],
+                        [INTEGER,0,&#x27;Height:&#x27;,512,5]
+                ],
+                [ROWS,
+                        [CHECK,0,&#x27;Default&#x27;,TRUE,FALSE],
+                        [CHECK,0,&#x27;Default&#x27;,TRUE,FALSE]
+                ]],
+                        [SLIDE,0,&#x27;Colors:&#x27;,FALSE,1,8,3,5,&#x27;&#x27;],
+                        [CHECK,0,&#x27;AutoScroll:&#x27;,TRUE,TRUE]
+                ],
+                [BEVELR,
+                [EQROWS,
+                        [TEXT,&#x27;688x539&#x27;,&#x27;Visible Size:&#x27;,FALSE,3],
+                        [TEXT,&#x27;640x200&#x27;,&#x27;Minimum Size:&#x27;,FALSE,3],
+                        [TEXT,&#x27;16368x16384&#x27;,&#x27;Maximum Size:&#x27;,FALSE,3],
+                        [TEXT,&#x27;256&#x27;,&#x27;Maximum Colors:&#x27;,FALSE,3],
+                [SPACE]
+                ]]],
+                [BAR],
+                [COLS,
+                        [BUTTON,0,&#x27;Save&#x27;],
+                [SPACEH],
+                        [BUTTON,0,&#x27;Use&#x27;],
+                [SPACEH],
+                        [BUTTON,0,&#x27;Cancel&#x27;]
+                ]],
+        NG_NEXTGUI,     
+-&gt;
+       [NG_WINDOWTITLE, &#x27;NewGUI - Demo&#x27;,
+        NG_USEMAINSCREEN,TRUE,
+        NG_USEMAINFONT, TRUE,
+        NG_FILLHOOK,    {fillrect},
+        NG_MENU,        menu,
+        NG_GUIID,       GUI_MULTI,
+        NG_DOUBLEGUI,   TRUE,
+        NG_GUI,
+                [ROWS,
+                [DBEVELR,
+                [FILLGROUP1,
+                [ROWS,
+                        [TEXT,&#x27;Another Window!&#x27;,&#x27;NewGUI-Example:&#x27;,TRUE,3]
+                ]]],
+                [BAR],
+                [BEVELR,
+                [FILLGROUP1,
+                [EQCOLS,
+                        [SBUTTON,{change},&#x27;Change&#x27;],
+                        [SBUTTON,{block},&#x27;Block Main&#x27;],
+                        [SBUTTON,{hide},&#x27;Hide Main&#x27;]]]]],
+        NG_NEXTGUI,     
+-&gt;
+       [NG_WINDOWTITLE, &#x27;NewGUI - Demo&#x27;,
+        NG_USEMAINSCREEN,TRUE,
+        NG_USEMAINFONT, TRUE,
+        NG_ONCLOSE,     {closepw},              -&gt; Close the Progress-Window on closing!
+        NG_FILLHOOK,    {fillrect},
+        NG_MENU,        menu,
+        NG_GUIID,       GUI_GAUGE,
+        NG_GUI,
+                [ROWS,
+                [BEVELR,
+                [FILLGROUP1,
+                [EQROWS,
+                        [TEXT,&#x27;Slider!&#x27;,&#x27;Move the&#x27;,FALSE,3],
+                        [SLIDE,{setgauge},&#x27;     &#x27;,FALSE,0,100,50,2,&#x27;%3ld&#x27;]
+                ]]],
+                [BEVELR,
+                [FILLGROUP1,
+                [EQCOLS,
+                [SPACEH],
+                        [SBUTTON,{hide},&#x27;Hide Main&#x27;],
+                [SPACEH]
+                ]]]
+                ],
+        NG_NEXTGUI,     
+-&gt;
+       [NG_WINDOWTITLE, &#x27;About NewGUI&#x27;,
+        NG_USEMAINSCREEN,TRUE,
+        NG_FONT_NAME,   &#x27;Webhead.font&#x27;,         -&gt; Use other Font (if possible, else = Use Screen-Std-Font!)
+        NG_FONT_SIZE,   21,                     -&gt; Size of the Font (Or size of std-Font!)
+        NG_FILLHOOK,    {fillrect},
+        NG_MENU,        menu,
+        NG_GUIID,       GUI_ABOUT,
+        NG_GUI,
+                [ROWS,
+                [DBEVELR,
+                [FILLGROUP2,
+                [EQROWS,
+                        [TEXT,&#x27;NewGUI&#x27;,&#x27;About&#x27;,FALSE,3],
+                        [TEXT,&#x27; &#x27;,&#x27; &#x27;,FALSE,3]
+                ]]],
+                [BEVELR,
+                [FILLGROUP1,
+                [EQROWS,
+                        [SCROLLTEXT,0,NEW scroll.scrolltext([
+        1,SCRTXT_BAR,&#x27; &#x27;,
+        2,SCRTXT_CENTER,&#x27;NewGUI&#x27;,
+        1,SCRTXT_CENTER,&#x27;was developed by&#x27;,
+        2,SCRTXT_CENTER,&#x27;THE DARK FRONTIER Softwareentwicklungen&#x27;,
+        1,SCRTXT_CENTER,&#x27;(© 1994-98)&#x27;,
+        1,SCRTXT_BAR,&#x27; &#x27;,
+        1,SCRTXT_LEFT,&#x27;Address:&#x27;,
+        1,SCRTXT_CENTER,&#x27;Am Hofgraben 2&#x27;,
+        1,SCRTXT_CENTER,&#x27;67378 Zeiskam&#x27;,
+        1,SCRTXT_LEFT,&#x27;FAX:++49(0)7274-8774&#x27;,
+        2,SCRTXT_LEFT,&#x27;Email: frontier@starbase.inka.de&#x27;,
+        2,SCRTXT_LEFT,&#x27;WWW  : under development...&#x27;,
+        1,SCRTXT_BAR,&#x27; &#x27;,
+        0,NIL],2,100,2)]
+                ]]],
+                [BAR],
+                [BEVELR,
+                [FILLGROUP1,
+                [EQCOLS,
+                        [SBUTTON,0,&#x27;OK&#x27;]]]]],
+        NG_NEXTGUI,     
+-&gt;
+        NIL,NIL],
+-&gt;
+        NIL,NIL],
+-&gt;
+        NIL,NIL],
+-&gt;
+        NIL,NIL],
+-&gt;
+        NIL,NIL],
+-&gt;
+        NIL,NIL],
+-&gt;
+        NIL,NIL],{getdata})                               -&gt; End the TagList (normally with TAG_END,NIL!))
+ENDPROC
+
+PROC fillrect(rp,x,y,width,height,type)
+ DEF    oldbpen=0,
+        oldapen=1
+  SELECT        type
+        CASE    NG_FILL_WINDOW                          -&gt; Window-Filling (Back)
+         oldbpen:=SetBPen(rp,0)                         -&gt; Set Backpen to gray
+          oldapen:=SetAPen(rp,3)                        -&gt; Set Frontpen to blue
+           SetAfPt(rp,[$AAAA,$5555]:INT,1)              -&gt; Set Pattern (ATTENTION! Macro-Definition in gfxmacros.m, this need OPT PREPROCESS!!!)
+            RectFill(rp,x,y,width,height)               -&gt; Now fill the Region!
+           SetBPen(rp,oldbpen)                          -&gt; Set the Backpen to the old value
+          SetAPen(rp,oldapen)                           -&gt; Set the Frontpen to the old value
+        CASE    FILLGROUP1                              -&gt; Fill the Group 1
+         oldbpen:=SetBPen(rp,0)                         -&gt; Set BackPen to gray
+          oldapen:=SetAPen(rp,0)                        -&gt; Set Frontpen to gray
+           SetAfPt(rp,[$FFFF,$FFFF]:INT,1)              -&gt; ...
+            RectFill(rp,x,y,width,height)               -&gt; ...
+           SetBPen(rp,oldbpen)                          -&gt; ...
+          SetAPen(rp,oldapen)                           -&gt; ...
+        CASE    FILLGROUP2                              -&gt; Fill the Group 2
+         oldbpen:=SetBPen(rp,3)                         -&gt; Set the Backpen to blue
+          oldapen:=SetAPen(rp,2)                        -&gt; Set the Frontpen to white
+           SetAfPt(rp,[$AAAA,$5555]:INT,1)              -&gt; ...
+            RectFill(rp,x,y,width,height)               -&gt; ...
+           SetBPen(rp,oldbpen)                          -&gt; ...
+          SetAPen(rp,oldapen)                           -&gt; ...
+   ENDSELECT
+ENDPROC
+
+PROC saveprefs(screen,id,x,y,width,height,open)
+ IF open=WIN_OPEN
+  WriteF(&#x27;Guiid = \d -/ x = \d - y = \d - width = \d - height = \d \\- OPEN\n&#x27;,id,x,y,width,height)
+ ELSEIF open=WIN_BACKDROP
+  WriteF(&#x27;Guiid = \d -/ x = \d - y = \d - width = \d - height = \d \\- BACKDROP\n&#x27;,id,x,y,width,height)
+ ELSE
+  WriteF(&#x27;Guiid = \d -/ x = \d - y = \d - width = \d - height = \d \\- CLOSED\n&#x27;,id,x,y,width,height)
+ ENDIF
+ENDPROC
+
+PROC getdata(gh,s)                                      -&gt; Gets the Main-Guihandle and the screens-PTR
+ gui:=gh
+ screen:=s
+ENDPROC
+
+PROC prefs()                                            -&gt; Save (show) the Prefs
+ ng_setattrsA([
+        NG_GUI,         gui,
+        NG_SAVEPREFS,   TRUE,
+        NIL,            NIL])
+ENDPROC
+
+PROC font()                                             -&gt; Open the Font-Window
+ ng_setattrsA([
+        NG_GUI,         gui,
+        NG_CHANGEGUI,   NG_OPENGUI,
+        NG_GUIID,       GUI_FONT,
+        NIL,            NIL])
+ENDPROC
+
+PROC screenmode()                                       -&gt; Open the Screenmode-Window
+ ng_setattrsA([
+        NG_GUI,         gui,
+        NG_CHANGEGUI,   NG_OPENGUI,
+        NG_GUIID,       GUI_SCREENMODE,
+        NIL,            NIL])
+ENDPROC
+
+PROC closechilds()                                      -&gt; Close all Windows (NOT the first = BACKDROP!)
+ ng_setattrsA([
+        NG_GUI,         gui,
+        NG_CHANGEGUI,   NG_CLOSECHILDS,
+        NIL,            NIL])
+ENDPROC
+
+PROC new()                                              -&gt; Open the &quot;new&quot;-Window...
+ ng_setattrsA([
+        NG_GUI,         gui,
+        NG_CHANGEGUI,   NG_OPENGUI,
+        NG_GUIID,       GUI_MULTI,
+        NIL,            NIL])
+ENDPROC
+
+PROC closepw()                                          -&gt; close the progress-gauge
+ END pw                                                 -&gt; end the Plugin!
+ENDPROC -2                                              -&gt; -2 means that only the window that had called this method should be closed!
+
+PROC closeall() IS 0                                    -&gt; 0 means that all should be closed!
+
+PROC gauge()                                            -&gt; opens the Gauge-Window
+ IF pw=NIL THEN NEW pw.progresswin(&#x27;NewGUI - ProgressWindow&#x27;,&#x27;Work in Progress-Window&#x27;,&#x27;Starting Point...&#x27;,3,2,1,50,screen,NIL)
+  ng_setattrsA([
+        NG_GUI,         gui,
+        NG_CHANGEGUI,   NG_OPENGUI,
+        NG_GUIID,       GUI_GAUGE,
+        NIL,            NIL])
+ENDPROC
+
+PROC setgauge(x,y)                                      -&gt; Set the gauge-Value to the Sliders-State
+ DEF    oldval=0,
+        status[20]:STRING
+  oldval:=pw.get()                                      -&gt; Get the &quot;old&quot; value before setting the new one
+   IF (oldval&lt;y) AND (y&lt;&gt;50)                            -&gt; IF the oldvalue is lower than the new value then...
+    StrCopy(status,&#x27;Increment&#x27;)
+   ELSEIF (oldval&gt;y) AND (y&lt;&gt;50)                        -&gt; If the oldvalue is higher than the new value then...
+    StrCopy(status,&#x27;Decrement&#x27;)
+   ELSEIF y=50                                          -&gt; If the value is 50 (Starting-Point)
+    StrCopy(status,&#x27;Starting Point...&#x27;)                 
+   ENDIF
+  pw.set(y,status,NIL)                                  -&gt; Set the new value
+ENDPROC
+
+PROC change()                                           -&gt; Change the Windows-Gui-Description
+ DEF    guihandle
+  ng_setattrsA([NG_GUI,gui,
+        NG_GUIID,       GUI_MULTI,
+        NG_CHANGEGUI,   NG_NEWGUI,
+        NG_NEWDATA,
+                [ROWS,
+                [BEVELR,
+                [FILLGROUP1,
+                [EQCOLS,
+                        [SBUTTON,{block},&#x27;Block Main&#x27;],
+                        [SBUTTON,{hide},&#x27;Hide Main&#x27;]]]],
+                [DBEVELR,
+                [FILLGROUP1,
+                [ROWS,
+                        [TEXT,&#x27;Another (changed) Window&#x27;,&#x27;NewGUI-Example:&#x27;,TRUE,3]
+                ]]],
+                [BAR]
+                ]
+         ,NIL,NIL])
+ENDPROC
+
+PROC about()                                            -&gt; Open the About-Window
+ ng_setattrsA([
+        NG_GUI,         gui,
+        NG_CHANGEGUI,   NG_OPENGUI,
+        NG_GUIID,       GUI_ABOUT,
+        NIL,            NIL])
+ENDPROC
+
+PROC test1()                                            -&gt; Outputs a test-Message
+ WriteF(&#x27;Test!\n&#x27;)
+ENDPROC
+
+PROC block()                                            -&gt; Blocking the main-window
+ DEF    a
+  WriteF(&#x27;\nBlocking Main-Window: &#x27;)
+   ng_setattrsA([
+        NG_GUI,         gui,
+        NG_CHANGEGUI,   NG_BLOCKGUI,
+        NG_GUIID,       GUI_FIRST,
+        NIL,    NIL])
+    FOR a:=0 TO 50                              -&gt; 
+     Delay(1)                                   -&gt; Do wait some time (and let other tasks have our cpu-time!)
+      WriteF(&#x27;.&#x27;)
+     guimessage(gui)                            -&gt; Handle all gui-Messages (like resizing ect...)
+    ENDFOR
+   ng_setattrsA([
+        NG_GUI,         gui,
+        NG_CHANGEGUI,   NG_UNBLOCKGUI,
+        NG_GUIID,       GUI_FIRST,
+        NIL,    NIL])
+ENDPROC
+
+PROC hide()                                     -&gt; Hide the main-Window
+ ng_setattrsA([
+        NG_GUI,         gui,
+        NG_CHANGEGUI,   NG_CLOSEGUI,
+        NG_GUIID,       GUI_FIRST,
+        NIL,    NIL])
+ENDPROC
+
+PROC appear()                                   -&gt; Let the main-window appearing again!
+ ng_setattrsA([
+        NG_GUI,         gui,
+        NG_CHANGEGUI,   NG_OPENGUI,
+        NG_GUIID,       GUI_FIRST,
+        NIL,    NIL])
+ENDPROC
+
+PROC rexxmsg(s,mes=NIL)                         -&gt; Parse all arexx-Message 
+ WriteF(&#x27;Rexx-Msg: &quot;\s&quot;\n&#x27;,s)                   -&gt; Outputs the receives String into CONsole
+
+  mes:=NIL                                      -&gt; Unneccesarry!
+ENDPROC  StrCmp(&#x27;QUIT&#x27;,s),0,&#x27;Reply-Message&#x27;     -&gt; return-Values (look under AFC/Rexxer for details!)
+
+PROC ticker()                                   -&gt; Turns the Ticker-Procedure on and of!
+ IF tickon=TRUE
+   ng_setattrsA([NG_GUI,gui,
+        NG_CHANGETICKER,TRUE,NIL,NIL])          -&gt; TRUE is necessary because FALSE means that the Tag NG_CHANGETICKER isn`t given (through GetTagData()!)
+  tickon:=FALSE
+ ELSE
+   ng_setattrsA([NG_GUI,gui,
+        NG_CHANGETICKER,{tickmsg},NIL,NIL])
+  tickon:=TRUE
+ ENDIF
+ENDPROC
+
+PROC tickmsg()
+ IF tick=TRUE
+  WriteF(&#x27;Tick - &#x27;)
+  tick:=FALSE
+ ELSE
+  WriteF(&#x27;Tack!\n&#x27;)
+  tick:=TRUE
+ ENDIF
+ENDPROC
+
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

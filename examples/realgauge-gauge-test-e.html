@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Gauge_Test.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-realgauge.html">RealGauge</a> &rsaquo; Gauge_Test.e</div><h1>File: <code>Gauge_Test.e</code></h1><p class="meta">91 lines · project <a href="../examples/pkg-realgauge.html"><code>RealGauge</code></a></p><p class="pathctx">RealGauge/Gauge_Test.e</p><p class="prose">PROGRAM : Gauge_Test - trying out a *real good* <a href="../modules/gauge.html">gauge</a> module... LANGUAGE : E AUTHOR : Daniel `ThunderPig` Rädel/NEUDELSoft (-DR-/NS) DATE : 040596 xxx-WARE : This source is `Public Domain` :)</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/easygui.html">tools/easygui</a></li></ul></div><h2>Source</h2><pre class="code">/*
+    PROGRAM  : Gauge_Test - trying out a *real good* gauge module...
+    LANGUAGE : E
+    AUTHOR   : Daniel `ThunderPig` Rädel/NEUDELSoft (-DR-/NS)
+    DATE     : 040596
+    xxx-WARE : This source is `Public Domain` :)
+*/
+
+OPT OSVERSION=37 -&gt; sorry - everything else is obsolete...
+
+MODULE  &#x27;tools/easygui&#x27;,&#x27;gadtools&#x27;,&#x27;libraries/gadtools&#x27;,&#x27;tools/exceptions&#x27;,
+        &#x27;intuition/intuition&#x27;,&#x27;utility&#x27;,&#x27;plugins/gauge&#x27;
+
+    DEF gauge:PTR TO gauge_bar, gui=0:PTR TO guihandle,
+        gauge2:PTR TO gauge_bar, gauge3:PTR TO gauge_bar,
+        gauge4:PTR TO gauge_bar, gauge5:PTR TO gauge_bar,
+        gauge6:PTR TO gauge_bar
+
+PROC main() HANDLE
+
+    IF (gadtoolsbase:=OpenLibrary(&#x27;gadtools.library&#x27;,0))
+
+        -&gt; This lib is needed by the module (GetTagData()...)
+        IF (utilitybase:=OpenLibrary(&#x27;utility.library&#x27;,0))
+
+    -&gt; Opening an `easygui`-window with lots of the new plugins
+            gui:=guiinit(&#x27;Testing the *real* gauge plugin module...&#x27;, [ROWS, [COLS,
+
+            [PLUGIN,0, NEW gauge.init_gauge([GA_IsVertical, TRUE,
+              GA_Percentage, TRUE, GA_BackgroundPen, 3,
+              GA_IsVolumeSlider, TRUE, 0])],
+
+            [PLUGIN, 0, NEW gauge3.init_gauge([GA_Current,100,
+              GA_TextLen,9,GA_TextPtr,&#x27;Click Me!&#x27;, GA_BorderRecessed, TRUE,
+              GA_Bar3D, TRUE, GA_GaugeUsable, TRUE,
+              GA_ActionProc,{testproc}, GA_GaugeID,16,0])] ,
+
+            [PLUGIN, 0, NEW gauge4.init_gauge([GA_TextPtr,&#x27;and me!&#x27;,
+              GA_TextLen, 7,GA_IsRound, TRUE,GA_GaugeUsable, TRUE,
+              GA_GaugeID,42, GA_ActionProc,{testproc},
+              GA_Current,100,0])] ,
+
+            [PLUGIN, 0, NEW gauge5.init_gauge([GA_BorderRecessed, TRUE,
+              GA_IsRound, TRUE,GA_FixedWidth, 120,
+              GA_RoundPointerPen, 3,0])] ,
+
+            [PLUGIN, 0, NEW gauge6.init_gauge([GA_BarRecessed, TRUE,
+            GA_IsVertical, TRUE, GA_Bar3D, TRUE,
+            GA_BackgroundPen, 2, GA_BarPen, 1, 0])] ],
+
+            [PLUGIN, 0, NEW gauge2.init_gauge([GA_IsVolumeSlider, TRUE,
+            GA_TextLen, 9, GA_TextPtr, &#x27;Slide me!&#x27;, GA_ActionProc, {slider},
+            GA_GaugeUsable, TRUE,0])] ])
+
+            IF gui
+                -&gt; a simple loop will do in a demo
+                WHILE (guimessage(gui)=-1)
+                    WaitTOF()
+                ENDWHILE
+            ENDIF
+        ENDIF
+    ENDIF
+EXCEPT DO
+    IF gui THEN cleangui(gui)
+    IF gadtoolsbase THEN CloseLibrary(gadtoolsbase)
+    IF utilitybase THEN CloseLibrary(utilitybase)
+
+    -&gt; This is important! There are some structures (24 Bytes :) that are
+    -&gt; to be released!
+    END gauge
+    END gauge2; END gauge3; END gauge4; END gauge5; END gauge6
+
+    report_exception()
+ENDPROC
+
+-&gt; This proc will be called every time you change something at the
+-&gt; `Slide me!` titled volume slider
+PROC slider(id, cur)
+    gauge.setgauge(gui.wnd,cur)
+    gauge2.setgauge(gui.wnd,cur)
+    gauge5.setgauge(gui.wnd,cur)
+    gauge6.setgauge(gui.wnd,cur)
+ENDPROC
+
+-&gt; and this proc links gauge3 and gauge4 together
+PROC testproc(id, cur)
+    IF id=42 THEN gauge3.setgauge(gui.wnd, cur) ELSE gauge4.setgauge(gui.wnd, cur)
+ENDPROC
+
+
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

@@ -1,0 +1,254 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>PopUp.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-aepd17.html">AEPD17</a> &rsaquo; PopUp.e</div><h1>File: <code>PopUp.e</code></h1><p class="meta">228 lines · project <a href="../examples/pkg-aepd17.html"><code>AEPD17</code></a></p><p class="pathctx">AEPD17/EPD17/Amiga_E-Programme/MuiDev22/Source/PopUp.e</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/intuition.html">intuition/intuition</a></li></ul></div><h2>Source</h2><pre class="code">  ‹107 bytes of embedded binary/non-text data elided›
+  ‹263 bytes of embedded binary/non-text data elided›
+  ‹109 bytes of embedded binary/non-text data elided›
+  ‹27 bytes of embedded binary/non-text data elided›
+  ‹237 bytes of embedded binary/non-text data elided›
+  ‹27 bytes of embedded binary/non-text data elided›
+  ‹109 bytes of embedded binary/non-text data elided›
+  ‹109 bytes of embedded binary/non-text data elided›
+  ‹203 bytes of embedded binary/non-text data elided›
+  ‹25 bytes of embedded binary/non-text data elided›
+  ‹107 bytes of embedded binary/non-text data elided›
+  ‹31 bytes of embedded binary/non-text data elided›
+  ‹684 bytes of embedded binary/non-text data elided›
+***************************************************************************
+	Programmname    : 3D-Routinen
+	
+	Compiler		: PD-Compiler Amiga-E V2.1b von Wouter van Oortmerssen
+
+	Version         : 1.00
+	Beschreibung    : Grundgerüst von 3D-Routinen in &quot;E&quot;
+===========================================================================
+	geschrieben von Marcel Bennicke
+
+	begonnen        : 21.10.1994
+	letzte Änderung : 08.01.1995
+***************************************************************************
+*/
+
+
+MODULE	&#x27;intuition/intuition&#x27;,&#x27;intuition/screens&#x27;,
+		&#x27;exec/memory&#x27;,&#x27;exec/ports&#x27;,&#x27;exec/nodes&#x27;,&#x27;exec/lists&#x27;,
+		&#x27;graphics/rastport&#x27;,&#x27;graphics/view&#x27;,&#x27;graphics/text&#x27;,&#x27;graphics/displayinfo&#x27;,&#x27;graphics/gfx&#x27;,
+		&#x27;reqtools&#x27;,&#x27;libraries/reqtools&#x27;,
+		&#x27;utility/tagitem&#x27;
+
+
+OBJECT prgprefs
+	scrwidth,scrheight: INT
+	scrdisplayid: LONG
+	scrdepth: CHAR
+
+	globaltattr: LONG
+	reqtattr: LONG
+ENDOBJECT
+
+
+/* nur zur Berechnung des Schattens notwendig, da großer Wertebereich nötig */ 
+OBJECT vektor
+	x1,x2,x3: LONG
+ENDOBJECT
+
+
+/* enthält 2D-Bildschirmkoordinaten eines 3D-Punktes */
+OBJECT p2d
+	x,y: INT
+ENDOBJECT
+
+
+/* 3D-Punkt
+	trotz LONG-Variable nur für 16Bit Werte ausgelegt!
+  	(bei Datentyp INT gibt es Probleme mit dem Vorzeichen) */
+OBJECT p3d
+	x1,x2,x3:LONG
+ENDOBJECT
+
+
+ENUM IS_UNUSED,IS_POINT,IS_LINE,IS_AREA
+
+/* Ein Element ist nicht nur als Fläche zu verstehen, sondern eher als
+   eine Verbindung von Punkten oder ein Punkt selbst. Wie die Struktur
+   interpretiert wird, hängt von der Punktanzahl ab, die bei setElement()
+   angegeben wird:
+	   1  Punkt: Darstellung des Images auf der Punktposition oder 1 Pixel
+	   2 Punkte: Verbindung dieser Punkte zu einer Linie
+	3..n Punkte: Polygon mit n Ecken, die alle in EINER Ebene
+		         liegen müssen (wird nicht vom Programm überprüft!)
+*/
+
+OBJECT element
+	img: LONG			/* ^Image-Struktur als Textur */
+	basiccolor: CHAR	/* Grundfarbe (Pen-Nr.) */
+	realcolor: CHAR		/* Farbe nach Schattierung */
+	depth: LONG			/* Abstand zum Beobachter, wird von sortElemente() eingetragen */
+
+	points: INT			/* Anzahl der Punkte, die zu diesem Element zählen */
+	pnr: LONG			/* ^Array, das die Nummern (von 0 beginnend) der
+						   Punkte enthält, die zu diesem Element gehören.
+						   Alle angegebenen Punkte müssen in 1 Ebene liegen! */ 
+/* --- private ----------------- */
+	type: CHAR			/* Verbindungstyp */
+ENDOBJECT
+
+
+/* Objekteigenschaften:
+   -------------------- */
+SET OB_ISSETUP,			/* !!! programmintern, nie benutzen !!! */
+	OB_OUTLINE,			/* jede Fläche wird umrandet */
+	OB_SHADOW,			/* Objekt wird schattiert */
+	OB_NOSORT			/* Die Flächen sollen nicht sortiert werden! Nur
+						   nützlich bei Drahtgittermodellen o.ä., da sonst
+						   Darstellungsfehler auftauchen */
+
+CONST	ZOOMBASE = 1024,	/* Basiszahl für die ein Objekt in 1:1 Größe */
+	 	ZOOMBASE_BITS = 10	/* dargestellt wird */
+
+OBJECT objekt
+/* --- public ----------------- */
+	z1,z2,z3:INT		/* Nullpunkt des Objektes in der 3D-Welt*/
+	w1,w2,w3:INT		/* Drehwinkel um x1/2/3-Achse des gesamten Objektes */
+	x0,y0: INT			/* Offset für Bildschirmdarstellung */
+	zoom3: INT			/* 3-dimensionaler Vergrößerungsfaktor vergrößert
+						   das Volumen des Objektes in der 3D-Welt 
+							1024 = Originalgröße
+							2048 = doppelt...
+						*/
+	zoom2: INT			/* 2-dimensionaler Vergrößerungsfaktor vergrößert
+						   nur die Bildschirmdarstellung eines Objektes,
+						   wirkt also wie ein Fernglas */
+
+	flags: CHAR			/* Objekteigenschaften */
+
+	pcount: LONG		/* Anzahl der Punkte */
+	p3list: LONG		/* ^Array von p3d-Punkte (Original) */
+	pdest: LONG			/* ^Array von p3d-Punkten nach Convert3Dto2d */
+	p2list: LONG		/* ^Array von p2d-Punkten nach Convert3dto2d */
+
+	ecount: LONG		/* Anzahl der Elemente */
+	elist: LONG			/* ^Array von Zeigern auf je 1 Element */
+
+	outline: CHAR		/* Umrandungsfarbe */
+
+/* --- private ----------------- */
+	remkey: LONG		/* remember-Key */
+ENDOBJECT	
+
+
+CONST	BD_IDCMP = IDCMP_MENUPICK OR IDCMP_MOUSEBUTTONS,
+		BD_WFLG = WFLG_BACKDROP OR WFLG_BORDERLESS OR WFLG_ACTIVATE OR WFLG_REPORTMOUSE
+
+
+		/* -------- Fehlercodes */
+ENUM	E_NONE=0,E_REQTOOLS,E_SCR,E_WIN,E_PORTIDCMP,E_MEM,E_SIGBIT,
+
+		/* -------- Fehlerbereich bei Speicherplatzmangel */
+		MEM_GETPORT=0,MEM_OBJECT,MEM_RAS,MEM_AREA,MEM_RPORT,MEM_BITMAP,
+		MEM_PLANE,MEM_ELEMENT,
+
+		/* -------- Entscheidungen */
+		D_OK=0,
+
+		/* -------- Reaktionsflags */
+		DO_OK=0,DO_ERROR,DO_ABBRUCH
+
+
+
+DEF g_error:PTR TO LONG,g_decision:PTR TO LONG,g_memerror:PTR TO LONG,
+
+	g_prefs:prgprefs,g_oldreqwin,g_reqwin,
+	g_portIDCMP:PTR TO mp,g_maskIDCMP,
+	g_versionstring[60]:STRING,g_progname[55]:STRING,g_port[50]:STRING,
+	g_running,
+	g_scr:PTR TO screen,g_win:PTR TO window,
+
+	g_tmpmem,g_tmpras:tmpras,				/* zum Flächenfüllen */
+	g_areamem,g_areainfo:areainfo,			/* fÜr Area-Befehle */
+
+	g_sin:PTR TO INT,g_cos:PTR TO INT
+	
+
+PROC funktion(x,y,xmax,ymax)
+/* Hier steht die 3D-Funktion, die von zwei Parametern (x,y) abhängig ist
+   und auf einer Fläche mit der Breite xmax und Höhe ymax abgebildet werden soll.
+   Alle Werte beziehen sich hier auf die Anzahl der Stützpunkte in x- und
+   y-Richtung. Die Werte von x und y beginnen bei 1!
+   Die Fläche hat im 3D-Raum immer die Ausmaße von 400x400. Um Verzerrungen
+   zu vermeiden sollten die berechneten Werte auch in diesem Bereich liegen.
+*/
+
+	DEF z,x2,y2
+
+	x2:=(x-1)*900/xmax
+	y2:=(y-1)*512/ymax
+
+	z:=Shr(g_sin[x2 AND 511]*g_cos[y2 AND 511],16)
+ENDPROC z
+
+
+PROC main() HANDLE
+	DEF gotsigs,msg:PTR TO intuimessage,
+		class,code,
+
+		beo:p3d,mx,my,bm,title[80]:STRING,
+		drawrp:PTR TO rastport,hiddenrp:PTR TO rastport,
+		obj1:PTR TO objekt,breite,hoehe,flaechenanzahl
+
+
+	IF setup()&lt;&gt;DO_OK THEN Raise(E_NONE)
+
+	breite:=11		/* Anzahl der Stützpunkte des Funktionsrasters */
+	hoehe:=11
+	flaechenanzahl:=(breite-1)*(hoehe-1)*2
+
+	IF openVisuals({drawrp},10)&lt;&gt;DO_OK THEN Raise(E_NONE)
+
+	bm:=getBitmap(g_win.width,g_win.height,g_prefs.scrdepth)
+	IF bm=NIL THEN Raise(E_NONE)
+	hiddenrp:=getRPort(bm)
+	IF hiddenrp=NIL THEN Raise(E_NONE)
+
+	/* da hiddenrp die gleichen Ausmaße wie drawrp hat, können beide
+	   1 gemeinsamen Layer benutzen. Dadurch werden auch im verschteckten
+	   Rastport hiddenrp über den Rand hinauslaufende Linien und Flächen
+	   korrekt abgeschnitten, d.h. für den hiddenrp gelten die gleichen
+	   ClippingRects wie für drawrp. Ansonsten würde es bei überstehenden
+	   Pixeln zu Systemabstürzen kommen. */
+
+	hiddenrp.layer:=drawrp.layer
+
+	obj1:=setupObjekt(breite*hoehe,flaechenanzahl,OB_SHADOW)
+	IF obj1=NIL THEN Raise(E_NONE)
+
+	IF setupvals(obj1,breite,hoehe)&lt;&gt;DO_OK THEN Raise(E_NONE)
+
+	beo.x1:=-300
+	beo.x2:=0
+	beo.x3:=0
+
+	StringF(title,&#x27;\s  [\d Flächen</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

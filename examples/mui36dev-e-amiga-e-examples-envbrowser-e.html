@@ -1,0 +1,175 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Envbrowser.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-mui36dev-e.html">mui36dev-E</a> &rsaquo; Envbrowser.e</div><h1>File: <code>Envbrowser.e</code></h1><p class="meta">149 lines · project <a href="../examples/pkg-mui36dev-e.html"><code>mui36dev-E</code></a></p><p class="pathctx">mui36dev-E/Amiga-E/Examples/Envbrowser.e</p><p class="prose">** Original C Code written by Stefan Stuntz ** ** Translation into E by Klaus Becker ** ** All comments are from the C-Source</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/boopsi.html">amigalib/boopsi</a></li><li><a href="../modules/var.html">dos/var</a></li><li><a href="../modules/classes.html">intuition/classes</a></li><li><a href="../modules/gadtools.html">libraries/gadtools</a></li><li><a href="../modules/muimaster.html">muimaster</a></li><li><a href="../modules/tagitem.html">utility/tagitem</a></li></ul></div><h2>Source</h2><pre class="code">/*
+**  Original C Code written by Stefan Stuntz
+**
+**  Translation into E by Klaus Becker
+**
+**  All comments are from the C-Source
+*/
+
+OPT PREPROCESS
+
+/*
+** Loading the needed MODULEs
+*/
+
+MODULE &#x27;AmigaLib/boopsi&#x27;
+MODULE &#x27;dos/var&#x27;
+MODULE &#x27;muimaster&#x27;, &#x27;libraries/mui&#x27;
+MODULE &#x27;utility/tagitem&#x27;, &#x27;utility/hooks&#x27;
+MODULE &#x27;intuition/classes&#x27;, &#x27;intuition/classusr&#x27;
+MODULE &#x27;libraries/gadtools&#x27;
+
+ENUM ER_NON, ER_MUILIB, ER_APP          /* for the exception handling */
+ENUM ID_DISPLAY=1,ID_EDIT,ID_DELETE,ID_SAVE 
+
+PROC main() HANDLE
+  DEF app,bt_Edit,bt_Delete,bt_Save,wi_Browser,lv_Show,lv_Vars
+  DEF buffer[2048]:STRING, var,running=TRUE,signal,result
+
+  IF (muimasterbase:=OpenLibrary(MUIMASTER_NAME,MUIMASTER_VMIN))=NIL THEN Raise(ER_MUILIB)
+
+  app := ApplicationObject,
+    MUIA_Application_Title      , &#x27;EnvBrowser&#x27;,
+    MUIA_Application_Version    , &#x27;$VER: EnvBrowser 10.11 (23.12.94)&#x27;,
+    MUIA_Application_Copyright  , &#x27; 1992/93, Stefan Stuntz&#x27;,
+    MUIA_Application_Author     , &#x27;Stefan Stuntz &amp; Klaus Becker&#x27;,
+    MUIA_Application_Description, &#x27;View environment variables.&#x27;,
+    MUIA_Application_Base       , &#x27;ENVBROWSER&#x27;,
+    SubWindow, wi_Browser:= WindowObject,
+      MUIA_Window_ID, &quot;MAIN&quot;,
+      MUIA_Window_Title, &#x27;Environment Browser&#x27;,
+      WindowContents, VGroup,
+        Child, HGroup,
+          Child, lv_Vars:= ListviewObject,
+            MUIA_Listview_List, DirlistObject,
+              InputListFrame,
+              MUIA_Dirlist_Directory      , &#x27;env:&#x27;,
+              MUIA_Dirlist_FilterDrawers, MUI_TRUE,
+              MUIA_List_Format          , &#x27;COL=0&#x27;,
+              End,
+            End,
+          Child, lv_Show:= ListviewObject,
+            MUIA_Listview_List, FloattextObject,
+              ReadListFrame,
+              MUIA_Font, MUIV_Font_Fixed,
+              End,
+            End,
+          End,
+        Child, HGroup, MUIA_Group_SameSize, MUI_TRUE,
+          Child, bt_Edit:=   SimpleButton(&#x27;_Edit&#x27;  ),
+          Child, bt_Delete:= SimpleButton(&#x27;_Delete&#x27;),
+          Child, bt_Save:=   SimpleButton(&#x27;_Save&#x27;  ),
+          End,
+        End,
+      End,
+    End
+
+  IF app=NIL THEN Raise(ER_APP)
+
+  doMethodA(wi_Browser,[MUIM_Notify,MUIA_Window_CloseRequest,MUI_TRUE,app,2,MUIM_Application_ReturnID,MUIV_Application_ReturnID_Quit])
+  doMethodA(lv_Vars   ,[MUIM_Notify,MUIA_List_Active,MUIV_EveryTime,app,2,MUIM_Application_ReturnID,ID_DISPLAY])
+  doMethodA(lv_Vars   ,[MUIM_Notify,MUIA_Listview_DoubleClick,MUI_TRUE,app,2,MUIM_Application_ReturnID,ID_EDIT])
+  doMethodA(bt_Delete ,[MUIM_Notify,MUIA_Pressed,FALSE,app,2,MUIM_Application_ReturnID,ID_DELETE])
+  doMethodA(bt_Save   ,[MUIM_Notify,MUIA_Pressed,FALSE,app,2,MUIM_Application_ReturnID,ID_SAVE  ])
+  doMethodA(bt_Edit   ,[MUIM_Notify,MUIA_Pressed,FALSE,app,2,MUIM_Application_ReturnID,ID_EDIT  ])
+
+  doMethodA(wi_Browser,[MUIM_Window_SetCycleChain,lv_Vars,lv_Show,bt_Edit,bt_Delete,bt_Save,NIL])
+
+  set(wi_Browser,MUIA_Window_Open,MUI_TRUE)
+
+    WHILE running
+      result:= doMethodA(app,[MUIM_Application_Input,{signal}])
+        SELECT result
+               CASE MUIV_Application_ReturnID_Quit
+                    running:=FALSE
+               CASE ID_DISPLAY
+                    get(lv_Vars,MUIA_Dirlist_Path,{var})
+                    IF (var AND GetVar(var,buffer,StrMax(buffer),GVF_GLOBAL_ONLY OR GVF_BINARY_VAR)&lt;&gt;-1)
+                      set(lv_Show,MUIA_Floattext_Text,buffer)
+                    ELSE
+                      DisplayBeep(0)
+                    ENDIF
+               CASE ID_DELETE
+                    get(lv_Vars,MUIA_Dirlist_Path,{var})
+                    IF var
+                      set(lv_Show,MUIA_Floattext_Text,NIL)
+                      DeleteFile(var)
+                      doMethodA(lv_Vars,[MUIM_List_Remove,MUIV_List_Remove_Active])
+                    ELSE
+                      DisplayBeep(0)
+                    ENDIF
+
+               CASE ID_SAVE
+                 get(lv_Vars,MUIA_Dirlist_Path,{var})
+                 IF var
+                   set(app,MUIA_Application_Sleep,MUI_TRUE)
+                   StringF(buffer,&#x27;copy env:\s envarc:\s&#x27;,FilePart(var),FilePart(var))
+                   Execute(buffer,0,0)
+                   set(app,MUIA_Application_Sleep,FALSE)
+                 ELSE
+                   DisplayBeep(0)
+                 ENDIF
+
+               CASE ID_EDIT
+                 get(lv_Vars,MUIA_Dirlist_Path,{var})
+                 IF var
+                   set(app,MUIA_Application_Sleep,MUI_TRUE)
+                   StringF(buffer,&#x27;ged -sticky &quot;\s&quot;&#x27;,var)
+                   Execute(buffer,0,0)
+                   set(app,MUIA_Application_Sleep,FALSE)
+                   doMethodA(wi_Browser,[MUIM_Window_ScreenToFront])
+                 ELSE
+                   DisplayBeep(0)
+                 ENDIF
+        ENDSELECT
+
+      IF (running AND signal) THEN Wait(signal)
+    ENDWHILE
+
+EXCEPT DO
+  IF app THEN Mui_DisposeObject(app)
+  IF muimasterbase THEN CloseLibrary(muimasterbase)
+  
+  SELECT exception
+    CASE ER_MUILIB
+      WriteF(&#x27;Failed to open \s.\n&#x27;,MUIMASTER_NAME)
+      CleanUp(20)
+
+    CASE ER_APP
+      WriteF(&#x27;Failed to create application.\n&#x27;)
+      CleanUp(20)
+      
+  ENDSELECT
+ENDPROC 0
+
+
+
+
+
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

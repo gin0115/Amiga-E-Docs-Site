@@ -1,0 +1,125 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>filehook.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-aepd25.html">AEPD25</a> &rsaquo; filehook.e</div><h1>File: <code>filehook.e</code></h1><p class="meta">99 lines · project <a href="../examples/pkg-aepd25.html"><code>AEPD25</code></a></p><p class="pathctx">AEPD25/EPD25/Amiga_E-Programme/JRH-RKRM-PartOne/ASL/filehook.e</p><p class="prose">filehook.e</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/asl.html">asl</a></li></ul></div><h2>Source</h2><pre class="code">-&gt; filehook.e
+
+OPT PREPROCESS
+
+-&gt; E-Note: eCodeASLHook() sets up an E PROC for use as an ASL hook function
+-&gt;         (i.e., you can use globals and not worry about trashing registers).
+MODULE &#x27;asl&#x27;,
+       &#x27;other/ecode&#x27;,
+       &#x27;dos/dos&#x27;,
+       &#x27;dos/dosasl&#x27;,
+       &#x27;intuition/intuition&#x27;,
+       &#x27;libraries/asl&#x27;,
+       &#x27;utility/hooks&#x27;
+
+ENUM ERR_NONE, ERR_AFILE, ERR_ECODE, ERR_KICK, ERR_LIB, ERR_WIN
+
+RAISE ERR_AFILE IF AllocFileRequest()=NIL,
+      ERR_KICK  IF KickVersion()=FALSE,
+      ERR_LIB   IF OpenLibrary()=NIL,
+      ERR_WIN   IF OpenWindowTagList()=NIL
+
+CONST DESTPATLENGTH=20
+
+DEF window=NIL, sourcepattern, pat[DESTPATLENGTH]:ARRAY
+
+PROC main() HANDLE
+  DEF fr=NIL:PTR TO filerequester, myFunc
+
+  -&gt; This is the pattern matching string that the hook function uses
+  sourcepattern:=&#x27;(#?.info)&#x27;
+
+  KickVersion(37)  -&gt; E-Note: requires V37
+
+  aslbase:=OpenLibrary(&#x27;asl.library&#x27;, 37)
+
+  -&gt; This is a V37 dos.library function that turns a pattern matching string
+  -&gt; into something the DOS pattern matching functions can understand.
+  ParsePattern(sourcepattern, pat, DESTPATLENGTH)
+
+  -&gt; Open a window that gets ACTIVEWINDOW events
+  window:=OpenWindowTagList(NIL, [WA_TITLE, &#x27;ASL Hook Function Example&#x27;,
+                                  WA_IDCMP, IDCMP_ACTIVEWINDOW,
+                                  WA_FLAGS, WFLG_DEPTHGADGET,
+                                  NIL])
+
+  fr:=AllocFileRequest()
+  -&gt; E-Note: eCodeASLHook() sets up an E PROC for use as an ASL hook function
+  IF NIL=(myFunc:=eCodeASLHook({hookFunc})) THEN Raise(ERR_ECODE)
+  IF AslRequest(fr, [ASL_DIR,       &#x27;SYS:Utilities&#x27;,
+                     ASL_WINDOW,    window,
+                     ASL_TOPEDGE,   0,
+                     ASL_HEIGHT,    200,
+                     ASL_HAIL,      &#x27;Pick an icon, select save&#x27;,
+                     -&gt; E-Note: use the value returned from aslhook()
+                     ASL_HOOKFUNC,  myFunc,
+                     ASL_FUNCFLAGS, FILF_DOWILDFUNC OR FILF_DOMSGFUNC OR
+                                    FILF_SAVE,
+                     ASL_OKTEXT, &#x27;Save&#x27;,
+                     NIL])
+    WriteF(&#x27;PATH=\s FILE=\s\n&#x27;, fr.drawer, fr.file)
+    WriteF(&#x27;To combine the path and filename, copy the path\n&#x27;)
+    WriteF(&#x27;to a buffer, add the filename with Dos AddPart().\n&#x27;)
+  ENDIF
+EXCEPT DO
+  IF fr THEN FreeFileRequest(fr)
+  IF window THEN CloseWindow(window)
+  IF aslbase THEN CloseLibrary(aslbase)
+  SELECT exception
+  CASE ERR_AFILE;  WriteF(&#x27;Error: Could not allocate file request\n&#x27;)
+  CASE ERR_ECODE;  WriteF(&#x27;Error: Ran out of memory in eCodeASLHook()\n&#x27;)
+  CASE ERR_KICK;   WriteF(&#x27;Error: Requires V37\n&#x27;)
+  CASE ERR_LIB;    WriteF(&#x27;Error: Could not open ASL library\n&#x27;)
+  CASE ERR_WIN;    WriteF(&#x27;Error: Could not open window\n&#x27;)
+  ENDSELECT
+ENDPROC
+
+PROC hookFunc(type, obj:PTR TO anchorpath, fr)
+  DEF returnvalue
+  SELECT type
+  CASE FILF_DOMSGFUNC
+    -&gt; We got a message meant for the window
+    WriteF(&#x27;You activated the window\n&#x27;)
+    RETURN obj
+  CASE FILF_DOWILDFUNC
+    -&gt; We got an AnchorPath structure, should the requester display this file?
+
+    -&gt; MatchPattern() is a dos.library function that compares a matching
+    -&gt; pattern (parsed by the ParsePattern() DOS function) to a string and
+    -&gt; returns TRUE if they match.
+    returnvalue:=MatchPattern(pat, obj.info.filename)
+
+    -&gt; We have to negate MatchPattern()&#x27;s return value because the file
+    -&gt; requester expects a zero for a match not a TRUE value
+    RETURN returnvalue=FALSE
+  ENDSELECT
+ENDPROC
+
+vers: CHAR 0, &#x27;$VER: filehook 37.0&#x27;, 0
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

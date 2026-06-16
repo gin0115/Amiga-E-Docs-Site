@@ -1,0 +1,241 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>stringlist.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-ooep.html">OOEP</a> &rsaquo; stringlist.e</div><h1>File: <code>stringlist.e</code></h1><p class="meta">215 lines · project <a href="../examples/pkg-ooep.html"><code>OOEP</code></a></p><p class="pathctx">OOEP/oomodules/list/doublylinked/stringlist.e</p><p class="prose">This module contains the code of the original example program of Barry&#x27;s doubly linked list module. Gregor Goldbach September 10 1995 Just added a new method. It takes an <a href="../modules/elist.html">elist</a> and builds a alpha sorted <a href="../modules/string.html">string</a> list from it. The <a href="../modules/elist.html">elist</a>&#x27;s entries are copied. Named the proc after <a href="../modules/queuestack.html">queuestack</a>&#x27;s asQueuesta</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/doublylinked.html">oomodules/list/doublylinked</a></li></ul></div><h2>Source</h2><pre class="code">/*
+
+This module contains the code of the original example program of Barry&#x27;s
+doubly linked list module.
+
+Gregor Goldbach September 10 1995
+
+
+Just added a new method. It takes an elist and builds a alpha sorted string
+list from it. The elist&#x27;s entries are copied. Named the proc after queuestack&#x27;s
+asQueuestack() asStringList().
+
+Gregor Goldbach September 29 1995
+
+
+  April 10 1996 Gregor Goldbach
+    Removed the method asExecList for we have the execList object to convert
+    an elist. To get an execList from a stringList do this:
+
+      /*
+       *  A stringList has already been built, set elist to stringList&#x27;
+       *  contents:
+       */
+
+      elist.set(stringList.asList())
+
+
+      /*
+       *  Get execList from elist:
+       */
+
+      NEW execList.new([&quot;list&quot;, elist.list])
+
+
+    Renamed asStringList() to fromList().
+
+*/
+
+OPT MODULE
+OPT EXPORT
+
+MODULE &#x27;oomodules/list/doublylinked&#x27;
+
+OBJECT stringNode OF dlln
+  string
+ENDOBJECT
+
+OBJECT stringList OF dllh
+ENDOBJECT
+
+
+PROC select(optionlist,index) OF stringNode
+-&gt;  TODO: error check: len-o&#x27;-list!
+DEF item, value,
+    len
+
+  item := ListItem(optionlist, index)
+
+  SELECT item
+    CASE &quot;set&quot;
+      INC index
+
+      self.string:=StrCopy(String(len:=StrLen(ListItem(optionlist,index))), ListItem(optionlist,index), len)
+
+  ENDSELECT
+
+ENDPROC index
+
+PROC end() OF stringNode
+  DisposeLink(self.string)
+ENDPROC
+
+PROC clear() OF stringList
+  DEF node:PTR TO stringNode
+  WHILE self.isEmpty()=FALSE
+    node:=self.remHead()
+    END node
+  ENDWHILE
+ENDPROC
+
+PROC insertAlphaSorted(node:PTR TO stringNode) OF stringList
+  DEF listnode:PTR TO stringNode, done=FALSE
+  listnode:=self.firstNode() -&gt;returns lastnode or tail
+  REPEAT
+    IF listnode=self.tail
+      done:=TRUE
+    ELSEIF OstrCmp(node.string, listnode.string)&gt;=0
+      done:=TRUE
+    ELSE
+      listnode:=listnode.succ
+    ENDIF
+  UNTIL done
+  self.insert(node, listnode.pred)
+ENDPROC
+
+PROC printAll() OF stringList
+  DEF node:PTR TO stringNode
+  IF self.isEmpty()
+    WriteF(&#x27;*** List is empty\n&#x27;)
+    RETURN
+  ENDIF
+  node:=self.firstNode()
+  WHILE node&lt;&gt;self.tail
+    WriteF(&#x27;\s\n&#x27;, node.string)
+    node:=node.succ
+  ENDWHILE
+ENDPROC
+
+
+PROC asList() OF stringList
+/*
+
+  NAME
+
+    asList() of stringList
+
+  FUNCTION
+
+    Returns an elist with the names as items.
+
+*/
+
+DEF index,
+    list:PTR TO LONG,
+    len,
+    actualNode:PTR TO stringNode
+
+  len := self.length()
+  IF len=0 THEN RETURN
+  IF (list := List(len)) = NIL THEN RETURN
+
+
+  actualNode := self.firstNode()
+
+
+  FOR index := 0 TO len-1
+    list[index] := actualNode.string
+    actualNode := actualNode.succ
+  ENDFOR
+
+  SetList(list,len)
+
+  RETURN list
+
+ENDPROC
+
+EXPORT PROC fromList(list) OF stringList
+DEF n:PTR TO stringNode,
+    index
+
+  FOR index := 0 TO ListLen(list)-1
+
+    self.insertAlphaSorted(NEW n.new([&quot;set&quot;,ListItem(list,index)]))
+
+  ENDFOR
+
+ENDPROC
+
+/*
+
+the following method asExecList() is removed from this object because of
+the execList object. To get an execList from a stringList one has to do
+this:
+
+  /* a stringList has already been built */
+
+  elist.set(stringList.asList())
+  NEW execList.new([&quot;list&quot;, elist.list])
+
+
+
+PROC asExecList() OF stringList
+/*
+
+  NAME
+
+    asExecList() of stringList
+
+  FUNCTION
+
+    Returns an execlist with the names as items. Note that the
+    names are NOT copied.
+
+*/
+
+DEF index,
+    list:PTR TO LONG,
+    len,
+    actualNode:PTR TO stringNode,
+
+    execlist:PTR TO lh,
+    execnode:PTR TO ln
+
+  execlist := newlist()
+
+  len := self.length()
+  IF len=0 THEN RETURN
+  IF (list := List(len)) = NIL THEN RETURN
+
+
+  actualNode := self.firstNode()
+
+
+  FOR index := 0 TO len-1
+    execnode := newnode(NIL, actualNode.string)
+    AddTail(execlist,execnode)
+    actualNode := actualNode.succ
+  ENDFOR
+
+  RETURN execlist
+
+ENDPROC
+
+*/
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

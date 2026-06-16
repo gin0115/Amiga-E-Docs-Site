@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>wipe.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-aepd45.html">AEPD45</a> &rsaquo; wipe.e</div><h1>File: <code>wipe.e</code></h1><p class="meta">78 lines · project <a href="../examples/pkg-aepd45.html"><code>AEPD45</code></a></p><p class="pathctx">AEPD45/EPD45/Programme/tools/programme/wipe/source/wipe.e</p><p class="prose">Wipe - Löschprogramm für vertrauliche Daten</p><h2>Source</h2><pre class="code">/* Wipe - Löschprogramm für vertrauliche Daten */
+
+OPT OSVERSION=37 /* Ab OS 2.04 */
+
+DEF lock, rdargs, args=NIL:PTR TO LONG, i, flen, buf[30000]:STRING
+
+PROC main()
+ IF wbmessage=NIL /* Wenn von der Shell gestartet ... */
+  WriteF(&#x27;\e[32;4mWipe ©1995 von Andreas Rehm\e[0m\n\n&#x27;)
+  /* Letzte Abbruch Möglichlkeit */
+  IF rdargs:=ReadArgs(&#x27;FILES/M&#x27;,{args},NIL)
+   IF args                                  /* Wenn Argumente übergeben wurden weiter */
+    WriteF(&#x27;\e[33;1mSie können nur noch jetzt mit Ctrl-C abbrechen!\e[0m\n&#x27;)
+    Delay(50) /* Warten, falls der User abbrechen will */
+    FOR i:=1 TO 30000 DO StrAdd(buf,%00000000,1)
+    i:=0
+    WHILE (args[i])&lt;&gt;NIL  /* Gehe Argumente durch */
+     IF CtrlC()=NIL /* Wenn kein Abbrruchbefehl via Ctrl-C erfolgt weiter */
+      wipe() /* Übergabe an die Löschsektion */
+      INC i  /* i vortlaufend i= i+1+...+n*1 */
+     ELSE
+      WriteF(&#x27;\nBeende Wipe...\n\n\e[0m&#x27;)
+      JUMP end
+     ENDIF
+    ENDWHILE
+    end:
+   ELSE
+    WriteF(&#x27;\nKeine Argumente übergeben!\n\n&#x27;)
+   ENDIF
+   FreeArgs(rdargs) /* ReadArgs() Strucktur freigeben */
+  ENDIF
+ ELSE /* Falls von Workbench gestartet, Information anzeigen */
+  EasyRequestArgs(0,[20,0,&#x27;Wipe ©1995 Andreas Rehm&#x27;,&#x27;Sie können dieses Programm momentan nur vom CLI aus verwenden!&#x27;,&#x27;OK&#x27;],0,NIL)
+ ENDIF
+ENDPROC
+
+CHAR &#x27;\0$VER: \e[32mWipe\e[m 1.04 (29.03.95) (©1995 Andreas Rehm)\0&#x27; /* Versionsstring */
+
+PROC wipe() /* Löschprozedur */
+ IF lock:=Open(args[i],OLDFILE) /* File adressieren */
+  IF flen:=FileLength(args[i])  /* Filelänge herausfinden */
+   WriteF(&#x27;\ec\e[32mBearbeite File &quot;\e[0m\s\e[32m&quot; (Länge: \d)\e[0m&#x27;,args[i],flen)
+   WHILE fllen() /* Schleife, bis das File ganz bearbeitet ist */
+    Write(lock,buf,30000) /* File mit Binär 00000000 füllen; insgesamt 30000 Byte */
+    flen:=flen-30000      /* Neue Position für fllen() angeben */
+   ENDWHILE
+   Write(lock,buf,flen)   /* Rest füllen */
+   WriteF(&#x27;\n\n\e[33mFile &quot;\s&quot; mit Chunk Data gefüllt!\e[0m\n&#x27;,args[i])
+   SetFileSize(lock,0,-1) /* Filelänge auf 0 */
+   Rename(args[i],args[i])
+  ELSE
+   WriteF(&#x27;File &quot;\s&quot; ist leer.\n&#x27;,args[i])
+  ENDIF
+  Close(lock) /* Adresse schließen */
+  delete()    /* File löschen */
+ ELSE
+  WriteF(&#x27;\n\e[33mName &quot;\s&quot; fehlerhaft, oder File nicht existent!\e[0m\n&#x27;,args[i])
+ ENDIF
+ Delay(100)
+ENDPROC
+
+PROC fllen() /* Überprüfung der bearbeiteten Länge */
+ IF flen&lt;=30000
+  RETURN FALSE /* Wenn nur noch 30000 Byte oder weniger übrig sind, abbrechen */
+ ENDIF
+ENDPROC
+
+PROC delete() /* Löschen des Files */
+ DEF del[360]:STRING
+ IF DeleteFile(args[i])  /* Löschen */
+  WriteF(&#x27;\n\e[33mFile &quot;\s&quot; ist vollständig terminiert!\e[0m\n&#x27;,args[i])
+  StringF(del,&#x27;\s.info&#x27;,args[i])
+  IF DeleteFile(del) THEN WriteF(&#x27;\e[33mIcon gelöscht!\n\e[0m&#x27;)
+ ELSE
+  WriteF(&#x27;\n\e[32mFile &quot;\s&quot; konnte nicht gelöscht werden!\e[0m\n&#x27;,args[i])
+ ENDIF
+ENDPROC
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

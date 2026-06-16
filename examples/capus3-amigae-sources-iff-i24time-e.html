@@ -1,0 +1,179 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>I24Time.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-capus3.html">capus3</a> &rsaquo; I24Time.e</div><h1>File: <code>I24Time.e</code></h1><p class="meta">153 lines · project <a href="../examples/pkg-capus3.html"><code>capus3</code></a></p><p class="pathctx">capus3/AmigaE/Sources/IFF/I24Time.e</p><p class="prose">&gt; EDEVHEADER</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/iff.html">libraries/iff</a></li><li><a href="../modules/iffparse.html">libraries/iffparse</a></li></ul></div><h2>Source</h2><pre class="code">-&gt;&gt; EDEVHEADER
+/*= © NasGûl =========================
+ ESOURCE I24Time.e
+ EDIR    Workbench:AmigaE/Sources/IFF
+ ECOPT   ERRLINE
+ EXENAME I24Time
+ MAKE    EC
+ AUTHOR  NasGûl
+ TYPE    EXEDOS
+ =====================================*/
+-&gt;&lt;
+-&gt;&gt; ©/DISTRIBUTION/UTILISATION
+/*=====================================
+
+ - TOUTE UTILISATION COMMERCIALE DES CES SOURCES EST
+   INTERDITE SANS MON AUTORISATION.
+
+ - TOUTE DISTRIBUTION DOIT ETRE FAITES EN TOTALITE (EXECUTABLES/MODULES E/SOURCES E).
+
+ !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+ !! TOUTE INCLUSION SUR UN CD-ROM EST INTERDITE SANS MON AUTORISATION.!!
+ !! SEULES LES DISTRIBUTIONS DE FRED FISH ET AMINET CDROM SONT AUTO-  !!
+ !! RISES A DISTRIBUER CES PROGRAMMES/SOURCES.                        !!
+ !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+=====================================*/
+-&gt;&lt;
+-&gt;&gt; MODULES
+
+MODULE &#x27;libraries/iffparse&#x27;,&#x27;iffparse&#x27;
+MODULE &#x27;libraries/iff&#x27;
+
+-&gt;&lt;
+-&gt;&gt; OBJECTS
+
+OBJECT timetracing
+    start:LONG
+    end:LONG
+ENDOBJECT
+
+-&gt;&lt;
+-&gt;&gt; DEFINITIONS GLOBALES
+
+DEF usereq=FALSE
+DEF textreq[4000]:STRING
+
+-&gt;&lt;
+-&gt;&gt; main()
+PROC main()
+    DEF rdargs=NIL,myargs:PTR TO LONG
+    DEF source[80]:STRING
+    DEF marg=NIL:PTR TO LONG
+    DEF i
+    VOID &#x27;$VER: I24Time 1.0 (15.11.95) © 1995 NasGûl&#x27;
+    myargs:=New(400)
+    FOR i:=0 TO 99
+        myargs[i]:=0
+    ENDFOR
+    IF iffparsebase:=OpenLibrary(&#x27;iffparse.library&#x27;,0)
+        IF rdargs:=ReadArgs(&#x27;Files/M,Req/S&#x27;,myargs,NIL)
+            IF myargs[1] THEN usereq:=TRUE
+            IF myargs[0]
+                marg:=myargs[0]
+                FOR i:=0 TO 97
+                    IF (marg[i]&lt;&gt;0)
+                        StrCopy(source,marg[i],ALL)
+                        readIFFFile(source)
+                    ELSE
+                        JUMP fin
+                    ENDIF
+                ENDFOR
+                fin:
+                IF usereq=TRUE
+                    EasyRequestArgs(0,[20,0,&#x27;I24Time&#x27;,textreq,&#x27;Ok&#x27;],0,0)
+                ENDIF
+            ENDIF
+            FreeArgs(rdargs)
+        ENDIF
+        CloseLibrary(iffparsebase)
+    ENDIF
+ENDPROC
+-&gt;&lt;
+-&gt;&gt; readIFFFile(s)
+PROC readIFFFile(s)
+    DEF iff=NIL:PTR TO iffhandle
+    DEF error=0
+    DEF curchunk:PTR TO contextnode
+    DEF buffer
+    DEF stopchunk:PTR TO LONG
+    DEF numstopchunk=3
+    DEF bh:PTR TO bmh
+    DEF time:PTR TO timetracing
+    DEF t,h,mn,sec
+    DEF tempstr[256]:STRING
+    DEF piv[256]:STRING
+    stopchunk:=[&quot;ILBM&quot;,&quot;BMHD&quot;,&quot;ILBM&quot;,&quot;IMRT&quot;,&quot;ILBM&quot;,&quot;ANNO&quot;]
+
+    IF (iff:=AllocIFF())&gt;0
+        iff.stream:=Open(s,1005)
+        InitIFFasDOS(iff)
+        IF (error:=OpenIFF(iff,IFFF_READ))=0
+            IF (Not(StopChunks(iff,stopchunk,numstopchunk)))
+                REPEAT
+                    error:=ParseIFF(iff,IFFPARSE_SCAN)
+                    IF error=0
+                        curchunk:=CurrentChunk(iff)
+                            IF curchunk.id=&quot;BMHD&quot;
+                                IF bh:=New(curchunk.size)
+                                    ReadChunkBytes(iff,bh,curchunk.size)
+                                    StringF(tempstr,&#x27;\s Width  :\d[4] Height :\d[4] NPlanes:\d[2] &#x27;,
+                                                s,bh.width,bh.height,bh.nplanes)
+                                    StrAdd(piv,tempstr,ALL)
+                                    Dispose(bh)
+                                ENDIF
+                            ELSEIF curchunk.id=&quot;IMRT&quot;
+                                IF time:=New(curchunk.size)
+                                    ReadChunkBytes(iff,time,curchunk.size)
+                                    t:=time.end-time.start
+                                    h:=t/3600
+                                    mn:=t/60
+                                    sec:=t-(mn*60)
+                                    StringF(tempstr,&#x27; TotalTime \z\d[2]:\z\d[2]:\z\d[2]&#x27;,h,mn,sec)
+                                    StrAdd(piv,tempstr,ALL)
+                                    Dispose(time)
+                                ENDIF
+                            ELSEIF curchunk.id=&quot;ANNO&quot;
+                                IF buffer:=New(curchunk.size)
+                                    ReadChunkBytes(iff,buffer,curchunk.size)
+                                    StringF(tempstr,&#x27;Annotation :\s\n&#x27;,buffer)
+                                    StrAdd(piv,tempstr,ALL)
+                                    Dispose(buffer)
+                                ENDIF
+                            ENDIF
+                    ENDIF
+                UNTIL ((error&lt;&gt;0) AND (error&lt;&gt;-2))
+                IF usereq=FALSE 
+                    WriteF(&#x27;\s\n&#x27;,piv)
+                ELSE
+                    StrAdd(textreq,piv,ALL)
+                    StrAdd(textreq,&#x27;\n&#x27;,ALL)
+                ENDIF
+            ENDIF
+            CloseIFF(iff)
+            Close(iff.stream)
+        ELSE
+            Close(iff.stream)
+        ENDIF
+        FreeIFF(iff)
+    ENDIF
+ENDPROC
+-&gt;&lt;
+
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

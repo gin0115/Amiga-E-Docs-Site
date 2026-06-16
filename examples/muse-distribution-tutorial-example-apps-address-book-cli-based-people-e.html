@@ -1,0 +1,133 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>people.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-muse.html">muse</a> &rsaquo; people.e</div><h1>File: <code>people.e</code></h1><p class="meta">107 lines · project <a href="../examples/pkg-muse.html"><code>muse</code></a></p><p class="pathctx">muse/distribution/tutorial/Example Apps/Address Book/CLI Based/people.e</p><p class="prose">This is a &#x27;people&#x27; database module. It&#x27;s only <a href="../modules/interface.html">interface</a> is to do with searching for specific people, adding people, and deleting. It does *not* deal with their creation, destruction, comparison etc.</p><h2>Source</h2><pre class="code">
+-&gt; This is a &#x27;people&#x27; database module. It&#x27;s only interface is to do with
+-&gt; searching for specific people, adding people, and deleting. It does *not*
+-&gt; deal with their creation, destruction, comparison etc.
+
+OPT MODULE
+OPT EXPORT
+MODULE &#x27;*person&#x27;
+
+CONST DEFAULT_MAX_PEOPLE=100
+DEF people:PTR TO LONG, max_people,
+    current_person, search_person:PTR TO person,
+    last_found
+
+/*{-------------- Module initialisation and shutdown code --------------}*/
+PROC initialise_database(no_of_people=DEFAULT_MAX_PEOPLE)
+-&gt; Possible improvement would be to load database!
+   last_found:=-1          -&gt; Since we haven&#x27;t searched yet.
+   current_person:=-1      -&gt; Since we haven&#x27;t got anyone yet.
+   search_person:=NIL
+   people:=List(no_of_people)
+   max_people:=no_of_people
+ENDPROC
+
+PROC shutdown_database()
+-&gt; Possible improvement might be to save database!
+   NOP
+ENDPROC
+/*{-------------- End of initialisation and shutdown code --------------}*/
+
+PROC add_person(p:PTR TO person)
+DEF l
+   l:=ListLen(people)
+   IF l&lt;max_people
+      people[l]:=p ; SetList(people, l+1)
+      current_person:=last_found:=l
+   ELSE
+      Raise(&quot;peop&quot;)
+   ENDIF
+ENDPROC
+
+
+PROC delete_person()   -&gt; Deletes the person stored at index current_person.
+DEF p:PTR TO person, l
+   IF ListLen(people)&gt;0 AND (current_person&gt;-1)   -&gt; If got anyone
+      l:=ListLen(people)                          -&gt; Find length of the List.
+      p:=people[current_person]                   -&gt; Get pointer to this person
+      END p                         -&gt; Dispose of memory used by person.
+      l:=l-1                        -&gt; One less person now.
+      IF l&gt;=0                       -&gt; Still have elements stored, so we
+         people[current_person]:=people[l]  -&gt; swap old last element into
+                                        -&gt; position from where the
+                                        -&gt; deletion took place
+         SetList(people,l)          -&gt; Make sure list variable reflects this!
+         current_person:=current_person-1
+      ENDIF
+   ENDIF
+ENDPROC
+
+PROC set_searchperson(p)
+   search_person:=p
+   last_found:=-1     -&gt; Assume we haven&#x27;t got a start position
+ENDPROC               -&gt; ensures find_next() finds first.
+
+/*
+PROC find_person(p:PTR TO person)
+PROC find_previous()
+*/
+
+PROC find_next()
+DEF remaining, found=FALSE, tp:PTR TO person, index, result=0
+   IF search_person=NIL THEN RETURN 0,FALSE ELSE 0
+   current_person:=last_found+1
+   remaining:=ListLen(people)-current_person
+   IF remaining&gt;0
+      index:=current_person
+      WHILE (remaining&gt;0) AND Not(found)
+         tp:= people[index]
+         IF tp.compare(search_person, ALL) THEN found:=TRUE
+         remaining-- ; index++
+      ENDWHILE
+   ENDIF
+   IF found
+      result:=people[index-1]
+      last_found:=current_person:=index-1
+   ENDIF
+ENDPROC result, found
+
+PROC no_records() IS ListLen(people)
+PROC current_record()
+   IF ListLen(people)&gt;0
+      RETURN people[current_person]
+   ELSE
+      RETURN 0
+   ENDIF
+ENDPROC
+
+PROC first_person()
+   IF ListLen(people)&gt;0
+      last_found:=current_person:=0
+      RETURN people[current_person]
+   ELSE
+      last_found:=current_person:=-1
+      RETURN 0
+   ENDIF
+ENDPROC 
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

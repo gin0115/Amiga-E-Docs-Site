@@ -1,0 +1,146 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>crmscrunch.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-aepd39.html">AEPD39</a> &rsaquo; crmscrunch.e</div><h1>File: <code>crmscrunch.e</code></h1><p class="meta">120 lines · project <a href="../examples/pkg-aepd39.html"><code>AEPD39</code></a></p><p class="pathctx">AEPD39/EPD39/Programme/Emodules/crunchmania/crmscrunch.e</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/crm.html">libraries/crm</a></li></ul></div><h2>Source</h2><pre class="code">OPT PREPROCESS
+
+/*
+*-- AutoRev header do NOT edit!
+*
+*   Project         :   Test program for CrM.library
+*   File            :   crmscrunch.e
+*   Copyright       :   © Michael Mutschler
+*   Author          :   Piotr Gapinski
+*   Creation Date   :   14.12.95
+*   Current version :   1.1
+*   Translator      :   AmigaE v3.1+
+*
+*   REVISION HISTORY
+*
+*   Date          Version         Comment
+*   ---------     -------         ------------------------------------------
+*                 1.0             first release
+*   14.12.95      1.1             AmigaE version
+*
+*-- REV_END --*
+*/
+
+/*
+ This is just an example program of how to use the CrM.library
+ from AmigaE.
+ All it does is crunch a file in LZH &amp; sample mode (data save model).
+*/
+
+MODULE &#x27;libraries/crm&#x27;,&#x27;crm&#x27;,&#x27;dos/dos&#x27;,
+       &#x27;utility/tagitem&#x27;
+
+#define PROGRAMVERSION &#x27;$VER: crmscrunch 1.1 (14.12.95)&#x27;
+
+ENUM  ERR_OK, ERR_ARGS, ERR_NOLIB, ERR_STRUCT, ERR_NOFILE,
+      ERR_NOSIZE, ERR_NOMEM, ERR_READ, ERR_CRUNCHFAIL, ERR_WRITE,
+      ERR_CRUNCHED
+
+PROC main() HANDLE
+  DEF rdargs=NIL,args:PTR TO LONG,
+      crunch=NIL:PTR TO cmcrunchstruct,
+      handle=NIL,mem=NIL,size=0,newsize=0,templ,
+      data:PTR TO dataheader
+
+  templ:=&#x27;SOURCE/A,DEST/A&#x27;
+  IF (rdargs:=ReadArgs(templ,args,NIL))=NIL THEN Raise(ERR_ARGS)
+
+  IF (args[]=NIL OR args[1]=NIL) THEN Raise(ERR_ARGS)
+  IF args
+    WriteF(&#x27;source: \s\ndestination: \s\n&#x27;,args[],args[1])
+  ENDIF
+
+  IF (crmbase:=OpenLibrary(CRMNAME,CRMVERSION))=NIL THEN Raise(ERR_NOLIB)
+  crunch:=CmAllocCrunchStructA(
+       [CMCS_ALGO,CM_LZH OR CM_SAMPLE OR CMF_OVERLAY OR CMF_LEDFLASH,
+       TAG_DONE])
+  IF crunch=NIL THEN Raise(ERR_STRUCT)
+
+  IF (handle:=Open(args[],MODE_OLDFILE))=NIL THEN Raise(ERR_NOFILE)
+  Seek(handle,0,OFFSET_END)
+  size:=Seek(handle,0,OFFSET_BEGINNING)
+  IF size=0 THEN Raise(ERR_NOSIZE)
+  NEW data
+  IF (Read(handle,data,SIZEOF dataheader))&lt;&gt;SIZEOF dataheader THEN Raise(ERR_READ)
+  IF (CmCheckCrunched(data))&lt;&gt;0 THEN Raise(ERR_CRUNCHED)
+  Seek(handle,0,OFFSET_BEGINNING)
+
+  IF (mem:=New(size))=NIL THEN Raise(ERR_NOMEM)
+  IF (Read(handle,mem,size))&lt;&gt;size THEN Raise(ERR_READ)
+  Close(handle)
+
+  crunch.src:=mem
+  crunch.srclen:=size
+  crunch.dest:=mem
+  crunch.destlen:=size
+  crunch.datahdr:=data
+  WriteF(&#x27;--- C R U N C H I N G ---\n&#x27;)
+  IF (newsize:=CmCrunchData(crunch))=0 THEN Raise(ERR_CRUNCHFAIL)
+
+  IF (handle:=Open(args[1],MODE_NEWFILE))=NIL THEN Raise(ERR_NOFILE)
+  IF (Write(handle,data,SIZEOF dataheader))&lt;&gt;SIZEOF dataheader THEN Raise(ERR_WRITE)
+  IF (Write(handle,mem,newsize))&lt;&gt;newsize THEN Raise(ERR_WRITE)
+
+  WriteF(&#x27;oldfile: &quot;\s&quot; length: \d\n&#x27;,args[],size)
+  WriteF(&#x27;newfile: &quot;\s&quot; length: \d\n&#x27;,args[1],newsize)
+  WriteF(&#x27;pack ratio: \d%\n&#x27;,100-Div(100*newsize,size))
+
+EXCEPT DO
+  IF rdargs&lt;&gt;NIL THEN FreeArgs(rdargs)
+  IF handle&lt;&gt;NIL THEN Close(handle)
+  IF crunch&lt;&gt;0 THEN CmFreeCrunchStruct(crunch)
+  IF mem&lt;&gt;NIL THEN Dispose(mem)
+  IF data&lt;&gt;NIL THEN END data
+  IF crmbase&lt;&gt;NIL THEN CloseLibrary(crmbase)
+  SELECT exception
+  CASE ERR_ARGS
+    WriteF(&#x27;Bad args! (try &quot;crmscrunch ?&quot;)\n&#x27;)
+  CASE ERR_NOLIB
+    WriteF(&#x27;Couldnt open crm.library!\n&#x27;)
+  CASE ERR_STRUCT
+    WriteF(&#x27;Couldnt allocate struct!\n&#x27;)
+  CASE ERR_NOFILE
+    WriteF(&#x27;File open failed!\n&#x27;)
+  CASE ERR_NOSIZE
+    WriteF(&#x27;Requested file is empty!\n&#x27;)
+  CASE ERR_NOMEM
+    WriteF(&#x27;No free memory!\n&#x27;);
+  CASE ERR_READ
+    WriteF(&#x27;Error while reading!\n&#x27;)
+  CASE ERR_CRUNCHFAIL
+    WriteF(&#x27;Crunching failed!\n&#x27;)
+  CASE ERR_WRITE
+    WriteF(&#x27;Error while writing!\n&#x27;)
+  CASE ERR_CRUNCHED
+    WriteF(&#x27;Source file allready crunched!\n&#x27;)
+  ENDSELECT
+ENDPROC
+
+CHAR PROGRAMVERSION,0
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

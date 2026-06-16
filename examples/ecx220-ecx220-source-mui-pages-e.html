@@ -1,0 +1,203 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Pages.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-ecx220.html">ecx220</a> &rsaquo; Pages.e</div><h1>File: <code>Pages.e</code></h1><p class="meta">177 lines · project <a href="../examples/pkg-ecx220.html"><code>ecx220</code></a></p><p class="pathctx">ecx220/ecx220/source/MUI/Pages.e</p><p class="prose">** Original C Code written by Stefan Stuntz ** ** Translation into E by Klaus Becker ** ** All comments are from the C-Source</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/boopsi.html">amigalib/boopsi</a></li><li><a href="../modules/classes.html">intuition/classes</a></li><li><a href="../modules/gadtools.html">libraries/gadtools</a></li><li><a href="../modules/muimaster.html">muimaster</a></li><li><a href="../modules/tagitem.html">utility/tagitem</a></li></ul></div><h2>Source</h2><pre class="code">/*
+**  Original C Code written by Stefan Stuntz
+**
+**  Translation into E by Klaus Becker
+**
+**  All comments are from the C-Source
+*/
+
+OPT PREPROCESS
+
+
+
+/*
+** Loading the needed MODULEs
+*/
+
+MODULE &#x27;amigalib/boopsi&#x27;
+MODULE &#x27;muimaster&#x27;, &#x27;libraries/mui&#x27;
+MODULE &#x27;utility/tagitem&#x27;, &#x27;utility/hooks&#x27;
+MODULE &#x27;intuition/classes&#x27;, &#x27;intuition/classusr&#x27;
+MODULE &#x27;libraries/gadtools&#x27;
+
+ENUM ER_NON, ER_MUILIB, ER_APP          /* for the exception handling */
+
+/*
+** DEFining the var s
+*/
+
+DEF app,window,sex,pages
+DEF races,classes
+
+
+/*
+** main()
+*/
+
+PROC main() HANDLE
+
+DEF signal, running, result
+
+/*
+** Open the muimaster.library
+*/
+   sex:=[&#x27;male&#x27;,&#x27;female&#x27;,NIL]
+   pages:=[&#x27;Race&#x27;,&#x27;Class&#x27;,&#x27;Armor&#x27;,&#x27;Level&#x27;,NIL]
+   races:=[&#x27;Human&#x27;,&#x27;Elf&#x27;,&#x27;Dwarf&#x27;,&#x27;Hobbit&#x27;,&#x27;Gnome&#x27;,NIL]
+   classes:=[&#x27;Warrior&#x27;,&#x27;Rogue&#x27;,&#x27;Bard&#x27;,&#x27;Monk&#x27;,&#x27;Magician&#x27;,&#x27;Archmage&#x27;,NIL]
+
+   IF (muimasterbase := OpenLibrary(MUIMASTER_NAME,MUIMASTER_VMIN))=NIL THEN Raise(ER_MUILIB)
+
+   #ifdef __AMIGAOS4__
+   IF (muimasteriface := GetInterface(muimasterbase, &#x27;main&#x27;, 1, NIL)) = NIL THEN
+    Raise(ER_MUIIFACE)
+   #endif
+
+    app:= ApplicationObject,
+      MUIA_Application_Title      , &#x27;Pages-Demo&#x27;,
+      MUIA_Application_Version    , &#x27;$VER: Pages-Demo 10.11 (23.12.94)&#x27;,
+      MUIA_Application_Copyright  , &#x27; 1992/93, Stefan Stuntz&#x27;,
+      MUIA_Application_Author     , &#x27;Stefan Stuntz &amp; Klaus Becker&#x27;,
+      MUIA_Application_Description, &#x27;Show MUIs Page Groups&#x27;,
+      MUIA_Application_Base       , &#x27;PAGESDEMO&#x27;,
+      SubWindow, window:= WindowObject,
+        MUIA_Window_Title, &#x27;Character Definition&#x27;,
+        MUIA_Window_ID   , &quot;PAGE&quot;,
+        WindowContents, VGroup,
+          Child, ColGroup(2),
+            Child, Label2(&#x27;Name:&#x27;), Child, StringMUI(&#x27;Frodo&#x27;,32),
+            Child, Label1(&#x27;Sex:&#x27; ), Child, Cycle(sex),
+          End,
+          Child, VSpace(2),
+          Child, RegisterGroup(pages),
+            MUIA_Register_Frame, MUI_TRUE,
+            Child, HCenter(Radio(NIL,races)),
+            Child, HCenter(Radio(NIL,classes)),
+            Child, HGroup,
+              Child, HSpace(0),
+              Child, ColGroup(2),
+                Child, Label1(&#x27;Cloak:&#x27; ), Child, CheckMark(MUI_TRUE),
+                Child, Label1(&#x27;Shield:&#x27;), Child, CheckMark(MUI_TRUE),
+                Child, Label1(&#x27;Gloves:&#x27;), Child, CheckMark(MUI_TRUE),
+                Child, Label1(&#x27;Helmet:&#x27;), Child, CheckMark(MUI_TRUE),
+              End,
+              Child, HSpace(0),
+            End,
+            Child, ColGroup(2),
+              Child, Label(&#x27;Experience:&#x27;  ), Child, Slider(0,100, 3),
+              Child, Label(&#x27;Strength:&#x27;    ), Child, Slider(0,100,42),
+              Child, Label(&#x27;Dexterity:&#x27;   ), Child, Slider(0,100,24),
+              Child, Label(&#x27;Condition:&#x27;   ), Child, Slider(0,100,39),
+              Child, Label(&#x27;Intelligence:&#x27;), Child, Slider(0,100,74),
+            End,
+          End,
+        End,
+      End,
+    End
+
+
+  IF app=NIL THEN Raise(ER_APP)
+
+/*
+** Closing the master window forces a complete shutdown of the application.
+*/
+
+   doMethodA(window,[MUIM_Notify,MUIA_Window_CloseRequest,MUI_TRUE,app,2,MUIM_Application_ReturnID,MUIV_Application_ReturnID_Quit])
+
+
+/*
+** Everything&#x27;s ready, lets launch the application. We will
+** open the master window now.
+*/
+
+   set(window,MUIA_Window_Open,MUI_TRUE)
+
+
+/*
+** This is the main loop. As you can see, it does just nothing.
+** Everything is handled by MUI, no work for the programmer.
+**
+** The only thing we do here is to react on a double click
+** in the volume list (which causes an ID_NEWVOL) by setting
+** a new directory name for the directory list. If you want
+** to see a real file requester with MUI, wait for the
+** next release of MFR :-)
+*/
+
+
+   running := TRUE
+
+   WHILE running
+
+      result := doMethodA(app, [MUIM_Application_Input, {signal} ])
+
+      SELECT result
+
+        CASE MUIV_Application_ReturnID_Quit
+        running := FALSE
+
+      ENDSELECT
+
+      IF signal THEN Wait(signal)
+
+   ENDWHILE
+
+/*
+** Call the exception handling with ER_NON, this will dispose the
+** application object, close &quot;muimaster.library&quot; and end the program.
+*/
+
+EXCEPT DO
+  IF app THEN Mui_DisposeObject(app)
+  #ifdef __AMIGAOS4__
+  DropInterface(muimasteriface)
+  #endif
+  IF muimasterbase THEN CloseLibrary(muimasterbase)
+
+  SELECT exception
+    CASE ER_MUILIB
+      WriteF(&#x27;Failed to open \s.\n&#x27;,MUIMASTER_NAME)
+      CleanUp(20)
+
+    CASE ER_MUIIFACE
+      WriteF(&#x27;Failed to open \s interface.\n&#x27;,MUIMASTER_NAME)
+      CleanUp(20)
+
+    CASE ER_APP
+      WriteF(&#x27;Failed to create application.\n&#x27;)
+      CleanUp(20)
+
+  ENDSELECT
+ENDPROC 0
+
+
+/*
+** This is the end...
+*/
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

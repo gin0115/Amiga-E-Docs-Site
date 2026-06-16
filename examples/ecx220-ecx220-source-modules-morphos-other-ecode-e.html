@@ -1,0 +1,232 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ecode.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-ecx220.html">ecx220</a> &rsaquo; ecode.e</div><h1>File: <code>ecode.e</code></h1><p class="meta">206 lines · project <a href="../examples/pkg-ecx220.html"><code>ecx220</code></a></p><p class="pathctx">ecx220/ecx220/source/modules/morphos/other/ecode.e</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/exec.html">morphos/exec</a></li></ul></div><h2>Source</h2><pre class="code">OPT MODULE, POWERPC, MORPHOS, PREPROCESS
+
+-&gt; ECX:modules/otherabox/ecode.e
+
+-&gt; 68k version by Jason R Hulance 1995 (UsefulV2)
+-&gt; ppc rewrite by Leif Salomonsson 2007
+
+-&gt; March 2008: eCodePPC() trashed R3, breaking possible arguments, fixed. (LS).
+
+-&gt; July 2008: arguments where completely broken, seems 68k stack has had
+-&gt; return address poped away when we end up in ppc code.. fixed.
+-&gt; (args start at 0(REG_A7) now).
+
+-&gt; January 2009: fixed sEntry (interrupt server). zeroflag was set for *non* zero return..
+
+
+OBJECT gate
+   trapcode:LONG
+   trapfunc
+   function
+   oldr13
+   stubcode[0]:ARRAY OF LONG
+ENDOBJECT
+-&gt; ppc stub proc follows directly after
+
+
+MODULE &#x27;morphos/exec&#x27;,
+       &#x27;exec/memory&#x27;,
+       &#x27;exec/execbase&#x27;,
+       &#x27;hardware/custom&#x27;,
+       &#x27;morphos/emul/emulinterface&#x27;,
+       &#x27;morphos/emul/emulregs&#x27;,
+       &#x27;powerpc/simple&#x27;
+
+/*
+** NOTE!
+** eCodeTask() returns a powerpc entry. do not feed result to any old code that wants a 68k entry!
+** eCodePPC() is like eCode() but returns a real PPC entry instead of a gated entry.
+**
+** The &quot;func&quot; argument to below functions is always a ppc procedure.
+*/
+
+-&gt; Wraps an E function so it can still access globals, even from other tasks.
+EXPORT PROC eCode(func) IS setup(func,{entry},{end}, TRAP_LIB)
+
+-&gt; Wraps an E function so it can still access globals, even from other (PPC!) tasks.
+EXPORT PROC eCodePPC(func) IS setup(func,{entry},{end}, NIL)
+
+-&gt; Wraps an E function as above, but also preserves the non-scratch registers. (ppc=same as eCode())
+EXPORT PROC eCodePreserve(func) IS eCode(func)
+
+-&gt; Wraps an E function for use with aboxlib/tasks.m/createTask()
+EXPORT PROC eCodeTask(func) IS eCodePPC(func)
+
+-&gt; Wraps an E function for use as an ASL hook
+EXPORT PROC eCodeASLHook(func) IS setup(func,{aEntry},{aEnd}, TRAP_LIB)
+
+-&gt; Wraps an E function for use as an CX custom function
+EXPORT PROC eCodeCxCustom(func) IS setup(func,{cEntry},{cEnd}, TRAP_LIB)
+
+-&gt; Wraps an E function for use as a GEL collision function
+EXPORT PROC eCodeCollision(func) IS eCodeCxCustom(func)
+
+-&gt; Wraps an E function for use as an interrupt handler
+EXPORT PROC eCodeIntHandler(func) IS setup(func,{hEntry},{hEnd}, TRAP_LIB)
+
+-&gt; Wraps an E function for use as an interrupt server
+EXPORT PROC eCodeIntServer(func) IS setup(func,{sEntry},{sEnd}, TRAP_LIBD0D1A0A1SR)
+
+-&gt; Wraps an E function for use as a software interrupt
+EXPORT PROC eCodeSoftInt(func) IS setup(func,{iEntry},{iEnd}, TRAP_LIB)
+
+-&gt; Wraps an E function as eCode(), but swaps the order of two args
+EXPORT PROC eCodeSwapArgs(func) IS setup(func,{oEntry},{oEnd}, TRAP_LIB)
+
+EXPORT PROC eCodeDispose(mem) IS IF mem THEN Dispose(mem) ELSE NIL
+
+PROC setup(func, addr, end, trapcode) HANDLE
+  DEF mem:PTR TO gate, len
+  len := end-addr
+  mem:=NewM(SIZEOF gate + len, MEMF_PUBLIC)
+  mem.trapcode := IF trapcode THEN trapcode SHL 16 ELSE 18 SHL 26 OR SIZEOF gate
+  mem.trapfunc := mem.stubcode
+  mem.function := func
+  mem.oldr13 := R13
+  -&gt; Fully relocatable code can be copied to another memory location
+  CopyMemQuick(addr, mem.stubcode, len)
+  CacheFlushDataInstArea(mem,SIZEOF gate + len)
+  RETURN mem
+EXCEPT
+  RETURN NIL
+ENDPROC
+
+PROC entry()
+  DEF r13
+  STW R13, r13
+  LA R12, entry
+  LWZ R13, -4(R12)
+  LWZ R0, -8(R12)
+  MTCTR R0
+  BCTRL -&gt; call function
+  LWZ R13, r13
+ENDPROC R3
+end:
+
+
+PROC aEntry()
+  DEF r13
+  LWZ R6, REG_A7
+  LWZ R3, 0(R6)
+  LWZ R4, 4(R6)
+  LWZ R5, 12(R6)
+  LA R7, aEntry
+  STW R13, r13
+  LWZ R13, -4(R7)
+  LWZ R0, -8(R7)
+  MTCTR R0
+  BCTRL
+  LWZ R13, r13
+ENDPROC R3
+aEnd:
+
+PROC cEntry()
+  DEF r13
+  LWZ R6, REG_A7
+  LWZ R3, 0(R6)
+  LWZ R4, 4(R6)
+  LA R7, cEntry
+  STW R13, r13
+  LWZ R13, -4(R7)
+  LWZ R0, -8(R7)
+  MTCTR R0
+  BCTRL
+  LWZ R13, r13
+ENDPROC R3
+cEnd:
+
+
+PROC hEntry()
+   DEF r13
+   LA R5, hEntry
+   STW R13, r13
+   LWZ R13, -4(R5)
+   LWZ R3, REG_A1
+   LWZ R4, REG_D1
+   LWZ R0, -8(R5)
+   MTCTR R0
+   BCTRL
+   LWZ R13, r13
+ENDPROC R3
+hEnd:
+
+
+PROC sEntry()
+   DEF r13, x, sr
+   LA R5, sEntry
+   STW R13, r13
+   LWZ R13, -4(R5)
+   LWZ R3, REG_A1
+   LWZ R0, -8(R5)
+   MTCTR R0
+   BCTRL
+   -&gt;LIW R4, CUSTOMADDR   -&gt; not needed on morphos
+   -&gt;STW R4, REG_A0
+   x := R3
+   sr := IFN x THEN 4 ELSE 0   -&gt; set zero flag ifn x
+   LWZ R0, sr
+   STW R0, REG_SR -&gt; return zero flag
+   LWZ R13, r13
+ENDPROC
+sEnd:
+
+PROC iEntry()
+   DEF r13, a6
+   LA R5, iEntry
+   STW R13, r13
+   LWZ R13, -4(R5)
+   LWZ R3, REG_A1
+   LWZ R0, REG_A6
+   STW R0, a6
+   LWZ R0, -8(R5)
+   MTCTR R0
+   BCTRL
+   LWZ R0, a6
+   STW R0, REG_A6
+   LWZ R13, r13
+ENDPROC R3
+iEnd:
+
+PROC oEntry()
+  DEF r13
+  LWZ R5, REG_A7
+  LWZ R3, 0(R5)
+  LWZ R4, 4(R5)
+  LA R7, oEntry
+  STW R13, r13
+  LWZ R13, -4(R7)
+  LWZ R0, -8(R7)
+  MTCTR R0
+  BCTRL
+  LWZ R13, r13
+ENDPROC R3
+oEnd:
+
+
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

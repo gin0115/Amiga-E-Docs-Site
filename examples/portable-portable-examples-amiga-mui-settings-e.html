@@ -1,0 +1,244 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Settings.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-portable.html">PortablE</a> &rsaquo; Settings.e</div><h1>File: <code>Settings.e</code></h1><p class="meta">218 lines · project <a href="../examples/pkg-portable.html"><code>PortablE</code></a></p><p class="pathctx">PortablE/PortablE/Examples/Amiga/MUI/Settings.e</p><p class="prose">An old E example converted to PortablE. From http://aminet.net/package/dev/e/mui36dev-E</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/exec.html">exec</a></li><li><a href="../modules/classes.html">intuition/classes</a></li><li><a href="../modules/gadtools.html">libraries/gadtools</a></li><li><a href="../modules/muimaster.html">muimaster</a></li><li><a href="../modules/domethod.html">tools/domethod</a></li><li><a href="../modules/tagitem.html">utility/tagitem</a></li></ul></div><h2>Source</h2><pre class="code">/* An old E example converted to PortablE.
+   From http://aminet.net/package/dev/e/mui36dev-E */
+
+/*
+**  Original C Code written by Stefan Stuntz
+**
+**  Translation into E by Klaus Becker
+**
+**  All comments are from the C-Source
+*/
+
+/*
+** The Settings Demo shows how to load and save object contents.
+*/
+
+OPT PREPROCESS, POINTER
+
+MODULE &#x27;exec&#x27;
+MODULE &#x27;tools/domethod&#x27;
+MODULE &#x27;muimaster&#x27;, &#x27;libraries/mui&#x27;
+MODULE &#x27;utility/tagitem&#x27;, &#x27;utility/hooks&#x27;,&#x27;tools/installhook&#x27;
+MODULE &#x27;intuition/classes&#x27;, &#x27;intuition/classusr&#x27;
+MODULE &#x27;libraries/gadtools&#x27;
+
+TYPE PTIO IS PTR TO INTUIOBJECT
+ 
+ENUM ID_CANCEL=1, ID_SAVE, ID_USE
+ENUM ER_NONE, ER_MUILIB, ER_APP          /* for the exception handling */
+
+DEF helpHook:hook
+
+PROC helpFunc(hook, help:ARRAY, objptr:ARRAY OF ARRAY)
+  DEF udata
+  udata:=NIL
+  IF objptr[0] THEN get(objptr[0],MUIA_UserData,ADDRESSOF udata)
+  set(help, MUIA_Text_Contents, udata)
+  hook:=0	-&gt;dummy
+ENDPROC
+
+PROC main()
+
+  DEF app:PTIO, window:PTIO, str[4]:ARRAY OF PTIO, sl1:PTIO, cy1:PTIO, help:PTIO, btsave:PTIO, btuse:PTIO, btcancel:PTIO
+  DEF signals, result
+  DEF running:BOOL
+  DEF sex
+  running := TRUE
+
+  IF (muimasterbase := OpenLibrary(MUIMASTER_NAME,MUIMASTER_VMIN))=NIL THEN Raise(ER_MUILIB)
+    
+  sex := [&#x27;male&#x27;,&#x27;female&#x27;,NIL]
+
+  installhook(helpHook, CALLBACK helpFunc())
+
+  app := ApplicationObject,
+    MUIA_Application_Title      , &#x27;Settings&#x27;,
+    MUIA_Application_Version    , &#x27;$VER: Settings 10.12 (23.12.94)&#x27;,
+    MUIA_Application_Copyright  , &#x27; 1992/93, Stefan Stuntz&#x27;,
+    MUIA_Application_Author     , &#x27;Stefan Stuntz &amp; Klaus Becker&#x27;,
+    MUIA_Application_Description, &#x27;Show saving AND loading of settings&#x27;,
+    MUIA_Application_Base       , &#x27;SETTINGS&#x27;,
+    SubWindow, window := WindowObject,
+      MUIA_Window_Title, &#x27;Save/use me AND start me again!&#x27;,
+      MUIA_Window_ID   , &quot;SETT&quot;,
+      MUIA_Window_NeedsMouseObject, MUI_TRUE,
+        WindowContents, VGroup,
+          Child, ColGroup(2), GroupFrameT(&#x27;User Identification&#x27;),
+            Child, Label2(&#x27;Name:&#x27;),
+            Child, str[1] := StringObject, StringFrame,
+              MUIA_ExportID, 1,
+              MUIA_UserData, &#x27;First AND last name of user.&#x27;,
+            End,
+            Child, Label2(&#x27;Address:&#x27;),
+            Child, str[2] := StringObject, StringFrame,
+              MUIA_ExportID, 2,
+              MUIA_UserData, &#x27;Street, city AND ZIP code.&#x27; ,
+            End,
+            Child, Label1(&#x27;Password:&#x27;),
+            Child, str[3] := StringObject, StringFrame,
+              MUIA_ExportID, 4,
+              MUIA_UserData, &#x27;Global access password (invisible).&#x27;,
+              MUIA_String_Secret, MUI_TRUE,
+            End,
+            Child, Label1(&#x27;Sex:&#x27;),
+            Child, cy1 := CycleObject,
+              MUIA_ExportID, 6,
+              MUIA_Cycle_Entries, sex,
+              MUIA_UserData, &#x27;Guess what this means...&#x27;,
+            End,
+            Child, Label(&#x27;Age:&#x27;),
+            Child, sl1 := SliderObject,
+              MUIA_ExportID, 5,
+              MUIA_Slider_Min, 9,
+              MUIA_Slider_Max, 99,
+              MUIA_UserData, &#x27;Several areas require a minimum age.&#x27;,
+            End,
+            Child, Label1(&#x27;Info:&#x27;),
+            Child, help := TextObject, TextFrame,
+              MUIA_UserData, &#x27;This is the info gadget.&#x27;,
+            End,
+          End,
+          Child, VSpace(2),
+          Child, HGroup, MUIA_Group_SameSize, MUI_TRUE,
+            Child, btsave := SimpleButton(&#x27;_Save&#x27;),
+            Child, HSpace(0),
+            Child, btuse := SimpleButton(&#x27;_Use&#x27;),
+            Child, HSpace(0),
+            Child, btcancel := SimpleButton(&#x27;_Cancel&#x27;),
+         End,
+       End,
+     End,
+   End
+
+ IF app=NIL THEN Raise(ER_APP)
+
+/*
+** Set Mouse Move Help Strings
+*/
+
+  doMethod(window, [MUIM_Notify, MUIA_Window_MouseObject,MUIV_EveryTime,
+    help,3,MUIM_CallHook,helpHook,MUIV_TriggerValue])
+
+
+/*
+** Install notification events...
+*/
+
+  doMethod(window, [MUIM_Notify, MUIA_Window_CloseRequest,MUI_TRUE,
+                   app,2,MUIM_Application_ReturnID,ID_CANCEL])
+
+  doMethod(btcancel, [MUIM_Notify, MUIA_Pressed,FALSE,
+                     app,2,MUIM_Application_ReturnID,ID_CANCEL])
+
+  doMethod(btsave, [MUIM_Notify, MUIA_Pressed,FALSE,
+                   app,2,MUIM_Application_ReturnID,ID_SAVE])
+
+  doMethod(btuse, [MUIM_Notify, MUIA_Pressed,FALSE,
+                  app,2,MUIM_Application_ReturnID,ID_USE])
+
+
+/*
+** Cycle chain for keyboard control
+*/
+
+  doMethod(window, [MUIM_Window_SetCycleChain,
+                   str[1],str[2],str[3],cy1,sl1,btsave,btuse,btcancel,NIL])
+
+
+/*
+** Concatenate strings, &lt;return&gt; will activate the next one
+*/
+
+  doMethod(str[1], [MUIM_Notify, MUIA_String_Acknowledge,MUIV_EveryTime,
+    window,3,MUIM_Set,MUIA_Window_ActiveObject,str[2]])
+
+  doMethod(str[2], [MUIM_Notify, MUIA_String_Acknowledge,MUIV_EveryTime,
+    window,3,MUIM_Set,MUIA_Window_ActiveObject,str[3]])
+
+  doMethod(str[3], [MUIM_Notify, MUIA_String_Acknowledge,MUIV_EveryTime,
+    window,3,MUIM_Set,MUIA_Window_ActiveObject,str[1]])
+
+
+/*
+** The application is set up, now load
+** a previously saved configuration from env:
+*/
+
+  doMethod(app, [MUIM_Application_Load, MUIV_Application_Load_ENV])
+
+/*
+** Input loop...
+*/
+
+  set(window, MUIA_Window_Open,MUI_TRUE)
+  set(window, MUIA_Window_ActiveObject,str[1])
+
+  WHILE running
+
+    result := doMethod(app, [MUIM_Application_Input, ADDRESSOF signals])
+
+    SELECT result
+
+      CASE MUIV_Application_ReturnID_Quit
+           running := FALSE
+      CASE ID_CANCEL
+           running := FALSE
+
+      CASE ID_SAVE
+        doMethod(app, [MUIM_Application_Save, MUIV_Application_Save_ENVARC])
+        doMethod(app, [MUIM_Application_Save, MUIV_Application_Save_ENV])
+        running := FALSE
+      CASE ID_USE
+        doMethod(app, [MUIM_Application_Save, MUIV_Application_Save_ENV])
+        running := FALSE
+    ENDSELECT
+
+    IF (running OR signals) THEN Wait(signals)
+  ENDWHILE
+
+  set(window, MUIA_Window_Open,FALSE)
+  Raise (ER_NONE)
+
+FINALLY
+  IF app THEN Mui_DisposeObject(app)
+  IF muimasterbase THEN CloseLibrary(muimasterbase)
+
+  SELECT exception
+    CASE ER_MUILIB
+      Print(&#x27;Failed to open \s.\n&#x27;,MUIMASTER_NAME)
+      CleanUp(20)
+
+    CASE ER_APP
+      Print(&#x27;Failed to create application.\n&#x27;)
+      CleanUp(20)
+
+  ENDSELECT
+
+ENDPROC 0
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

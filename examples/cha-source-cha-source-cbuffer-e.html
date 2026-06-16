@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>cbuffer.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-cha-source.html">cha_source</a> &rsaquo; cbuffer.e</div><h1>File: <code>cbuffer.e</code></h1><p class="meta">70 lines · project <a href="../examples/pkg-cha-source.html"><code>cha_source</code></a></p><p class="pathctx">cha_source/cha_source/cbuffer.e</p><p class="prose">==========================================================================+ | cbuffer.e | | circular buffer for storing past data | +--------------------------------------------------------------------------</p><h2>Source</h2><pre class="code">/*==========================================================================+
+| cbuffer.e                                                                 |
+| circular buffer for storing past data                                     |
++--------------------------------------------------------------------------*/
+
+OPT MODULE
+OPT PREPROCESS
+
+MODULE &#x27;*debug&#x27;
+
+RAISE &quot;MEM&quot; IF New() = NIL
+
+/*-------------------------------------------------------------------------*/
+
+CONST CBUFFER_SPACE = 1
+
+EXPORT OBJECT cbuffer
+	length : LONG
+PRIVATE
+	rptr   : LONG
+	wptr   : LONG
+	data   : PTR TO LONG
+ENDOBJECT
+
+PROC cbuffer(length : LONG) OF cbuffer
+-&gt;	debug([&#x27;cbuffer.cbuffer(\d)&#x27;, length])
+	self.length := length
+	self.rptr := 0
+	self.wptr := length -&gt; - 1
+	self.data := New(Mul(length + CBUFFER_SPACE, SIZEOF LONG))
+ENDPROC
+
+PROC end() OF cbuffer
+-&gt;	debug([&#x27;cbuffer.end()&#x27;])
+	Dispose(self.data)
+ENDPROC
+
+PROC read(offset=0) OF cbuffer  -&gt; -length &lt; offset &lt;= 0
+	DEF r
+	r := self.rptr + offset
+	IF r &lt; 0 THEN r := r + self.length + CBUFFER_SPACE
+-&gt;	debug([&#x27;cbuffer.read(\d), r=\d&#x27;, offset, r])
+ENDPROC self.data[r]
+
+PROC write(x : LONG) OF cbuffer
+-&gt;	debug([&#x27;cbuffer.write(\d)&#x27;, x])
+	self.data[self.wptr] := x
+ENDPROC
+
+PROC next() OF cbuffer
+#ifdef DEBUG
+	DEF i
+#endif
+-&gt;	debug([&#x27;cbuffer.next(), r=\d w=\d&#x27;, self.rptr, self.wptr])
+	self.rptr := self.rptr + 1
+	self.wptr := self.wptr + 1
+	IF self.rptr &gt;= (self.length + CBUFFER_SPACE) THEN self.rptr := 0
+	IF self.wptr &gt;= (self.length + CBUFFER_SPACE) THEN self.wptr := 0
+-&gt;	debug([&#x27;                r=\d w=\d&#x27;, self.rptr, self.wptr])
+#ifdef DEBUG
+	WriteF(&#x27;cbuffer: &#x27;)
+	FOR i := 0 TO self.length - 1 DO WriteF(&#x27;\s &#x27;, float2string(self.read(-i)))
+	WriteF(&#x27;...\n&#x27;)
+#endif
+ENDPROC
+
+/*--------------------------------------------------------------------------+
+| END: cbuffer.e                                                            |
++==========================================================================*/
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

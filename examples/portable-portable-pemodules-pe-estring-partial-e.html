@@ -1,0 +1,376 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>EString_partial.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-portable.html">PortablE</a> &rsaquo; EString_partial.e</div><h1>File: <code>EString_partial.e</code></h1><p class="meta">350 lines · project <a href="../examples/pkg-portable.html"><code>PortablE</code></a></p><p class="pathctx">PortablE/PortablE/PEmodules/PE/EString_partial.e</p><p class="prose">PE/EString_partial.e 12-02-15 A re-implementation of AmigaE&#x27;s E-<a href="../modules/string.html">string</a> functions. By Christopher S Handley: 10-03-02 - Started coding it, to replace the existing AmigaE functions. 19-03-02 - Mostly completed. 14-07-06 - Ported to PortablE. 27-07-06 - Updated to use the STRING type. 27-10-07 - Fixed </p><h2>Source</h2><pre class="code">/* PE/EString_partial.e 12-02-15
+   A re-implementation of AmigaE&#x27;s E-string functions.
+   
+   By Christopher S Handley:
+   10-03-02 - Started coding it, to replace the existing AmigaE functions.
+   19-03-02 - Mostly completed.
+   14-07-06 - Ported to PortablE.
+   27-07-06 - Updated to use the STRING type.
+   27-10-07 - Fixed Next() &amp; Link() bugs.
+   19-04-09 - StrJoin() added earlier but not documented until now.
+   09-10-09 - Added check to prevent source &amp; destination being the same.  Problem reported by Matthias Rustler.
+   03-05-10 - Declared the &quot;missing&quot; procedures as prototypes.  Added StringFL().
+   13-01-11 - RealF() decimalPlaces is no-longer a BYTE.
+   19-12-12 - Removed source&lt;&gt;destination restriction for StrCopy(), RightStr() &amp; MidStr().  Fixed type of RightStr()&#x27;s eString2 parameter.
+   12-02-15 - Removed source&lt;&gt;destination restriction for StrAdd().
+*/
+OPT INLINE, POINTER
+MODULE &#x27;target/PE/base&#x27;
+
+/* Emulated procedures:
+NewString(maxLen) RETURNS eString:STRING
+DisposeString(eString:STRING) RETURNS NILS
+StrCopy( eString:STRING, string:ARRAY OF CHAR, len=ALL, pos=0) RETURNS eString:STRING
+StrAdd(  eString:STRING, string:ARRAY OF CHAR, len=ALL, pos=0) RETURNS eString:STRING
+StrJoin(s1=NILA:ARRAY OF CHAR, s2=NILA:ARRAY OF CHAR, s3=NILA:ARRAY OF CHAR, s4=NILA:ARRAY OF CHAR, s5=NILA:ARRAY OF CHAR, s6=NILA:ARRAY OF CHAR, s7=NILA:ARRAY OF CHAR, s8=NILA:ARRAY OF CHAR, s9=NILA:ARRAY OF CHAR, s10=NILA:ARRAY OF CHAR, s11=NILA:ARRAY OF CHAR) RETURNS newString:STRING
+EstrLen( eString:STRING) RETURNS len:VALUE
+StrMax(  eString:STRING) RETURNS max:VALUE
+RightStr(eString:STRING, eString2:ARRAY OF CHAR, n) RETURNS eString:STRING
+MidStr(  eString:STRING, string:ARRAY OF CHAR, pos, len=ALL) RETURNS eString:STRING
+SetStr(  eString:STRING, newLen)
+Link(    complex:STRING, tail:OWNS STRING) RETURNS complex:STRING
+Next(    complex:STRING) RETURNS tail:STRING
+Forward( complex:STRING, num) RETURNS tail:STRING
+
+On-purposely missing procedures:
+ReadStr(fileHandle:PTR, eString:STRING) RETURNS fail:BOOL
+StringF( eString:STRING, fmtString:ARRAY OF CHAR, ...)             RETURNS eString:STRING, len
+StringFL(eString:STRING, fmtString:ARRAY OF CHAR, args=NILL:ILIST) RETURNS eString:STRING, len
+RealF(   eString:STRING, value:FLOAT, decimalPlaces=8) RETURNS eString:STRING
+*/
+
+PRIVATE
+OBJECT pEString PRIVATE
+	length                 	-&gt;length of actual string (excluding terminating zero)
+	size                  	-&gt;max length of string    (including terminating zero)
+	next  :PTR TO pEString	-&gt;points to next string header, not the actual string
+ENDOBJECT
+PUBLIC
+
+PROC NewString(maxLen)
+	DEF eString:STRING
+	DEF pEString:PTR TO pEString	
+	DEF sizeOfEString
+	
+	-&gt;use check
+	IF maxLen &lt; 0 THEN Throw(&quot;EPU&quot;, &#x27;EString; NewString(); maxLen&lt;0&#x27;)
+	
+	-&gt;allocate eString
+	sizeOfEString := (maxLen + 1 * SIZEOF CHAR) + SIZEOF pEString
+	pEString := FastNew(sizeOfEString, TRUE)!!PTR	-&gt;noClear=TRUE
+	
+	-&gt;init
+	pEString.length := 0
+	pEString.size   := maxLen + 1
+	pEString.next   := NIL
+	
+	-&gt;retrieve string after header
+	eString := pEString + SIZEOF pEString !!VALUE!!STRING
+	
+	-&gt;zero-terminate empty string
+	eString[0] := &quot;\0&quot;
+ENDPROC eString
+
+PROC DisposeString(eString:STRING)
+	DEF pEString:PTR TO pEString
+	DEF next:PTR TO pEString
+	
+	IF eString
+		-&gt;retrieve string header
+		pEString := eString - SIZEOF pEString !!VALUE!!PTR TO pEString
+		
+		-&gt;loop through all strings in linked list
+		REPEAT
+			-&gt;store any string tail
+			next := pEString.next
+			
+			-&gt;dealloc string
+			pEString := FastDispose(pEString, (pEString.size * SIZEOF CHAR) + SIZEOF pEString)
+			
+			-&gt;move to tail
+			pEString := next
+		UNTIL pEString = NIL
+	ENDIF
+ENDPROC NILS
+
+PROC StrCopy(eString:STRING, string:ARRAY OF CHAR, len=ALL, pos=0)
+	DEF pEString:PTR TO pEString
+	DEF  readIndex, maxReadIndex
+	DEF writeIndex, maxWriteIndex
+	
+	-&gt;use check
+	IF eString = NILS THEN Throw(&quot;EPU&quot;, &#x27;EString; StrCopy(); eString=NILS&#x27;)
+	IF  string = NILA THEN Throw(&quot;EPU&quot;, &#x27;EString; StrCopy(); string=NILA&#x27;)
+	IF (len &lt; 0) AND (len &lt;&gt; ALL) THEN Throw(&quot;EPU&quot;, &#x27;EString; StrCopy(); len&lt;0&#x27;)
+	IF (pos &lt; 0) THEN Throw(&quot;EPU&quot;, &#x27;EString; StrCopy(); pos&lt;0&#x27;)
+	
+	-&gt;retrieve string header
+	pEString := eString - SIZEOF pEString !!VALUE!!PTR TO pEString
+	
+	-&gt;calc end of string reading from &amp; writing to (inc zero termination)
+	maxReadIndex  := pos + IF len=ALL THEN pEString.size - 1 ELSE len
+	maxWriteIndex := pEString.size - 1
+	
+	-&gt;copy all characters that will fit
+	readIndex  := pos
+	writeIndex := 0
+	WHILE (string[readIndex] &lt;&gt; 0) AND (writeIndex &lt; maxWriteIndex) AND (readIndex &lt; maxReadIndex)
+		eString[writeIndex] := string[readIndex]
+		
+		writeIndex++
+		readIndex++
+	ENDWHILE
+	
+	-&gt;update string&#x27;s stored length
+	pEString.length := writeIndex
+	eString[writeIndex] := &quot;\0&quot;
+ENDPROC eString
+
+PROC StrAdd(eString:STRING, string:ARRAY OF CHAR, len=ALL, pos=0)
+	DEF pEString:PTR TO pEString
+	DEF  readIndex, maxReadIndex
+	DEF writeIndex, maxWriteIndex
+	
+	-&gt;use check
+	IF eString = NILS THEN Throw(&quot;EPU&quot;, &#x27;EString; StrAdd(); eString=NILS&#x27;)
+	IF  string = NILA THEN Throw(&quot;EPU&quot;, &#x27;EString; StrAdd(); string=NILA&#x27;)
+	IF (len &lt; 0) AND (len &lt;&gt; ALL) THEN Throw(&quot;EPU&quot;, &#x27;EString; StrAdd(); len&lt;0&#x27;)
+	IF (pos &lt; 0) THEN Throw(&quot;EPU&quot;, &#x27;EString; StrAdd(); pos&lt;0&#x27;)
+	
+	-&gt;retrieve string header
+	pEString := eString - SIZEOF pEString !!VALUE!!PTR TO pEString
+	
+	-&gt;calc end of string reading from &amp; writing to (inc zero termination)
+	maxReadIndex  := pos + IF len=ALL THEN pEString.size - 1 ELSE len
+	maxWriteIndex := pEString.size - 1
+	
+	-&gt;copy all characters that will fit
+	readIndex  := pos
+	writeIndex := pEString.length	-&gt;start writing past end of string
+	WHILE (string[readIndex] &lt;&gt; 0) AND (writeIndex &lt; maxWriteIndex) AND (readIndex &lt; maxReadIndex)
+		eString[writeIndex] := string[readIndex]
+		
+		writeIndex++
+		readIndex++
+	ENDWHILE
+	
+	-&gt;update string&#x27;s stored length
+	pEString.length := writeIndex
+	eString[writeIndex] := &quot;\0&quot;
+ENDPROC eString
+
+PROC StrJoin(s1=NILA:ARRAY OF CHAR, s2=NILA:ARRAY OF CHAR, s3=NILA:ARRAY OF CHAR, s4=NILA:ARRAY OF CHAR, s5=NILA:ARRAY OF CHAR, s6=NILA:ARRAY OF CHAR, s7=NILA:ARRAY OF CHAR, s8=NILA:ARRAY OF CHAR, s9=NILA:ARRAY OF CHAR, s10=NILA:ARRAY OF CHAR, s11=NILA:ARRAY OF CHAR, s12=NILA:ARRAY OF CHAR, s13=NILA:ARRAY OF CHAR, s14=NILA:ARRAY OF CHAR, s15=NILA:ARRAY OF CHAR, s16=NILA:ARRAY OF CHAR, s17=NILA:ARRAY OF CHAR, s18=NILA:ARRAY OF CHAR, s19=NILA:ARRAY OF CHAR)
+	DEF newString:STRING
+	DEF len
+	
+	len := 0
+	IF s1 THEN len := len + StrLen(s1)
+	IF s2 THEN len := len + StrLen(s2)
+	IF s3 THEN len := len + StrLen(s3)
+	IF s4 THEN len := len + StrLen(s4)
+	IF s5 THEN len := len + StrLen(s5)
+	IF s6 THEN len := len + StrLen(s6)
+	IF s7 THEN len := len + StrLen(s7)
+	IF s8 THEN len := len + StrLen(s8)
+	IF s9 THEN len := len + StrLen(s9)
+	IF s10 THEN len := len + StrLen(s10)
+	IF s11 THEN len := len + StrLen(s11)
+	IF s12 THEN len := len + StrLen(s12)
+	IF s13 THEN len := len + StrLen(s13)
+	IF s14 THEN len := len + StrLen(s14)
+	IF s15 THEN len := len + StrLen(s15)
+	IF s16 THEN len := len + StrLen(s16)
+	IF s17 THEN len := len + StrLen(s17)
+	IF s18 THEN len := len + StrLen(s18)
+	IF s19 THEN len := len + StrLen(s19)
+	
+	NEW newString[len]
+	IF s1 THEN StrAdd(newString, s1)
+	IF s2 THEN StrAdd(newString, s2)
+	IF s3 THEN StrAdd(newString, s3)
+	IF s4 THEN StrAdd(newString, s4)
+	IF s5 THEN StrAdd(newString, s5)
+	IF s6 THEN StrAdd(newString, s6)
+	IF s7 THEN StrAdd(newString, s7)
+	IF s8 THEN StrAdd(newString, s8)
+	IF s9 THEN StrAdd(newString, s9)
+	IF s10 THEN StrAdd(newString, s10)
+	IF s11 THEN StrAdd(newString, s11)
+	IF s12 THEN StrAdd(newString, s12)
+	IF s13 THEN StrAdd(newString, s13)
+	IF s14 THEN StrAdd(newString, s14)
+	IF s15 THEN StrAdd(newString, s15)
+	IF s16 THEN StrAdd(newString, s16)
+	IF s17 THEN StrAdd(newString, s17)
+	IF s18 THEN StrAdd(newString, s18)
+	IF s19 THEN StrAdd(newString, s19)
+ENDPROC newString
+
+PROC EstrLen(eString:STRING)
+	DEF len
+	DEF pEString:PTR TO pEString
+	
+	-&gt;use check
+	IF eString = NILS THEN Throw(&quot;EPU&quot;, &#x27;EString; EstrLen(); eString=NILS&#x27;)
+	
+	-&gt;retrieve string header
+	pEString := eString - SIZEOF pEString !!VALUE!!PTR TO pEString
+	len := pEString.length
+ENDPROC len
+
+PROC StrMax(eString:STRING)
+	DEF max
+	DEF pEString:PTR TO pEString
+	
+	-&gt;use check
+	IF eString = NILS THEN Throw(&quot;EPU&quot;, &#x27;EString; StrMax(); eString=NILS&#x27;)
+	
+	-&gt;retrieve string header
+	pEString := eString - SIZEOF pEString !!VALUE!!PTR TO pEString
+	max := pEString.size - 1
+ENDPROC max
+
+PROC RightStr(eString:STRING, eString2:STRING, n)
+	DEF pEString2:PTR TO pEString
+	DEF readString:ARRAY OF CHAR
+	
+	-&gt;use check
+	IF eString  = NILS THEN Throw(&quot;EPU&quot;, &#x27;EString; RightStr(); eString=NILS&#x27;)
+	IF eString2 = NILS THEN Throw(&quot;EPU&quot;, &#x27;EString; RightStr(); eString2=NILS&#x27;)
+	IF n &lt; 0           THEN Throw(&quot;EPU&quot;, &#x27;EString; RightStr(); n&lt;0&#x27;)
+	
+	-&gt;retrieve string header
+	pEString2 := eString2 - SIZEOF pEString !!VALUE!!PTR TO pEString
+	
+	-&gt;restrict n to sensible range
+	IF n &gt; pEString2.length THEN n := pEString2.length
+	
+	-&gt;move to start of n characters
+	readString := eString2 + ((pEString2.length - n) * SIZEOF CHAR) !!ARRAY OF CHAR
+	
+	-&gt;use strCopy procedure
+	StrCopy(eString, readString, n)
+ENDPROC eString
+
+PROC MidStr(eString:STRING, string:ARRAY OF CHAR, pos, len=ALL)
+	DEF index, readString:ARRAY OF CHAR
+	
+	-&gt;use check
+	IF eString = NILS THEN Throw(&quot;EPU&quot;, &#x27;EString; MidStr(); eString=NILS&#x27;)
+	IF  string = NILA THEN Throw(&quot;EPU&quot;, &#x27;EString; MidStr(); string=NILA&#x27;)
+	IF pos &lt; 0        THEN Throw(&quot;EPU&quot;, &#x27;EString; MidStr(); pos&lt;0&#x27;)
+	IF (len &lt; 0) AND (len &lt;&gt; ALL) THEN Throw(&quot;EPU&quot;, &#x27;EString; MidStr(); len&lt;0&#x27;)
+	
+	-&gt;find correct start position SAFELY (which is more than AmigaE does!)
+	index := 0
+	WHILE (string[index] &lt;&gt; 0) AND (pos &gt; 0)
+		index++
+		pos--
+	ENDWHILE
+	
+	readString := string + (index * SIZEOF CHAR) !!ARRAY OF CHAR
+	
+	-&gt;copy specified part of string
+	StrCopy(eString, readString, len)
+ENDPROC eString
+
+PROC SetStr(eString:STRING, newLen)
+	DEF pEString:PTR TO pEString
+	
+	-&gt;use check
+	IF eString = NILS THEN Throw(&quot;EPU&quot;, &#x27;EString; SetStr(); eString=NILS&#x27;)
+	IF newLen &lt; 0     THEN Throw(&quot;EPU&quot;, &#x27;EString; SetStr(); newLen&lt;0&#x27;)
+	
+	-&gt;retrieve string header
+	pEString := eString - SIZEOF pEString !!VALUE!!PTR TO pEString
+	
+	-&gt;additional use check
+	IF newLen &gt;= pEString.size THEN Throw(&quot;EPU&quot;, &#x27;EString; SetStr(); newLen exceeds string size&#x27;)
+	
+	-&gt;set length
+	pEString.length := newLen
+	eString[newLen] := &quot;\0&quot;
+ENDPROC
+
+PROC ReadStr(fileHandle:PTR, eString:STRING) RETURNS fail:BOOL PROTOTYPE IS EMPTY
+
+PROC StringF(eString:STRING, fmtString:ARRAY OF CHAR, arg1=0, arg2=0, arg3=0, arg4=0, arg5=0, arg6=0, arg7=0, arg8=0) RETURNS eString2:STRING, len PROTOTYPE IS EMPTY
+
+PROC StringFL(eString:STRING, fmtString:ARRAY OF CHAR, args=NILL:ILIST) RETURNS eString2:STRING, len PROTOTYPE IS EMPTY
+
+PROC RealF(eString:STRING, value:FLOAT, decimalPlaces=8) RETURNS eString2:STRING PROTOTYPE IS EMPTY
+
+PROC Link(complex:STRING, tail:OWNS STRING)
+	DEF pEString:PTR TO pEString
+	
+	-&gt;use check
+	IF complex = NILS THEN Throw(&quot;EPU&quot;, &#x27;EString; Link(); complex=NILS&#x27;)
+	
+	-&gt;retrieve string header
+	pEString := complex - SIZEOF pEString !!VALUE!!PTR TO pEString
+	
+	-&gt;store tail&#x27;s header
+	pEString.next := IF tail THEN tail - SIZEOF pEString !!VALUE!!PTR TO pEString ELSE NIL
+ENDPROC complex
+
+PROC Next(complex:STRING)
+	DEF tail:STRING
+	DEF pEString:PTR TO pEString
+	
+	IF complex = NILS THEN RETURN NILS
+	
+	-&gt;retrieve string header
+	pEString := complex - SIZEOF pEString !!VALUE!!PTR TO pEString
+	
+	-&gt;return tail with hidden header
+	pEString := pEString.next
+	tail := IF pEString = NIL THEN NILS ELSE pEString + SIZEOF pEString !!VALUE!!STRING
+ENDPROC tail
+
+PROC Forward(complex:STRING, num)
+	DEF tail:STRING
+	DEF pEString:PTR TO pEString
+	
+	-&gt;use check
+	IF num &lt; 0        THEN Throw(&quot;EPU&quot;, &#x27;EString; Forward(); num&lt;0&#x27;)
+	
+	IF complex = NILS THEN RETURN NILS
+	
+	-&gt;retrieve string header
+	pEString := complex - SIZEOF pEString !!VALUE!!PTR TO pEString
+	
+	WHILE (pEString &lt;&gt; NIL) AND (num &gt; 0)
+		pEString := pEString.next
+		num--
+	ENDWHILE
+	
+	-&gt;retrieve string after header
+	tail := IF pEString = NIL THEN NILS ELSE pEString + SIZEOF pEString !!VALUE!!STRING
+ENDPROC tail
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

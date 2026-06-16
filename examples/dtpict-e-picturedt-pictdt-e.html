@@ -1,0 +1,142 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>PictDT.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-dtpict-e.html">dtpict_e</a> &rsaquo; PictDT.e</div><h1>File: <code>PictDT.e</code></h1><p class="meta">116 lines · project <a href="../examples/pkg-dtpict-e.html"><code>dtpict_e</code></a></p><p class="pathctx">dtpict_e/PictureDT/PictDT.e</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/boopsi.html">amigalib/boopsi</a></li><li><a href="../modules/datatypes.html">datatypes</a></li><li><a href="../modules/datatypesclass.html">datatypes/datatypesclass</a></li><li><a href="../modules/pictureclass.html">datatypes/pictureclass</a></li><li><a href="../modules/gfx.html">graphics/gfx</a></li><li><a href="../modules/view.html">graphics/view</a></li><li><a href="../modules/classes.html">intuition/classes</a></li><li><a href="../modules/gadgetclass.html">intuition/gadgetclass</a></li><li><a href="../modules/screens.html">intuition/screens</a></li></ul></div><h2>Source</h2><pre class="code">OPT MODULE
+OPT EXPORT
+
+/*
+ * This module is for display pictures
+ * by means of PictureDT.datatype
+ * Module displaying ex.: JPG,GIF,BMP,IFF
+ *
+ * PictDT v1.0 - written by Krzysztof Cmok
+ * module is written in day 10-Apr-99
+ *
+ */
+
+MODULE	&#x27;datatypes/datatypesclass&#x27;	-&gt; definicje...
+MODULE	&#x27;datatypes/pictureclass&#x27;	-&gt; object &#x27;bitmapheader&#x27;
+MODULE	&#x27;intuition/classes&#x27;		-&gt; object struct ;)
+MODULE  &#x27;intuition/gadgetclass&#x27;		-&gt; gplayout
+MODULE	&#x27;amigalib/boopsi&#x27;		-&gt; dla domethod
+MODULE	&#x27;intuition/screens&#x27;		-&gt; screen
+MODULE	&#x27;graphics/gfx&#x27;			-&gt; bitmap
+MODULE	&#x27;datatypes&#x27;			-&gt; wiadomo co
+MODULE	&#x27;graphics/view&#x27;			-&gt; OBP_PRECISION
+
+OBJECT picturedt
+	bmhd:PTR TO bitmapheader	-&gt;- format and informations
+	bmap:PTR TO bitmap		-&gt;- bitmap
+	obj:PTR TO object		-&gt;- objekt
+	scr:PTR TO screen
+	remap:PTR TO LONG
+	-&gt;-infosy
+	nrcolors:PTR TO LONG		-&gt;- ilosc kolorow w palecie obrazka.
+	modeid:PTR TO LONG		-&gt;- rozdzielczosc.
+	palette:PTR TO LONG		-&gt;- paleta kolorow.
+ENDOBJECT
+
+-&gt;- procedure for open file...
+PROC loadpicture(filename) OF picturedt
+DEF bm:PTR TO bitmap,bh:PTR TO bitmapheader
+DEF nrcols,modeid,regs
+
+	IF (datatypesbase:=OpenLibrary(&#x27;datatypes.library&#x27;,0))=0 THEN RETURN 0
+	
+	self.obj:=NewDTObjectA(filename,
+				[DTA_SOURCETYPE, DTST_FILE,
+				 DTA_GROUPID,	 $70696374,		-&gt; ID: pict
+				 PDTA_FREESOURCEBITMAP,	TRUE,
+				 PDTA_REMAP,	 self.remap,
+				 PDTA_SCREEN,	 self.scr,
+				 OBP_PRECISION,	 PRECISION_IMAGE,0])
+
+	doMethodA(self.obj,[DTM_PROCLAYOUT,NIL,1]:gplayout);
+	GetDTAttrsA(self.obj,[PDTA_BITMAPHEADER,{bh},PDTA_DESTBITMAP,{bm},
+				PDTA_NUMCOLORS,{nrcols},PDTA_MODEID,{modeid},
+					PDTA_CREGS,{regs},0]);
+	IF bm=0 THEN GetDTAttrsA(self.obj,[PDTA_BITMAP,{bm},0]);
+	IF bm=0 THEN RETURN 0
+	self.bmhd:=bh;
+	self.bmap:=bm;
+	self.nrcolors:=nrcols;
+	self.modeid:=modeid;
+	self.palette:=regs;
+ENDPROC -1
+
+-&gt;- loadpalette
+PROC palette() OF picturedt
+DEF i,r,g,b
+
+IF (self.scr)=0
+	RETURN 0
+ELSE
+	self.nrcolors:=Shl(2,self.scr.bitmap.depth-1);
+	FOR i:=0 TO self.nrcolors
+		r:=self.palette[i * 3 + 0];
+		g:=self.palette[i * 3 + 1];
+		b:=self.palette[i * 3 + 2];
+		SetRGB32(self.scr.viewport,i,r,g,b);
+	ENDFOR
+ENDIF
+ENDPROC -1
+
+-&gt;- dispose
+PROC dispose() OF picturedt
+	WaitBlit()
+	DisposeDTObject(self.obj)
+	Dispose(self.obj)
+	CloseLibrary(datatypesbase);
+	self.obj:=0;
+ENDPROC -1
+
+/* SIMPLE PROGRAM FOR TEST!!!
+ ****************************
+
+PROC main()
+DEF w,pdt:PTR TO picturedt,s:PTR TO screen
+
+s:=OpenS(640,200,8,V_HIRES,0,[SA_PENS,[$FFFF]:INT,NIL])
+w:=OpenW(0,0,640,200,0,0,NIL,s,$f,0);
+datatypesbase:=OpenLibrary(&#x27;datatypes.library&#x27;,0)
+
+NEW pdt
+
+pdt.scr:=s;
+pdt.loadpicture(&#x27;dev:lc/charts/aframev02/examples/picturedt/pictures/toystry1.gif&#x27;)
+pdt.palette()
+
+BltBitMapRastPort(pdt.bmap,0,0,stdrast,0,0,pdt.bmhd.width,pdt.bmhd.height,$c0);
+
+WaitLeftMouse(w)
+pdt.dispose()
+CloseLibrary(datatypesbase)
+CloseW(w)
+CloseS(s)
+ENDPROC
+
+*/
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

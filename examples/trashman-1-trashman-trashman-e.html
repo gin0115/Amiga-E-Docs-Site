@@ -1,0 +1,244 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>trashman.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-trashman-1.html">Trashman_1</a> &rsaquo; trashman.e</div><h1>File: <code>trashman.e</code></h1><p class="meta">218 lines · project <a href="../examples/pkg-trashman-1.html"><code>Trashman_1</code></a></p><p class="pathctx">Trashman_1/Trashman/trashman.e</p><p class="prose">Trashman -- a Mac-alike trashcan <a href="../modules/icon.html">icon</a> updater COPYRIGHT 1994 by C.Randall, of mbissaymssiK Software, Broken Spork technologies division. Contact me through Internet: crandall@garnet.msen.com</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/dos.html">dos/dos</a></li><li><a href="../modules/nodes.html">exec/nodes</a></li><li><a href="../modules/intuition.html">intuition/intuition</a></li><li><a href="../modules/newicon.html">newicon</a></li><li><a href="../modules/tagitem.html">utility/tagitem</a></li><li><a href="../modules/startup.html">workbench/startup</a></li></ul></div><h2>Source</h2><pre class="code">/*
+
+Trashman -- a Mac-alike trashcan icon updater
+
+COPYRIGHT 1994 by C.Randall, of mbissaymssiK Software, Broken Spork technologies division.
+
+Contact me through Internet:  crandall@garnet.msen.com
+
+*/
+
+
+
+MODULE &#x27;dos/dos&#x27;,&#x27;dos/dosextens&#x27;,&#x27;dos/notify&#x27;,&#x27;dos/dosextens&#x27;,&#x27;dos/dosasl&#x27;
+MODULE &#x27;workbench/startup&#x27;,&#x27;wb&#x27;,&#x27;icon&#x27;,&#x27;workbench/workbench&#x27;
+MODULE &#x27;utility/tagitem&#x27;,&#x27;utility&#x27;
+MODULE &#x27;exec/nodes&#x27;,&#x27;exec/ports&#x27;,&#x27;exec/types&#x27;,&#x27;exec/memory&#x27;
+MODULE &#x27;newicon&#x27;,&#x27;libraries/newicon&#x27;
+MODULE &#x27;intuition/intuition&#x27;
+
+ENUM STAT_UNKNOWN,STAT_FULL,STAT_EMPTY
+
+DEF trash1[500]:STRING
+DEF trash2[500]:STRING
+DEF dir[500]:STRING
+DEF ffile[500]:STRING
+DEF diskobj1:PTR TO diskobject
+DEF diskobj2:PTR TO diskobject
+DEF notify:PTR TO notifyrequest
+DEF nmsg:PTR TO notifymessage
+DEF port:PTR TO mp
+DEF wb:PTR TO wbstartup
+DEF args:PTR TO wbarg
+DEF status=STAT_UNKNOWN
+DEF lock
+
+DEF olddir,s,abort
+
+PROC main()
+	NEW notify
+
+	IF KickVersion(37)
+	IF (wbmessage)
+		SetTaskPri(FindTask(0),2)
+		IF (workbenchbase:=OpenLibrary(&#x27;workbench.library&#x27;,36))
+			IF (iconbase:=OpenLibrary(&#x27;icon.library&#x27;,36))
+				IF (utilitybase:=OpenLibrary(&#x27;utility.library&#x27;,37))
+					newiconbase:=OpenLibrary(&#x27;newicon.library&#x27;,37)
+					
+					wb:=wbmessage;args:=wb.arglist;olddir:=CurrentDir(args.lock)
+					IF args.name&gt;0
+						GetCurrentDirName(ffile,490)
+						AddPart(ffile,args.name,490)
+						diskobj1:=GetDiskObjectNew(ffile)
+					ENDIF
+					CurrentDir(olddir)
+					StrCopy(dir,&#x27;sys:trashcan&#x27;,ALL)
+					StrCopy(trash1,&#x27;env:sys/def_trashcan&#x27;,ALL)
+					StrCopy(trash2,&#x27;env:sys/def_fulltrashcan&#x27;,ALL)
+					IF diskobj1
+						IF (s:=FindToolType(diskobj1.tooltypes,&#x27;WATCHDIR&#x27;))
+							StrCopy(dir,s,ALL)
+						ENDIF
+						IF (s:=FindToolType(diskobj1.tooltypes,&#x27;TRASHCAN_EMPTY&#x27;))
+							StrCopy(trash1,s,ALL)
+						ENDIF
+						IF (s:=FindToolType(diskobj1.tooltypes,&#x27;TRASHCAN_FULL&#x27;))
+							StrCopy(trash2,s,ALL)
+						ENDIF
+						FreeDiskObject(diskobj1)
+						diskobj1:=0
+					ENDIF
+
+					IF (lock:=Lock(dir,ACCESS_READ))
+						IF (port:=CreateMsgPort())
+							notify.name:=dir
+							notify.flags:=NRF_SEND_MESSAGE
+							notify.port:=port
+							abort:=FALSE
+							IF (StartNotify(notify))
+								WHILE (abort=FALSE)
+									changestate()
+									Wait(SIGBREAKF_CTRL_C OR Shl(1,port.sigbit))
+									s:=FALSE
+									WHILE (nmsg:=GetMsg(port))
+										ReplyMsg(nmsg)
+										s:=TRUE
+									ENDWHILE
+									IF (s=FALSE) THEN abort:=TRUE
+								ENDWHILE
+								EndNotify(notify)
+							ENDIF
+							DeleteMsgPort(port)
+						ENDIF
+						UnLock(lock)
+					ENDIF
+
+					IF (newiconbase) THEN CloseLibrary(newiconbase)
+					CloseLibrary(utilitybase)
+				ENDIF
+				CloseLibrary(iconbase)
+			ENDIF
+			CloseLibrary(workbenchbase)
+		ENDIF
+	ENDIF
+	ENDIF
+
+	END notify
+ENDPROC
+
+PROC changestate()
+	DEF fh,fileinfo=0:PTR TO fileinfoblock
+	DEF apath=NIL:PTR TO anchorpath
+	DEF	achain=NIL:PTR TO achain
+	DEF dir2[500]:STRING
+	DEF flag=FALSE
+	DEF err,mode
+	NEW apath
+
+	StrCopy(dir2,dir,ALL)
+	AddPart(dir2,&#x27;#?&#x27;,490)
+
+	IF (fh:=Lock(dir,ACCESS_READ))
+		err:=0;mode:=0
+		WHILE (err&lt;2)
+			IF (mode=0)
+				err:=MatchFirst(dir2,apath);mode:=1
+			ELSE
+				err:=MatchNext(apath)
+			ENDIF
+			IF (err=0)
+				achain:=apath.last
+				IF (achain)
+					fileinfo:=achain.info
+					IF (fileinfo)
+						IF (fileinfo.direntrytype&lt;&gt;0)
+							StrCopy(ffile,dir,ALL)
+							AddPart(ffile,fileinfo.filename,490)
+							flag:=TRUE
+						ENDIF
+					ENDIF
+				ENDIF
+			ENDIF
+		ENDWHILE
+		MatchEnd(apath)
+		IF (flag=FALSE)
+			EndNotify(notify)
+			notify.name:=dir
+			StartNotify(notify)
+			IF (status&lt;&gt;STAT_EMPTY) THEN copyimage(trash1,dir)
+			status:=STAT_EMPTY
+		ELSE
+			EndNotify(notify)
+			notify.name:=ffile
+			StartNotify(notify)
+			IF (status&lt;&gt;STAT_FULL) THEN copyimage(trash2,dir)
+			status:=STAT_FULL
+		ENDIF
+		UnLock(fh)
+	ENDIF
+
+	END apath
+ENDPROC
+
+PROC copyimage(source,dest)
+	DEF ndo1:PTR TO newdiskobject
+	DEF ndo2:PTR TO newdiskobject
+
+	DEF newi1,newi2,newdi1,newdi2
+
+	IF (newiconbase)
+		IF (ndo1:=GetNewDiskObject(source))
+			IF (ndo2:=GetNewDiskObject(dest))
+				newi1:=ndo2.ndo_normalimage
+				newi2:=ndo2.ndo_selectedimage
+				diskobj1:=ndo2.ndo_stdobject
+				diskobj2:=ndo1.ndo_stdobject	-&gt;backwards!
+				newdi1:=diskobj1.gadget::gadget.gadgetrender
+				newdi2:=diskobj1.gadget::gadget.selectrender
+
+				diskobj1.gadget::gadget.gadgetrender:=diskobj2.gadget::gadget.gadgetrender
+				diskobj1.gadget::gadget.selectrender:=diskobj2.gadget::gadget.selectrender
+				ndo2.ndo_normalimage:=ndo1.ndo_normalimage
+				ndo2.ndo_selectedimage:=ndo1.ndo_selectedimage
+
+				PutNewDiskObject(dest,ndo2)
+				
+				diskobj1.gadget::gadget.gadgetrender:=newdi1
+				diskobj1.gadget::gadget.selectrender:=newdi2
+				ndo2.ndo_normalimage:=newi1
+				ndo2.ndo_selectedimage:=newi2
+				FreeNewDiskObject(ndo2)
+			ENDIF
+			FreeNewDiskObject(ndo1)
+		ENDIF
+	ELSE
+		IF (diskobj1:=GetDiskObject(source))
+			IF (diskobj2:=GetDiskObject(dest))
+				newdi1:=diskobj2.gadget::gadget.gadgetrender
+				newdi2:=diskobj2.gadget::gadget.selectrender
+
+				diskobj2.gadget::gadget.gadgetrender:=diskobj1.gadget::gadget.gadgetrender
+				diskobj2.gadget::gadget.selectrender:=diskobj1.gadget::gadget.selectrender
+
+				PutDiskObject(dest,diskobj2)
+				
+				diskobj2.gadget::gadget.gadgetrender:=newdi1
+				diskobj2.gadget::gadget.selectrender:=newdi2
+				FreeDiskObject(diskobj2)
+			ENDIF
+			FreeDiskObject(diskobj1)
+		ENDIF
+	ENDIF
+
+ENDPROC
+versionstring:
+CHAR &#x27;\0$VER: trashman 1 (14.12.94) \t FREELY REDISTRIBUTABLE, COPYRIGHTED MATERIAL -- NOT FOR RESALE\0\0&#x27;
+
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

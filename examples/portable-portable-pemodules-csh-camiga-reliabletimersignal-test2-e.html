@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>cAmiga_ReliableTimerSignal_test2.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-portable.html">PortablE</a> &rsaquo; cAmiga_ReliableTimerSignal_test2.e</div><h1>File: <code>cAmiga_ReliableTimerSignal_test2.e</code></h1><p class="meta">72 lines · project <a href="../examples/pkg-portable.html"><code>PortablE</code></a></p><p class="pathctx">PortablE/PortablE/PEmodules/CSH/cAmiga_ReliableTimerSignal_test2.e</p><h2>Source</h2><pre class="code">OPT PREPROCESS, POINTER
+MODULE &#x27;CSH/cAmiga_ReliableTimerSignal&#x27;, &#x27;intuition&#x27;, &#x27;graphics&#x27;, &#x27;exec&#x27;, &#x27;dos&#x27;
+
+PROC main()
+	DEF vblankSignal:OWNS PTR TO testReliableTimerSignal
+	DEF fps[9]:STRING, i
+	DEF signal
+	
+	RealF(fps, 1000000.0 / screenRefreshDelay(), 2)
+	Print(&#x27;Monitor refresh rate = \s Hz\n&#x27;, fps)
+	
+	NEW vblankSignal.new(screenRefreshDelay())
+	
+	FOR i := 1 TO 5
+		Delay(10 * 50 * screenRefreshDelay() / 1000000)
+		Print(&#x27;count = \d\n&#x27;, vblankSignal.count)		-&gt;expect count~=10 due to Delay()
+		vblankSignal.count := 0
+	ENDFOR
+	
+	Print(&#x27;Press Ctrl-C to quit\n&#x27;)
+	i := 1000000 / screenRefreshDelay()
+	REPEAT
+		signal := Wait(vblankSignal.infoSignal() OR SIGBREAKF_CTRL_C)
+		IF signal AND vblankSignal.infoSignal()
+			i--
+			IF i &lt;= 0
+				i := 1000000 / screenRefreshDelay()
+				Print(&#x27;Received \d signals.\n&#x27;, i)		-&gt;expect this to roughly equal the refresh rate.
+			ENDIF
+		ENDIF
+	UNTIL signal AND SIGBREAKF_CTRL_C
+	
+	Print(&#x27;Quit!\n&#x27;)
+FINALLY
+	PrintException()
+	END vblankSignal
+ENDPROC
+
+-&gt;NOTE: Want 16639 ms (60.10Hz)) from tcc=55 &amp; tr=1066.
+PROC screenRefreshDelay() RETURNS microSeconds
+#ifdef pe_TargetOS_AROS
+	microSeconds := 1000000 / 60
+#else
+	DEF scr:PTR TO screen, modeId, handle:ARRAY, monitor:monitorinfo
+	
+	scr := LockPubScreen(NILA)
+	modeId := GetVPModeID(scr.viewport)
+	handle := FindDisplayInfo(modeId)
+	IF GetDisplayInfoData(handle, monitor, SIZEOF monitorinfo, DTAG_MNTR, modeId) = 0 THEN Throw(&quot;RES&quot;, &#x27;game; screenRefreshDelay(); failed to query display&#x27;)
+	UnlockPubScreen(NILA, scr) ; scr := NIL
+	
+	microSeconds := 0.2838 * (monitor.totalcolorclocks) * monitor.totalrows + 0.5 !!VALUE
+	
+	-&gt;DEF vfreqint
+	-&gt;vfreqint := 1000000000 / (monitor.totalcolorclocks!!ULONG * 280 * monitor.totalrows / 1000) + 5
+	-&gt;microSeconds := 1000000.0 / vfreqint * 1000.0 + 0.5 !!VALUE
+#endif
+ENDPROC
+
+
+CLASS testReliableTimerSignal OF cReliableTimerSignal PUBLIC
+	count
+ENDCLASS
+
+PROC init() OF testReliableTimerSignal
+	self.count := 0
+ENDPROC
+
+PROC event() OF testReliableTimerSignal
+	self.count++
+ENDPROC
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

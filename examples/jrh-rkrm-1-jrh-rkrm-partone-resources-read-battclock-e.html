@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Read_BattClock.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-jrh-rkrm-1.html">JRH-RKRM-1</a> &rsaquo; Read_BattClock.e</div><h1>File: <code>Read_BattClock.e</code></h1><p class="meta">64 lines · project <a href="../examples/pkg-jrh-rkrm-1.html"><code>JRH-RKRM-1</code></a></p><p class="pathctx">JRH-RKRM-1/JRH-RKRM-PartOne/Resources/Read_BattClock.e</p><p class="prose">Read_BattClock.e  <a href="../modules/example.html">Example</a> of reading the BattClock and converting its output to a useful measure of time by calling the <a href="../modules/utility.html#fn-amiga2date">Amiga2Date</a>() <a href="../modules/utility.html">utility</a> <a href="../modules/function.html">function</a>.</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/battclock.html">other/battclock</a></li></ul></div><h2>Source</h2><pre class="code">-&gt; Read_BattClock.e
+-&gt;
+-&gt; Example of reading the BattClock and converting its output to a useful
+-&gt; measure of time by calling the Amiga2Date() utility function.
+
+OPT PREPROCESS
+
+-&gt; E-Note: E does not (as of v3.1a) support Resources in the conventional way
+MODULE &#x27;other/battclock&#x27;,  -&gt; E-Note: swapping these two trips a bug in EC v3.1a
+       &#x27;utility&#x27;,
+       &#x27;resources/battclock&#x27;,
+       &#x27;utility/date&#x27;
+
+ENUM ERR_NONE, ERR_LIB, ERR_RES
+
+RAISE ERR_LIB IF OpenLibrary()=NIL,
+      ERR_RES IF OpenResource()=NIL
+
+PROC main() HANDLE
+  DEF days:PTR TO LONG, months:PTR TO LONG, ampm,
+      amigaTime, myClock:clockdata
+  days:=[&#x27;Sunday&#x27;, &#x27;Monday&#x27;, &#x27;Tuesday&#x27;, &#x27;Wednesday&#x27;, &#x27;Thursday&#x27;,
+         &#x27;Friday&#x27;, &#x27;Saturday&#x27;]
+  months:=[&#x27;January&#x27;, &#x27;February&#x27;, &#x27;March&#x27;, &#x27;April&#x27;, &#x27;May&#x27;, &#x27;June&#x27;,
+           &#x27;July&#x27;, &#x27;August&#x27;, &#x27;September&#x27;, &#x27;October&#x27;, &#x27;November&#x27;, &#x27;December&#x27;]
+
+  utilitybase:=OpenLibrary(&#x27;utility.library&#x27;, 33)
+  battclockbase:=OpenResource(BATTCLOCKNAME)
+
+  -&gt; Get number of seconds till now
+  amigaTime:=readBattClock()
+
+  -&gt; Convert to a ClockData structure
+  Amiga2Date(amigaTime, myClock)
+
+  WriteF(&#x27;\nRobin, tell everyone the BatDate and BatTime&#x27;)
+
+  -&gt; Print the Date
+  WriteF(&#x27;\n\nOkay Batman, the BatDate is &#x27;)
+  WriteF(&#x27;\s, \s \d, \d&#x27;, days[myClock.wday], months[myClock.month-1],
+                          myClock.mday, myClock.year)
+
+  -&gt; Convert military time to normal time and set AM/PM
+  IF myClock.hour&lt;12
+    ampm:=&#x27;AM&#x27;  -&gt; hour less than 12, must be morning
+  ELSE
+    ampm:=&#x27;PM&#x27;  -&gt; hour greater than 12,must be night
+    myClock.hour:=myClock.hour-12  -&gt; Subtract the extra 12 of military
+  ENDIF
+
+  IF myClock.hour=0 THEN myClock.hour:=12  -&gt; Don&#x27;t forget the 12s
+
+  -&gt; Print the time
+  WriteF(&#x27;\n             the BatTime is &#x27;)
+  WriteF(&#x27;\d:\z\d[2]:\z\d[2] \s\n\n&#x27;,
+         myClock.hour, myClock.min, myClock.sec, ampm)
+EXCEPT DO
+  IF utilitybase THEN CloseLibrary(utilitybase)
+  SELECT exception
+  CASE ERR_LIB;  WriteF(&#x27;Error: Could not open utility.library\n&#x27;)
+  CASE ERR_RES;  WriteF(&#x27;Error: Unable to open the \s\n&#x27;, BATTCLOCKNAME)
+  ENDSELECT
+ENDPROC
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

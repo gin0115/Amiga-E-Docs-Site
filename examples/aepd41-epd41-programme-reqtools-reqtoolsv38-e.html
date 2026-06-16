@@ -1,0 +1,399 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ReqtoolsV38.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-aepd41.html">AEPD41</a> &rsaquo; ReqtoolsV38.e</div><h1>File: <code>ReqtoolsV38.e</code></h1><p class="meta">373 lines · project <a href="../examples/pkg-aepd41.html"><code>AEPD41</code></a></p><p class="pathctx">AEPD41/EPD41/Programme/Reqtools/ReqtoolsV38.e</p><p class="prose">MaxonPASCAL3 nach Amiga-E von Bluebird</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/reqtools.html">reqtools</a></li></ul></div><h2>Source</h2><pre class="code">
+/*
+
+              MaxonPASCAL3 nach Amiga-E  von Bluebird
+
+
+*/
+
+
+
+MODULE   &#x27;reqtools&#x27;,&#x27;libraries/reqtools&#x27;,&#x27;graphics/text&#x27;
+
+
+CONST    DISKINSERTED=$00008000,
+         TAG_DONE=0;
+
+DEF      filereq:          PTR TO rtfilerequester,
+         fontreq:          PTR TO rtfontrequester,
+         inforeq:          PTR TO rtreqinfo,
+         scrnreq:          PTR TO rtscreenmoderequester,
+         buffer[70]:       STRING,
+         filename[110]:    STRING,
+         longnum,color,ret,
+         txtatt:           PTR TO textattr;
+         
+
+PROC main()
+
+  IF reqtoolsbase:=OpenLibrary(&#x27;reqtools.library&#x27;,38)
+
+   WriteF(&#x27;reqtools Demo\n&#x27;);
+   WriteF(&#x27;~~~~~~~~~~~~~\n&#x27;);
+   WriteF(&#x27;This program demonstrates what &#x27;&#x27;reqtools.library&#x27;&#x27; \n&#x27;);
+   WriteF(&#x27;has to offer.\n&#x27;);
+   Delay(75);
+   IF CtrlC() THEN CleanUp(0);
+
+   RtEZRequestA(&#x27;&#x27;&#x27;reqtools.library&#x27;&#x27; offers several\ndifferent types of requesters:&#x27;,
+                &#x27;Let&#x27;&#x27;s see them&#x27;, NIL, NIL, NIL);
+
+   RtEZRequestA(&#x27;NUMBER 1:\nThe larch&#x27;,&#x27;Be serious!&#x27;, NIL, NIL, NIL);
+
+   RtEZRequestA(&#x27;NUMBER 1:\nString requester\nfunction: RtGetString&#x27;+&#x27;(&#x27;+&#x27;)&#x27;,
+                &#x27;Show me&#x27;, NIL, NIL, NIL);
+
+
+   StrCopy(buffer,&#x27;Type in anything&#x27;);
+   ret:=RtGetStringA(buffer, 127, &#x27;Enter anything:&#x27;, NIL,NIL);
+   IF ret=0
+    RtEZRequestA(&#x27;You entered nothing&#x27;,&#x27;I&#x27;&#x27;m sorry&#x27;, NIL, NIL, NIL)
+   ELSE
+    RtEZRequestA(&#x27;You entered this string:\n%s&#x27;, &#x27;So I did&#x27;, NIL, [buffer], NIL)
+   ENDIF
+
+   StrCopy(buffer,&#x27;It is possible to have several responses&#x27;);
+   RtGetStringA(buffer, 127, &#x27;* New for ReqTools 2.0 *&#x27;, NIL ,
+               [RTGS_GADFMT,&#x27; OK | New 2.0 feature | Cancel &#x27;,
+            RTGS_TEXTFMT,
+&#x27;These are two new features of ReqTools 2.0:\nText above the entry gadget and more than\none response gadget.&#x27;,
+                TAG_DONE]);
+
+
+   RtGetStringA(buffer, 127, &#x27;Enter anything:&#x27;, NIL,
+           [RTGS_GADFMT,&#x27; _Ok |_Abort|_Cancel&#x27;,
+           RTGS_TEXTFMT,
+&#x27;New is also the ability to switch off the\nbackfill pattern.  You can also center the\ntext above the entry gadget.\nThese new features are also available in\nthe rtGetLong() requester.&#x27;,
+           RTGS_BACKFILL, FALSE,
+           RTGS_FLAGS, GSREQF_CENTERTEXT OR GSREQF_HIGHLIGHTTEXT,
+           RT_UNDERSCORE,00000095,
+           TAG_DONE]);
+
+   RtEZRequestA(&#x27;NUMBER 2:\nNumber requester\nfunction: rtGetLong&#x27; + &#x27;(&#x27; + &#x27;)&#x27;,
+                &#x27;Show me&#x27;, NIL, NIL, NIL);
+   
+   ret:=RtGetLongA({longnum}, &#x27;Enter a number:&#x27; , NIL,
+                   [RTGL_SHOWDEFAULT,FALSE,
+                    TAG_DONE]);
+   IF (ret=0)
+      RtEZRequestA(&#x27;You entered nothing&#x27;,&#x27;I&#x27;&#x27;m sorry&#x27;, NIL, NIL, NIL)
+   ELSE
+      RtEZRequestA(&#x27;The number You entered was: \n%ld&#x27;,&#x27;So it was&#x27;, NIL, [longnum], NIL);
+   ENDIF
+   RtGetLongA({longnum}, &#x27;* New for ReqTools 2.0 *&#x27;, NIL,
+             [RTGL_SHOWDEFAULT,FALSE,
+              RTGL_GADFMT,&#x27;Ok|V38 feature|Cancel&#x27;,
+              TAG_DONE]);
+   
+   RtGetLongA({longnum}, &#x27;Enter a number:&#x27;, NIL,
+          [RTGL_SHOWDEFAULT, FALSE,
+           RTGL_TEXTFMT,&#x27;\nbackfill pattern switched off\n&#x27;,
+           RTGL_FLAGS, GSREQF_CENTERTEXT OR GSREQF_HIGHLIGHTTEXT,
+           RTGL_MIN, 0,
+           RTGL_MAX, 666,
+           TAG_DONE]);
+
+   RtEZRequestA(&#x27;NUMBER 3:\nNotification requester, the requester\n you&#x27;&#x27;ve been&#x27;+
+                &#x27;using all the time!\nfunction: RtEZRequest&#x27;+&#x27;(&#x27;+&#x27;)&#x27;,
+                &#x27;Show me more&#x27;, NIL, NIL, NIL);
+
+   RtEZRequestA(&#x27;Simplest usage: some body text and\na single centered gadget.&#x27;,
+                &#x27;Got it&#x27;, NIL, NIL, NIL);
+
+   ret:=RtEZRequestA(&#x27;You can also use two gadgets to\nask the user something.\n&#x27;+
+                     &#x27;Do you understand?&#x27;, &#x27;Of course|Not really&#x27;,NIL, NIL, NIL);
+
+
+   WHILE ret=0
+
+      ret:=RtEZRequestA(&#x27;You are not one of the brightest are you?\n&#x27;+
+                        &#x27;We&#x27;&#x27;ll try again...&#x27;,&#x27;Ok&#x27;, NIL, NIL, NIL);
+
+      ret:=RtEZRequestA(&#x27;You can also use two gadgets to\nask the user something.\n&#x27;+
+                        &#x27;Do you understand?&#x27;, &#x27;Of course|Not really&#x27;,NIL, NIL, NIL);
+   ENDWHILE
+
+
+   RtEZRequestA(&#x27;Great, we&#x27;&#x27;ll continue then.&#x27;, &#x27;Fine&#x27;, NIL, NIL, NIL);
+
+   ret:=RtEZRequestA(&#x27;You can also put up a requester with\nthree choices.\n&#x27;+
+                     &#x27;How do you like the demo so far ?&#x27;,
+                     &#x27;Great|So so|Rubbish&#x27;, NIL, NIL, NIL);
+
+   SELECT ret
+
+      CASE 0;  RtEZRequestA(&#x27;Too bad, I really hoped you\nwould like it better.&#x27;,
+                            &#x27;So what&#x27;, NIL, NIL, NIL);
+
+      CASE 1;  RtEZRequestA(&#x27;I&#x27;&#x27;m glad you like it so much.&#x27;,&#x27;Fine&#x27;,NIL,NIL,NIL);
+
+      CASE 2;  RtEZRequestA(&#x27;Maybe if you run the demo again\nyou&#x27;&#x27;ll REALLY like it.&#x27;,
+                            &#x27;Perhaps&#x27;, NIL, NIL, NIL);
+         
+   ENDSELECT;
+      
+   ret:=RtEZRequestA(&#x27;The number of responses is not limited to three\n&#x27;+
+                     &#x27;as you can see.  The gadgets are labeled with\n&#x27;+ 
+                     &#x27;the &quot;Return&quot; code from EZRequest().\n&#x27;+
+                     &#x27;Pressing &quot;Return&quot; will choose 4, note that\n&#x27;+
+                     &#x27;4&#x27;&#x27;s button text is printed in boldface.&#x27;,
+                     &#x27;1|2|3|4|5|0&#x27;, NIL, NIL,
+                     [RTEZ_DEFAULTRESPONSE,4,
+                      TAG_DONE]);
+
+   RtEZRequestA(&#x27;You picked &#x27; + &#x27;%ld&#x27;, &#x27;How true&#x27;, NIL, [ret], NIL);
+
+   RtEZRequestA (&#x27;New for Release 2.0 of ReqTools (V38) is\n&#x27;+
+                 &#x27;the possibility to define characters in the\n&#x27;+
+                 &#x27;buttons as keyboard shortcuts.\n&#x27;+ 
+                 &#x27;As you can see these characters are underlined.\n&#x27;+
+                 &#x27;Note that pressing shift while still holding\n&#x27;+ 
+                 &#x27;down the key will cancel the shortcut.&#x27;,
+                 &#x27;_Great|_Fantastic| _Swell|Oh, _Boy&#x27;,
+                 NIL, NIL,[RT_UNDERSCORE,00000095,TAG_DONE]);
+
+   StrCopy(buffer,&#x27;five&#x27;);
+   RtEZRequestA(&#x27;You may also use C-style formatting codes in the body text.\n&#x27;+
+                &#x27;Like this:\n\n&#x27;+
+                &#x27;The number %%ld is written %%s. will give:\n\n&#x27;+
+                &#x27;The number %ld is written %s.\n\n&#x27;+
+                &#x27;if you also pass &#x27;&#x27;5&#x27;&#x27; and &#x27;&#x27;five&#x27;&#x27; to EZRequest&#x27;+&#x27;(&#x27;+&#x27;)&#x27;+&#x27;.&#x27;,&#x27;_Proceed&#x27;, NIL, [5,buffer],
+                [RT_UNDERSCORE,00000095,TAG_DONE]);
+
+   ret:=RtEZRequestA(&#x27;It is also possible to pass extra IDCMP flags\n&#x27;+
+                     &#x27;that will satisfy EZRequest&#x27;+&#x27;(&#x27;+&#x27;)&#x27;+&#x27;. This requester\n&#x27;+
+                     &#x27;has had DISKINSERTED passed to it.\n&#x27;+
+                     &#x27;(&#x27;+&#x27;Try inserting a disk&#x27;+&#x27;)&#x27;+&#x27;.&#x27;,
+                     &#x27;_Continue&#x27;, NIL, NIL,
+                     [RT_IDCMPFLAGS,DISKINSERTED,
+                      RT_UNDERSCORE,00000095,
+                      TAG_DONE]);
+
+   IF ret=DISKINSERTED
+      RtEZRequestA(&#x27;You inserted a disk.&#x27;, &#x27;I did&#x27;, NIL, NIL, NIL)
+   ELSE
+      RtEZRequestA(&#x27;You used the &#x27;&#x27;Continue&#x27;&#x27; gadget\n&#x27;+
+                   &#x27;to satisfy the requester.&#x27;, &#x27;I did&#x27;, NIL, NIL, NIL)
+   ENDIF
+
+   RtEZRequestA(&#x27;Finally, it is possible to specify the position\n&#x27;+
+                &#x27;of the requester.\n&#x27;+
+                &#x27;E.g. at the top left of the screen, like this.\n&#x27;+
+                &#x27;This works for all requesters, not just EZRequest&#x27;+&#x27;(&#x27;+&#x27;)&#x27;+&#x27;!&#x27;,
+                &#x27;_Amazing&#x27;, NIL, NIL,
+                [RT_REQPOS,REQPOS_TOPLEFTSCR,
+                 RT_UNDERSCORE,00000095,
+                 TAG_DONE]);
+
+   RtEZRequestA(&#x27;Alternatively, you can center the\n&#x27;+
+                &#x27;requester on the screen.\n&#x27; +
+                &#x27;Check out &#x27;&#x27;reqtools.doc&#x27;&#x27; for all the possibilities.&#x27;,
+                &#x27;I&#x27;&#x27;ll do that&#x27;, NIL, NIL,
+                [RT_REQPOS,REQPOS_CENTERSCR,TAG_DONE]);
+
+   RtEZRequestA(&#x27;NUMBER 4:\nFile requester\n&#x27;+
+                &#x27;function: rtFileRequest&#x27;+&#x27;(&#x27;+&#x27;)&#x27;,
+                &#x27;_Demonstrate&#x27;, NIL, NIL,[RT_UNDERSCORE,00000095,TAG_DONE]);
+
+
+
+   filereq:=RtAllocRequestA(RT_FILEREQ,NIL);
+   
+
+   IF filereq
+   
+      filename[0]:=0;
+      ret:=RtFileRequestA(filereq, filename, &#x27;Pick a file&#x27;,NIL);
+      IF ret&lt;&gt;0
+         RtEZRequestA(&#x27;You picked the file:\n%s\nin directory:\n%s&#x27;,
+                      &#x27;Right&#x27;, NIL, [filename,filereq.dir], NIL)
+         
+      ELSE
+         RtEZRequestA(&#x27;You didn&#x27;&#x27;t pick a file.&#x27;, &#x27;No&#x27;, NIL, NIL, NIL);
+     ENDIF
+
+      RtFreeRequest(filereq);
+
+   ELSE
+      RtEZRequestA(&#x27;Out of memory!&#x27;, &#x27;Oh boy!&#x27;, NIL, NIL, NIL);
+   ENDIF
+
+
+   RtEZRequestA (&#x27;The file requester can be used\nas a directory requester as well.&#x27;,
+                 &#x27;Let&#x27;&#x27;s _see that&#x27;, NIL, NIL, [RT_UNDERSCORE,00000095,TAG_DONE]);
+
+   filereq:=RtAllocRequestA(RT_FILEREQ, NIL);
+   IF filereq
+
+         ret:=RtFileRequestA(filereq, filename, &#x27;Pick a directory&#x27;,
+                    [RTFI_FLAGS,FREQF_NOFILES,TAG_DONE]);
+         IF ret=1
+              RtEZRequestA (&#x27;You picked the directory:\n%s&#x27;,&#x27;Right&#x27;, NIL, [filereq.dir], NIL)
+         ELSE
+              RtEZRequestA (&#x27;You didn&#x27;&#x27;t pick a directory.&#x27;, &#x27;No&#x27;, NIL, NIL, NIL)
+         ENDIF
+
+         RtEZRequestA (&#x27;You can also change the Height of the requester&#x27;, &#x27;Wow&#x27;, NIL, NIL, NIL);
+
+         ret:=RtFileRequestA(filereq, filename, &#x27;Pick a directory&#x27;,
+                    [RTFI_FLAGS,FREQF_NOFILES,
+                     RTFI_HEIGHT,250,
+                     TAG_DONE]);
+
+         IF ret=1
+              RtEZRequestA (&#x27;You picked the directory:\n%s&#x27;,&#x27;Right&#x27;,NIL,[filereq.dir], NIL)
+         ELSE
+              RtEZRequestA (&#x27;You didn&#x27;&#x27;t pick a directory.&#x27;, &#x27;No&#x27;, NIL, NIL, NIL)
+         ENDIF
+
+         RtEZRequestA (&#x27;You can also change the OK_GADGET&#x27;, &#x27;Great&#x27;, NIL, NIL, NIL);
+
+         ret:=RtFileRequestA(filereq,filename, &#x27;Remove a directory&#x27;,
+                    [RTFI_FLAGS,FREQF_NOFILES,
+                     RTFI_OKTEXT,&#x27;_Remove&#x27;,
+                     RT_UNDERSCORE,00000095,
+                     TAG_DONE]);
+         IF  ret=1
+              RtEZRequestA(&#x27;You picked the directory:\n%s&#x27;,&#x27;Right&#x27;, NIL, [filereq.dir], NIL)
+         ELSE
+              RtEZRequestA(&#x27;You didn&#x27;&#x27;t pick a directory.&#x27;, &#x27;No&#x27;, NIL, NIL, NIL)
+         ENDIF
+
+         RtFreeRequest(filereq);
+         filereq:=RtAllocRequestA(RT_FILEREQ, NIL);       
+         RtEZRequestA(&#x27;You can also use it as a Disk-requester&#x27;, &#x27;Perfect&#x27;, NIL, NIL, NIL);
+
+         ret:=RtFileRequestA(filereq,filename, &#x27;Unmount a device&#x27;,
+                    [RTFI_VOLUMEREQUEST,VREQF_ALLDISKS OR VREQF_NOASSIGNS,
+                     RTFI_OKTEXT,&#x27;Un_Mount&#x27;,
+                     RT_UNDERSCORE,00000095,
+                     TAG_DONE]);
+         IF ret=1
+              RtEZRequestA(&#x27;You picked the device:\n%s&#x27;,&#x27;Right&#x27;,NIL,[filereq.dir],NIL)
+         ELSE
+              RtEZRequestA(&#x27;You didn&#x27;&#x27;t pick a device.&#x27;, &#x27;No&#x27;, NIL, NIL, NIL)
+         ENDIF
+
+      RtFreeRequest(filereq);
+      ELSE
+          RtEZRequestA(&#x27;Out of memory!&#x27;, &#x27;Oh boy!&#x27;, NIL, NIL, NIL);
+
+      ENDIF
+
+ 
+   RtEZRequestA (&#x27;NUMBER 5:\nFont requester\nfunction: rtFontRequest&#x27;+&#x27;(&#x27;+&#x27;)&#x27;,
+                 &#x27;Show&#x27;, NIL, NIL, NIL);
+
+   fontreq:=RtAllocRequestA(RT_FONTREQ, NIL);
+   IF fontreq 
+
+      ret:=RtFontRequestA(fontreq,&#x27;Pick a font&#x27;,
+                         [RTFO_FLAGS,FREQF_STYLE OR FREQF_COLORFONTS,
+                          TAG_DONE]);
+
+      IF ret&lt;&gt;0 
+
+            txtatt:=fontreq.attr;
+            RtEZRequestA(&#x27;You picked the font:\n%s\nwith size:\n%ld&#x27;,
+                &#x27;Right&#x27;, NIL, [txtatt.name,txtatt.ysize], NIL)
+       ELSE
+            RtEZRequestA (&#x27;You didn&#x27;&#x27;t pick a font&#x27;,&#x27;I know&#x27;, NIL, NIL, NIL);
+       ENDIF
+       RtFreeRequest(fontreq);
+   ELSE
+        RtEZRequestA (&#x27;Out of memory!&#x27;, &#x27;Oh boy!&#x27;, NIL, NIL, NIL);
+   ENDIF
+
+   inforeq:=RtAllocRequestA(RT_REQINFO, NIL);
+   IF inforeq
+
+      RtEZRequestA (&#x27;With rtAllocRequestA&#x27;+&#x27; (&#x27;+&#x27; RT_REQINFO &#x27;+&#x27;, NIL )\n&#x27;+
+                    &#x27;you can center the text in the requester&#x27;, &#x27;Got it&#x27;,
+               inforeq, NIL, [RTEZ_FLAGS,EZREQF_CENTERTEXT,TAG_DONE]);
+      RtFreeRequest(inforeq);
+   ELSE
+      RtEZRequestA (&#x27;Out of memory!&#x27;, &#x27;Oh boy!&#x27;, NIL, NIL, NIL);
+   ENDIF
+
+   RtEZRequestA(&#x27;NUMBER 6:\nScreenMode requester\nfunction: rtScreenModeRequestA&#x27;+&#x27;(&#x27;+&#x27;)&#x27;,
+                &#x27;Proceed&#x27;, NIL, NIL, NIL);
+
+   scrnreq:=RtAllocRequestA(RT_SCREENMODEREQ, NIL);
+   IF scrnreq
+
+     ret:=RtScreenModeRequestA(scrnreq, &#x27;Pick a screenmode&#x27;,
+                              [RTSC_FLAGS,SCREQF_DEPTHGAD OR SCREQF_SIZEGADS OR SCREQF_AUTOSCROLLGAD OR SCREQF_OVERSCANGAD,
+                               RT_UNDERSCORE,00000095,
+                               TAG_DONE]);
+
+     IF scrnreq.autoscroll THEN StrCopy(buffer,&#x27;On&#x27;) ELSE StrCopy(buffer,&#x27;Off&#x27;);
+
+     IF ret=1
+          RtEZRequestA (&#x27;You picked this mode:\n&#x27;+
+                        &#x27;ModeID   : 0x%lx\n&#x27;+
+                        &#x27;Size     : %ld x %ld\n&#x27;+
+                        &#x27;Depth    : %ld\n&#x27;+
+                        &#x27;Overscan : %ld\n&#x27;+
+                        &#x27;AutoScroll %s&#x27;, &#x27;Right&#x27;, NIL,
+                        [scrnreq.displayid,scrnreq.displaywidth,
+                         scrnreq.displayheight,scrnreq.displaydepth,
+                         scrnreq.overscantype,buffer], NIL);
+
+      ELSE
+          RtEZRequestA(&#x27;You didn&#x27;&#x27;t pick a screen mode.&#x27;, &#x27;Sorry&#x27;, NIL, NIL, NIL);
+      ENDIF
+      RtFreeRequest(scrnreq);
+   ELSE
+      RtEZRequestA (&#x27;Out of memory!&#x27;, &#x27;Oh boy!&#x27;, NIL, NIL, NIL);
+   ENDIF
+
+
+   RtEZRequestA (&#x27;NUMBER 7:\nPalette requester\n&#x27;+
+                 &#x27;function: rtPaletteRequest&#x27;+&#x27;(&#x27;+&#x27;)&#x27;,
+                 &#x27;_Proceed&#x27;, NIL, NIL,[RT_UNDERSCORE,00000095,TAG_DONE]);
+
+   color:=RtPaletteRequestA(&#x27;Change palette&#x27;, NIL, NIL);
+   IF color=-1
+        RtEZRequestA (&#x27;You canceled.\nNo nice colors to be picked ?&#x27;,
+                      &#x27;Nah&#x27;, NIL, NIL, NIL)
+   ELSE
+        RtEZRequestA (&#x27;You picked color number %ld.&#x27;, &#x27;Sure did&#x27;, NIL, {color}, NIL)
+   ENDIF
+
+
+   WriteF(&#x27;\nFinished, hope you enjoyed the demo\n\n&#x27;);
+
+   CloseLibrary(reqtoolsbase);
+
+  ELSE
+      WriteF(&#x27;Failed to open &#x27;&#x27;reqtools.library&#x27;&#x27;\n&#x27;);
+  ENDIF
+
+ENDPROC
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>

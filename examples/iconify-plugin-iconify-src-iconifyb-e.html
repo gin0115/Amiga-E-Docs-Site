@@ -1,0 +1,227 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>iconifyb.e — Amiga E</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../pagefind/pagefind-ui.css">
+</head><body>
+<script>if(localStorage.getItem('e-theme')==='light')document.body.classList.add('light');</script>
+<a class="skip" href="#main">skip to content</a>
+<header class="topbar">
+  <button id="navtoggle" aria-label="menu">☰</button>
+  <a class="brand" href="../index.html">Amiga&nbsp;E</a>
+  <div id="search" class="search"></div>
+  <button id="themetoggle" aria-label="toggle light or dark theme" title="Toggle light/dark">◐</button>
+  <a class="idelink" href="../../">&larr; Web&nbsp;IDE</a>
+</header>
+<div class="layout">
+<nav class="sidebar"><ul><li><a href="../index.html">Home</a></li><li><a href="../language/index.html">Language</a></li><li><a href="../stdlib/index.html">Standard Library</a></li><li><a href="../modules/index.html">Modules</a></li><li><a href="../tooling/index.html">Tooling</a></li><li class="active"><a href="../examples/index.html">Source</a></li><li><a href="../community/index.html">Community</a></li><li><a href="../packages/index.html">Packages</a></li><li><a href="../explorer.html">Data Explorer</a></li></ul>
+<div class="sb-hint">Type in search to jump to any symbol. Use the
+<a href="../explorer.html">Data Explorer</a> for custom queries.</div>
+</nav>
+<main id="main"><div class="crumb"><a href="../examples/index.html">Source</a> &rsaquo; <a href="../examples/pkg-iconify-plugin.html">iconify_plugin</a> &rsaquo; iconifyb.e</div><h1>File: <code>iconifyb.e</code></h1><p class="meta">201 lines · project <a href="../examples/pkg-iconify-plugin.html"><code>iconify_plugin</code></a></p><p class="pathctx">iconify_plugin/iconify/src/iconifyb.e</p><div class="xref"><h3>Modules imported</h3><ul><li><a href="../modules/boopsi.html">amigalib/boopsi</a></li><li><a href="../modules/intuition.html">intuition/intuition</a></li><li><a href="../modules/debug.html">tools/debug</a></li></ul></div><h2>Source</h2><pre class="code">OPT MODULE,OSVERSION=37
+OPT PREPROCESS,REG=5
+
+
+MODULE &#x27;intuition/intuition&#x27;,&#x27;intuition/classes&#x27;,&#x27;intuition/classusr&#x27;,
+       &#x27;intuition/imageclass&#x27;,&#x27;intuition/gadgetclass&#x27;,&#x27;intuition/cghooks&#x27;,
+       &#x27;intuition/icclass&#x27;,&#x27;intuition/screens&#x27;,
+       &#x27;utility/tagitem&#x27;,&#x27;utility/hooks&#x27;,&#x27;graphics/rpattr&#x27;,&#x27;graphics/gfxmacros&#x27;,
+       &#x27;graphics/rastport&#x27;,
+       &#x27;devices/inputevent&#x27;
+MODULE &#x27;amigaLib/boopsi&#x27;,&#x27;tools/installhook&#x27;
+
+
+/*
+ * File:         IconifyButtonClass.c
+ * Description:  window iconify button
+ *
+ * © 1995, Ketil Hunn
+ *   1998, Piotr Gapiïski
+ *
+ */
+
+
+-&gt;-#define DEBUG
+#ifdef DEBUG
+MODULE &#x27;tools/debug&#x27;
+#endif
+
+
+#define ISBITSET(a,b)     ((a AND b)&lt;&gt;0)
+#define ISBITCLEARED(a,b) ((a AND b)=0)
+#define SETBIT(a,mask)    a:=Or(a,mask)
+#define CLEARBIT(a,mask)  a:=(a AND Not(mask))
+
+
+EXPORT PROC initIconifyButtonClass()
+  DEF cl:PTR TO iclass
+  DEF dispatcher:PTR TO hook
+
+  cl:=MakeClass(NIL,GADGETCLASS,NIL,NIL,0)
+  IF cl
+    dispatcher:=cl.dispatcher
+    installhook(dispatcher,{dispatchIconifyButton})
+  ENDIF
+ENDPROC cl
+
+PROC dispatchIconifyButton(cl:PTR TO iclass,obj:PTR TO object,msg:PTR TO msg)
+  DEF retval=FALSE,id
+  DEF gpi:PTR TO gpinput,ie:PTR TO inputevent,code
+  DEF gadget:PTR TO gadget
+
+  id:=msg.methodid
+  SELECT id
+  CASE GM_HITTEST
+    retval:=GMR_GADGETHIT
+    #ifdef DEBUG
+    kputfmt(&#x27;HITTEST: \s\n&#x27;,[IF (retval=GMR_GADGETHIT) THEN &#x27;HIT&#x27; ELSE &#x27;NO&#x27;,NIL])
+    #endif
+
+  CASE GM_GOACTIVE
+    -&gt;- decyzja czy obsîugiwaê gadûet
+    -&gt;-
+    IF (msg::gpinput.ievent)
+      -&gt;- intuition aktywowaîo gadûet (przez klikniëcie myszkâ bo inaczej nie moûna)
+      -&gt;-
+      SETBIT(obj::gadget.flags,GFLG_SELECTED)
+      doRedraw(obj,msg::gpinput.ginfo)
+      retval:=GMR_MEACTIVE
+    ELSE
+      -&gt;- odrzuê aktywacjë
+      -&gt;-
+      retval:=GMR_NOREUSE
+    ENDIF
+    #ifdef DEBUG
+    kputfmt(&#x27;GOACTIVE: \s\n&#x27;,[IF (retval=GMR_MEACTIVE) THEN &#x27;yes&#x27; ELSE &#x27;no&#x27;,NIL])
+    #endif
+
+  CASE GM_GOINACTIVE
+    -&gt;- koniec aktywacji gadûeta
+    -&gt;-
+    CLEARBIT(obj::gadget.flags,GFLG_SELECTED)
+    doRedraw(obj,msg::gpgoinactive.ginfo)
+    #ifdef DEBUG
+    kputfmt(&#x27;GOINACTIVE: \s\n&#x27;,[IF ISBITSET(gadget.flags,GFLG_SELECTED) THEN &#x27;no&#x27; ELSE &#x27;yes&#x27;,NIL])
+    #endif
+
+  CASE GM_RENDER
+    renderButton(obj,msg)   -&gt;- msg::gprender
+
+  CASE GM_HANDLEINPUT
+    gadget:=obj
+    gpi:=msg
+    ie:=gpi.ievent
+    retval:=GMR_MEACTIVE
+    IF(ie.class=IECLASS_RAWMOUSE)
+      code:=ie.code
+      SELECT code
+      CASE SELECTUP
+        -&gt;- puszczono przycisk myszki
+        -&gt;-
+        IF((gpi.mousex&lt;0)             OR
+           (gpi.mousex&gt;gadget.width)  OR
+           (gpi.mousey&lt;0)             OR
+           (gpi.mousey&gt;gadget.height))
+           -&gt;- wskaúnik poza gadûetem
+           -&gt;-
+           retval:=GMR_REUSE
+        ELSE
+          -&gt;- wskaúnik w obrëbie gadûetu (generuj kod GADGETUP)
+          -&gt;-
+          retval:=GMR_NOREUSE OR GMR_VERIFY
+        ENDIF
+        #ifdef DEBUG
+        kputfmt(&#x27;SELECTUP: over \s\n&#x27;,[IF (retval=GMR_REUSE) THEN &#x27;window&#x27; ELSE &#x27;gadget&#x27;,NIL])
+        #endif
+      CASE MENUDOWN
+        -&gt;- zamiast gadûetu wyôwietlaj menu
+        -&gt;-
+        retval:=GMR_REUSE
+      CASE IECODE_NOBUTTON
+        IF((gpi.mousex&lt;0)             OR
+           (gpi.mousex&gt;gadget.width)  OR
+           (gpi.mousey&lt;0)             OR
+           (gpi.mousey&gt;gadget.height))
+          IF ISBITSET(gadget.flags,GFLG_SELECTED)
+            CLEARBIT(gadget.flags,GFLG_SELECTED)
+            doRedraw(obj,gpi.ginfo)
+          ENDIF
+        ELSE
+          IF ISBITCLEARED(gadget.flags,GFLG_SELECTED)
+            SETBIT(gadget.flags,GFLG_SELECTED)
+            doRedraw(obj,gpi.ginfo)
+          ENDIF
+        ENDIF
+        #ifdef DEBUG
+        kputfmt(&#x27;NOBUTTON: over \s (mousexy:\d,\d - gadgetwh:\d,\d)\n&#x27;,
+          [IF (ISBITSET(gadget.flags,GFLG_SELECTED)) THEN &#x27;gadget&#x27; ELSE &#x27;window&#x27;,
+          gpi.mousex,gpi.mousey,gadget.width,gadget.height,NIL])
+        #endif
+      ENDSELECT
+    ENDIF
+  DEFAULT
+    retval:=doSuperMethodA(cl,obj,msg)
+  ENDSELECT
+ENDPROC retval
+
+PROC doRedraw(obj:PTR TO object,gi:PTR TO gadgetinfo)
+  DEF rp:PTR TO rastport
+
+  IF (rp:=ObtainGIRPort(gi))
+    doMethodA(obj,[GM_RENDER,gi,rp,GREDRAW_REDRAW]:gprender)
+    ReleaseGIRPort(rp)
+  ENDIF
+ENDPROC
+
+PROC renderButton(gadget:PTR TO gadget,msg:PTR TO gprender)
+  DEF rp:PTR TO rastport,retval=FALSE,pens:PTR TO INT
+  DEF selected,x,y,w,h,hmarg,vmarg
+
+  rp   := msg.rport
+  pens := msg.ginfo.drinfo.pens
+
+  IF (rp)AND(pens)
+    selected:=ISBITSET(gadget.flags,GFLG_SELECTED)
+    x:=gadget.leftedge+1
+    y:=gadget.topedge
+    w:=gadget.width-2
+    h:=gadget.height
+    hmarg:=5  -&gt;-g-&gt;Width/5,
+    vmarg:=(gadget.width/7)-(IF (gadget.height)&lt;11 THEN 1 ELSE 0)
+    IF (ISBITSET(gadget.flags,GFLG_RELRIGHT)) THEN x:=x+msg.ginfo.domain.width-1
+
+    SetAPen(rp,pens[SHADOWPEN])
+    Move(rp,x-1,y+1)
+    Draw(rp,x-1,y+h)
+
+    IF (selected)
+      drawFrame(rp, pens[SHADOWPEN], pens[SHINEPEN],  x,y,w,h)
+      drawFrame(rp, pens[SHINEPEN],  pens[SHADOWPEN], x+hmarg,y+vmarg,w-(hmarg*2),h-(vmarg*2))
+      drawFrame(rp, pens[SHADOWPEN], pens[SHINEPEN],  x+hmarg+1,y+h-vmarg-4,5,3)
+    ELSE
+      drawFrame(rp, pens[SHINEPEN],  pens[SHADOWPEN], x,y,w,h)
+      drawFrame(rp, pens[SHADOWPEN], pens[SHINEPEN],  x+hmarg,y+vmarg,w-(hmarg*2),h-(vmarg*2))
+      drawFrame(rp, pens[SHINEPEN],  pens[SHADOWPEN], x+hmarg+1,y+h-vmarg-4,5,3)
+    ENDIF
+    retval:=TRUE
+  ENDIF
+ENDPROC retval
+
+PROC drawFrame(rp:PTR TO rastport,pen1,pen2,x,y,w,h)
+   SetAPen(rp,pen1)
+   Move(rp,x,y+h-1)
+   Draw(rp,x,y)
+   Draw(rp,x+w-1,y)
+
+   SetAPen(rp,pen2)
+   Move(rp,x+w,y+1)
+   Draw(rp,x+w,y+h)
+   Draw(rp,x+1,y+h)
+ENDPROC
+</pre></main>
+</div>
+<script src="../pagefind/pagefind-ui.js"></script>
+<script>window.__ROOT__="../";</script>
+<script src="../assets/app.js"></script>
+</body></html>
